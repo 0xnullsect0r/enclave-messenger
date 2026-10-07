@@ -1,4 +1,4 @@
-//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--nym-env] [--report]`
+//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--nym-env] [--tor DIR [--tord PATH] [--tor-direct]] [--report]`
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
@@ -126,14 +126,51 @@ impl Transport for Routed {
     }
 }
 
-/// Start `enclave-nymd` and drive it over its stdin and stdout.
+/// How long Tor may take to bootstrap.
+const TOR_BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Start `enclave-tord` keeping its state in `state`, and wait until Tor is
+/// up (`docs/09-transport.md` §1). `direct` (development) dials without Tor.
+async fn start_tord(
+    bin: &std::path::Path,
+    state: &str,
+    direct: bool,
+) -> Result<enclave_tord::launch::Running, String> {
+    let secret: String = enclave_crypto::rng::HedgedRng::new()
+        .and_then(|mut r| r.array::<32>("netd/tor-secret"))
+        .map_err(|_| "no randomness".to_string())?
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    enclave_tord::launch::start(
+        bin,
+        std::path::Path::new(state),
+        secret,
+        direct,
+        false,
+        TOR_BOOTSTRAP,
+    )
+    .await
+}
+
+/// Start `enclave-nymd` and drive it over its stdin and stdout; with `tor`,
+/// it reaches its gateway and nym-api only through Tor.
 async fn start_nymd(
     bin: &std::path::Path,
     env: bool,
+    tor: Option<&enclave_tord::launch::Running>,
 ) -> Result<(enclave_nym::pipe::PipeDriver, tokio::process::Child), String> {
     let mut cmd = tokio::process::Command::new(bin);
     if env {
         cmd.arg("--env");
+    }
+    if let Some(t) = tor {
+        // The gateway connection (our nym-gateway-client patch) and nym-api
+        // requests (reqwest's proxy variables), only through Tor.
+        cmd.envs(t.nymd_env());
+        for v in enclave_tord::launch::Running::NYMD_ENV_REMOVE {
+            cmd.env_remove(v);
+        }
     }
     let mut child = cmd
         .stdin(std::process::Stdio::piped())
@@ -160,7 +197,41 @@ fn main() -> ExitCode {
     else {
         return ExitCode::FAILURE;
     };
-    // The mixnet client starts before the sandbox forbids starting programs.
+    // Tor and the mixnet client start before the sandbox forbids starting
+    // programs.
+    let flag = |n: &str| {
+        args.iter()
+            .position(|a| a == n)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+    let tor = match flag("--tor") {
+        Some(state) if !over_nym.is_empty() => {
+            let bin = flag("--tord").map(std::path::PathBuf::from).or_else(|| {
+                std::env::current_exe().ok().map(|e| {
+                    e.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX))
+                })
+            });
+            let started = match bin {
+                Some(bin) => rt.block_on(start_tord(
+                    &bin,
+                    &state,
+                    args.iter().any(|a| a == "--tor-direct"),
+                )),
+                None => Err("no enclave-tord".into()),
+            };
+            match started {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    // Without Tor the mixnet client doesn't start: the
+                    // entry gateway would see this device's address.
+                    eprintln!("enclave-netd: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        _ => None,
+    };
     let nymd = if over_nym.is_empty() {
         None
     } else {
@@ -175,8 +246,11 @@ fn main() -> ExitCode {
                 })
             });
         match bin {
-            Some(bin) => match rt.block_on(start_nymd(&bin, args.iter().any(|a| a == "--nym-env")))
-            {
+            Some(bin) => match rt.block_on(start_nymd(
+                &bin,
+                args.iter().any(|a| a == "--nym-env"),
+                tor.as_ref(),
+            )) {
                 Ok(n) => Some(n),
                 Err(e) => {
                     eprintln!("enclave-netd: {e}");

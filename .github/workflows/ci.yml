@@ -274,11 +274,14 @@ jobs:
       - name: Host tools
         run: |
           cargo build --release --locked -p enclave-admin -p enclave-e2e
+          # The SOCKS5 front a device puts Tor behind, dialling directly
+          # here (no Tor network in CI).
+          cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
           (cd nym && cargo build --release --locked -p enclave-nymd)
       - name: Three stacks and a mixnet, one foundation
         run: TRANSPORT=nym ci/federation/gen.sh up
-      - name: End to end over the mixnet, with a restart of one stack
-        run: TRANSPORT=nym ci/federation/gen.sh e2e
+      - name: End to end over the mixnet through tord, with a restart of one stack
+        run: TRANSPORT=nym TORD=$PWD/target/release/enclave-tord ci/federation/gen.sh e2e
       - if: failure()
         run: TRANSPORT=nym ci/federation/gen.sh logs
       - if: always()

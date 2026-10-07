@@ -137,6 +137,7 @@ fn start_netd(
     mode: &enclave_vault::Mode,
 ) -> Option<std::sync::Arc<dyn enclave_net::transport::Transport>> {
     let enclave_vault::Mode::Server {
+        profile,
         server,
         route,
         others,
@@ -149,11 +150,19 @@ fn start_netd(
     let bin = enclave_vault::netd::netd_binary()?;
     let mut servers = vec![(*server, route.to_string())];
     servers.extend(others.iter().map(|(id, r)| (*id, r.to_string())));
-    let extra: Vec<String> = if *nym_env {
+    let mut extra: Vec<String> = if *nym_env {
         vec!["--nym-env".into()]
     } else {
         Vec::new()
     };
+    // Tor in front of the mixnet whenever this build ships enclave-tord
+    // (`docs/09-transport.md` §1): netd starts it, keeping Tor's state in
+    // the profile.
+    let tord = bin.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX));
+    if tord.exists() {
+        extra.push("--tor".into());
+        extra.push(profile.join("tor").to_string_lossy().into_owned());
+    }
     match enclave_vault::netd::PipeTransport::spawn(&bin, &servers, &extra) {
         Ok(t) => Some(std::sync::Arc::new(t)),
         Err(e) => {

@@ -39,6 +39,9 @@ TRANSPORT=${TRANSPORT:-tcp}
 NYM_IMAGE=${NYM_IMAGE:-enclave-nym:ci}
 LOCALNET_IMAGE=${LOCALNET_IMAGE:-enclave-nym-localnet:ci}
 NYMD=${NYMD:-$ROOT/nym/target/release/enclave-nymd}
+# enclave-tord (a dev-direct build): nymd dials its gateway and nym-api
+# through its SOCKS5 port, as a device does through Tor. Empty: directly.
+TORD=${TORD:-}
 LOCALNET=$WORK/localnet
 NYM_API=http://10.77.0.2:8000/
 
@@ -276,6 +279,7 @@ e2e() {
     --foundation "$WORK/foundation/foundation.pub" --server-list "$WORK/foundation/server-list.bin")
   if [ "$TRANSPORT" = nym ]; then
     common+=(--nymd "$NYMD")
+    if [ -n "$TORD" ]; then common+=(--tord "$TORD"); fi
     export ENCLAVE_NYM_TOPOLOGY=$LOCALNET/network.json ENCLAVE_NYM_API=$NYM_API
   fi
   "$E2E" setup "${common[@]}" \

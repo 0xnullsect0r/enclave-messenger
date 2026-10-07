@@ -55,6 +55,20 @@ pub fn packet_gap(pacing: &Pacing) -> Duration {
     }
 }
 
+/// Dial every gateway connection through the SOCKS5 proxy at `proxy`
+/// (`enclave-tord`: Tor) with `secret`, so the entry gateway never sees this
+/// device's address (`docs/09-transport.md` §1). Process-wide; call before
+/// connecting.
+pub fn dial_gateways_through(proxy: std::net::SocketAddr, secret: String) {
+    let secret = std::sync::Arc::new(secret);
+    let connector: nym_gateway_client::client::StreamConnector =
+        std::sync::Arc::new(move |host: String, port: u16| {
+            let secret = std::sync::Arc::clone(&secret);
+            Box::pin(async move { enclave_tord::socks::connect(proxy, &secret, &host, port).await })
+        });
+    nym_gateway_client::client::set_stream_connector(Some(connector));
+}
+
 /// Which side of Enclave this client is.
 #[derive(Clone, Debug)]
 pub enum Role {

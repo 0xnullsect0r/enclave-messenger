@@ -36,6 +36,7 @@ members = [
     "crates/enclave-fuzz",
     "crates/enclave-nym",
     "crates/enclave-ingress",
+    "crates/enclave-tord",
     "xtask",
 ]
 

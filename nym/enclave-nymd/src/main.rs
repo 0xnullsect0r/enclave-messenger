@@ -66,6 +66,15 @@ fn main() -> ExitCode {
     else {
         return ExitCode::FAILURE;
     };
+    // netd started Tor for us: the gateway (and nym-api, through the proxy
+    // variables netd set) only through it.
+    if let Some(proxy) = std::env::var("ENCLAVE_TOR_SOCKS")
+        .ok()
+        .and_then(|p| p.parse().ok())
+    {
+        let secret = std::env::var("ENCLAVE_TOR_SECRET").unwrap_or_default();
+        enclave_nym_sdk::dial_gateways_through(proxy, secret);
+    }
     rt.block_on(async move {
         let driver = match NymDriver::connect(Options {
             role: Role::Client,

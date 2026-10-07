@@ -1,0 +1,37 @@
+[package]
+name = "enclave-tord"
+description = "Tor (arti) behind a loopback SOCKS5 port, for the mixnet client's gateway connection."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["tor"]
+# Dial through Tor (the shipped build).
+tor = ["dep:arti-client", "dep:tor-rtcompat"]
+# Dial directly instead of through Tor: tests and the local mixnet only.
+# Never in a release build.
+dev-direct = []
+# Starting enclave-tord from another process (netd, enclave-e2e).
+launch = ["tokio/process"]
+
+[[bin]]
+name = "enclave-tord"
+path = "src/bin/enclave-tord.rs"
+
+[dependencies]
+enclave-sandbox = { path = "../enclave-sandbox" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "io-std", "macros", "time"] }
+arti-client = { version = "0.46.0", default-features = false, features = ["tokio", "rustls", "onion-service-client", "compression"], optional = true }
+tor-rtcompat = { version = "0.46.0", default-features = false, features = ["tokio", "rustls"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }

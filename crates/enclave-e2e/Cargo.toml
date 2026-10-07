@@ -18,6 +18,7 @@ enclave-crypto = { path = "../enclave-crypto" }
 enclave-federation = { path = "../enclave-federation" }
 enclave-net = { path = "../enclave-net", features = ["nym"] }
 enclave-nym = { path = "../enclave-nym" }
+enclave-tord = { path = "../enclave-tord", default-features = false, features = ["launch"] }
 enclave-push-relay = { path = "../enclave-push-relay" }
 enclave-service = { path = "../enclave-service" }
 enclave-store = { path = "../enclave-store" }

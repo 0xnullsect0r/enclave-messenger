@@ -23,6 +23,16 @@ async fn main() {
         )
         .with_writer(std::io::stderr)
         .try_init();
+    // Through a SOCKS5 proxy (`enclave-tord --direct`), as a device dials
+    // its gateway through Tor.
+    if let (Ok(proxy), Ok(secret)) = (
+        std::env::var("ENCLAVE_TOR_SOCKS"),
+        std::env::var("ENCLAVE_TOR_SECRET"),
+    ) {
+        let proxy = proxy.parse().expect("ENCLAVE_TOR_SOCKS is HOST:PORT");
+        enclave_nym_sdk::dial_gateways_through(proxy, secret);
+        println!("dialling gateways through {proxy}");
+    }
     let network = Network::from_env(true);
     assert!(
         matches!(network, Network::Local { .. }),

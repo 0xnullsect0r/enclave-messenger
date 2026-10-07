@@ -2510,6 +2510,7 @@ dependencies = [
  "enclave-push-relay",
  "enclave-service",
  "enclave-store",
+ "enclave-tord",
  "tokio",
 ]
 
@@ -2671,6 +2672,7 @@ dependencies = [
  "enclave-nym",
  "enclave-rpc",
  "enclave-sandbox",
+ "enclave-tord",
  "enclave-wire",
  "tokio",
 ]
@@ -2833,6 +2835,17 @@ dependencies = [
  "enclave-crypto",
  "equix",
  "subtle",
+]
+
+[[package]]
+name = "enclave-tord"
+version = "0.1.0"
+dependencies = [
+ "arti-client",
+ "async-trait",
+ "enclave-sandbox",
+ "tokio",
+ "tor-rtcompat",
 ]
 
 [[package]]

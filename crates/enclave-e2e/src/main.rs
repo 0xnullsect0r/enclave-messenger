@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! enclave-e2e setup         --state DIR --servers A_ID=ROUTE,B_ID=ROUTE,C_ID=ROUTE
-//!                           --foundation FILE --server-list FILE [--nymd PATH]
+//!                           --foundation FILE --server-list FILE [--nymd PATH [--tord PATH]]
 //!                           [--push-relay-keys FILE --push-listen ADDR --push-endpoint URL]
 //! enclave-e2e after-restart --state DIR --servers … --foundation FILE --server-list FILE
 //! ```
@@ -13,7 +13,9 @@
 //! mixnet: CI job `federation-e2e-localnet`). Nym routes go through
 //! `enclave-nymd` at `--nymd PATH`, started with `--env` (so a local
 //! mixnet's `ENCLAVE_NYM_TOPOLOGY` and `ENCLAVE_NYM_API` reach it), as
-//! netd drives it on a device.
+//! netd drives it on a device. With `--tord PATH` (a `dev-direct` build of
+//! `enclave-tord`), nymd reaches its gateway and nym-api through tord's
+//! SOCKS5 port, the way a device reaches them through Tor.
 //!
 //! Three people, one per stack (Ada on A, Ben on B, Cyrus on C). `setup`:
 //!
@@ -55,8 +57,9 @@ const PATIENCE: Duration = Duration::from_secs(180);
 struct World {
     state: PathBuf,
     transport: Arc<dyn Transport>,
-    // Kept so nymd lives as long as the transport.
+    // Kept so nymd (and tord) live as long as the transport.
     _nymd: Option<tokio::process::Child>,
+    _tord: Option<enclave_tord::launch::Running>,
     servers: Vec<[u8; 16]>,
     foundation: FoundationPublic,
     list: Vec<u8>,
@@ -109,8 +112,18 @@ fn main() -> ExitCode {
 }
 
 /// The mixnet client, driven over its stdin and stdout.
-async fn start_nymd(bin: &str) -> R<(enclave_nym::pipe::PipeDriver, tokio::process::Child)> {
-    let mut child = tokio::process::Command::new(bin)
+async fn start_nymd(
+    bin: &str,
+    tor: Option<&enclave_tord::launch::Running>,
+) -> R<(enclave_nym::pipe::PipeDriver, tokio::process::Child)> {
+    let mut cmd = tokio::process::Command::new(bin);
+    if let Some(t) = tor {
+        cmd.envs(t.nymd_env());
+        for v in enclave_tord::launch::Running::NYMD_ENV_REMOVE {
+            cmd.env_remove(v);
+        }
+    }
+    let mut child = cmd
         .arg("--env")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -170,10 +183,35 @@ async fn world(args: &[String]) -> R<World> {
                 .ok_or_else(|| "a server isn't in the list".to_string())
         })
         .collect::<R<Vec<_>>>()?;
+    // `--tord PATH` (a dev-direct build): nymd reaches its gateway and
+    // nym-api through enclave-tord's SOCKS5 port, as on a device (Tor),
+    // dialling directly behind it.
+    let tord = match flag(args, "--tord") {
+        Some(bin) if !nym.is_empty() => {
+            let secret: String = enclave_crypto::rng::HedgedRng::new()
+                .and_then(|mut r| r.array::<32>("e2e/tor-secret"))
+                .map_err(e)?
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            let t = enclave_tord::launch::start(
+                std::path::Path::new(&bin),
+                &state.join("tor"),
+                secret,
+                true,
+                true,
+                Duration::from_secs(30),
+            )
+            .await?;
+            eprintln!("enclave-e2e: through enclave-tord on port {}", t.port);
+            Some(t)
+        }
+        _ => None,
+    };
     let (transport, nymd): (Arc<dyn Transport>, _) = if nym.is_empty() {
         (Arc::new(TcpTransport::new(tcp)), None)
     } else {
-        let (driver, child) = start_nymd(&need("--nymd")?).await?;
+        let (driver, child) = start_nymd(&need("--nymd")?, tord.as_ref()).await?;
         eprintln!("enclave-e2e: on the mixnet as {}", {
             use enclave_nym::MixnetDriver;
             driver.address()
@@ -191,6 +229,7 @@ async fn world(args: &[String]) -> R<World> {
         state,
         transport,
         _nymd: nymd,
+        _tord: tord,
         servers,
         foundation,
         list,

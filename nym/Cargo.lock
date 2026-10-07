@@ -1801,12 +1801,15 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "enclave-nym",
+ "enclave-tord",
  "enclave-wire",
  "nym-client-core",
  "nym-client-core-gateways-storage",
+ "nym-gateway-client",
  "nym-sdk",
  "nym-sphinx",
  "nym-topology",
+ "reqwest 0.13.5",
  "tokio",
  "tracing-subscriber",
  "url",
@@ -1830,6 +1833,15 @@ dependencies = [
  "libc",
  "rustix",
  "seccompiler",
+]
+
+[[package]]
+name = "enclave-tord"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "enclave-sandbox",
+ "tokio",
 ]
 
 [[package]]

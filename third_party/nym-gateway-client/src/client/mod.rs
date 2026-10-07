@@ -51,6 +51,9 @@ pub mod config;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod websockets;
+// ENCLAVE PATCH: dial the gateway through the caller's connector (Tor).
+#[cfg(not(target_arch = "wasm32"))]
+pub use websockets::{StreamConnector, set_stream_connector};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::client::websockets::connect_async_with_fallback;
 

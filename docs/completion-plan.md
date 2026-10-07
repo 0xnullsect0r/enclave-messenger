@@ -274,7 +274,7 @@ Other crates:
 
 #### N2: client behaviour
 
-- **Tor under Nym:** netd bootstraps arti and dials the gateway's WSS through it. Maximum refuses to run without Tor.
+- **Tor under Nym:** netd bootstraps arti and dials the gateway's WSS through it. Maximum refuses to run without Tor. Done for the first part (N2.4): arti runs in `enclave-tord` (loopback SOCKS5), nymd dials its gateway and nym-api through it (`09` §1). Maximum's refusal is N2.5.
 - **Loop cover:** every 10 s in Foreground and Maximum, every tick in Background. Done: set at runtime with each profile change (no rebuild needed; profiles still change only at transitions, RT-12), `09` §6.3.
 - **Packet pacing:** a tick's Sphinx packets are spread evenly across the tick (`09` §6.3). Done: 16 packets per tick, one per 187.5 ms.
 - **Self-loop probes** (`net/loop-probe`) and **RT-02 gateway switching:** loss >10% or latency >5× the median over 50 exchanges, at most one switch per 10 min. Done (`09` §6.3; tests `rt02_*`).

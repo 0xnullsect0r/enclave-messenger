@@ -1,0 +1,46 @@
+name: Live networks
+# Checks against the real Tor network (and, from N4, the Nym sandbox and
+# mainnet). They depend on networks outside this repository, so they run
+# nightly and on demand, never blocking a merge (`docs/09-transport.md` §1,
+# `docs/completion-plan.md` X16 tier 3).
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  tor-smoke:
+    name: enclave-tord bootstraps Tor and connects through it
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Build enclave-tord (Tor build, as shipped)
+        run: cargo build --release --locked -p enclave-tord
+      - name: Bootstrap Tor and fetch a page through the SOCKS5 port
+        run: |
+          set -euo pipefail
+          secret=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          state=$(mktemp -d)
+          mkfifo "$state.in"
+          (echo "$secret"; sleep 900) > "$state.in" &
+          target/release/enclave-tord --state "$state" --report < "$state.in" > "$state.out" &
+          for _ in $(seq 300); do grep -q ready "$state.out" && break; sleep 1; done
+          port=$(awk '/ready/{print $2}' "$state.out")
+          test -n "$port"
+          # The Tor Project's check page says whether the request came
+          # through Tor.
+          curl -sS --max-time 120 --socks5-hostname "enclave:$secret@127.0.0.1:$port" \
+            https://check.torproject.org/api/ip | tee "$state.json"
+          grep -q '"IsTor":true' "$state.json"
+          # Without the secret, nothing.
+          ! curl -sS --max-time 30 --socks5-hostname "127.0.0.1:$port" https://check.torproject.org/api/ip

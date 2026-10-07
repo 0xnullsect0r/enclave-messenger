@@ -22,8 +22,10 @@ enclave-net = { path = "../enclave-net", features = ["nym"] }
 enclave-nym = { path = "../enclave-nym" }
 enclave-sandbox = { path = "../enclave-sandbox" }
 enclave-rpc = { path = "../enclave-rpc" }
+enclave-crypto = { path = "../enclave-crypto" }
+enclave-tord = { path = "../enclave-tord", default-features = false, features = ["launch"] }
 async-trait = "0.1"
-tokio = { version = "1", features = ["rt", "macros", "sync", "io-util", "io-std", "process"] }
+tokio = { version = "1", features = ["rt", "macros", "sync", "io-util", "io-std", "process", "time"] }
 
 [dev-dependencies]
 enclave-ingress = { path = "../enclave-ingress" }

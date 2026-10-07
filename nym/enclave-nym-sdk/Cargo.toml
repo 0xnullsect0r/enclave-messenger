@@ -18,6 +18,12 @@ enclave-nym = { path = "../../crates/enclave-nym" }
 # only with its storage crate pinned too (docs/spikes/m4-network.md).
 nym-sdk = "=1.21.5"
 nym-client-core-gateways-storage = "=1.21.5"
+# Dialling the gateway through Tor (our patch, third_party/PATCHES.md), with
+# tord's SOCKS5 client; and SOCKS support for nym-api requests (reqwest reads
+# the proxy from the environment netd gives nymd).
+nym-gateway-client = "=1.21.5"
+enclave-tord = { path = "../../crates/enclave-tord", default-features = false }
+reqwest = { version = "0.13", default-features = false, features = ["socks"] }
 # What is still in flight before exiting (our patch, third_party/PATCHES.md).
 nym-client-core = { version = "=1.21.5", default-features = false }
 # How many packets a reply takes (the same arithmetic the client uses).
