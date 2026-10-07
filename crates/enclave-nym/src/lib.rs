@@ -56,6 +56,53 @@ pub struct Incoming {
     pub reply: Option<ReplyTag>,
 }
 
+/// How a device's mixnet client paces what it sends
+/// (`docs/09-transport.md` §6.3), from its traffic profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pacing {
+    /// The tick a unit and a poll are sent in: their packets leave evenly
+    /// across it.
+    pub tick: std::time::Duration,
+    /// A bulk transfer is under way: packets leave at the bulk cap instead.
+    pub bulk: bool,
+    /// Mean delay between loop cover packets.
+    pub loop_cover: std::time::Duration,
+}
+
+impl Pacing {
+    /// Most packets per second in bulk (`docs/09-transport.md` §6.4).
+    pub const BULK_PACKETS_PER_SEC: u32 = 40;
+
+    /// `u32 tick_ms ‖ u8 bulk ‖ u32 loop_cover_ms`.
+    pub fn encode(&self) -> [u8; 9] {
+        let ms = |d: std::time::Duration| u32::try_from(d.as_millis()).unwrap_or(u32::MAX);
+        let mut b = [0u8; 9];
+        b[..4].copy_from_slice(&ms(self.tick).to_be_bytes());
+        b[4] = u8::from(self.bulk);
+        b[5..].copy_from_slice(&ms(self.loop_cover).to_be_bytes());
+        b
+    }
+
+    /// Strict inverse of [`Pacing::encode`].
+    pub fn decode(b: &[u8]) -> Option<Self> {
+        let b: &[u8; 9] = b.try_into().ok()?;
+        let ms = |x: &[u8]| -> Option<std::time::Duration> {
+            Some(std::time::Duration::from_millis(u64::from(
+                u32::from_be_bytes(x.try_into().ok()?),
+            )))
+        };
+        Some(Self {
+            tick: ms(&b[..4])?,
+            bulk: match b[4] {
+                0 => false,
+                1 => true,
+                _ => return None,
+            },
+            loop_cover: ms(&b[5..])?,
+        })
+    }
+}
+
 /// What Enclave needs from a mixnet client: its own address, sending to an
 /// address with reply blocks for an answer of `reply_len` bytes, answering
 /// over a tag's reply blocks, and receiving.
@@ -77,5 +124,31 @@ pub trait MixnetDriver: Send + Sync {
     async fn flush(&self, within: std::time::Duration) -> bool {
         let _ = within;
         true
+    }
+    /// Pace what is sent from now on (a device's client; the ingress
+    /// doesn't pace).
+    fn set_pacing(&self, pacing: Pacing) {
+        let _ = pacing;
+    }
+}
+
+#[cfg(test)]
+mod pacing_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::Pacing;
+    use std::time::Duration;
+
+    #[test]
+    fn pacing_codec() {
+        let p = Pacing {
+            tick: Duration::from_secs(3),
+            bulk: false,
+            loop_cover: Duration::from_secs(120),
+        };
+        assert_eq!(Pacing::decode(&p.encode()), Some(p));
+        let mut b = p.encode();
+        b[4] = 2;
+        assert_eq!(Pacing::decode(&b), None);
+        assert_eq!(Pacing::decode(&b[..8]), None);
     }
 }

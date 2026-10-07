@@ -45,6 +45,12 @@ pub enum NetRequest {
         /// Route.
         route: String,
     },
+    /// Pace the mixnet client from now on (`enclave_nym::Pacing::encode`,
+    /// `docs/09-transport.md` §6.3). No reply.
+    SetPacing {
+        /// The encoded pacing.
+        pacing: Vec<u8>,
+    },
 }
 
 /// netd → vault.
@@ -72,6 +78,9 @@ impl NetRequest {
             }
             NetRequest::Oneway { id, server, bytes } => {
                 w.u8(4).u32(*id).bytes(server).bytes(bytes);
+            }
+            NetRequest::SetPacing { pacing } => {
+                w.u8(5).bytes(pacing);
             }
         }
         w.0
@@ -102,6 +111,7 @@ impl NetRequest {
                 server: server(&mut r)?,
                 bytes: r.bytes()?,
             },
+            5 => NetRequest::SetPacing { pacing: r.bytes()? },
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

@@ -17,7 +17,9 @@ default = []
 # Real anonymity networks. They cannot be exercised in sandboxes without raw
 # TCP; see docs/09-transport.md and docs/spikes/m4-network.md.
 tor = ["dep:arti-client", "dep:tor-rtcompat"]
-nym = ["dep:enclave-nym"]
+# The Nym transport (`NymTransport`); the mixframe and pacing types are always
+# here.
+nym = []
 
 [dependencies]
 enclave-crypto = { path = "../enclave-crypto" }
@@ -27,7 +29,7 @@ enclave-federation = { path = "../enclave-federation" }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync", "time"] }
 thiserror = "2"
-enclave-nym = { path = "../enclave-nym", optional = true }
+enclave-nym = { path = "../enclave-nym" }
 arti-client = { version = "0.46.0", default-features = false, features = ["tokio", "rustls", "onion-service-client", "compression"], optional = true }
 tor-rtcompat = { version = "0.46.0", default-features = false, features = ["tokio", "rustls"], optional = true }
 

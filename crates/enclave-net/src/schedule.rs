@@ -49,6 +49,23 @@ impl Profile {
     pub fn allows_bulk(self) -> bool {
         !matches!(self, Profile::Maximum)
     }
+
+    /// How the mixnet client paces packets in this profile
+    /// (`docs/09-transport.md` §6.3): a tick's packets leave evenly over
+    /// 3 s (in Background too: its ticks start at random times, and pacing
+    /// over its 120 s mean would delay every answer by up to 2 minutes),
+    /// at the bulk cap during a bulk transfer (never in Maximum), and loop
+    /// cover is 1 per 10 s, or 1 per tick on average in Background.
+    pub fn pacing(self, bulk: bool) -> enclave_nym::Pacing {
+        enclave_nym::Pacing {
+            tick: Duration::from_secs(3),
+            bulk: bulk && self.allows_bulk(),
+            loop_cover: match self {
+                Profile::Foreground | Profile::Maximum => Duration::from_secs(10),
+                Profile::Background => Duration::from_secs(120),
+            },
+        }
+    }
 }
 
 /// Priority of queued real traffic.

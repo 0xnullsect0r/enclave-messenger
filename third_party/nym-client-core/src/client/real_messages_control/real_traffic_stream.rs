@@ -87,6 +87,10 @@ where
     /// used to keep track of when a next packet should be sent out.
     next_delay: Option<Pin<Box<Sleep>>>,
 
+    /// ENCLAVE PATCH: when the next real packet may leave, with Poisson off
+    /// (`crate::enclave::packet_gap`).
+    next_real: Option<Pin<Box<Sleep>>>,
+
     // To make sure we don't overload the mix_tx channel, we limit the rate we are pushing
     // messages.
     sending_delay_controller: SendingDelayController,
@@ -185,6 +189,7 @@ where
             config,
             sent_notifier,
             next_delay: None,
+            next_real: None,
             sending_delay_controller: Default::default(),
             mix_tx,
             real_receiver,
@@ -508,6 +513,23 @@ where
                 ConnectionCommand::Close(id) => self.on_close_connection(id),
             }
         }
+
+        // ENCLAVE PATCH: real packets leave at least `packet_gap` apart.
+        if let Some(wait) = &mut self.next_real {
+            if wait.as_mut().poll(cx).is_pending() {
+                return Poll::Pending;
+            }
+            self.next_real = None;
+        }
+        let next = self.poll_immediate_unpaced(cx);
+        let gap = crate::enclave::packet_gap();
+        if matches!(next, Poll::Ready(Some(_))) && !gap.is_zero() {
+            self.next_real = Some(Box::pin(sleep(gap)));
+        }
+        next
+    }
+
+    fn poll_immediate_unpaced(&mut self, cx: &mut Context<'_>) -> Poll<Option<StreamMessage>> {
 
         match Pin::new(&mut self.real_receiver).poll_recv(cx) {
             // in the case our real message channel stream was closed, we should also indicate we are closed

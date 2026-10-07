@@ -91,7 +91,9 @@ where
 
         // we know it's time to send a message, so let's prepare delay for the next one
         // Get the `now` by looking at the current `delay` deadline
-        let avg_delay = self.cover_traffic.loop_cover_traffic_average_delay;
+        // ENCLAVE PATCH: the rate can change at runtime (crate::enclave).
+        let avg_delay = crate::enclave::loop_cover_delay()
+            .unwrap_or(self.cover_traffic.loop_cover_traffic_average_delay);
         let next_poisson_delay = sample_poisson_duration(&mut self.rng, avg_delay);
 
         // The next interval value is `next_poisson_delay` after the one that just
@@ -252,9 +254,11 @@ impl LoopCoverTrafficStream<OsRng> {
         }
 
         // we should set initial delay only when we actually start the stream
+        // ENCLAVE PATCH: the rate can change at runtime (crate::enclave).
         let sampled = sample_poisson_duration(
             &mut self.rng,
-            self.cover_traffic.loop_cover_traffic_average_delay,
+            crate::enclave::loop_cover_delay()
+                .unwrap_or(self.cover_traffic.loop_cover_traffic_average_delay),
         );
         self.set_next_delay(sampled);
 

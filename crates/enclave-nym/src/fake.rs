@@ -2,7 +2,7 @@
 //! reply blocks under a fresh tag per message, and injected loss, delay and
 //! reordering (the plan's tier-1 Nym tests, `docs/completion-plan.md` X16).
 
-use crate::{Incoming, MixnetDriver, NymError, ReplyTag, Result};
+use crate::{Incoming, MixnetDriver, NymError, Pacing, ReplyTag, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -38,6 +38,8 @@ struct Hub {
     faults: Faults,
     rng: u64,
     stats: Stats,
+    /// The pacing each client was last given.
+    pacing: HashMap<String, Pacing>,
 }
 
 impl Hub {
@@ -99,6 +101,7 @@ impl FakeMixnet {
                 faults,
                 rng: seed | 1,
                 stats: Stats::default(),
+                pacing: HashMap::new(),
             })),
         }
     }
@@ -121,6 +124,11 @@ impl FakeMixnet {
             address: address.to_string(),
             rx: tokio::sync::Mutex::new(rx),
         }
+    }
+
+    /// The pacing the client at `address` was last given.
+    pub fn pacing(&self, address: &str) -> Option<Pacing> {
+        self.hub.lock().ok()?.pacing.get(address).copied()
     }
 
     /// The counters.
@@ -178,6 +186,12 @@ impl MixnetDriver for FakeClient {
 
     async fn recv(&self) -> Option<Incoming> {
         self.rx.lock().await.recv().await
+    }
+
+    fn set_pacing(&self, pacing: Pacing) {
+        if let Ok(mut h) = self.hub.lock() {
+            h.pacing.insert(self.address.clone(), pacing);
+        }
     }
 }
 

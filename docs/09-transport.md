@@ -191,11 +191,11 @@ There are exactly three profiles, identical in every client, and no per-user or 
 
 The Background delay is `−ln(U) · 120 s` with `U` uniform in (0, 1], drawn from 53 bits of hedged randomness. Data and latency derivations: `math/cover-traffic.md`.
 
-Not implemented in the scheduler yet: releasing the Sphinx packets of a tick at uniform intervals ("packet-paced"), Nym loop cover (1 per 10 s in Foreground and Maximum, 1 per tick in Background), and Enclave self-loop probes with gateway switching (§6.4 of the M0 draft). The data figures in `math/cover-traffic.md` include loop cover as specified.
+**Pacing (as implemented).** The device's Nym client releases real Sphinx packets at even intervals instead of in a burst: a tick sends 16 packets up (a one-way unit is 11 packets, a poll with the reply blocks for its answer 5, measured on the local mixnet by `nym/enclave-nym-sdk/examples/localnet_roundtrip.rs`, which fails if they change), so in every profile they leave one per 3 s / 16 = 187.5 ms. Background paces over the same 3 s: its ticks start at random times already, and pacing over the 120 s mean would delay every answer by up to 2 minutes. Loop cover is 1 per 10 s in Foreground and Maximum and 1 per 120 s (one per tick on average) in Background. The vault's shaper sets the pacing (`Profile::pacing`, `Transport::set_pacing`) at start, at each profile change and around bulk transfers, and only when it changes; it reaches nymd through netd (`NetRequest::SetPacing`, pipe frame 4), where our nym-client-core patch applies it without rebuilding the client (`third_party/PATCHES.md`). Tests `pacing_follows_the_profile_and_bulk` (`crates/enclave-net/tests/shaped.rs`), `a_tick_is_paced_evenly_and_bulk_at_the_cap` (`enclave-nym-sdk`), and the paced send in `localnet_roundtrip` (11 packets 100 ms apart take ≥ 1 s). Not implemented yet: Enclave self-loop probes with gateway switching (§6.4 of the M0 draft).
 
 ### 6.4 Bulk
 
-`Scheduler::bulk(max)` hands out up to `max` queued requests at once for a burst (media, the McEliece key, catch-up), if the profile allows it. In Maximum it returns nothing, so bulk traffic rides the normal ticks one request per tick. The 40 packets/s Bulk rate cap belongs to the transport and is not implemented yet.
+`Scheduler::bulk(max)` hands out up to `max` queued requests at once for a burst (media, the McEliece key, catch-up), if the profile allows it. In Maximum it returns nothing, so bulk traffic rides the normal ticks one request per tick. During a bulk transfer (a bulk window, or a tick that bursts) the Nym client sends at the 40 packets/s cap: one packet per 25 ms (`enclave_nym_sdk::packet_gap`).
 
 ### 6.5 Profile transitions
 
@@ -219,7 +219,7 @@ Not implemented in the scheduler yet: releasing the Sphinx packets of a tick at 
 
 Tests (`crates/enclave-net/tests/shaped.rs`, paused tokio clock): every tick is one unit and one poll whatever the load; Foreground bursts and Maximum never does; droppable requests never change the sizes sent; `Off` sends at once; bulk windows skip the clock except in Maximum. `crates/enclave-core/tests/client.rs::sync_in_rounds` checks that round-based sync delivers 1:1 and group messages, and the vault process tests run with shaping on.
 
-Residuals: the sequence of real requests in a bulk window is visible as a burst (the app discloses that); the per-tick timing of the underlying TCP connections is not packet-paced (§6.3).
+Residuals: the sequence of real requests in a bulk window is visible as a burst (the app discloses that); the development TCP transport is not packet-paced (only the Nym client paces, §6.3).
 
 ## 7. Nym access, fallback, censorship (not yet implemented)
 

@@ -17,7 +17,7 @@
 //! still in flight, so [`MixnetDriver::flush`] can wait for it before the
 //! process exits.
 
-use enclave_nym::{Incoming, MixnetDriver, NymError, ReplyTag, Result};
+use enclave_nym::{Incoming, MixnetDriver, NymError, Pacing, ReplyTag, Result};
 use nym_sdk::mixnet::{
     AnonymousSenderTag, IncludedSurbs, MixnetClientBuilder, MixnetClientSender,
     MixnetMessageSender, Recipient, StoragePaths,
@@ -37,6 +37,22 @@ pub fn surbs_for(len: usize) -> u32 {
     use nym_sphinx::params::PacketSize;
     let m = NymMessage::new_reply(ReplyMessage::new_data_message(vec![0; len]));
     u32::try_from(m.required_packets(PacketSize::RegularPacket) + 1).unwrap_or(u32::MAX)
+}
+
+/// Sphinx packets a poll takes going up, with the reply blocks for its
+/// answer (measured by `examples/localnet_roundtrip.rs`).
+pub const POLL_PACKETS: u32 = 5;
+/// Sphinx packets a unit sent one way takes (measured likewise).
+pub const UNIT_PACKETS: u32 = 11;
+
+/// The gap between real packets for `pacing`: a tick's unit and poll leave
+/// evenly across the tick, and a bulk transfer at the bulk cap.
+pub fn packet_gap(pacing: &Pacing) -> Duration {
+    if pacing.bulk {
+        Duration::from_secs(1) / Pacing::BULK_PACKETS_PER_SEC
+    } else {
+        pacing.tick / (UNIT_PACKETS + POLL_PACKETS)
+    }
 }
 
 /// Which side of Enclave this client is.
@@ -254,6 +270,11 @@ impl MixnetDriver for NymDriver {
         self.rx.lock().await.recv().await
     }
 
+    fn set_pacing(&self, pacing: Pacing) {
+        nym_client_core::enclave::set_packet_gap(packet_gap(&pacing));
+        nym_client_core::enclave::set_loop_cover_delay(pacing.loop_cover);
+    }
+
     async fn flush(&self, within: Duration) -> bool {
         let deadline = tokio::time::Instant::now() + within;
         loop {
@@ -279,5 +300,18 @@ mod tests {
         let n = surbs_for(enclave_nym::frame::REPLY_LEN);
         assert_eq!(n, 12, "{n}");
         assert_eq!(surbs_for(1), 2);
+    }
+
+    #[test]
+    fn a_tick_is_paced_evenly_and_bulk_at_the_cap() {
+        let mut p = Pacing {
+            tick: Duration::from_secs(3),
+            bulk: false,
+            loop_cover: Duration::from_secs(10),
+        };
+        // 16 packets up per tick: one every 187.5 ms in Foreground.
+        assert_eq!(packet_gap(&p), Duration::from_micros(187_500));
+        p.bulk = true;
+        assert_eq!(packet_gap(&p), Duration::from_millis(25));
     }
 }

@@ -130,7 +130,7 @@ PLAN's **≈1.5–1.7 GB/day** matches. The UI states "about 1.5 GB a day".
 
 ## 6. Bulk mode and media
 
-Bulk (`Scheduler::bulk`, Foreground and Background only) sends queued requests in a burst. At PLAN's cap of 40 Sphinx packets per second (a transport limit, not implemented yet), each chunk is one wire unit of `k` packets:
+Bulk (`Scheduler::bulk`, Foreground and Background only) sends queued requests in a burst. At PLAN's cap of 40 Sphinx packets per second (the Nym client's packet gap in bulk, `09-transport.md` §6.4), each chunk is one wire unit of `k` packets (`k` = 11 measured for a one-way unit):
 
 ```
 time for a blob = n_B × k / 40 s

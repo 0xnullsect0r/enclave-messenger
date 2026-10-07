@@ -10,6 +10,7 @@
 //! to nymd:   1 ‖ u16 len ‖ address ‖ u32 reply_len ‖ data      send
 //!            2 ‖ tag (16) ‖ data                               reply
 //!            3 ‖ u32 millis                                    flush
+//!            4 ‖ pacing (9, `Pacing::encode`)                  pace
 //! from nymd: 1 ‖ address                                       ready (first)
 //!            2 ‖ u8 has_tag ‖ [tag (16)] ‖ data                a message
 //!            3 ‖ u8 done                                       flushed
@@ -18,7 +19,7 @@
 //! Sends are fire and forget, as on the mixnet itself: a lost one shows as
 //! a request that gets no reply.
 
-use crate::{Incoming, MixnetDriver, NymError, ReplyTag, Result};
+use crate::{Incoming, MixnetDriver, NymError, Pacing, ReplyTag, Result};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -51,7 +52,7 @@ async fn write_frame(w: &mut (impl AsyncWrite + Unpin), body: &[u8]) -> std::io:
 /// The netd side: a [`MixnetDriver`] whose client runs in another process.
 pub struct PipeDriver {
     address: String,
-    writer: Mutex<Box<dyn AsyncWrite + Send + Unpin>>,
+    writer: Arc<Mutex<Box<dyn AsyncWrite + Send + Unpin>>>,
     rx: Mutex<mpsc::UnboundedReceiver<Incoming>>,
     reader: tokio::task::JoinHandle<()>,
     flushed: FlushWaiter,
@@ -102,7 +103,7 @@ impl PipeDriver {
         });
         Ok(Self {
             address,
-            writer: Mutex::new(Box::new(writer)),
+            writer: Arc::new(Mutex::new(Box::new(writer))),
             rx: Mutex::new(rx),
             reader,
             flushed,
@@ -152,6 +153,17 @@ impl MixnetDriver for PipeDriver {
 
     async fn recv(&self) -> Option<Incoming> {
         self.rx.lock().await.recv().await
+    }
+
+    fn set_pacing(&self, pacing: Pacing) {
+        let mut b = vec![4u8];
+        b.extend_from_slice(&pacing.encode());
+        let writer = Arc::clone(&self.writer);
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn(async move {
+                let _ = write_frame(&mut *writer.lock().await, &b).await;
+            });
+        }
     }
 
     async fn flush(&self, within: Duration) -> bool {
@@ -247,6 +259,11 @@ pub async fn serve(
                     let _ = driver.reply(tag, data).await;
                 }));
             }
+            Some((4, rest)) => {
+                if let Some(p) = Pacing::decode(rest) {
+                    driver.set_pacing(p);
+                }
+            }
             Some((3, &[a, b, c, d])) => {
                 let within = Duration::from_millis(u64::from(u32::from_be_bytes([a, b, c, d])));
                 let writer = Arc::clone(&writer);
@@ -307,6 +324,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(server.recv().await.unwrap().data, b"answer");
+
+        // Pacing reaches the driver at the far end.
+        let p = Pacing {
+            tick: Duration::from_secs(3),
+            bulk: true,
+            loop_cover: Duration::from_secs(10),
+        };
+        pipe.set_pacing(p);
+        for _ in 0..100 {
+            if net.pacing("phone") == Some(p) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(net.pacing("phone"), Some(p));
 
         // A flush is answered (the fake mixnet has nothing in flight).
         assert!(pipe.flush(Duration::from_secs(1)).await);

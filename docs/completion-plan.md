@@ -275,11 +275,11 @@ Other crates:
 #### N2: client behaviour
 
 - **Tor under Nym:** netd bootstraps arti and dials the gateway's WSS through it. Maximum refuses to run without Tor.
-- **Loop cover:** every 10 s in Foreground and Maximum, every tick in Background. The client is rebuilt only at profile transitions (RT-12).
-- **Packet pacing:** a tick's Sphinx packets are spread evenly across the tick (`09` §6.3).
+- **Loop cover:** every 10 s in Foreground and Maximum, every tick in Background. Done: set at runtime with each profile change (no rebuild needed; profiles still change only at transitions, RT-12), `09` §6.3.
+- **Packet pacing:** a tick's Sphinx packets are spread evenly across the tick (`09` §6.3). Done: 16 packets per tick, one per 187.5 ms.
 - **Self-loop probes** (`net/loop-probe`) and **RT-02 gateway switching:** loss >10% or latency >5× the median over 50 exchanges, at most one switch per 10 min.
 - **One-way writes:** writes and cover carry 0 SURBs, so a tick is 1 unit + 1 poll up and 1 unit down (`09` open question 5). Done: messages, self-copies, group posts, typing and unit cover go one way, with delivery receipts and re-sends (`09` §6.1). Every other unit goes one way as well: its answer is kept by the server under a status id and fetched by a poll-sized `Status` request (`08` §2.2, `09` §6.1), so no unit carries reply blocks.
-- **Bulk cap:** 40 packets/s (`09` §6.4).
+- **Bulk cap:** 40 packets/s (`09` §6.4). Done.
 - **Maximum privacy:** push off, fallback forbidden, waits for all 3 KEMs (`09` §6.6, `04` §8).
 
 **Exit:**

@@ -94,6 +94,44 @@ async fn main() {
         .expect("one-way request arrives")
         .unwrap();
     assert_eq!(Request::decode(&m.data).unwrap(), req);
+
+    // How many Sphinx packets a poll (with its reply blocks) and a one-way
+    // unit take: what pacing spreads across a tick.
+    let sent = nym_client_core::enclave::fragments_sent;
+    let before = sent();
+    let poll = Request::for_sealed([7; 16], vec![7; enclave_wire::POLL_LEN]).unwrap();
+    device.send(&to, poll.encode(), REPLY_LEN).await.unwrap();
+    assert!(device.flush(Duration::from_secs(60)).await);
+    let poll_packets = sent() - before;
+    let before = sent();
+    let unit = Request::oneway([8; 16], vec![8; enclave_wire::UNIT_LEN]).unwrap();
+    device.send(&to, unit.encode(), 0).await.unwrap();
+    assert!(device.flush(Duration::from_secs(60)).await);
+    let unit_packets = sent() - before;
+    println!("packets: poll {poll_packets}, one-way unit {unit_packets}");
+    assert_eq!(
+        (poll_packets, unit_packets),
+        (
+            u64::from(enclave_nym_sdk::POLL_PACKETS),
+            u64::from(enclave_nym_sdk::UNIT_PACKETS)
+        ),
+        "the pacing constants match the mixnet"
+    );
+
+    // Paced: with a 100 ms gap, a unit's 11 packets take at least 1 s.
+    let pacing = enclave_nym::Pacing {
+        tick: Duration::from_millis(1_600),
+        bulk: false,
+        loop_cover: Duration::from_secs(10),
+    };
+    device.set_pacing(pacing);
+    let t = Instant::now();
+    let unit = Request::oneway([10; 16], vec![10; enclave_wire::UNIT_LEN]).unwrap();
+    device.send(&to, unit.encode(), 0).await.unwrap();
+    assert!(device.flush(Duration::from_secs(60)).await);
+    let paced = t.elapsed();
+    println!("paced one-way unit flushed in {paced:?}");
+    assert!(paced >= Duration::from_millis(1_000), "{paced:?}");
     let _ = std::fs::remove_dir_all(dir);
     println!("ok");
 }

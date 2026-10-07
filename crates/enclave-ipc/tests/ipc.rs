@@ -322,6 +322,9 @@ fn net_messages_round_trip_and_refuse_garbage() {
             server: [6; 16],
             bytes: vec![1; 16_384],
         },
+        NetRequest::SetPacing {
+            pacing: vec![0, 0, 11, 184, 1, 0, 0, 39, 16],
+        },
     ] {
         let e = r.encode();
         assert_eq!(NetRequest::decode(&e).unwrap(), r);

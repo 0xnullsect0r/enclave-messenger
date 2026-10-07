@@ -92,6 +92,12 @@ impl Transport for Routed {
         self.pick(server).exchange_oneway(server, request).await
     }
 
+    fn set_pacing(&self, pacing: enclave_net::transport::Pacing) {
+        if let Some(n) = &self.nym {
+            n.set_pacing(pacing);
+        }
+    }
+
     async fn flush(&self, within: std::time::Duration) -> enclave_net::Result<bool> {
         match &self.nym {
             Some(n) => n.flush(within).await,
@@ -230,6 +236,13 @@ fn main() -> ExitCode {
         while let Ok(body) = frame::read_frame(&mut stdin).await {
             while oneway.try_join_next().is_some() {}
             let req = match NetRequest::decode(&body) {
+                Ok(NetRequest::SetPacing { pacing }) => {
+                    match enclave_net::transport::Pacing::decode(&pacing) {
+                        Some(p) => transport.set_pacing(p),
+                        None => eprintln!("enclave-netd: malformed pacing"),
+                    }
+                    continue;
+                }
                 Ok(NetRequest::SetRoute { server, route }) => {
                     match Route::parse(&route) {
                         Some(r) => transport.set_route(server, r),
@@ -265,7 +278,7 @@ fn main() -> ExitCode {
                             .map(Option::unwrap_or_default)
                             .map_err(|e| e.to_string()),
                     ),
-                    NetRequest::SetRoute { .. } => return,
+                    NetRequest::SetRoute { .. } | NetRequest::SetPacing { .. } => return,
                 };
                 let _ = tx.send(NetReply { id, result }.encode());
             };

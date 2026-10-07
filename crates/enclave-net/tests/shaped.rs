@@ -19,6 +19,7 @@ const HOME: ServerId = [7; 16];
 struct Net {
     key: ServerKey,
     seen: AtomicUsize,
+    paced: std::sync::Mutex<Vec<enclave_nym::Pacing>>,
 }
 
 #[async_trait::async_trait]
@@ -33,6 +34,9 @@ impl Transport for Net {
     fn now(&self) -> u64 {
         86_400 * 20_000
     }
+    fn set_pacing(&self, pacing: enclave_nym::Pacing) {
+        self.paced.lock().unwrap().push(pacing);
+    }
 }
 
 fn net() -> Arc<Net> {
@@ -43,6 +47,7 @@ fn net() -> Arc<Net> {
             .public()
             .clone(),
         seen: AtomicUsize::new(0),
+        paced: std::sync::Mutex::default(),
     })
 }
 
@@ -185,4 +190,50 @@ async fn bulk_transfers_skip_the_clock_except_in_maximum() {
         "Maximum ignores bulk"
     );
     assert!(n.seen.load(Ordering::SeqCst) >= 4);
+}
+
+/// The mixnet client is told how to pace: the profile's pacing from the
+/// start and at each change, the bulk cap around bulk windows and bursts
+/// (never in Maximum), and only when something changed.
+#[tokio::test(start_paused = true)]
+async fn pacing_follows_the_profile_and_bulk() {
+    let (s, n) = shaper(Profile::Foreground);
+    let paced = || n.paced.lock().unwrap().clone();
+    let fg = Profile::Foreground.pacing(false);
+    assert_eq!(fg.tick, Duration::from_secs(3));
+    assert_eq!(paced(), vec![fg]);
+
+    s.set_bulk(true);
+    s.set_bulk(true);
+    s.set_bulk(false);
+    assert_eq!(paced().last(), Some(&Profile::Foreground.pacing(true)));
+    s.set_bulk(false);
+    assert_eq!(paced().last(), Some(&fg));
+    assert_eq!(paced().len(), 3, "only changes are sent");
+
+    // A burst is paced at the bulk cap, then back at the next tick.
+    let hs = spawn_requests(&s, 20, UNIT_LEN);
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    assert!(paced()[3..].iter().any(|p| p.bulk), "{:?}", paced());
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    for h in hs {
+        assert!(h.await.unwrap().is_ok());
+    }
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    assert_eq!(paced().last(), Some(&fg));
+
+    // Background: loop cover once per tick on average.
+    s.set_shaping(Shaping::On(Profile::Background));
+    assert_eq!(paced().last().unwrap().loop_cover, Duration::from_secs(120));
+
+    // Maximum never paces for bulk.
+    s.set_shaping(Shaping::On(Profile::Maximum));
+    s.set_bulk(true);
+    assert!(!paced().last().unwrap().bulk);
+    s.set_bulk(false);
+    let max = paced()
+        .iter()
+        .filter(|p| **p == Profile::Maximum.pacing(false))
+        .count();
+    assert!(max >= 1);
 }

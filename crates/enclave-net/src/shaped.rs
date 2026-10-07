@@ -89,6 +89,8 @@ pub struct ShapedTransport {
     state: Arc<Mutex<State>>,
     /// Open bulk transfers ([`Transport::set_bulk`]).
     bulk: std::sync::atomic::AtomicUsize,
+    /// The pacing last given to `inner`.
+    paced: Mutex<Option<enclave_nym::Pacing>>,
 }
 
 impl ShapedTransport {
@@ -106,7 +108,9 @@ impl ShapedTransport {
                 log: None,
             })),
             bulk: std::sync::atomic::AtomicUsize::new(0),
+            paced: Mutex::new(None),
         });
+        me.repace(false);
         let weak = Arc::downgrade(&me);
         tokio::spawn(async move {
             let mut rng = match HedgedRng::new() {
@@ -131,6 +135,7 @@ impl ShapedTransport {
         if let Ok(mut st) = self.state.lock() {
             st.shaping = s;
         }
+        self.repace(false);
     }
 
     /// The current setting.
@@ -293,6 +298,29 @@ impl ShapedTransport {
         (out, dropped)
     }
 
+    /// Tell `inner` how to pace, if that changed: the profile's pacing,
+    /// at the bulk cap while a bulk window is open or `burst` (a tick
+    /// sending more than one request of a size). Shaping off: no pacing.
+    fn repace(&self, burst: bool) {
+        let shaping = self.shaping();
+        let bulk = burst || self.bulk.load(std::sync::atomic::Ordering::SeqCst) > 0;
+        let want = match shaping {
+            Shaping::Off => enclave_nym::Pacing {
+                tick: Duration::ZERO,
+                bulk: false,
+                loop_cover: Profile::Foreground.pacing(false).loop_cover,
+            },
+            Shaping::On(p) => p.pacing(bulk),
+        };
+        let Ok(mut paced) = self.paced.lock() else {
+            return;
+        };
+        if *paced != Some(want) {
+            *paced = Some(want);
+            self.inner.set_pacing(want);
+        }
+    }
+
     async fn tick(&self, rng: &mut HedgedRng) {
         let (units, polls, dropped_u, dropped_p) = {
             let Ok(mut st) = self.state.lock() else {
@@ -309,6 +337,7 @@ impl ShapedTransport {
         for j in dropped_u.into_iter().chain(dropped_p) {
             let _ = j.reply.send(Err(NetError::Dropped));
         }
+        self.repace(units.len() > 1 || polls.len() > 1);
         let mut log = TickLog::default();
         for (jobs, size) in [(units, UNIT_LEN), (polls, POLL_LEN)] {
             if jobs.is_empty() {
@@ -440,6 +469,7 @@ impl Transport for ShapedTransport {
                 .bulk
                 .fetch_update(SeqCst, SeqCst, |n| Some(n.saturating_sub(1)));
         }
+        self.repace(false);
     }
 
     fn now(&self) -> u64 {

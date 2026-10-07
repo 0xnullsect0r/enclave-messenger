@@ -190,6 +190,18 @@ impl Transport for PipeTransport {
         Ok((!b.is_empty()).then_some(b))
     }
 
+    fn set_pacing(&self, pacing: enclave_net::transport::Pacing) {
+        // Only the first netd running has a mixnet client in use; the
+        // spares get it too, so one taking over paces the same way.
+        let body = NetRequest::SetPacing {
+            pacing: pacing.encode().to_vec(),
+        }
+        .encode();
+        for l in &self.links {
+            let _ = l.out.send(body.clone());
+        }
+    }
+
     fn set_route(&self, server: ServerId, route: enclave_net::transport::Route) {
         // Every netd, so a spare taking over knows the route too.
         let body = NetRequest::SetRoute {

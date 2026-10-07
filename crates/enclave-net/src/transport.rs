@@ -8,6 +8,7 @@
 //!   what could and could not be validated.
 
 use crate::{NetError, Result};
+pub use enclave_nym::Pacing;
 use enclave_rpc::ServerKey;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -72,6 +73,10 @@ pub trait Transport: Send + Sync {
     /// server list or a descriptor). A transport that can't carry that
     /// kind of route ignores it.
     fn set_route(&self, _server: ServerId, _route: Route) {}
+    /// Pace what goes over the mixnet from now on (the shaper calls this
+    /// when the profile changes and around bulk transfers). Other
+    /// transports ignore it.
+    fn set_pacing(&self, _pacing: enclave_nym::Pacing) {}
     /// Wait, for at most `within`, until everything sent so far has left
     /// this device (over the mixnet: reached the far gateway). Called
     /// before exiting, since a one-way send still queued is lost with the
@@ -426,6 +431,10 @@ impl Transport for NymTransport {
 
     async fn flush(&self, within: std::time::Duration) -> Result<bool> {
         Ok(self.driver.flush(within).await)
+    }
+
+    fn set_pacing(&self, pacing: enclave_nym::Pacing) {
+        self.driver.set_pacing(pacing);
     }
 
     async fn exchange_oneway(
