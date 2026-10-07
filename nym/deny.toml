@@ -29,6 +29,14 @@ ignore = [
     { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.101 only in nym's Nyx RPC client; see above" },
     { id = "RUSTSEC-2026-0104", reason = "CRL parsing; no CRLs are used" },
     { id = "RUSTSEC-2026-0258", reason = "h2 0.3 only in nym's Nyx RPC client; denial of service only" },
+    # libcrux-kem 0.0.9 panics on short hybrid-KEM seeds and short hybrid
+    # keys. It arrives only through libcrux-psq 0.0.10 (which pins =0.0.9)
+    # in nym-crypto, which uses nothing of libcrux-psq but its X25519 key
+    # types and their conversions: no hybrid KEM is encapsulated or decoded
+    # anywhere in Enclave's tree. Leaves with a nym-crypto on libcrux-psq
+    # 0.0.11.
+    { id = "RUSTSEC-2026-0330", reason = "hybrid-KEM encapsulation in libcrux-kem 0.0.9 is never called; see above" },
+    { id = "RUSTSEC-2026-0331", reason = "hybrid-KEM key decoding in libcrux-kem 0.0.9 is never called; see above" },
 ]
 
 [licenses]
