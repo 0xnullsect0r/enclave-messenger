@@ -77,6 +77,11 @@ pub trait Transport: Send + Sync {
     /// when the profile changes and around bulk transfers). Other
     /// transports ignore it.
     fn set_pacing(&self, _pacing: enclave_nym::Pacing) {}
+    /// Use only the private route from now on (`on`), or not (Maximum
+    /// privacy, `docs/09-transport.md` §6.6): no development TCP route or
+    /// fallback, and nothing at all without Tor in front of the mixnet.
+    /// Requests that would break that fail instead.
+    fn require_private(&self, _on: bool) {}
     /// Wait, for at most `within`, until everything sent so far has left
     /// this device (over the mixnet: reached the far gateway). Called
     /// before exiting, since a one-way send still queued is lost with the
@@ -173,6 +178,8 @@ pub fn verify_key_bundle(server: &ServerId, bundle: &[u8], now: u64) -> Result<S
 /// Development transport: length-prefixed frames over TCP.
 pub struct TcpTransport {
     addrs: std::sync::RwLock<HashMap<ServerId, SocketAddr>>,
+    /// Maximum privacy: a direct connection is never the private route.
+    private: std::sync::atomic::AtomicBool,
 }
 
 impl TcpTransport {
@@ -181,10 +188,16 @@ impl TcpTransport {
     pub fn new(addrs: HashMap<ServerId, SocketAddr>) -> Self {
         Self {
             addrs: std::sync::RwLock::new(addrs),
+            private: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     async fn roundtrip(&self, server: &ServerId, frame: &[u8]) -> Result<Vec<u8>> {
+        if self.private.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(NetError::Unavailable(
+                "Maximum privacy needs the private route",
+            ));
+        }
         let addr = self
             .addrs
             .read()
@@ -215,6 +228,10 @@ impl Transport for TcpTransport {
     async fn server_key(&self, server: &ServerId) -> Result<ServerKey> {
         let bundle = self.roundtrip(server, &[]).await?;
         verify_key_bundle(server, &bundle, self.now())
+    }
+
+    fn require_private(&self, on: bool) {
+        self.private.store(on, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn set_route(&self, server: ServerId, route: Route) {

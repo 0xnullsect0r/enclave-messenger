@@ -217,7 +217,12 @@ The caller then opens the first message in the request envelope with the new ses
 
 If Alice does not have Bob's vault key when she initiates, she uses the 2-KEM suite: `ct_mce` is zero, the McEliece secret is empty, and Bob's `vault_hash` is still in the transcript. When the vault key later arrives and verifies against the manifest commitment, Alice's client calls `Session::schedule_braid(vault_pk)`; the McEliece encapsulation is then folded into Alice's next PQ ratchet out-step (`05-ratchet.md` §7.4), after which both sides report `three_kem() == true`.
 
-Not implemented yet: the "Extra protection: finishing…" contact-info state, the 7-day braid deadline, Maximum privacy mode waiting for all three KEMs, and group-only peers (§8 of the M0 draft). Bob's code accepts a 2-KEM initial message unconditionally.
+As implemented:
+- Enclave's own initiator always has the vault key (`fetch_peer` requires it), so 2-KEM sessions come only from other clients.
+- When a session does start on two KEMs, the initiator schedules the braid at once (`initiate_to`).
+- Bob accepts a 2-KEM initial message. In Maximum privacy, though, he sends nothing a person wrote until `three_kem()` holds; contact info shows "Extra protection: finishing…" meanwhile (`09-transport.md` §6.6; test `maximum_waits_for_three_kems`).
+
+Not implemented yet: the 7-day braid deadline, and group-only peers (§8 of the M0 draft).
 
 ## 8. Replay protection
 

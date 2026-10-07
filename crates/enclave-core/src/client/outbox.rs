@@ -103,14 +103,31 @@ fn key(root: &[u8; 64], id: &MsgId) -> Vec<u8> {
 
 impl Client {
     /// Send message `id` to `root` and keep it until its receipt comes.
+    /// `false`: held, because Maximum privacy waits for all three KEMs; it
+    /// leaves from the outbox as soon as they protect the session.
     pub(crate) async fn send_tracked(
         &mut self,
         root: &[u8; 64],
         id: MsgId,
         content: &Content,
         now: u64,
-    ) -> Result<()> {
-        self.send_content(root, content, now).await?;
+    ) -> Result<bool> {
+        match self.send_content(root, content, now).await {
+            Ok(()) => {}
+            Err(CoreError::Finishing) => {
+                // Held whole (its write tokens haven't gone anywhere yet),
+                // tried at every upkeep without using up a re-send.
+                let e = Entry {
+                    tries: 0,
+                    next_at: now,
+                    content: content.encode()?,
+                };
+                self.store
+                    .put(NS_OUTBOX, &key(root, &id), &e.encode(), &mut self.rng)?;
+                return Ok(false);
+            }
+            Err(e) => return Err(e),
+        }
         // A re-send carries no write tokens: those went with the first.
         let keep = match content {
             Content::Text {
@@ -130,7 +147,7 @@ impl Client {
         };
         self.store
             .put(NS_OUTBOX, &key(root, &id), &e.encode(), &mut self.rng)?;
-        Ok(())
+        Ok(true)
     }
 
     /// Message `id` to `root` arrived (or the conversation is gone).
@@ -179,7 +196,18 @@ impl Client {
             }
             let content = Content::decode(&e.content)?;
             match self.send_content(&root, &content, now).await {
-                Ok(()) => {}
+                Ok(()) => {
+                    // A held message has left at last.
+                    if let Ok(mut m) = self.find(&root, &id)
+                        && !m.sent
+                    {
+                        m.sent = true;
+                        self.put_message(&root, &m)?;
+                        events.push(Event::MessageChanged { root, seq: m.seq });
+                    }
+                }
+                // Still waiting for all three KEMs: not a re-send.
+                Err(CoreError::Finishing) => continue,
                 // No way through right now: try again next time.
                 Err(CoreError::Net(_)) | Err(CoreError::OutOfTokens) => continue,
                 // Refused (blocked, the contact is gone…): count the try.

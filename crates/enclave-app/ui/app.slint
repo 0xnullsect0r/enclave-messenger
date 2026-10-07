@@ -655,6 +655,9 @@ export component AppWindow inherits Window {
     in-out property <string> group-name;
     in-out property <string> link-code;
     in property <bool> recovery-saved;
+    // Maximum privacy is holding what was written here until all three
+    // KEMs protect the conversation.
+    in property <bool> finishing;
     in-out property <string> draft;
     in-out property <string> add-link;
     in-out property <string> add-text;
@@ -1632,6 +1635,12 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.conversation: SheetFrame {
         title: root.current.name;
         close => { root.sheet = Sheet.none; }
+        // Contact info: the McEliece braid isn't done (`docs/17-design.md`
+        // keeps this off the conversation itself).
+        if root.finishing: Notice {
+            title: "Extra protection: finishing…";
+            text: "Maximum privacy holds what you write until all three kinds of encryption protect this conversation. It goes out on its own once " + root.current.name + "'s app has finished setting it up.";
+        }
         SwitchRow {
             label: "Pin to top";
             detail: "Keep it above your other conversations. Up to 4.";

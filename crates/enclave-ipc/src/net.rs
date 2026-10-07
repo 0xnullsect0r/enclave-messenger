@@ -51,6 +51,13 @@ pub enum NetRequest {
         /// The encoded pacing.
         pacing: Vec<u8>,
     },
+    /// Use only the private route (Maximum privacy,
+    /// `Transport::require_private`): no TCP route, and nothing without
+    /// Tor. No reply.
+    RequirePrivate {
+        /// On or off.
+        on: bool,
+    },
 }
 
 /// netd → vault.
@@ -82,6 +89,9 @@ impl NetRequest {
             NetRequest::SetPacing { pacing } => {
                 w.u8(5).bytes(pacing);
             }
+            NetRequest::RequirePrivate { on } => {
+                w.u8(6).u8(u8::from(*on));
+            }
         }
         w.0
     }
@@ -112,6 +122,13 @@ impl NetRequest {
                 bytes: r.bytes()?,
             },
             5 => NetRequest::SetPacing { pacing: r.bytes()? },
+            6 => NetRequest::RequirePrivate {
+                on: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(IpcError::Malformed),
+                },
+            },
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

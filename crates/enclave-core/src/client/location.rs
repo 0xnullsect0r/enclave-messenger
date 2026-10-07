@@ -106,9 +106,9 @@ impl Client {
             location: loc.encode(),
             expires: timer,
         };
-        self.send_tracked(root, id, &content, now).await?;
+        let sent = self.send_tracked(root, id, &content, now).await?;
         self.send_self_copy(root, &content, now).await?;
-        m.sent = true;
+        m.sent = sent;
         self.put_message(root, &m)?;
         Ok(m)
     }

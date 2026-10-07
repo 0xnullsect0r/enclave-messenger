@@ -110,6 +110,8 @@ mod history;
 mod invites;
 mod link;
 mod location;
+#[cfg(test)]
+mod maximum_tests;
 mod meet;
 mod messages;
 mod migrate;
@@ -354,6 +356,13 @@ pub struct Client {
     /// Messages received and not yet acknowledged with a delivery receipt
     /// (`outbox.rs`), sent at the end of the sync that brought them.
     pending_receipts: BTreeMap<[u8; 64], (u64, Vec<crate::content::MsgId>)>,
+    /// Maximum privacy (`docs/09-transport.md` §6.6): no push, and nothing
+    /// sent to a contact until all three KEMs protect the session.
+    maximum: bool,
+    /// Tests: start sessions without the McEliece vault key (2 KEMs, then
+    /// the braid), as a client that doesn't have it would.
+    #[cfg(test)]
+    pub(crate) two_kem_for_tests: bool,
 }
 
 /// A session is identified by the peer root and the peer device.
@@ -539,6 +548,9 @@ impl Client {
             meet: None,
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
+            maximum: false,
+            #[cfg(test)]
+            two_kem_for_tests: false,
         };
         Ok((client, words))
     }
@@ -614,6 +626,9 @@ impl Client {
             meet: None,
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
+            maximum: false,
+            #[cfg(test)]
+            two_kem_for_tests: false,
         };
         client.resume_rename()?;
         Ok(client)
@@ -680,6 +695,26 @@ impl Client {
     /// The 60-digit security code shared with `root`.
     pub fn security_code(&self, root: &[u8; 64]) -> String {
         security_code(&self.account.root_public.0, root)
+    }
+
+    /// Turn Maximum privacy on or off (the engine follows the setting).
+    pub fn set_maximum(&mut self, on: bool) {
+        self.maximum = on;
+    }
+
+    /// Whether Maximum privacy is on.
+    pub fn maximum(&self) -> bool {
+        self.maximum
+    }
+
+    /// In Maximum privacy, whether sends to `root` are waiting for all
+    /// three KEMs ("Extra protection: finishing…").
+    pub fn protection_finishing(&self, root: &[u8; 64]) -> bool {
+        self.maximum
+            && !self
+                .sessions
+                .iter()
+                .any(|((r, _), s)| r == root && s.can_send() && s.three_kem())
     }
 
     /// Whether every session with `root` has completed the post-quantum
@@ -895,14 +930,23 @@ impl Client {
                     manifest: &self.manifest,
                     locator: &self.profile.server,
                 };
+                #[cfg(test)]
+                let with_vault = !self.two_kem_for_tests;
+                #[cfg(not(test))]
+                let with_vault = true;
                 let peer = Peer {
                     manifest: peer_manifest,
                     device: dev,
                     bundle: &bundle,
-                    vault: Some(vault),
+                    vault: with_vault.then_some(vault),
                 };
                 let init = eqxdh::initiate(&local, &peer, Mode::OffTheRecord, psk, &mut self.rng)?;
                 let mut session = init.session;
+                // Started on two KEMs: the next PQ step braids in the third
+                // (`docs/04-eqxdh.md` §7).
+                if !session.three_kem() {
+                    session.schedule_braid(vault.clone());
+                }
                 let env =
                     envelope::seal_request(&init.message, &mut session, hello, &mut self.rng)?;
                 (session, env)
@@ -1001,18 +1045,19 @@ impl Client {
         };
         let refilled = !tokens.is_empty();
         let mut msg = self.store_message(root, true, text, now)?;
-        self.send_tracked(
-            root,
-            msg.id,
-            &Content::Text {
-                tokens,
-                text: text.to_string(),
-                id: msg.id,
-                expires: msg.expires_secs,
-            },
-            now,
-        )
-        .await?;
+        let sent = self
+            .send_tracked(
+                root,
+                msg.id,
+                &Content::Text {
+                    tokens,
+                    text: text.to_string(),
+                    id: msg.id,
+                    expires: msg.expires_secs,
+                },
+                now,
+            )
+            .await?;
         let copy = Content::Text {
             tokens: Vec::new(),
             text: text.to_string(),
@@ -1025,7 +1070,7 @@ impl Client {
             let c = c.clone();
             self.save_contact(&c)?;
         }
-        msg.sent = true;
+        msg.sent = sent;
         self.put_message(root, &msg)?;
         Ok(msg)
     }
@@ -1731,6 +1776,19 @@ impl Client {
             let ids = self.take_receipts(root, room);
             outbox::wrap_receipts(&bytes, &ids)
         };
+        // Maximum privacy sends what a person wrote only over sessions all
+        // three KEMs protect; until one does, it waits (and no token is
+        // spent). Protocol messages go, so the session can get there.
+        let maximum = self.maximum && content.waits_for_three_kems();
+        if maximum
+            && self.protection_finishing(root)
+            && self
+                .sessions
+                .iter()
+                .any(|((r, _), s)| r == root && s.can_send())
+        {
+            return Err(CoreError::Finishing);
+        }
         let c = self.contacts.get_mut(root).ok_or(CoreError::NotFound)?;
         let inbox = c.inbox.ok_or(CoreError::NotAccepted)?;
         let server = c.server;
@@ -1743,7 +1801,7 @@ impl Client {
             let (keys, mut refs): (Vec<SessionKey>, Vec<&mut Session>) = self
                 .sessions
                 .iter_mut()
-                .filter(|((r, _), s)| r == root && s.can_send())
+                .filter(|((r, _), s)| r == root && s.can_send() && (!maximum || s.three_kem()))
                 .take(MAX_DEVICES)
                 .map(|(k, s)| (*k, s))
                 .unzip();

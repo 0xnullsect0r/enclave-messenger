@@ -20,6 +20,10 @@ impl Client {
         platform: Platform,
         token: &[u8],
     ) -> Result<()> {
+        // Maximum privacy has no push at all (`docs/10-push.md`).
+        if self.maximum() {
+            return Err(CoreError::MaximumPrivacy);
+        }
         let sealed =
             seal_token(relay, platform, token, 0, &mut self.rng).map_err(|_| CoreError::TooLong)?;
         self.send_push_registration(&sealed).await

@@ -170,6 +170,12 @@ pub struct Snapshot {
     pub recovery_words: Vec<String>,
     /// Recovery words saved.
     pub recovery_saved: bool,
+    /// Privacy: 0 Standard, 1 Maximum (the saved setting).
+    pub privacy: i32,
+    /// Maximum privacy is holding what was written in the current
+    /// conversation until all three KEMs protect it ("Extra protection:
+    /// finishing…").
+    pub finishing: bool,
     /// Error for the add sheet.
     pub add_error: String,
     /// A request is in flight.
@@ -583,6 +589,8 @@ impl Snapshot {
             .str(&self.status)
             .strs(&self.recovery_words)
             .bool(self.recovery_saved)
+            .u8(u8::from(self.privacy == 1))
+            .bool(self.finishing)
             .str(&self.add_error)
             .bool(self.busy);
         w.len(self.pick.len());
@@ -718,6 +726,12 @@ impl Snapshot {
         let status = r.str()?;
         let recovery_words = r.strs()?;
         let recovery_saved = r.bool()?;
+        let privacy = match r.u8()? {
+            0 => 0,
+            1 => 1,
+            _ => return Err(IpcError::Malformed),
+        };
+        let finishing = r.bool()?;
         let add_error = r.str()?;
         let busy = r.bool()?;
         let n = r.len()?;
@@ -755,6 +769,8 @@ impl Snapshot {
             status,
             recovery_words,
             recovery_saved,
+            privacy,
+            finishing,
             add_error,
             busy,
             pick,

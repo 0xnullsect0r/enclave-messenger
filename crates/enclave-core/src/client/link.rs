@@ -447,6 +447,9 @@ impl LinkingDevice {
             meet: None,
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
+            maximum: false,
+            #[cfg(test)]
+            two_kem_for_tests: false,
         };
         let own = client.card();
         for (card, name, verified, timer, inbox, server, tokens) in contacts {

@@ -64,6 +64,8 @@ fn snapshot() -> Snapshot {
         status: "ok".into(),
         recovery_words: vec!["abandon".into(); 24],
         recovery_saved: true,
+        privacy: 1,
+        finishing: true,
         add_error: String::new(),
         busy: true,
         pick: vec![Pick {
@@ -322,6 +324,7 @@ fn net_messages_round_trip_and_refuse_garbage() {
             server: [6; 16],
             bytes: vec![1; 16_384],
         },
+        NetRequest::RequirePrivate { on: true },
         NetRequest::SetPacing {
             pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },

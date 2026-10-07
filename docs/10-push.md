@@ -12,7 +12,7 @@ Enclave server (inbox write) ──Nym──▶ push relay (project-run) ──T
 
 - The push relay is **run by the project**, because APNs and FCM accept only the publisher's credentials.
 - Servers reach the relay **through Nym**, so the relay cannot tell which server is waking which device.
-- **Maximum privacy disables push entirely.**
+- **Maximum privacy disables push entirely.** As implemented: `Client::register_push` refuses in Maximum, and turning Maximum on asks the server to forget any token (`engine.rs`, test `maximum_has_no_push`).
 
 ## 2. Token registration (RT-20)
 

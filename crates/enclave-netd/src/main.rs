@@ -17,6 +17,7 @@
 
 use enclave_ipc::frame;
 use enclave_ipc::net::{NetReply, NetRequest};
+use enclave_net::NetError;
 use enclave_net::transport::{
     NymTransport, Route, ServerId, TcpTransport, Transport, encode_server_key,
 };
@@ -58,18 +59,30 @@ struct Routed {
     tcp_allowed: bool,
     nym: Option<NymTransport>,
     over_nym: std::sync::RwLock<HashSet<ServerId>>,
+    /// Whether Tor is in front of the mixnet client (`--tor`).
+    tor: bool,
+    /// Maximum privacy (`Transport::require_private`): the mixnet behind
+    /// Tor only.
+    private: std::sync::atomic::AtomicBool,
 }
 
 impl Routed {
-    fn pick(&self, server: &ServerId) -> &dyn Transport {
+    fn pick(&self, server: &ServerId) -> enclave_net::Result<&dyn Transport> {
+        let private = self.private.load(std::sync::atomic::Ordering::SeqCst);
         let over_nym = self
             .over_nym
             .read()
             .map(|s| s.contains(server))
             .unwrap_or(false);
         match &self.nym {
-            Some(n) if over_nym => n,
-            _ => &self.tcp,
+            Some(_) if over_nym && private && !self.tor => Err(NetError::Unavailable(
+                "Maximum privacy needs Tor, which isn't available on this device",
+            )),
+            Some(n) if over_nym => Ok(n),
+            _ if private => Err(NetError::Unavailable(
+                "Maximum privacy needs the private route",
+            )),
+            _ => Ok(&self.tcp),
         }
     }
 }
@@ -77,11 +90,11 @@ impl Routed {
 #[async_trait::async_trait]
 impl Transport for Routed {
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
-        self.pick(server).exchange(server, request).await
+        self.pick(server)?.exchange(server, request).await
     }
 
     async fn server_key(&self, server: &ServerId) -> enclave_net::Result<enclave_rpc::ServerKey> {
-        self.pick(server).server_key(server).await
+        self.pick(server)?.server_key(server).await
     }
 
     async fn exchange_oneway(
@@ -89,7 +102,7 @@ impl Transport for Routed {
         server: &ServerId,
         request: Vec<u8>,
     ) -> enclave_net::Result<Option<Vec<u8>>> {
-        self.pick(server).exchange_oneway(server, request).await
+        self.pick(server)?.exchange_oneway(server, request).await
     }
 
     fn set_pacing(&self, pacing: enclave_net::transport::Pacing) {
@@ -105,8 +118,16 @@ impl Transport for Routed {
         }
     }
 
+    fn require_private(&self, on: bool) {
+        self.private.store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
     fn set_route(&self, server: ServerId, route: Route) {
         let nym = matches!(route, Route::Nym(_));
+        // Maximum privacy takes no route but the mixnet.
+        if !nym && self.private.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
         // A Nym route without the mixnet client can't be used: the
         // server stays on the route it had.
         if (nym && self.nym.is_none()) || (!nym && !self.tcp_allowed) {
@@ -287,6 +308,8 @@ fn main() -> ExitCode {
     let transport = Arc::new(Routed {
         tcp: TcpTransport::new(tcp),
         tcp_allowed,
+        tor: tor.is_some(),
+        private: std::sync::atomic::AtomicBool::new(false),
         over_nym: std::sync::RwLock::new(match nym {
             Some(_) => over_nym.keys().copied().collect(),
             None => HashSet::new(),
@@ -315,6 +338,10 @@ fn main() -> ExitCode {
                         Some(p) => transport.set_pacing(p),
                         None => eprintln!("enclave-netd: malformed pacing"),
                     }
+                    continue;
+                }
+                Ok(NetRequest::RequirePrivate { on }) => {
+                    transport.require_private(on);
                     continue;
                 }
                 Ok(NetRequest::SetRoute { server, route }) => {
@@ -352,7 +379,9 @@ fn main() -> ExitCode {
                             .map(Option::unwrap_or_default)
                             .map_err(|e| e.to_string()),
                     ),
-                    NetRequest::SetRoute { .. } | NetRequest::SetPacing { .. } => return,
+                    NetRequest::SetRoute { .. }
+                    | NetRequest::SetPacing { .. }
+                    | NetRequest::RequirePrivate { .. } => return,
                 };
                 let _ = tx.send(NetReply { id, result }.encode());
             };
@@ -372,4 +401,55 @@ fn main() -> ExitCode {
         let _ = writer.await;
     });
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use enclave_nym::fake::FakeMixnet;
+
+    fn routed(tor: bool) -> (Routed, ServerId, ServerId) {
+        let over_nym: ServerId = [1; 16];
+        let over_tcp: ServerId = [2; 16];
+        let net = FakeMixnet::default();
+        let nym = NymTransport::new(
+            Arc::new(net.client("phone")),
+            HashMap::from([(over_nym, "ingress".to_string())]),
+            std::time::Duration::from_millis(50),
+        );
+        let r = Routed {
+            tcp: TcpTransport::new(HashMap::from([(over_tcp, "127.0.0.1:9".parse().unwrap())])),
+            tcp_allowed: true,
+            nym: Some(nym),
+            over_nym: std::sync::RwLock::new(HashSet::from([over_nym])),
+            tor,
+            private: std::sync::atomic::AtomicBool::new(false),
+        };
+        (r, over_nym, over_tcp)
+    }
+
+    /// Maximum privacy: the mixnet behind Tor or nothing. A TCP route is
+    /// refused (and a new one not taken); without Tor even the mixnet is.
+    #[tokio::test]
+    async fn the_private_route_only() {
+        let (r, nym, tcp) = routed(true);
+        r.require_private(true);
+        assert!(r.pick(&nym).is_ok(), "the mixnet behind Tor");
+        assert!(matches!(r.pick(&tcp), Err(NetError::Unavailable(_))));
+        let other: ServerId = [3; 16];
+        r.set_route(other, Route::Tcp("127.0.0.1:9".parse().unwrap()));
+        assert!(r.pick(&other).is_err(), "no TCP route learned");
+        r.require_private(false);
+        assert!(r.pick(&tcp).is_ok());
+
+        let (r, nym, _) = routed(false);
+        r.require_private(true);
+        assert!(
+            matches!(r.pick(&nym), Err(NetError::Unavailable(m)) if m.contains("Tor")),
+            "no Tor, no mixnet in Maximum"
+        );
+        r.require_private(false);
+        assert!(r.pick(&nym).is_ok());
+    }
 }

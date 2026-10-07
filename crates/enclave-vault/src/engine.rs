@@ -2145,6 +2145,10 @@ impl Engine {
             Cmd::Privacy(p) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_setting("privacy", &[p as u8]);
+                    // Maximum has no push: the server forgets any token.
+                    if p == 1 {
+                        let _ = c.unregister_push().await;
+                    }
                 }
                 self.apply_privacy();
             }
@@ -2274,18 +2278,25 @@ impl Engine {
         }
     }
 
-    /// Match the shaper to the profile's privacy setting: Standard is the
-    /// Foreground profile, Maximum the Maximum profile.
-    fn apply_privacy(&self) {
-        let (Some(s), Some(c)) = (&self.shaper, &self.client) else {
+    /// Follow the profile's privacy setting (`docs/09-transport.md` §6.6):
+    /// Standard is the Foreground profile; Maximum is the Maximum profile,
+    /// the private route only (no TCP route or fallback, nothing without
+    /// Tor), no push, and nothing a person writes sent before all three
+    /// KEMs protect the session.
+    fn apply_privacy(&mut self) {
+        let Some(c) = self.client.as_mut() else {
             return;
         };
         let maximum = matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]);
-        s.set_shaping(Shaping::On(if maximum {
-            Profile::Maximum
-        } else {
-            Profile::Foreground
-        }));
+        c.set_maximum(maximum);
+        self.transport.require_private(maximum);
+        if let Some(s) = &self.shaper {
+            s.set_shaping(Shaping::On(if maximum {
+                Profile::Maximum
+            } else {
+                Profile::Foreground
+            }));
+        }
     }
 
     /// Give a client what this build knows about the federation: the
@@ -2553,6 +2564,7 @@ impl Engine {
             s.recovery_words = c.recovery_words().unwrap_or_default();
         }
         s.recovery_saved = matches!(c.setting("recovery-saved"), Ok(Some(v)) if v == [1]);
+        s.privacy = i32::from(matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
         let mut rows: Vec<(u64, Row)> = Vec::new();
         for ct in c.contacts() {
             let blocked = c.is_blocked(&ct.root);
@@ -2600,6 +2612,7 @@ impl Engine {
             };
             if self.selected == Some(ct.root) {
                 s.current = Some(row.clone());
+                s.finishing = c.protection_finishing(&ct.root);
                 s.timer = ct.timer;
                 let pinned = c.pinned_ids(&Place::Contact(ct.root));
                 let shared = c.shared_contacts(&ct.root);

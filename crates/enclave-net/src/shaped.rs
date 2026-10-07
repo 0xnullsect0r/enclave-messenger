@@ -424,6 +424,10 @@ impl Transport for ShapedTransport {
         self.inner.flush(within).await
     }
 
+    fn require_private(&self, on: bool) {
+        self.inner.require_private(on);
+    }
+
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> Result<Vec<u8>> {
         self.enqueue(server, request, false, false)
             .await?

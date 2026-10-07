@@ -44,9 +44,9 @@ impl Client {
             id,
             card: card.clone(),
         };
-        self.send_tracked(to, id, &content, now).await?;
+        let sent = self.send_tracked(to, id, &content, now).await?;
         self.send_self_copy(to, &content, now).await?;
-        m.sent = true;
+        m.sent = sent;
         self.put_message(to, &m)?;
         Ok(m)
     }

@@ -223,7 +223,11 @@ Tests:
 
 - The 3 s tick runs constantly, including in the background on Android and desktop.
 - No bulk bursts: a 1 MiB-bucket photo (74 chunks) takes about 3.7 minutes and a 4 MiB-bucket photo (295 chunks) about 15 minutes. The UI states the time for the actual bucket before sending.
-- Not implemented yet: disabling push, forbidding the fallback transport, and waiting for all three KEMs before the first send.
+- **As implemented** (`engine.rs::apply_privacy`, which follows the setting):
+  - **The private route only** (`Transport::require_private`, IPC `NetRequest::RequirePrivate`). netd refuses development TCP routes and takes no new ones. Without Tor in front of the mixnet (netd started without `--tor`), it refuses everything: Maximum doesn't run without Tor. The vault's direct-TCP fallback (no netd) refuses too.
+  - **No push.** `Client::register_push` refuses, and turning Maximum on asks the server to forget any token.
+  - **All three KEMs before anything a person writes.** In `seal_content`, user content (text, files, reactions, recovery shares and the like; `Content::waits_for_three_kems`) goes only over sessions where `three_kem()` holds. Otherwise it is held in the outbox and leaves at the next upkeep after the braid, without using up a re-send. Protocol messages (the hello that accepts a request, write tokens, receipts, PQ steps, notices of moves and devices) still go, so the session can reach three KEMs. Contact info shows "Extra protection: finishing…" meanwhile.
+  - **Tests.** `maximum_waits_for_three_kems` (a session started on two KEMs holds Ben's message until Ada's next message braids in the third, then delivers it) and `maximum_has_no_push` (`enclave-core`); `the_private_route_only` (`enclave-netd`); `a_direct_connection_is_refused_in_maximum_privacy` (`enclave-net`).
 
 ### 6.7 As implemented in the client
 

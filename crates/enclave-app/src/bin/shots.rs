@@ -149,6 +149,8 @@ fn fixture() -> Snapshot {
         status: String::new(),
         recovery_words: words.split(' ').map(String::from).collect(),
         recovery_saved: false,
+        privacy: 0,
+        finishing: false,
         add_error: String::new(),
         busy: false,
         pick: vec![

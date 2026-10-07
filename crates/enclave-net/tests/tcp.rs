@@ -94,6 +94,22 @@ async fn a_key_from_the_wrong_identity_is_refused() {
     assert!(t.server_key(&real).await.is_ok());
 }
 
+/// Maximum privacy never takes the direct route: with the private route
+/// required, the development transport refuses everything, and works again
+/// when it is not.
+#[tokio::test]
+async fn a_direct_connection_is_refused_in_maximum_privacy() {
+    let (addr, real) = spawn_server().await;
+    let t = TcpTransport::new(HashMap::from([(real, addr)]));
+    t.require_private(true);
+    assert!(matches!(
+        t.server_key(&real).await,
+        Err(enclave_net::NetError::Unavailable(_))
+    ));
+    t.require_private(false);
+    assert!(t.server_key(&real).await.is_ok());
+}
+
 /// Routes parse in both forms, print back the same, and a TCP route
 /// learned later is used; a Nym route is ignored by the TCP transport.
 #[tokio::test]

@@ -82,6 +82,13 @@ pub enum CoreError {
     /// A username could not be claimed or found.
     #[error("username: {0}")]
     Username(#[from] UsernameError),
+    /// Maximum privacy waits for all three KEMs before sending to this
+    /// contact ("Extra protection: finishing…", `docs/04-eqxdh.md` §7).
+    #[error("extra protection is still finishing for this contact")]
+    Finishing,
+    /// Not allowed in Maximum privacy (push, `docs/10-push.md`).
+    #[error("not available in Maximum privacy")]
+    MaximumPrivacy,
 }
 
 /// Why a username operation failed, in terms the UI can explain.

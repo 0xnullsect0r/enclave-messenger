@@ -223,6 +223,29 @@ pub enum Content {
     },
 }
 
+impl Content {
+    /// Whether this waits, in Maximum privacy, for all three KEMs to
+    /// protect the session (`docs/04-eqxdh.md` §7): everything a person
+    /// wrote or shared does. Protocol messages don't, so the session can
+    /// get there: the hello that accepts a request, write tokens, receipts,
+    /// PQ steps (which carry the braid), and notices of moves and devices.
+    pub fn waits_for_three_kems(&self) -> bool {
+        !matches!(
+            self,
+            Content::Hello { .. }
+                | Content::Tokens { .. }
+                | Content::Read { .. }
+                | Content::Delivered { .. }
+                | Content::PqStep { .. }
+                | Content::KtHead { .. }
+                | Content::Devices { .. }
+                | Content::Migration { .. }
+                | Content::ServerMoved { .. }
+                | Content::HomeMoved { .. }
+        )
+    }
+}
+
 const K_HELLO: u8 = 1;
 const K_TEXT: u8 = 2;
 const K_TOKENS: u8 = 3;
