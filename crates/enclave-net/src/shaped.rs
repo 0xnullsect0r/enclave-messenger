@@ -308,7 +308,7 @@ impl ShapedTransport {
             Shaping::Off => enclave_nym::Pacing {
                 tick: Duration::ZERO,
                 bulk: false,
-                loop_cover: Profile::Foreground.pacing(false).loop_cover,
+                ..Profile::Foreground.pacing(false)
             },
             Shaping::On(p) => p.pacing(bulk),
         };

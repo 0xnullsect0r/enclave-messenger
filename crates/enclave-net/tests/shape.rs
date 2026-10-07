@@ -74,8 +74,11 @@ fn tick_timing_is_independent_of_real_traffic() {
         let (idle, idle_polls) = run(profile, false, 3000, &mut rng);
         let (busy, busy_polls) = run(profile, true, 3000, &mut rng);
         let d = ks(idle.clone(), busy.clone());
-        // Critical value for alpha = 0.01 with n = m = 3000.
-        let crit = 1.628 * ((6000.0) / (3000.0 * 3000.0f64)).sqrt();
+        // Critical value for alpha = 0.001 with n = m = 3000. The draws come
+        // from fresh OS randomness (the hedged RNG can't be seeded), so at
+        // 0.01 the Background profile failed by chance about 1 run in 100;
+        // a delay that depended on the queue would give a far larger D.
+        let crit = 1.949 * ((6000.0) / (3000.0 * 3000.0f64)).sqrt();
         assert!(d < crit, "{profile:?}: KS D = {d} ≥ {crit}");
         // Poll pattern is identical whatever is queued.
         assert_eq!(idle_polls, busy_polls, "{profile:?}");

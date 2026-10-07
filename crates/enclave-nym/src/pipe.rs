@@ -10,10 +10,14 @@
 //! to nymd:   1 ‖ u16 len ‖ address ‖ u32 reply_len ‖ data      send
 //!            2 ‖ tag (16) ‖ data                               reply
 //!            3 ‖ u32 millis                                    flush
-//!            4 ‖ pacing (9, `Pacing::encode`)                  pace
-//! from nymd: 1 ‖ address                                       ready (first)
+//!            4 ‖ pacing (13, `Pacing::encode`)                 pace
+//!            5                                                 switch gateway
+//! from nymd: 1 ‖ address                                       ready (first, and
+//!                                                              after a switch)
 //!            2 ‖ u8 has_tag ‖ [tag (16)] ‖ data                a message
 //!            3 ‖ u8 done                                       flushed
+//!            5 ‖ 0 ‖ gateway | 5 ‖ 1 ‖ reason                  switched (after a
+//!                                                              ready frame) or not
 //! ```
 //!
 //! Sends are fire and forget, as on the mixnet itself: a lost one shows as
@@ -26,6 +30,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 type FlushWaiter = Arc<std::sync::Mutex<Option<oneshot::Sender<bool>>>>;
+type SwitchWaiter =
+    Arc<std::sync::Mutex<Option<oneshot::Sender<std::result::Result<String, String>>>>>;
 
 /// Longest frame either way (a mixframe and its header, with room).
 pub const MAX_FRAME: usize = 64 * 1024;
@@ -51,12 +57,14 @@ async fn write_frame(w: &mut (impl AsyncWrite + Unpin), body: &[u8]) -> std::io:
 
 /// The netd side: a [`MixnetDriver`] whose client runs in another process.
 pub struct PipeDriver {
-    address: String,
+    address: Arc<std::sync::RwLock<String>>,
     writer: Arc<Mutex<Box<dyn AsyncWrite + Send + Unpin>>>,
     rx: Mutex<mpsc::UnboundedReceiver<Incoming>>,
     reader: tokio::task::JoinHandle<()>,
     flushed: FlushWaiter,
     flushing: Mutex<()>,
+    switched: SwitchWaiter,
+    switching: Mutex<()>,
 }
 
 impl PipeDriver {
@@ -74,13 +82,40 @@ impl PipeDriver {
         let (tx, rx) = mpsc::unbounded_channel();
         let flushed: FlushWaiter = Arc::default();
         let waiter = Arc::clone(&flushed);
+        let switched: SwitchWaiter = Arc::default();
+        let switch_waiter = Arc::clone(&switched);
+        let address = Arc::new(std::sync::RwLock::new(address));
+        let current = Arc::clone(&address);
         let reader = tokio::spawn(async move {
+            let answer = |r: std::result::Result<String, String>| {
+                if let Some(w) = switch_waiter.lock().ok().and_then(|mut w| w.take()) {
+                    let _ = w.send(r);
+                }
+            };
             while let Some(b) = read_frame(&mut reader).await {
-                if let Some((3, [done])) = b.split_first() {
-                    if let Some(w) = waiter.lock().ok().and_then(|mut w| w.take()) {
-                        let _ = w.send(*done == 1);
+                match b.split_first() {
+                    Some((3, [done])) => {
+                        if let Some(w) = waiter.lock().ok().and_then(|mut w| w.take()) {
+                            let _ = w.send(*done == 1);
+                        }
+                        continue;
                     }
-                    continue;
+                    // Through another gateway now, at a new address.
+                    Some((1, a)) => {
+                        let Ok(a) = String::from_utf8(a.to_vec()) else {
+                            return;
+                        };
+                        if let Ok(mut c) = current.write() {
+                            *c = a;
+                        }
+                        continue;
+                    }
+                    Some((5, [ok, text @ ..])) => {
+                        let text = String::from_utf8_lossy(text).into_owned();
+                        answer(if *ok == 0 { Ok(text) } else { Err(text) });
+                        continue;
+                    }
+                    _ => {}
                 }
                 let m = match b.split_first() {
                     Some((2, [0, data @ ..])) => Incoming {
@@ -108,6 +143,8 @@ impl PipeDriver {
             reader,
             flushed,
             flushing: Mutex::new(()),
+            switched,
+            switching: Mutex::new(()),
         })
     }
 
@@ -127,7 +164,23 @@ impl Drop for PipeDriver {
 #[async_trait::async_trait]
 impl MixnetDriver for PipeDriver {
     fn address(&self) -> String {
-        self.address.clone()
+        self.address.read().map(|a| a.clone()).unwrap_or_default()
+    }
+
+    async fn switch_gateway(&self) -> Result<String> {
+        let _one = self.switching.lock().await;
+        let (tx, rx) = oneshot::channel();
+        match self.switched.lock() {
+            Ok(mut w) => *w = Some(tx),
+            Err(_) => return Err(NymError::Closed),
+        }
+        self.write(&[5]).await?;
+        // Connecting through another gateway can take a while.
+        match tokio::time::timeout(Duration::from_secs(120), rx).await {
+            Ok(Ok(Ok(gateway))) => Ok(gateway),
+            Ok(Ok(Err(why))) => Err(NymError::Client(why)),
+            _ => Err(NymError::Closed),
+        }
     }
 
     async fn send(&self, to: &str, data: Vec<u8>, reply_len: usize) -> Result<()> {
@@ -259,6 +312,23 @@ pub async fn serve(
                     let _ = driver.reply(tag, data).await;
                 }));
             }
+            Some((5, [])) => {
+                let writer = Arc::clone(&writer);
+                tokio::spawn(async move {
+                    let mut w = writer.lock().await;
+                    let _ = match driver.switch_gateway().await {
+                        Ok(g) => {
+                            let ready = [&[1u8][..], driver.address().as_bytes()].concat();
+                            let _ = write_frame(&mut *w, &ready).await;
+                            write_frame(&mut *w, &[&[5u8, 0][..], g.as_bytes()].concat()).await
+                        }
+                        Err(e) => {
+                            let why = e.to_string();
+                            write_frame(&mut *w, &[&[5u8, 1][..], why.as_bytes()].concat()).await
+                        }
+                    };
+                });
+            }
             Some((4, rest)) => {
                 if let Some(p) = Pacing::decode(rest) {
                     driver.set_pacing(p);
@@ -329,7 +399,8 @@ mod tests {
         let p = Pacing {
             tick: Duration::from_secs(3),
             bulk: true,
-            loop_cover: Duration::from_secs(10),
+            loop_cover: Duration::from_secs(15),
+            probe: Duration::from_secs(30),
         };
         pipe.set_pacing(p);
         for _ in 0..100 {
@@ -339,6 +410,13 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
         assert_eq!(net.pacing("phone"), Some(p));
+
+        // A gateway switch goes through; with nowhere to go it fails.
+        assert!(pipe.switch_gateway().await.is_err(), "no gateways at all");
+        net.set_gateway("gw-1", crate::fake::Faults::default());
+        net.set_gateway("gw-2", crate::fake::Faults::default());
+        let g = pipe.switch_gateway().await.unwrap();
+        assert_eq!(net.client_gateway("phone").as_deref(), Some(g.as_str()));
 
         // A flush is answered (the fake mixnet has nothing in flight).
         assert!(pipe.flush(Duration::from_secs(1)).await);

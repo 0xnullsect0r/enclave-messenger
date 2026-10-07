@@ -122,7 +122,8 @@ async fn main() {
     let pacing = enclave_nym::Pacing {
         tick: Duration::from_millis(1_600),
         bulk: false,
-        loop_cover: Duration::from_secs(10),
+        loop_cover: Duration::from_secs(15),
+        probe: Duration::from_secs(30),
     };
     device.set_pacing(pacing);
     let t = Instant::now();
@@ -132,6 +133,44 @@ async fn main() {
     let paced = t.elapsed();
     println!("paced one-way unit flushed in {paced:?}");
     assert!(paced >= Duration::from_millis(1_000), "{paced:?}");
+
+    // RT-02: the device moves to the other gateway and still gets answers.
+    device.set_pacing(enclave_nym::Pacing {
+        tick: Duration::ZERO,
+        ..pacing
+    });
+    let before = device.gateway().expect("a gateway");
+    let t = Instant::now();
+    let after = device.switch_gateway().await.expect("switched");
+    println!("switched gateway {before} → {after} in {:?}", t.elapsed());
+    assert_ne!(before, after);
+    assert_eq!(device.gateway().as_deref(), Some(after.as_str()));
+    let req = Request::for_sealed([11; 16], vec![11; enclave_wire::POLL_LEN]).unwrap();
+    device.send(&to, req.encode(), REPLY_LEN).await.unwrap();
+    // Earlier measurements left requests unread: skip to this one.
+    let m = loop {
+        let m = tokio::time::timeout(Duration::from_secs(60), ingress.recv())
+            .await
+            .expect("request through the new gateway arrives")
+            .unwrap();
+        if Request::decode(&m.data).is_ok_and(|r| r.id == req.id) {
+            break m;
+        }
+    };
+    let reply = Reply {
+        id: req.id,
+        data: Some(vec![1; enclave_wire::UNIT_LEN]),
+    };
+    ingress
+        .reply(m.reply.expect("reply blocks came"), reply.encode().unwrap())
+        .await
+        .unwrap();
+    let r = tokio::time::timeout(Duration::from_secs(60), device.recv())
+        .await
+        .expect("reply through the new gateway arrives")
+        .unwrap();
+    assert_eq!(Reply::decode(&r.data).unwrap(), reply);
+    println!("round trip through the new gateway: ok");
     let _ = std::fs::remove_dir_all(dir);
     println!("ok");
 }

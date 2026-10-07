@@ -67,25 +67,32 @@ pub struct Pacing {
     pub bulk: bool,
     /// Mean delay between loop cover packets.
     pub loop_cover: std::time::Duration,
+    /// Mean delay between self-loop probes (RT-02). Probes and loop cover
+    /// together keep the profile's rate of packets to the device itself.
+    pub probe: std::time::Duration,
 }
 
 impl Pacing {
     /// Most packets per second in bulk (`docs/09-transport.md` §6.4).
     pub const BULK_PACKETS_PER_SEC: u32 = 40;
 
-    /// `u32 tick_ms ‖ u8 bulk ‖ u32 loop_cover_ms`.
-    pub fn encode(&self) -> [u8; 9] {
+    /// Encoded length.
+    pub const LEN: usize = 13;
+
+    /// `u32 tick_ms ‖ u8 bulk ‖ u32 loop_cover_ms ‖ u32 probe_ms`.
+    pub fn encode(&self) -> [u8; Self::LEN] {
         let ms = |d: std::time::Duration| u32::try_from(d.as_millis()).unwrap_or(u32::MAX);
-        let mut b = [0u8; 9];
+        let mut b = [0u8; Self::LEN];
         b[..4].copy_from_slice(&ms(self.tick).to_be_bytes());
         b[4] = u8::from(self.bulk);
-        b[5..].copy_from_slice(&ms(self.loop_cover).to_be_bytes());
+        b[5..9].copy_from_slice(&ms(self.loop_cover).to_be_bytes());
+        b[9..].copy_from_slice(&ms(self.probe).to_be_bytes());
         b
     }
 
     /// Strict inverse of [`Pacing::encode`].
     pub fn decode(b: &[u8]) -> Option<Self> {
-        let b: &[u8; 9] = b.try_into().ok()?;
+        let b: &[u8; Self::LEN] = b.try_into().ok()?;
         let ms = |x: &[u8]| -> Option<std::time::Duration> {
             Some(std::time::Duration::from_millis(u64::from(
                 u32::from_be_bytes(x.try_into().ok()?),
@@ -98,7 +105,8 @@ impl Pacing {
                 1 => true,
                 _ => return None,
             },
-            loop_cover: ms(&b[5..])?,
+            loop_cover: ms(&b[5..9])?,
+            probe: ms(&b[9..])?,
         })
     }
 }
@@ -130,6 +138,17 @@ pub trait MixnetDriver: Send + Sync {
     fn set_pacing(&self, pacing: Pacing) {
         let _ = pacing;
     }
+    /// The gateway this client is connected to (on Nym, the part of its
+    /// address after `@`).
+    fn gateway(&self) -> Option<String> {
+        self.address().split_once('@').map(|(_, g)| g.to_string())
+    }
+    /// Connect through another gateway (RT-02, `docs/09-transport.md`
+    /// §6.3), returning it. The address may change; replies already on
+    /// their way to the old one may be lost.
+    async fn switch_gateway(&self) -> Result<String> {
+        Err(NymError::Client("this client can't switch gateway".into()))
+    }
 }
 
 #[cfg(test)]
@@ -143,12 +162,13 @@ mod pacing_tests {
         let p = Pacing {
             tick: Duration::from_secs(3),
             bulk: false,
-            loop_cover: Duration::from_secs(120),
+            loop_cover: Duration::from_secs(160),
+            probe: Duration::from_secs(480),
         };
         assert_eq!(Pacing::decode(&p.encode()), Some(p));
         let mut b = p.encode();
         b[4] = 2;
         assert_eq!(Pacing::decode(&b), None);
-        assert_eq!(Pacing::decode(&b[..8]), None);
+        assert_eq!(Pacing::decode(&b[..12]), None);
     }
 }

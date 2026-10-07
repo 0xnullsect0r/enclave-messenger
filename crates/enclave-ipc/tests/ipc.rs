@@ -323,7 +323,7 @@ fn net_messages_round_trip_and_refuse_garbage() {
             bytes: vec![1; 16_384],
         },
         NetRequest::SetPacing {
-            pacing: vec![0, 0, 11, 184, 1, 0, 0, 39, 16],
+            pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },
     ] {
         let e = r.encode();

@@ -62,6 +62,11 @@ async fn handle(driver: &dyn MixnetDriver, server: SocketAddr, m: Incoming, stat
         stats.dropped.fetch_add(1, Ordering::Relaxed);
         return;
     };
+    if req.kind == Kind::Probe {
+        // A device's self-loop probe never goes to a server.
+        stats.dropped.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
     if req.kind == Kind::Oneway {
         // The server's answer has nowhere to go.
         let sent = tokio::time::timeout(SERVER_TIMEOUT, roundtrip(server, &req.body)).await;

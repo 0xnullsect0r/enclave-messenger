@@ -224,7 +224,11 @@ async fn pacing_follows_the_profile_and_bulk() {
 
     // Background: loop cover once per tick on average.
     s.set_shaping(Shaping::On(Profile::Background));
-    assert_eq!(paced().last().unwrap().loop_cover, Duration::from_secs(120));
+    let bg = *paced().last().unwrap();
+    assert_eq!(
+        (bg.loop_cover, bg.probe),
+        (Duration::from_secs(160), Duration::from_secs(480))
+    );
 
     // Maximum never paces for bulk.
     s.set_shaping(Shaping::On(Profile::Maximum));

@@ -54,16 +54,21 @@ impl Profile {
     /// (`docs/09-transport.md` §6.3): a tick's packets leave evenly over
     /// 3 s (in Background too: its ticks start at random times, and pacing
     /// over its 120 s mean would delay every answer by up to 2 minutes),
-    /// at the bulk cap during a bulk transfer (never in Maximum), and loop
-    /// cover is 1 per 10 s, or 1 per tick on average in Background.
+    /// at the bulk cap during a bulk transfer (never in Maximum). Packets
+    /// to the device itself are 1 per 10 s (1 per tick on average in
+    /// Background): Nym loop cover and Enclave's self-loop probes (RT-02)
+    /// share that rate, one probe for every two loop cover packets
+    /// (1/15 s + 1/30 s = 1/10 s; 1/160 s + 1/480 s = 1/120 s).
     pub fn pacing(self, bulk: bool) -> enclave_nym::Pacing {
+        let (loop_cover, probe) = match self {
+            Profile::Foreground | Profile::Maximum => (15, 30),
+            Profile::Background => (160, 480),
+        };
         enclave_nym::Pacing {
             tick: Duration::from_secs(3),
             bulk: bulk && self.allows_bulk(),
-            loop_cover: match self {
-                Profile::Foreground | Profile::Maximum => Duration::from_secs(10),
-                Profile::Background => Duration::from_secs(120),
-            },
+            loop_cover: Duration::from_secs(loop_cover),
+            probe: Duration::from_secs(probe),
         }
     }
 }

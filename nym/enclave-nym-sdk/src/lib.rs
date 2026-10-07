@@ -123,122 +123,160 @@ fn client_error(e: impl std::fmt::Display) -> NymError {
 
 /// A connected nym-sdk client.
 pub struct NymDriver {
-    sender: MixnetClientSender,
-    address: String,
+    opts: Options,
+    /// The client sending now: its sender and address.
+    current: std::sync::RwLock<(MixnetClientSender, String)>,
+    tx: mpsc::UnboundedSender<Incoming>,
     rx: Mutex<mpsc::UnboundedReceiver<Incoming>>,
-    reader: tokio::task::JoinHandle<()>,
+    /// Readers of every client still alive (the current one, and one
+    /// replaced by a gateway switch until its replies have had time).
+    readers: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    switching: Mutex<()>,
+}
+
+/// How long a client replaced by a gateway switch keeps receiving.
+const RETIRE_AFTER: Duration = Duration::from_secs(90);
+
+fn gateway_of(address: &str) -> Option<&str> {
+    address.split_once('@').map(|(_, g)| g)
+}
+
+/// Build and connect a nym-sdk client for `opts`.
+async fn build(opts: &Options) -> Result<nym_sdk::mixnet::MixnetClient> {
+    let mut debug = nym_sdk::DebugConfig::default();
+    debug.traffic.disable_main_poisson_packet_distribution = true;
+    debug.stats_reporting.enabled = false;
+    if matches!(opts.role, Role::Client) {
+        debug.cover_traffic.loop_cover_traffic_average_delay = Duration::from_secs(10);
+    }
+    if matches!(opts.role, Role::Ingress { .. }) {
+        // Every request carries all the reply blocks its reply needs, so
+        // the ingress never asks for more and keeps none in reserve for
+        // asking (nym-sdk holds back 10 by default, which would leave a
+        // reply short).
+        debug.reply_surbs.maximum_reply_surbs_rerequests = 0;
+        debug.reply_surbs.minimum_reply_surb_storage_threshold = 0;
+        debug.reply_surbs.minimum_reply_surb_threshold_buffer = 0;
+    }
+    let (network, topology) = match &opts.network {
+        Network::Mainnet => (nym_sdk::NymNetworkDetails::default(), None),
+        Network::Env => (nym_sdk::NymNetworkDetails::new_from_env(), None),
+        Network::Local { topology, nym_api } => {
+            let api = url::Url::parse(nym_api).map_err(client_error)?;
+            let provider =
+                nym_topology::provider_trait::HardcodedTopologyProvider::new_from_file(topology)
+                    .map_err(|e| client_error(format!("{}: {e}", topology.display())))?;
+            (
+                nym_sdk::NymNetworkDetails::new_mainnet().with_nym_api_urls(vec![api]),
+                Some(provider),
+            )
+        }
+    };
+    match &opts.role {
+        Role::Ingress { dir } => {
+            let paths = StoragePaths::new_from_dir(dir).map_err(client_error)?;
+            // The reply-block store takes its thresholds when it is
+            // made, so from our configuration, not the defaults.
+            let storage = paths
+                .initialise_persistent_storage(&debug)
+                .await
+                .map_err(client_error)?;
+            let mut b = MixnetClientBuilder::new_with_storage(storage)
+                .network_details(network)
+                .debug_config(debug);
+            if let Some(g) = &opts.gateway {
+                b = b.request_gateway(g.clone());
+            }
+            if let Some(p) = topology {
+                b = b.custom_topology_provider(Box::new(p));
+            }
+            b.build()
+                .map_err(client_error)?
+                .connect_to_mixnet()
+                .await
+                .map_err(client_error)
+        }
+        Role::Client => {
+            let mut b = MixnetClientBuilder::new_ephemeral()
+                .network_details(network)
+                .debug_config(debug);
+            if let Some(g) = &opts.gateway {
+                b = b.request_gateway(g.clone());
+            }
+            if let Some(p) = topology {
+                b = b.custom_topology_provider(Box::new(p));
+            }
+            b.build()
+                .map_err(client_error)?
+                .connect_to_mixnet()
+                .await
+                .map_err(client_error)
+        }
+    }
+}
+
+/// Start forwarding what `client` receives to `tx`; its sender and
+/// address.
+fn attach(
+    mut client: nym_sdk::mixnet::MixnetClient,
+    tx: mpsc::UnboundedSender<Incoming>,
+) -> (MixnetClientSender, String, tokio::task::JoinHandle<()>) {
+    let address = client.nym_address().to_string();
+    let sender = client.split_sender();
+    let reader = tokio::spawn(async move {
+        while let Some(msgs) = client.wait_for_messages().await {
+            for m in msgs {
+                let incoming = Incoming {
+                    data: m.message,
+                    reply: m.sender_tag.map(|t| ReplyTag(t.to_bytes())),
+                };
+                if tx.send(incoming).is_err() {
+                    return;
+                }
+            }
+        }
+    });
+    (sender, address, reader)
 }
 
 impl NymDriver {
     /// Connect to the mixnet.
     pub async fn connect(opts: Options) -> Result<Self> {
-        let mut debug = nym_sdk::DebugConfig::default();
-        debug.traffic.disable_main_poisson_packet_distribution = true;
-        debug.stats_reporting.enabled = false;
-        if matches!(opts.role, Role::Client) {
-            debug.cover_traffic.loop_cover_traffic_average_delay = Duration::from_secs(10);
-        }
-        if matches!(opts.role, Role::Ingress { .. }) {
-            // Every request carries all the reply blocks its reply needs, so
-            // the ingress never asks for more and keeps none in reserve for
-            // asking (nym-sdk holds back 10 by default, which would leave a
-            // reply short).
-            debug.reply_surbs.maximum_reply_surbs_rerequests = 0;
-            debug.reply_surbs.minimum_reply_surb_storage_threshold = 0;
-            debug.reply_surbs.minimum_reply_surb_threshold_buffer = 0;
-        }
-        let (network, topology) = match &opts.network {
-            Network::Mainnet => (nym_sdk::NymNetworkDetails::default(), None),
-            Network::Env => (nym_sdk::NymNetworkDetails::new_from_env(), None),
-            Network::Local { topology, nym_api } => {
-                let api = url::Url::parse(nym_api).map_err(client_error)?;
-                let provider =
-                    nym_topology::provider_trait::HardcodedTopologyProvider::new_from_file(
-                        topology,
-                    )
-                    .map_err(|e| client_error(format!("{}: {e}", topology.display())))?;
-                (
-                    nym_sdk::NymNetworkDetails::new_mainnet().with_nym_api_urls(vec![api]),
-                    Some(provider),
-                )
-            }
-        };
-        let mut client = match &opts.role {
-            Role::Ingress { dir } => {
-                let paths = StoragePaths::new_from_dir(dir).map_err(client_error)?;
-                // The reply-block store takes its thresholds when it is
-                // made, so from our configuration, not the defaults.
-                let storage = paths
-                    .initialise_persistent_storage(&debug)
-                    .await
-                    .map_err(client_error)?;
-                let mut b = MixnetClientBuilder::new_with_storage(storage)
-                    .network_details(network)
-                    .debug_config(debug);
-                if let Some(g) = &opts.gateway {
-                    b = b.request_gateway(g.clone());
-                }
-                if let Some(p) = topology {
-                    b = b.custom_topology_provider(Box::new(p));
-                }
-                b.build()
-                    .map_err(client_error)?
-                    .connect_to_mixnet()
-                    .await
-                    .map_err(client_error)?
-            }
-            Role::Client => {
-                let mut b = MixnetClientBuilder::new_ephemeral()
-                    .network_details(network)
-                    .debug_config(debug);
-                if let Some(g) = &opts.gateway {
-                    b = b.request_gateway(g.clone());
-                }
-                if let Some(p) = topology {
-                    b = b.custom_topology_provider(Box::new(p));
-                }
-                b.build()
-                    .map_err(client_error)?
-                    .connect_to_mixnet()
-                    .await
-                    .map_err(client_error)?
-            }
-        };
-        let address = client.nym_address().to_string();
-        let sender = client.split_sender();
+        let client = build(&opts).await?;
         let (tx, rx) = mpsc::unbounded_channel();
-        let reader = tokio::spawn(async move {
-            while let Some(msgs) = client.wait_for_messages().await {
-                for m in msgs {
-                    let incoming = Incoming {
-                        data: m.message,
-                        reply: m.sender_tag.map(|t| ReplyTag(t.to_bytes())),
-                    };
-                    if tx.send(incoming).is_err() {
-                        return;
-                    }
-                }
-            }
-        });
+        let (sender, address, reader) = attach(client, tx.clone());
         Ok(Self {
-            sender,
-            address,
+            opts,
+            current: std::sync::RwLock::new((sender, address)),
+            tx,
             rx: Mutex::new(rx),
-            reader,
+            readers: std::sync::Mutex::new(vec![reader]),
+            switching: Mutex::new(()),
         })
+    }
+
+    fn sender(&self) -> Result<MixnetClientSender> {
+        self.current
+            .read()
+            .map(|c| c.0.clone())
+            .map_err(|_| NymError::Closed)
     }
 }
 
 impl Drop for NymDriver {
     fn drop(&mut self) {
-        self.reader.abort();
+        if let Ok(readers) = self.readers.lock() {
+            for r in readers.iter() {
+                r.abort();
+            }
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl MixnetDriver for NymDriver {
     fn address(&self) -> String {
-        self.address.clone()
+        self.current.read().map(|c| c.1.clone()).unwrap_or_default()
     }
 
     async fn send(&self, to: &str, data: Vec<u8>, reply_len: usize) -> Result<()> {
@@ -249,8 +287,9 @@ impl MixnetDriver for NymDriver {
         } else {
             IncludedSurbs::new(surbs_for(reply_len))
         };
+        let sender = self.sender()?;
         nym_client_core::enclave::note_submitted();
-        self.sender
+        sender
             .send_message(recipient, data, surbs)
             .await
             .inspect_err(|_| nym_client_core::enclave::note_unsubmitted())
@@ -258,8 +297,9 @@ impl MixnetDriver for NymDriver {
     }
 
     async fn reply(&self, tag: ReplyTag, data: Vec<u8>) -> Result<()> {
+        let sender = self.sender()?;
         nym_client_core::enclave::note_submitted();
-        self.sender
+        sender
             .send_reply(AnonymousSenderTag::from_bytes(tag.0), data)
             .await
             .inspect_err(|_| nym_client_core::enclave::note_unsubmitted())
@@ -268,6 +308,56 @@ impl MixnetDriver for NymDriver {
 
     async fn recv(&self) -> Option<Incoming> {
         self.rx.lock().await.recv().await
+    }
+
+    /// A device moves to another gateway with a fresh ephemeral client
+    /// (RT-02). The old client keeps receiving for [`RETIRE_AFTER`], so
+    /// replies already on their way still arrive. An ingress keeps its
+    /// gateway (its address is published).
+    async fn switch_gateway(&self) -> Result<String> {
+        if !matches!(self.opts.role, Role::Client) {
+            return Err(NymError::Client("an ingress keeps its gateway".into()));
+        }
+        let _one = self.switching.lock().await;
+        let old = self.address();
+        let old_gateway = gateway_of(&old).map(str::to_string);
+        let opts = Options {
+            gateway: None,
+            ..self.opts.clone()
+        };
+        // nym-sdk picks a gateway uniformly at random: with two to choose
+        // from, eight tries all landing on the old one is 1 in 256.
+        for _ in 0..8 {
+            let client = build(&opts).await?;
+            let address = client.nym_address().to_string();
+            let Some(gateway) = gateway_of(&address).map(str::to_string) else {
+                continue;
+            };
+            if Some(&gateway) == old_gateway.as_ref() {
+                drop(client);
+                continue;
+            }
+            let (sender, address, reader) = attach(client, self.tx.clone());
+            if let Ok(mut c) = self.current.write() {
+                *c = (sender, address);
+            }
+            let retired = {
+                let Ok(mut readers) = self.readers.lock() else {
+                    return Err(NymError::Closed);
+                };
+                let retired: Vec<_> = readers.drain(..).collect();
+                readers.push(reader);
+                retired
+            };
+            tokio::spawn(async move {
+                tokio::time::sleep(RETIRE_AFTER).await;
+                for r in retired {
+                    r.abort();
+                }
+            });
+            return Ok(gateway);
+        }
+        Err(NymError::Client("no other gateway found".into()))
     }
 
     fn set_pacing(&self, pacing: Pacing) {
@@ -307,7 +397,8 @@ mod tests {
         let mut p = Pacing {
             tick: Duration::from_secs(3),
             bulk: false,
-            loop_cover: Duration::from_secs(10),
+            loop_cover: Duration::from_secs(15),
+            probe: Duration::from_secs(30),
         };
         // 16 packets up per tick: one every 187.5 ms in Foreground.
         assert_eq!(packet_gap(&p), Duration::from_micros(187_500));

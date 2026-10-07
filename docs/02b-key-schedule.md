@@ -241,7 +241,7 @@ k_req   = KMAC256(ss, "", 256, "enclave/v1/rpc/request")
 k_reply = KMAC256(ss, "", 256, "enclave/v1/rpc/reply")
 ```
 
-Reserved: `server_id = ID256("enclave/v1/net/server-id", server_composite_pk)`, `replay_id` (`enclave/v1/net/replay-id`), loop probes (`enclave/v1/net/loop-probe`), push-token sealing (`enclave/v1/net/push-transcript`, `enclave/v1/net/push-seal`).
+Also in this layer (all implemented, `label-registry.md` §2): `server_id = ID256("enclave/v1/net/server-id", server_composite_pk)`, `replay_id` (`enclave/v1/net/replay-id`), self-loop probe ids (`enclave/v1/net/loop-probe`, `09-transport.md` §6.3), push-token sealing (`enclave/v1/net/push-transcript`, `enclave/v1/net/push-seal`).
 
 ### 10.2 Proof of work
 

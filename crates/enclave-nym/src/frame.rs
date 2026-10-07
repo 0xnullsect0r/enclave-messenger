@@ -41,6 +41,9 @@ pub enum Kind {
     Key = 3,
     /// A sealed unit sent one way: nobody answers it.
     Oneway = 5,
+    /// A self-loop probe: a header only, sent by a device to its own
+    /// address to measure its gateway path (`docs/09-transport.md` §6.3).
+    Probe = 6,
 }
 
 /// A request on the mixnet.
@@ -83,6 +86,15 @@ impl Request {
         })
     }
 
+    /// A self-loop probe with this id ([`Kind::Probe`]).
+    pub fn probe(id: [u8; 16]) -> Self {
+        Self {
+            kind: Kind::Probe,
+            id,
+            body: Vec::new(),
+        }
+    }
+
     /// Encode, padded to its class.
     pub fn encode(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(HEADER_LEN + UNIT_LEN);
@@ -91,6 +103,7 @@ impl Request {
         v.extend_from_slice(&self.id);
         match self.kind {
             Kind::Key => v.resize(HEADER_LEN + POLL_LEN, 0),
+            Kind::Probe => {}
             _ => v.extend_from_slice(&self.body),
         }
         v
@@ -110,6 +123,7 @@ impl Request {
             (2, POLL_LEN) => (Kind::Poll, body.to_vec()),
             (3, POLL_LEN) => (Kind::Key, Vec::new()),
             (5, UNIT_LEN) => (Kind::Oneway, body.to_vec()),
+            (6, 0) => (Kind::Probe, Vec::new()),
             _ => return Err(NymError::Malformed),
         };
         Ok(Self { kind, id, body })
@@ -217,7 +231,16 @@ mod tests {
             "a one-way unit is a unit's size"
         );
         assert!(Request::oneway([0; 16], vec![0; POLL_LEN]).is_err());
-        for r in [unit, poll, key, oneway] {
+        let probe = Request::probe([5; 16]);
+        assert_eq!(
+            probe.encode().len(),
+            HEADER_LEN,
+            "a probe is one small packet"
+        );
+        let mut long = probe.encode();
+        long.push(0);
+        assert!(Request::decode(&long).is_err());
+        for r in [unit, poll, key, oneway, probe] {
             assert_eq!(Request::decode(&r.encode()).unwrap(), r);
         }
         assert!(Request::for_sealed([0; 16], vec![0; 100]).is_err());

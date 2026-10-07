@@ -296,11 +296,132 @@ pub struct NymTransport {
     routes: std::sync::RwLock<HashMap<ServerId, String>>,
     pending: std::sync::Arc<std::sync::Mutex<HashMap<[u8; 16], PendingReply>>>,
     timeout: std::time::Duration,
+    path: std::sync::Arc<GatewayPath>,
     reader: tokio::task::JoinHandle<()>,
+    prober: tokio::task::JoinHandle<()>,
 }
 
 #[cfg(feature = "nym")]
 type PendingReply = tokio::sync::oneshot::Sender<Option<Vec<u8>>>;
+
+/// The device's gateway path as measured (RT-02, `crate::monitor`): every
+/// exchange and every self-loop probe is a sample, and a bad path makes
+/// the driver move to another gateway.
+#[cfg(feature = "nym")]
+struct GatewayPath {
+    driver: std::sync::Arc<dyn enclave_nym::MixnetDriver>,
+    monitor: std::sync::Mutex<crate::monitor::LinkMonitor>,
+    /// Probes on their way, by id, with when they left.
+    probes: std::sync::Mutex<HashMap<[u8; 16], tokio::time::Instant>>,
+    /// Mean delay between probes, in milliseconds.
+    probe_ms: std::sync::atomic::AtomicU64,
+    switches: std::sync::atomic::AtomicU64,
+    switching: std::sync::atomic::AtomicBool,
+    started: tokio::time::Instant,
+}
+
+#[cfg(feature = "nym")]
+impl GatewayPath {
+    /// A probe with no answer after this long counts as lost.
+    const PROBE_LOST_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
+    fn sample(self: &std::sync::Arc<Self>, latency: Option<std::time::Duration>) {
+        let now = self.started.elapsed().as_secs();
+        let verdict = {
+            let Ok(mut m) = self.monitor.lock() else {
+                return;
+            };
+            match latency {
+                Some(l) => m.arrived(l),
+                None => m.lost(),
+            }
+            m.should_switch(now)
+        };
+        let Some(verdict) = verdict else {
+            return;
+        };
+        if self
+            .switching
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        let me = std::sync::Arc::clone(self);
+        tokio::spawn(async move {
+            let result = me.driver.switch_gateway().await;
+            // The cooldown starts either way, so a path with nowhere to go
+            // isn't retried on every sample.
+            if let Ok(mut m) = me.monitor.lock() {
+                m.switched(me.started.elapsed().as_secs());
+            }
+            match result {
+                Ok(g) => {
+                    me.switches
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    eprintln!("enclave-net: switched gateway to {g} ({verdict})");
+                }
+                Err(e) => eprintln!("enclave-net: gateway path bad ({verdict}), no switch: {e}"),
+            }
+            me.switching
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
+
+    /// A probe came back.
+    fn probe_back(self: &std::sync::Arc<Self>, id: &[u8; 16]) {
+        let sent = self.probes.lock().ok().and_then(|mut p| p.remove(id));
+        if let Some(t) = sent {
+            self.sample(Some(t.elapsed()));
+        }
+    }
+
+    /// Send self-loop probes at random (exponential) intervals until the
+    /// transport goes, counting those that never come back as lost.
+    async fn probe_forever(self: std::sync::Arc<Self>) {
+        let Ok(mut rng) = enclave_crypto::rng::HedgedRng::new() else {
+            return;
+        };
+        let Ok(secret) = rng.array::<32>("net/loop-probe-secret") else {
+            return;
+        };
+        for counter in 0u64.. {
+            let mean = self.probe_ms.load(std::sync::atomic::Ordering::SeqCst);
+            let u = rng
+                .array::<8>("net/loop-probe-delay")
+                .map(|b| (u64::from_be_bytes(b) >> 11) as f64 / (1u64 << 53) as f64)
+                .unwrap_or(0.5);
+            let wait = -(1.0 - u).ln() * mean as f64;
+            tokio::time::sleep(std::time::Duration::from_millis(wait as u64)).await;
+            // Probes that never came back.
+            let lost: usize = {
+                let Ok(mut p) = self.probes.lock() else {
+                    return;
+                };
+                let before = p.len();
+                p.retain(|_, t| t.elapsed() < Self::PROBE_LOST_AFTER);
+                before - p.len()
+            };
+            for _ in 0..lost {
+                self.sample(None);
+            }
+            let id: [u8; 16] = enclave_crypto::kmac::kmac256(
+                &secret,
+                &counter.to_be_bytes(),
+                "enclave/v1/net/loop-probe",
+            );
+            if let Ok(mut p) = self.probes.lock() {
+                p.insert(id, tokio::time::Instant::now());
+            }
+            let frame = enclave_nym::frame::Request::probe(id).encode();
+            let me = self.driver.address();
+            if self.driver.send(&me, frame, 0).await.is_err()
+                && let Ok(mut p) = self.probes.lock()
+            {
+                p.remove(&id);
+            }
+        }
+    }
+}
 
 #[cfg(feature = "nym")]
 impl NymTransport {
@@ -308,7 +429,8 @@ impl NymTransport {
     pub const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
     /// A transport over `driver`, reaching each server at its Nym address
-    /// in `routes` (from the servers' descriptors).
+    /// in `routes` (from the servers' descriptors). It probes its own
+    /// gateway path and switches gateway when the path goes bad (RT-02).
     pub fn new(
         driver: std::sync::Arc<dyn enclave_nym::MixnetDriver>,
         routes: HashMap<ServerId, String>,
@@ -316,11 +438,32 @@ impl NymTransport {
     ) -> Self {
         let pending: std::sync::Arc<std::sync::Mutex<HashMap<[u8; 16], PendingReply>>> =
             std::sync::Arc::default();
+        let path = std::sync::Arc::new(GatewayPath {
+            driver: std::sync::Arc::clone(&driver),
+            monitor: std::sync::Mutex::default(),
+            probes: std::sync::Mutex::default(),
+            probe_ms: std::sync::atomic::AtomicU64::new(
+                crate::schedule::Profile::Foreground
+                    .pacing(false)
+                    .probe
+                    .as_millis() as u64,
+            ),
+            switches: std::sync::atomic::AtomicU64::new(0),
+            switching: std::sync::atomic::AtomicBool::new(false),
+            started: tokio::time::Instant::now(),
+        });
         let reader = {
             let driver = std::sync::Arc::clone(&driver);
             let pending = std::sync::Arc::clone(&pending);
+            let path = std::sync::Arc::clone(&path);
             tokio::spawn(async move {
                 while let Some(m) = driver.recv().await {
+                    if let Ok(r) = enclave_nym::frame::Request::decode(&m.data)
+                        && r.kind == enclave_nym::frame::Kind::Probe
+                    {
+                        path.probe_back(&r.id);
+                        continue;
+                    }
                     // Anything that isn't a reply to a request we're
                     // waiting for is dropped.
                     let Ok(r) = enclave_nym::frame::Reply::decode(&m.data) else {
@@ -333,18 +476,26 @@ impl NymTransport {
                 }
             })
         };
+        let prober = tokio::spawn(std::sync::Arc::clone(&path).probe_forever());
         Self {
             driver,
             routes: std::sync::RwLock::new(routes),
             pending,
             timeout,
+            path,
             reader,
+            prober,
         }
     }
 
     /// Requests waiting for a reply.
     pub fn in_flight(&self) -> usize {
         self.pending.lock().map(|p| p.len()).unwrap_or(0)
+    }
+
+    /// Gateway switches so far (RT-02).
+    pub fn switches(&self) -> u64 {
+        self.path.switches.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn route(&self, server: &ServerId) -> Result<String> {
@@ -389,6 +540,7 @@ impl NymTransport {
                 p.remove(&id);
             }
         };
+        let sent = tokio::time::Instant::now();
         if let Err(e) = self
             .driver
             .send(&to, frame, enclave_nym::frame::REPLY_LEN)
@@ -398,12 +550,15 @@ impl NymTransport {
             return Err(NetError::Unreachable(e.to_string()));
         }
         match tokio::time::timeout(self.timeout, rx).await {
-            Ok(Ok(Some(data))) => Ok(data),
-            Ok(Ok(None)) => Err(NetError::Unreachable(
-                "the ingress couldn't reach its server".into(),
-            )),
+            Ok(Ok(reply)) => {
+                self.path.sample(Some(sent.elapsed()));
+                reply.ok_or_else(|| {
+                    NetError::Unreachable("the ingress couldn't reach its server".into())
+                })
+            }
             _ => {
                 forget();
+                self.path.sample(None);
                 Err(NetError::Unreachable("no reply over the mixnet".into()))
             }
         }
@@ -414,6 +569,7 @@ impl NymTransport {
 impl Drop for NymTransport {
     fn drop(&mut self) {
         self.reader.abort();
+        self.prober.abort();
     }
 }
 
@@ -434,6 +590,12 @@ impl Transport for NymTransport {
     }
 
     fn set_pacing(&self, pacing: enclave_nym::Pacing) {
+        self.path.probe_ms.store(
+            u64::try_from(pacing.probe.as_millis())
+                .unwrap_or(u64::MAX)
+                .max(1),
+            std::sync::atomic::Ordering::SeqCst,
+        );
         self.driver.set_pacing(pacing);
     }
 

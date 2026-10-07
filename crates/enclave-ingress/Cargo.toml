@@ -26,3 +26,4 @@ enclave-server = { path = "../enclave-server" }
 enclave-federation = { path = "../enclave-federation" }
 enclave-net = { path = "../enclave-net", features = ["nym"] }
 enclave-tokens = { path = "../enclave-tokens" }
+tokio = { version = "1", features = ["test-util"] }

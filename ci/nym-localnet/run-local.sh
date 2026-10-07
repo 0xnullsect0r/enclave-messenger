@@ -38,7 +38,11 @@ node mix3 mixnode 3
 node gw entry-gateway 4 --entry-bind-address 127.0.0.1:9000 \
   --lp-control-bind-address 127.0.0.1:41264 --lp-data-bind-address 127.0.0.1:51264 \
   --enforce-zk-nyms false --lp-use-mock-ecash true
+# A second gateway, so a client can switch (RT-02).
+node gw2 entry-gateway 5 --entry-bind-address 127.0.0.1:9001 \
+  --lp-control-bind-address 127.0.0.1:41265 --lp-data-bind-address 127.0.0.1:51265 \
+  --enforce-zk-nyms false --lp-use-mock-ecash true
 
 python3 "$HERE/topology.py" "$DIR/network.json" \
   mix=127.0.0.1:10001:30001 mix=127.0.0.1:10002:30002 mix=127.0.0.1:10003:30003 \
-  gateway=127.0.0.1:10004:30004:9000
+  gateway=127.0.0.1:10004:30004:9000 gateway=127.0.0.1:10005:30005:9001

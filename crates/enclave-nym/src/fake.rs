@@ -40,6 +40,10 @@ struct Hub {
     stats: Stats,
     /// The pacing each client was last given.
     pacing: HashMap<String, Pacing>,
+    /// Gateways in order, with their own faults (on top of the network's).
+    gateways: Vec<(String, Faults)>,
+    /// Each client's gateway.
+    gateway_of: HashMap<String, String>,
 }
 
 impl Hub {
@@ -55,18 +59,37 @@ impl Hub {
         (self.next() >> 11) as f64 / (1u64 << 53) as f64
     }
 
-    /// Deliver `msg` to `to`, or lose it.
-    fn deliver(&mut self, to: &str, msg: Incoming) -> Result<()> {
+    fn gateway_faults(&self, client: &str) -> Faults {
+        let Some(g) = self.gateway_of.get(client) else {
+            return Faults::default();
+        };
+        self.gateways
+            .iter()
+            .find(|(n, _)| n == g)
+            .map(|(_, f)| *f)
+            .unwrap_or_default()
+    }
+
+    /// Deliver `msg` from `from` to `to`, or lose it: the network's faults
+    /// apply, then those of each end's gateway.
+    fn deliver(&mut self, from: &str, to: &str, msg: Incoming) -> Result<()> {
         let tx = self
             .endpoints
             .get(to)
             .cloned()
             .ok_or(NymError::UnknownRecipient)?;
-        if self.unit() < self.faults.loss {
-            self.stats.lost += 1;
-            return Ok(());
+        let mut delay = Duration::ZERO;
+        for f in [
+            self.faults,
+            self.gateway_faults(from),
+            self.gateway_faults(to),
+        ] {
+            if f.loss > 0.0 && self.unit() < f.loss {
+                self.stats.lost += 1;
+                return Ok(());
+            }
+            delay += f.max_delay.mul_f64(self.unit());
         }
-        let delay = self.faults.max_delay.mul_f64(self.unit());
         if delay.is_zero() {
             let _ = tx.send(msg);
         } else {
@@ -102,6 +125,8 @@ impl FakeMixnet {
                 rng: seed | 1,
                 stats: Stats::default(),
                 pacing: HashMap::new(),
+                gateways: Vec::new(),
+                gateway_of: HashMap::new(),
             })),
         }
     }
@@ -124,6 +149,32 @@ impl FakeMixnet {
             address: address.to_string(),
             rx: tokio::sync::Mutex::new(rx),
         }
+    }
+
+    /// Add a gateway with its own faults (or change them).
+    pub fn set_gateway(&self, name: &str, faults: Faults) {
+        if let Ok(mut h) = self.hub.lock() {
+            match h.gateways.iter_mut().find(|(n, _)| n == name) {
+                Some(g) => g.1 = faults,
+                None => h.gateways.push((name.to_string(), faults)),
+            }
+        }
+    }
+
+    /// A client at `address` behind `gateway` (added with
+    /// [`FakeMixnet::set_gateway`]).
+    pub fn client_at(&self, address: &str, gateway: &str) -> FakeClient {
+        let c = self.client(address);
+        if let Ok(mut h) = self.hub.lock() {
+            h.gateway_of
+                .insert(address.to_string(), gateway.to_string());
+        }
+        c
+    }
+
+    /// The gateway the client at `address` is behind.
+    pub fn client_gateway(&self, address: &str) -> Option<String> {
+        self.hub.lock().ok()?.gateway_of.get(address).cloned()
     }
 
     /// The pacing the client at `address` was last given.
@@ -164,7 +215,7 @@ impl MixnetDriver for FakeClient {
         } else {
             None
         };
-        h.deliver(to, Incoming { data, reply })
+        h.deliver(&self.address, to, Incoming { data, reply })
     }
 
     async fn reply(&self, tag: ReplyTag, data: Vec<u8>) -> Result<()> {
@@ -181,7 +232,7 @@ impl MixnetDriver for FakeClient {
         };
         h.tags.retain(|_, (_, left)| *left > 0);
         h.stats.replies += 1;
-        h.deliver(&to, Incoming { data, reply: None })
+        h.deliver(&self.address, &to, Incoming { data, reply: None })
     }
 
     async fn recv(&self) -> Option<Incoming> {
@@ -192,6 +243,28 @@ impl MixnetDriver for FakeClient {
         if let Ok(mut h) = self.hub.lock() {
             h.pacing.insert(self.address.clone(), pacing);
         }
+    }
+
+    fn gateway(&self) -> Option<String> {
+        self.hub.lock().ok()?.gateway_of.get(&self.address).cloned()
+    }
+
+    /// Move to the next gateway after the current one (the address stays).
+    async fn switch_gateway(&self) -> Result<String> {
+        let mut h = self.hub.lock().map_err(|_| NymError::Closed)?;
+        let current = h.gateway_of.get(&self.address).cloned();
+        let names: Vec<String> = h.gateways.iter().map(|(n, _)| n.clone()).collect();
+        let at = current
+            .as_ref()
+            .and_then(|c| names.iter().position(|n| n == c))
+            .unwrap_or(0);
+        let next = (1..names.len())
+            .map(|i| &names[(at + i) % names.len()])
+            .find(|n| Some(*n) != current.as_ref())
+            .cloned()
+            .ok_or_else(|| NymError::Client("no other gateway".into()))?;
+        h.gateway_of.insert(self.address.clone(), next.clone());
+        Ok(next)
     }
 }
 
