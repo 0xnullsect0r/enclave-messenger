@@ -283,7 +283,7 @@ Other crates:
 - **Maximum privacy:** push off, fallback forbidden, waits for all 3 KEMs (`09` §6.6, `04` §8). Done (N2.5): also no TCP route and nothing without Tor (`Transport::require_private`), held user content with "Extra protection: finishing…" on contact info, and the saved mode shown after a restart.
 
 **Exit:**
-- Measured data per profile is within ±20% of `math/cover-traffic.md`. Foreground (and so Maximum) measured on the local mixnet: 73 MB/h at the WebSocket level, ≈80 MB/h with Tor, inside the band (`math/cover-traffic.md` §10). Background and live networks: `enclave-e2e bench` (N4).
+- Measured data per profile is within ±20% of `math/cover-traffic.md`. Foreground (and so Maximum) measured on the local mixnet and by the real client in CI: 16.2–16.6 packets a tick against 16.3, 73–76 MB/h at the WebSocket level, ≈80 MB/h with Tor, inside the band (`math/cover-traffic.md` §10). Background and live networks: `enclave-e2e bench` (N4).
 - The gateway-switch tests pass (fake loss injection and killing a localnet gateway).
 - The Tor path works against the sandbox.
 
