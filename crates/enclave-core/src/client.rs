@@ -1117,7 +1117,7 @@ impl Client {
             self.sync_inboxes(now).await?
         } else {
             let gid = groups[((round / period) % groups.len() as u64) as usize];
-            self.sync_group(&gid, now).await?
+            self.sync_group_with(&gid, now, true).await?
         };
         if round % UPKEEP_EVERY == 1 {
             events.append(&mut self.sync_upkeep(now).await?);

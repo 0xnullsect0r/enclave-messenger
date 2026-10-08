@@ -28,6 +28,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 const NS_GROUPS: &str = "groups";
 /// Units held for later (unknown epoch or generation, sender not reachable yet).
 const MAX_PENDING: usize = 256;
+/// Seconds into a UTC day during which a shaped client still reads
+/// yesterday's group message mailboxes (late messages of the day before).
+pub(crate) const YESTERDAY_GRACE: u64 = 2 * 3600;
 
 fn msg_ns(gid: &[u8; 32]) -> String {
     let mut s = String::from("gm/");
@@ -821,16 +824,35 @@ impl Client {
     /// Read one group's mailboxes (every held epoch, today and yesterday),
     /// apply what arrived, and key members who became reachable.
     pub(crate) async fn sync_group(&mut self, gid: &[u8; 32], now: u64) -> Result<Vec<Event>> {
+        self.sync_group_with(gid, now, false).await
+    }
+
+    /// Read one group as a shaped client does (`Client::sync_round_every`,
+    /// `docs/09-transport.md` §6.7): today's mailboxes of every held epoch
+    /// (the message mailbox and its rekey buckets), and yesterday's only
+    /// during the first [`YESTERDAY_GRACE`] seconds of the day, for what
+    /// arrived late the day before. `shaped == false`: both days always.
+    pub(crate) async fn sync_group_with(
+        &mut self,
+        gid: &[u8; 32],
+        now: u64,
+        shaped: bool,
+    ) -> Result<Vec<Event>> {
         let gid = *gid;
         let mut events = Vec::new();
         self.connect_members(&gid).await;
 
-        // Collect units from every held epoch, today and yesterday.
         let (host, polls) = {
             let e = self.groups.get(&gid).ok_or(CoreError::NotFound)?;
             let mut polls = Vec::new();
+            let today = day(now);
+            let days: &[u32] = if shaped && now % 86_400 >= YESTERDAY_GRACE {
+                &[today]
+            } else {
+                &[today.saturating_sub(1), today]
+            };
             for epoch in e.group.epochs() {
-                for d in [day(now).saturating_sub(1), day(now)] {
+                for &d in days {
                     for b in 0..BUCKETS as u8 {
                         let addr = e.group.rekey_mailbox(epoch, d, b)?;
                         polls.push((addr, e.group.mailbox_secret(epoch, &addr)?));
@@ -848,22 +870,13 @@ impl Client {
             }
             (e.group.state.host, polls)
         };
-        // A group's mailboxes are read together, as one bulk transfer:
-        // their number depends on the epochs held, not on traffic.
+        // Each poll takes its slot like any other: how many a group needs
+        // depends on the epochs held, but a burst of them every few
+        // seconds would cost more than the whole Foreground budget.
         let mut units = Vec::new();
-        self.rpc.bulk(true);
-        let mut polled = Ok(());
         for (addr, secret) in polls {
-            match self.poll_group(&gid, host, addr, secret, now).await {
-                Ok(u) => units.extend(u),
-                Err(e) => {
-                    polled = Err(e);
-                    break;
-                }
-            }
+            units.extend(self.poll_group(&gid, host, addr, secret, now).await?);
         }
-        self.rpc.bulk(false);
-        polled?;
         // Forget cursors of mailboxes we no longer poll.
         if let Some(e) = self.groups.get_mut(&gid) {
             let live: BTreeSet<[u8; 32]> = e

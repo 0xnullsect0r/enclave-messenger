@@ -2001,6 +2001,103 @@ async fn sync_in_rounds() {
     assert!(group_texts(&later).contains(&"later".to_string()));
 }
 
+/// Counts the polls (2,048-byte requests) and bulk windows a client asks
+/// its transport for.
+#[derive(Clone)]
+struct Counting {
+    inner: LocalTransport,
+    polls: Arc<std::sync::atomic::AtomicUsize>,
+    bulk: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Counting {
+    fn new(inner: LocalTransport) -> Self {
+        Self {
+            inner,
+            polls: Arc::default(),
+            bulk: Arc::default(),
+        }
+    }
+    fn take(&self) -> (usize, usize) {
+        use std::sync::atomic::Ordering::SeqCst;
+        (self.polls.swap(0, SeqCst), self.bulk.swap(0, SeqCst))
+    }
+}
+
+#[async_trait::async_trait]
+impl enclave_net::transport::Transport for Counting {
+    async fn exchange(
+        &self,
+        server: &enclave_net::transport::ServerId,
+        request: Vec<u8>,
+    ) -> enclave_net::Result<Vec<u8>> {
+        // POLL_LEN (enclave-wire).
+        if request.len() == 2_048 {
+            self.polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        self.inner.exchange(server, request).await
+    }
+    fn set_bulk(&self, on: bool) {
+        if on {
+            self.bulk.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    async fn server_key(
+        &self,
+        server: &enclave_net::transport::ServerId,
+    ) -> enclave_net::Result<enclave_rpc::ServerKey> {
+        self.inner.server_key(server).await
+    }
+    fn now(&self) -> u64 {
+        self.inner.now()
+    }
+}
+
+/// A shaped client reads a group within its poll slots (09 §6.7): a
+/// group round is today's message and rekey mailboxes (yesterday's too,
+/// early in the day), never a bulk window; and a rekey and the message
+/// after it arrive through rounds alone.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_round_reads_in_slots() {
+    let net = network();
+    let counted = Counting::new(net.clone());
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut mo, _) = Client::create(memory(), Arc::new(counted.clone()), S2, "Mo")
+        .await
+        .unwrap();
+    let (mut jo, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Jo")
+        .await
+        .unwrap();
+    connect(&mut ada, &mut mo).await;
+    connect(&mut ada, &mut jo).await;
+    let gid = ada.create_group("G", &[mo.root()]).await.unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 3).await;
+
+    // Round 3 with period 2 is a group round, and not an upkeep round.
+    counted.take();
+    mo.sync_round_every(3, 2).await.unwrap();
+    let (polls, bulk) = counted.take();
+    assert_eq!(bulk, 0, "a group round opened a bulk window");
+    // One epoch: today's message mailbox and 3 rekey buckets (twice that
+    // in the first 2 h of the day).
+    assert!((4..=8).contains(&polls), "{polls} polls in a group round");
+
+    // A rekey (Jo joins) and a message in the new epoch reach Mo through
+    // rounds alone.
+    ada.add_group_members(&gid, &[jo.root()]).await.unwrap();
+    ada.send_group_text(&gid, "after the rekey").await.unwrap();
+    let mut seen = Vec::new();
+    for r in 4..20 {
+        seen.extend(mo.sync_round_every(r, 2).await.unwrap());
+        if group_texts(&seen).contains(&"after the rekey".to_string()) {
+            return;
+        }
+    }
+    panic!("the message after the rekey never arrived: {seen:?}");
+}
+
 /// Archive, pin to the top and mute: local to this device. A new message
 /// brings an archived conversation back unless it is muted; at most four
 /// conversations are pinned.

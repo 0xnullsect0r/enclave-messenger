@@ -103,6 +103,7 @@ Each entry is about 72 B of key material plus 8 B of indexing (PLAN: "about 72 B
 - If a bucket has more than 174 entries, the excess goes to the next bucket (`b + 1 mod 3`). Capacity is 522 ≥ 500.
 - Unit `b` is written to the bucket sub-mailbox `gbkt(d, b) = KMAC256(k_bucket, u32(d) ‖ u8(b), 256, "enclave/v1/net/grp-rekey-mailbox")` for the current day `d`. A device fetches only its own bucket's sub-mailbox (and the next one only if its entry is not found).
 - A device learns that it needs a rekey when it sees a message header from `s` with a generation it does not have. It then fetches its bucket.
+- **As implemented** (polling): a shaped client (`Client::sync_round_every`) reads one group per group round, and for each held epoch reads today's message mailbox and all three bucket sub-mailboxes, each in an ordinary poll slot (`09-transport.md` §6.7); yesterday's are read too during the first 2 h of the UTC day. Reading every bucket keeps which bucket is ours hidden from the server, at three polls instead of one.
 
 Cost: 3 units per rotation for 100 members × 5 devices, versus about 500 units for pairwise delivery.
 
