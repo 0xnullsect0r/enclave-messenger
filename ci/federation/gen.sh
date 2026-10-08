@@ -5,6 +5,9 @@
 #
 #   ci/federation/gen.sh up      # build the federation and start it
 #   ci/federation/gen.sh e2e     # run enclave-e2e against it (restarts B midway)
+#   ci/federation/gen.sh shape   # TRANSPORT=nym, after e2e: capture the
+#                                # device's link to its gateway, idle and
+#                                # busy, and check the traffic shape
 #   ci/federation/gen.sh logs    # every stack's logs (on failure)
 #   ci/federation/gen.sh down    # stop everything and remove the volumes
 #
@@ -274,14 +277,20 @@ servers_arg() {
   IFS=,; echo "${out[*]}"
 }
 
-e2e() {
-  local common=(--state "$WORK/e2e" --servers "$(servers_arg)"
+# enclave-e2e's arguments for every subcommand, in COMMON.
+common_args() {
+  COMMON=(--state "$WORK/e2e" --servers "$(servers_arg)"
     --foundation "$WORK/foundation/foundation.pub" --server-list "$WORK/foundation/server-list.bin")
   if [ "$TRANSPORT" = nym ]; then
-    common+=(--nymd "$NYMD")
-    if [ -n "$TORD" ]; then common+=(--tord "$TORD"); fi
+    COMMON+=(--nymd "$NYMD")
+    if [ -n "$TORD" ]; then COMMON+=(--tord "$TORD"); fi
     export ENCLAVE_NYM_TOPOLOGY=$LOCALNET/network.json ENCLAVE_NYM_API=$NYM_API
   fi
+}
+
+e2e() {
+  common_args
+  local common=("${COMMON[@]}")
   "$E2E" setup "${common[@]}" \
     --push-relay-keys "$WORK/push-relay-keys.bin" \
     --push-listen "0.0.0.0:$PUSH_PORT" \
@@ -291,6 +300,40 @@ e2e() {
   dc b $(profiles b) restart
   wait_healthy b
   "$E2E" after-restart "${common[@]}"
+}
+
+# The traffic-shape check (docs/09-transport.md §6.7): tcpdump on the
+# mixnet's bridge records this host's link to the gateway's WebSocket port
+# (both ways) while `enclave-e2e shape` runs Ada's shaped client idle, then busy;
+# pcap-check.py compares the two and the model. Only the host's link is
+# captured: the stacks' ingresses reach the gateway from their own
+# addresses on the bridge.
+shape() {
+  if [ "$TRANSPORT" != nym ]; then
+    echo "shape: TRANSPORT=nym only" >&2
+    exit 2
+  fi
+  local out=$WORK/shape gateway=10.77.0.21 br host rc=0
+  br=br-$(docker network inspect -f '{{.Id}}' enclave-nymnet | cut -c1-12)
+  host=$(ip -4 -o addr show dev "$br" | awk '{print $4}' | cut -d/ -f1)
+  rm -rf "$out"
+  mkdir -p "$out"
+  common_args
+  echo "== capturing $host ↔ $gateway:9000 on $br"
+  sudo tcpdump -Z root -i "$br" -n -s 0 -U -w "$out/link.pcap" \
+    "tcp and host $host and host $gateway and port 9000" 2> "$out/tcpdump.log" &
+  local capture=$!
+  sleep 2
+  "$E2E" shape "${COMMON[@]}" --marks "$out/marks" \
+    --seconds "${SHAPE_SECONDS:-90}" --warmup "${SHAPE_WARMUP:-30}" \
+    --profile "${SHAPE_PROFILE:-foreground}" || rc=$?
+  sudo kill -INT "$capture" 2>/dev/null || true
+  wait "$capture" || true
+  cat "$out/tcpdump.log"
+  [ "$rc" = 0 ] || return "$rc"
+  python3 "$ROOT/ci/federation/pcap-check.py" "$out/link.pcap" "$out/marks" \
+    --port 9000 --dst "$gateway" --src "$host" | tee "$out/report.txt"
+  return "${PIPESTATUS[0]}"
 }
 
 down() {
@@ -314,7 +357,8 @@ logs() {
 case "${1:-}" in
   up) up ;;
   e2e) e2e ;;
+  shape) shape ;;
   logs) logs ;;
   down) down ;;
-  *) echo "usage: $0 up|e2e|logs|down" >&2; exit 2 ;;
+  *) echo "usage: $0 up|e2e|shape|logs|down" >&2; exit 2 ;;
 esac

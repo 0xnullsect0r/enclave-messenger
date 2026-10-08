@@ -48,7 +48,7 @@ exchanged.** Everything below is build-level evidence plus in-process tests.
 | d | A custom gateway connector (for Tor under Nym)? | **Yes, with a patch.** Neither `custom_gateway_transceiver` (needs a custom gateway registration, skips authentication) nor `connect_to_mixnet_via_socks5` (proxies the other way) works. A small patch to nym-gateway-client (`set_stream_connector`) lets the caller open the gateway stream; `enclave-nymd` opens it through `enclave-tord`'s SOCKS5 port (arti in its own process). Verified on the local mixnet and in CI (`09-transport.md` §1). |
 | e | Can the server refuse "more SURBs" round trips? | Yes, with two settings: `maximum_reply_surbs_rerequests = 0`, and no reply blocks held in reserve (`minimum_reply_surb_storage_threshold = 0`; the default keeps 10 back for asking, which left a 16 KB reply 9 packets short and made the ingress ask anyway). The reply-block store takes those thresholds when it is created (`initialise_persistent_storage(&debug)`, not `new_with_default_storage`). Every request carries 12 reply blocks: the 11 regular packets nym-sphinx splits a 16,406 B reply into, plus one. Checked on the local mixnet. |
 | f | A local mixnet in Docker? | Yes, with a small patch (`ci/nym-localnet/offline.patch`): nym-node 1.21.5 wants a chain at start (network monitors, chain watcher, initial topology) and ignores its LP bind-address flags. Three mix nodes and a gateway run on 127.0.0.1 (`run-local.sh`) or in Docker (`compose.localnet.yml`); a static file stands in for nym-api. Measured: connect ≈0.2 s; request plus full reply ≈0.37–0.42 s. |
-| g | Packets per unit and poll | A reply is 11 regular packets (above); the request side is measured by the pcap check (N1, `ci/federation/pcap-check`). |
+| g | Packets per unit and poll | A unit is 11 regular packets, a poll with its 12 reply blocks 5, a reply 11 (`localnet_roundtrip` fails if they change). On the wire (`localnet_ticks` and `ci/federation/pcap-check.py`): 16.3 packets up a tick with loop cover and probes, frames of 2,452 B, 150 ms apart, the same idle and busy; 73 MB/h in Foreground at the WebSocket level, ≈80 MB/h with Tor (`math/cover-traffic.md` §10). CI checks the shape on every run (`09-transport.md` §6.7). |
 | h | In-memory storage | Devices use nym-sdk's ephemeral (in-memory) storage; nymd confines itself with nothing writable, and the round trip works that way. The ingress keeps its identity and reply store on disk. |
 | i | Sandbox credentials | Still open (N3). |
 
@@ -62,5 +62,5 @@ On a mid-range Android phone, an iPhone and a desktop, with live networks:
 - zk-nym credential acquisition through the credential proxy, and cost per GB;
 - whether disabling Nym's own Poisson stream is a supported configuration;
 - Tor exit → Nym gateway reachability on port 443;
-- measured data per profile against `docs/math/cover-traffic.md` (±20%);
+- measured data per profile against `docs/math/cover-traffic.md` (±20%) on live networks (Foreground on the local mixnet: inside the band, §10 there);
 - foreground battery cost (≤ 5 percentage points per hour above idle).

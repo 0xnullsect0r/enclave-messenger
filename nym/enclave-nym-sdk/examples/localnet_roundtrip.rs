@@ -130,7 +130,7 @@ async fn main() {
 
     // Paced: with a 100 ms gap, a unit's 11 packets take at least 1 s.
     let pacing = enclave_nym::Pacing {
-        tick: Duration::from_millis(1_600),
+        tick: Duration::from_millis(2_000),
         bulk: false,
         loop_cover: Duration::from_secs(15),
         probe: Duration::from_secs(30),

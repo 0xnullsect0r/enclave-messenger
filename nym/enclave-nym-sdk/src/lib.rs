@@ -45,13 +45,22 @@ pub const POLL_PACKETS: u32 = 5;
 /// Sphinx packets a unit sent one way takes (measured likewise).
 pub const UNIT_PACKETS: u32 = 11;
 
+/// Packet slots per tick beyond the unit and the poll: room for self-loop
+/// probes (0.1 a tick on average), retransmissions, reply-block top-ups
+/// and timer drift, so the paced queue empties every tick, and a backlog
+/// (after a bulk burst, say) drains in a few ticks instead of standing.
+/// Measured on the local mixnet (`examples/localnet_ticks.rs`): one spare
+/// slot left a standing queue of 40 packets.
+pub const SPARE_PACKETS: u32 = 4;
+
 /// The gap between real packets for `pacing`: a tick's unit and poll leave
-/// evenly across the tick, and a bulk transfer at the bulk cap.
+/// evenly across the tick (with [`SPARE_PACKETS`] slots to spare), and a
+/// bulk transfer at the bulk cap.
 pub fn packet_gap(pacing: &Pacing) -> Duration {
     if pacing.bulk {
         Duration::from_secs(1) / Pacing::BULK_PACKETS_PER_SEC
     } else {
-        pacing.tick / (UNIT_PACKETS + POLL_PACKETS)
+        pacing.tick / (UNIT_PACKETS + POLL_PACKETS + SPARE_PACKETS)
     }
 }
 
@@ -414,8 +423,9 @@ mod tests {
             loop_cover: Duration::from_secs(15),
             probe: Duration::from_secs(30),
         };
-        // 16 packets up per tick: one every 187.5 ms in Foreground.
-        assert_eq!(packet_gap(&p), Duration::from_micros(187_500));
+        // 16 packets up per tick and 4 spare slots: one every 3 s / 20
+        // = 150 ms in Foreground, the last 2.25 s into the tick.
+        assert_eq!(packet_gap(&p), Duration::from_millis(150));
         p.bulk = true;
         assert_eq!(packet_gap(&p), Duration::from_millis(25));
     }

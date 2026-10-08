@@ -6,6 +6,9 @@
 //!                           --foundation FILE --server-list FILE [--nymd PATH [--tord PATH]]
 //!                           [--push-relay-keys FILE --push-listen ADDR --push-endpoint URL]
 //! enclave-e2e after-restart --state DIR --servers … --foundation FILE --server-list FILE
+//! enclave-e2e shape         --state DIR --servers … --foundation FILE --server-list FILE
+//!                           --nymd PATH [--tord PATH] --marks FILE [--seconds N] [--warmup N]
+//!                           [--profile foreground|maximum]
 //! ```
 //!
 //! A route is `HOST:PORT` (the development TCP transport, CI job
@@ -35,8 +38,19 @@
 //!    on B still verify; the group still works;
 //! 8. at no point did anyone see a split view of a log.
 //!
-//! Profiles are kept in `--state` between the two runs. Any failure exits
+//! Profiles are kept in `--state` between the runs. Any failure exits
 //! non-zero with what went wrong.
+//!
+//! `shape`, after those two, is the traffic-shape check
+//! (`ci/federation/pcap-check.py`, `docs/09-transport.md` §6.7): Ada's
+//! client runs shaped in the Foreground (or Maximum) profile, as the vault
+//! runs it,
+//! over this process's mixnet client. After `--warmup` seconds she is idle
+//! for `--seconds`, then busy for as long (a message to Ben every 2 s),
+//! syncing on the vault's 3 s clock throughout. The phases' wall-clock
+//! bounds go to `--marks` (`idle_start idle_end busy_start busy_end`, Unix
+//! ms) for the checker, which compares a packet capture of the link to the
+//! gateway in both. Ben, idle meanwhile, then checks every message arrived.
 
 use enclave_core::{Client, ContactCard, Event, Options};
 use enclave_crypto::pwhash::PwParams;
@@ -89,7 +103,8 @@ fn main() -> ExitCode {
         match args.first().map(String::as_str) {
             Some("setup") => setup(&w, &args).await,
             Some("after-restart") => after_restart(&w).await,
-            _ => Err("usage: enclave-e2e setup|after-restart (see the module docs)".into()),
+            Some("shape") => shape(&w, &args).await,
+            _ => Err("usage: enclave-e2e setup|after-restart|shape (see the module docs)".into()),
         }?;
         // What went one way (the message B is to keep across its restart)
         // must leave before this process and its mixnet client exit.
@@ -593,5 +608,125 @@ async fn after_restart(w: &World) -> R<()> {
         .await?;
     }
     eprintln!("8. no split views");
+    seen.no_split_views()
+}
+
+/// Unix time in milliseconds.
+fn unix_ms() -> R<u64> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(e)?
+        .as_millis() as u64)
+}
+
+async fn shape(w: &World, args: &[String]) -> R<()> {
+    use enclave_net::schedule::Profile;
+    use enclave_net::shaped::{ShapedTransport, Shaping};
+    let secs = |n: &str, default: u64| -> R<Duration> {
+        flag(args, n)
+            .map(|v| v.parse::<u64>().map_err(|x| format!("{n}: {x}")))
+            .transpose()
+            .map(|v| Duration::from_secs(v.unwrap_or(default)))
+    };
+    let phase = secs("--seconds", 90)?;
+    let warmup = secs("--warmup", 30)?;
+    let marks = flag(args, "--marks").ok_or("missing --marks")?;
+    // Background's ticks are minutes apart at random: its shape needs hours
+    // of capture, which `enclave-e2e bench` (N4) measures instead.
+    let profile = match flag(args, "--profile").as_deref() {
+        None | Some("foreground") => Profile::Foreground,
+        Some("maximum") => Profile::Maximum,
+        Some(p) => return Err(format!("--profile: {p} (foreground or maximum)")),
+    };
+    // Ben only reads, afterwards, over the unshaped transport.
+    let mut ben = w.open(1)?;
+    let ben_root = ben.root();
+    let shaped = ShapedTransport::start(
+        Arc::clone(&w.transport),
+        Shaping::On(profile),
+        vec![w.servers[0]],
+    );
+    let mut ada = Client::open(
+        options(&w.state.join(NAMES[0]))?,
+        Arc::clone(&shaped) as Arc<dyn Transport>,
+    )
+    .map_err(|x| format!("ada: open: {x}"))?;
+    ada.set_foundation(w.foundation.clone()).map_err(e)?;
+    // Like the vault: a sync round started at most every 3 s, groups one
+    // round in `other_mailbox_period`, upkeep every `UPKEEP_EVERY` rounds.
+    let period = enclave_net::schedule::Scheduler::other_mailbox_period(profile) as u64;
+    let start = Instant::now();
+    let idle_at = start + warmup;
+    let busy_at = idle_at + phase;
+    let end = busy_at + phase;
+    let base_ms = unix_ms()?;
+    let ms = |t: Instant| base_ms + t.duration_since(start).as_millis() as u64;
+    eprintln!(
+        "shape: Ada shaped ({profile:?}); warm-up {warmup:?}, idle {phase:?}, busy {phase:?}"
+    );
+    let mut round = 0u64;
+    let mut next = start;
+    let mut last_send: Option<Instant> = None;
+    let mut sent = Vec::new();
+    while Instant::now() < end {
+        tokio::time::sleep_until(next.into()).await;
+        let now = Instant::now();
+        next = now + Duration::from_secs(3);
+        if now >= busy_at
+            && last_send.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(2))
+        {
+            let text = format!("shape {}", sent.len());
+            ada.send_text(&ben_root, &text)
+                .await
+                .map_err(|x| format!("ada: send: {x}"))?;
+            sent.push(text);
+            last_send = Some(now);
+        }
+        ada.sync_round_every(round, period)
+            .await
+            .map_err(|x| format!("ada: sync: {x}"))?;
+        round += 1;
+    }
+    std::fs::write(
+        &marks,
+        format!(
+            "{} {} {} {}\n",
+            ms(idle_at),
+            ms(busy_at),
+            ms(busy_at),
+            ms(end)
+        ),
+    )
+    .map_err(|x| format!("{marks}: {x}"))?;
+    eprintln!(
+        "shape: {} rounds, {} messages sent in the busy phase; marks in {marks}",
+        round,
+        sent.len()
+    );
+    if sent.is_empty() {
+        return Err("no message went out in the busy phase".into());
+    }
+    // Every message sent in the busy phase reached Ben.
+    let mut seen = Seen::default();
+    let ada_root = ada.root();
+    let mut missing: std::collections::HashSet<String> = sent.into_iter().collect();
+    let t = Instant::now();
+    while !missing.is_empty() {
+        for ev in seen.sync(&mut ben, "ben").await? {
+            if let Event::Message { root, message } = &ev
+                && *root == ada_root
+            {
+                missing.remove(&message.text);
+            }
+        }
+        if t.elapsed() > PATIENCE {
+            return Err(format!(
+                "ben: {} of the busy phase's messages missing",
+                missing.len()
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    eprintln!("  ben: every busy-phase message arrived");
     seen.no_split_views()
 }

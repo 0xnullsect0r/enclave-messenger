@@ -522,9 +522,12 @@ where
             self.next_real = None;
         }
         let next = self.poll_immediate_unpaced(cx);
-        let gap = crate::enclave::packet_gap();
-        if matches!(next, Poll::Ready(Some(_))) && !gap.is_zero() {
-            self.next_real = Some(Box::pin(sleep(gap)));
+        if matches!(next, Poll::Ready(Some(_))) {
+            crate::enclave::note_packet_out(self.transmission_buffer.total_size());
+            let gap = crate::enclave::packet_gap();
+            if !gap.is_zero() {
+                self.next_real = Some(Box::pin(sleep(gap)));
+            }
         }
         next
     }

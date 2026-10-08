@@ -269,21 +269,21 @@ Other crates:
 
 **Exit:**
 - Scenarios 1–7 pass over the local mixnet.
-- A pcap shows a constant packet count per tick, whether real or cover (`ci/federation/pcap-check`).
+- A pcap shows a constant packet count per tick, whether real or cover (`ci/federation/pcap-check`). Done: `gen.sh shape` in `federation-e2e-localnet` (`09` §6.7).
 - A sandbox smoke run passes.
 
 #### N2: client behaviour
 
 - **Tor under Nym:** netd bootstraps arti and dials the gateway's WSS through it. Maximum refuses to run without Tor. Done for the first part (N2.4): arti runs in `enclave-tord` (loopback SOCKS5), nymd dials its gateway and nym-api through it (`09` §1). Maximum's refusal is done in N2.5 (`09` §6.6).
 - **Loop cover:** every 10 s in Foreground and Maximum, every tick in Background. Done: set at runtime with each profile change (no rebuild needed; profiles still change only at transitions, RT-12), `09` §6.3.
-- **Packet pacing:** a tick's Sphinx packets are spread evenly across the tick (`09` §6.3). Done: 16 packets per tick, one per 187.5 ms.
+- **Packet pacing:** a tick's Sphinx packets are spread evenly across the tick (`09` §6.3). Done: 16 packets per tick in 20 slots, one per 150 ms.
 - **Self-loop probes** (`net/loop-probe`) and **RT-02 gateway switching:** loss >10% or latency >5× the median over 50 exchanges, at most one switch per 10 min. Done (`09` §6.3; tests `rt02_*`).
 - **One-way writes:** writes and cover carry 0 SURBs, so a tick is 1 unit + 1 poll up and 1 unit down (`09` open question 5). Done: messages, self-copies, group posts, typing and unit cover go one way, with delivery receipts and re-sends (`09` §6.1). Every other unit goes one way as well: its answer is kept by the server under a status id and fetched by a poll-sized `Status` request (`08` §2.2, `09` §6.1), so no unit carries reply blocks.
 - **Bulk cap:** 40 packets/s (`09` §6.4). Done.
 - **Maximum privacy:** push off, fallback forbidden, waits for all 3 KEMs (`09` §6.6, `04` §8). Done (N2.5): also no TCP route and nothing without Tor (`Transport::require_private`), held user content with "Extra protection: finishing…" on contact info, and the saved mode shown after a restart.
 
 **Exit:**
-- Measured data per profile is within ±20% of `math/cover-traffic.md`.
+- Measured data per profile is within ±20% of `math/cover-traffic.md`. Foreground (and so Maximum) measured on the local mixnet: 73 MB/h at the WebSocket level, ≈80 MB/h with Tor, inside the band (`math/cover-traffic.md` §10). Background and live networks: `enclave-e2e bench` (N4).
 - The gateway-switch tests pass (fake loss injection and killing a localnet gateway).
 - The Tor path works against the sandbox.
 

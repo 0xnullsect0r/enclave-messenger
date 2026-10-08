@@ -36,6 +36,27 @@ pub fn fragments_sent() -> u64 {
     FRAGMENTS_SENT.load(Ordering::SeqCst)
 }
 
+static PACKETS_OUT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static QUEUED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Real packets the client has let out (with Poisson off): fragments and
+/// their retransmissions.
+pub fn packets_out() -> u64 {
+    PACKETS_OUT.load(Ordering::SeqCst)
+}
+
+/// Real packets waiting for their turn to leave, as of the last one out:
+/// a backlog that doesn't empty means more is being sent than the pacing
+/// lets out.
+pub fn queued() -> usize {
+    QUEUED.load(Ordering::SeqCst)
+}
+
+pub(crate) fn note_packet_out(queued: usize) {
+    PACKETS_OUT.fetch_add(1, Ordering::SeqCst);
+    QUEUED.store(queued, Ordering::SeqCst);
+}
+
 pub(crate) fn add(n: usize) {
     OUTSTANDING.fetch_add(isize::try_from(n).unwrap_or(isize::MAX), Ordering::SeqCst);
     FRAGMENTS_SENT.fetch_add(u64::try_from(n).unwrap_or(u64::MAX), Ordering::SeqCst);

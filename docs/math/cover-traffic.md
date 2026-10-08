@@ -26,11 +26,11 @@ Each tick sends one 16,384 B unit (real or cover) and one 2,048 B poll. Bulk bur
 | `P` | Sphinx payload size | 2,048 B | V (Nym docs) |
 | `u` | Usable Enclave bytes per Sphinx packet after Nym's message framing | unknown, `u < P` | U, measured in M1.5/M4 |
 | `U` | Wire unit size | 16,384 B | fixed (D1) |
-| `k` | Sphinx packets per wire unit, `k = ⌈U / u⌉` | 9 to 11 (PLAN) | U |
-| `p` | Sphinx packets per poll object (2,048 B plus its reply SURBs) | 1 or 2 (PLAN) | U |
+| `k` | Sphinx packets per wire unit, `k = ⌈U / u⌉` | 11 (measured, §10) | V |
+| `p` | Sphinx packets per poll object (2,048 B plus its reply SURBs) | 5 (measured, §10; PLAN said 1 or 2) | V |
 | `T_fg` | Foreground and Maximum tick | 3 s | fixed (`Profile::mean_tick`) |
 | `T_bg` | Background tick mean (Poisson) | 120 s | fixed |
-| `λ_loop` | Nym loop-cover rate | 1 per 10 s (Foreground, Maximum); 1 per tick (Background) | specified, not implemented |
+| `λ_loop` | Nym loop-cover rate | 1 per 10 s (Foreground, Maximum); 1 per tick (Background), Nym loop cover and Enclave's self-loop probes together | implemented (`09-transport.md` §6.3) |
 | `o` | Tor + TLS + TCP/IP + WSS overhead factor on client bytes | ≈1.10 | estimated (§2.2) |
 
 Relationship between `u` and `k` (`k = ⌈16,384 / u⌉`):
@@ -208,9 +208,27 @@ See `12-servers.md` §7: 100k accounts with 5% of 150,000 devices in Foreground 
 
 If any measured data rate falls outside ±20% of §3 to §5, the tick length is adjusted **globally** (never per user; D10) through an RFC.
 
+## 10. Measured on a local mixnet (Foreground, 2026-10-08)
+
+`nym/enclave-nym-sdk/examples/localnet_ticks.rs` on `ci/nym-localnet/run-local.sh` (nym-node 1.21.5, three mix nodes, two gateways): a device sends a Foreground tick's poll (with its reply blocks) and one-way unit every 3 s, paced as the shaper sets it, to an ingress on the other gateway that answers every poll with a full reply unit. A capture of the device's link to its gateway, read by `ci/federation/pcap-check.py`, over 120 s:
+
+| Quantity | Measured | Model |
+|---|---|---|
+| Sphinx packets up per unit `k` | 11 | 9 to 11 |
+| Sphinx packets up per poll `p` (2,048 B plus 12 reply blocks) | 5 | 1 or 2 |
+| Packets up per tick, with loop cover and probes | 16.25 to 16.30 | `k + p` + 0.3 = 16.3 |
+| Frame size on the gateway connection | 2,452 B (2,413 B Sphinx + 39 B framing and encryption) | 2,413 B |
+| Spacing of packets up | 150 ms (`09-transport.md` §6.3) | even across the tick |
+| Paced queue | empty every tick | — |
+| Data up, WebSocket payloads | 48 MB/h | 1,200 × 16.3 × 2,413 B = 47.2 MB/h |
+| Data down, WebSocket payloads (acks and the reply's 11 packets, delivered unwrapped) | 25 MB/h | — |
+| Total, WebSocket payloads | **73 MB/h** | — |
+
+With TCP/IP headers (≈3.5%) and Tor's cells (≈6.5%, §2.2) on top, Foreground comes to ≈80 MB/h: above PLAN's 60–70 MB/h, inside its ±20% band (≤ 84 MB/h), so the tick stays at 3 s (§9). The extra comes from `p`: a poll carries the 12 reply blocks its 16 KB answer needs (open question 1). Down is smaller than up because the gateway delivers a packet's payload, not the whole Sphinx packet. The same tick, pacing and loop cover make Maximum's figures equal Foreground's; Background's (one tick per 120 s on average) scale by 3/120. CI repeats the shape part of this on every run with the real client (`09-transport.md` §6.7).
+
 ## Open questions
 
-1. The Nym SURB size is not known; if a reply of `k` packets needs `k` SURBs of several hundred bytes each, a poll may need 3 or more packets rather than PLAN's 1 to 2, raising every figure above by about 2 to 4%.
+1. ~~The Nym SURB size is not known.~~ Answered (§10): a poll with the 12 reply blocks its answer needs is 5 packets, not PLAN's 1 to 2. Foreground still lands inside the ±20% band.
 2. Whether Nym loop cover returning to the client counts toward the downlink budget in the same way on all platforms (it does in this model).
 3. Every request gets a reply unit in the implemented transports (§1, §2.1). Meeting PLAN's data budget requires sending writes and cover units without reply SURBs. Dropping those replies also removes the only delivery status a sender gets for a write; delivery would then be confirmed by receipts only.
 4. **Resolved:** the Background median latency with other mailboxes present was ≈140 s; Background now polls the inbox on 3 of every 4 ticks (≈112 s, §7.3).
