@@ -46,11 +46,14 @@
 //! client runs shaped in the Foreground (or Maximum) profile, as the vault
 //! runs it,
 //! over this process's mixnet client. After `--warmup` seconds she is idle
-//! for `--seconds`, then busy for as long (a message to Ben every 2 s),
+//! for `--seconds`, then busy for as long (a message every 6 s, to Ben and
+//! Cyrus in turn: an idle contact refills write tokens only as it reads, so
+//! one alone would run out),
 //! syncing on the vault's 3 s clock throughout. The phases' wall-clock
 //! bounds go to `--marks` (`idle_start idle_end busy_start busy_end`, Unix
 //! ms) for the checker, which compares a packet capture of the link to the
-//! gateway in both. Ben, idle meanwhile, then checks every message arrived.
+//! gateway in both. Ben and Cyrus, idle meanwhile, then check every message
+//! arrived.
 
 use enclave_core::{Client, ContactCard, Event, Options};
 use enclave_crypto::pwhash::PwParams;
@@ -638,9 +641,9 @@ async fn shape(w: &World, args: &[String]) -> R<()> {
         Some("maximum") => Profile::Maximum,
         Some(p) => return Err(format!("--profile: {p} (foreground or maximum)")),
     };
-    // Ben only reads, afterwards, over the unshaped transport.
-    let mut ben = w.open(1)?;
-    let ben_root = ben.root();
+    // Ben and Cyrus only read, afterwards, over the unshaped transport.
+    let mut readers = [w.open(1)?, w.open(2)?];
+    let roots = [readers[0].root(), readers[1].root()];
     let shaped = ShapedTransport::start(
         Arc::clone(&w.transport),
         Shaping::On(profile),
@@ -667,19 +670,20 @@ async fn shape(w: &World, args: &[String]) -> R<()> {
     let mut round = 0u64;
     let mut next = start;
     let mut last_send: Option<Instant> = None;
-    let mut sent = Vec::new();
+    let mut sent: Vec<(usize, String)> = Vec::new();
     while Instant::now() < end {
         tokio::time::sleep_until(next.into()).await;
         let now = Instant::now();
         next = now + Duration::from_secs(3);
         if now >= busy_at
-            && last_send.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(2))
+            && last_send.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(6))
         {
+            let to = sent.len() % 2;
             let text = format!("shape {}", sent.len());
-            ada.send_text(&ben_root, &text)
+            ada.send_text(&roots[to], &text)
                 .await
-                .map_err(|x| format!("ada: send: {x}"))?;
-            sent.push(text);
+                .map_err(|x| format!("ada: send to {}: {x}", NAMES[to + 1]))?;
+            sent.push((to, text));
             last_send = Some(now);
         }
         ada.sync_round_every(round, period)
@@ -706,27 +710,34 @@ async fn shape(w: &World, args: &[String]) -> R<()> {
     if sent.is_empty() {
         return Err("no message went out in the busy phase".into());
     }
-    // Every message sent in the busy phase reached Ben.
+    // Every message sent in the busy phase arrived.
     let mut seen = Seen::default();
     let ada_root = ada.root();
-    let mut missing: std::collections::HashSet<String> = sent.into_iter().collect();
-    let t = Instant::now();
-    while !missing.is_empty() {
-        for ev in seen.sync(&mut ben, "ben").await? {
-            if let Event::Message { root, message } = &ev
-                && *root == ada_root
-            {
-                missing.remove(&message.text);
+    for (i, reader) in readers.iter_mut().enumerate() {
+        let who = NAMES[i + 1];
+        let mut missing: std::collections::HashSet<&str> = sent
+            .iter()
+            .filter(|(to, _)| *to == i)
+            .map(|(_, text)| text.as_str())
+            .collect();
+        let t = Instant::now();
+        while !missing.is_empty() {
+            for ev in seen.sync(reader, who).await? {
+                if let Event::Message { root, message } = &ev
+                    && *root == ada_root
+                {
+                    missing.remove(message.text.as_str());
+                }
             }
+            if t.elapsed() > PATIENCE {
+                return Err(format!(
+                    "{who}: {} of the busy phase's messages missing",
+                    missing.len()
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
-        if t.elapsed() > PATIENCE {
-            return Err(format!(
-                "ben: {} of the busy phase's messages missing",
-                missing.len()
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        eprintln!("  {who}: every busy-phase message arrived");
     }
-    eprintln!("  ben: every busy-phase message arrived");
     seen.no_split_views()
 }

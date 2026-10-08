@@ -70,15 +70,21 @@ fn run(profile: Profile, busy: bool, ticks: usize, rng: &mut HedgedRng) -> (Vec<
 #[test]
 fn tick_timing_is_independent_of_real_traffic() {
     let mut rng = HedgedRng::new().unwrap();
+    const N: usize = 20_000;
     for profile in [Profile::Foreground, Profile::Background, Profile::Maximum] {
-        let (idle, idle_polls) = run(profile, false, 3000, &mut rng);
-        let (busy, busy_polls) = run(profile, true, 3000, &mut rng);
+        let (idle, idle_polls) = run(profile, false, N, &mut rng);
+        let (busy, busy_polls) = run(profile, true, N, &mut rng);
         let d = ks(idle.clone(), busy.clone());
-        // Critical value for alpha = 0.001 with n = m = 3000. The draws come
-        // from fresh OS randomness (the hedged RNG can't be seeded), so at
-        // 0.01 the Background profile failed by chance about 1 run in 100;
-        // a delay that depended on the queue would give a far larger D.
-        let crit = 1.949 * ((6000.0) / (3000.0 * 3000.0f64)).sqrt();
+        // The draws come from fresh OS randomness (the hedged RNG can't be
+        // seeded), so the test itself is random: at alpha 0.01 and then
+        // 0.001 with 3,000 ticks, Background failed by chance in CI. Alpha
+        // is 10⁻⁶ now (c = √(−ln(α/2)/2) ≈ 2.69), with enough ticks that a
+        // delay depending on the queue still gives D far above the bound
+        // (≈0.027 for 20,000 against 20,000).
+        let alpha: f64 = 1e-6;
+        let c = (-(alpha / 2.0).ln() / 2.0).sqrt();
+        let n = N as f64;
+        let crit = c * ((2.0 * n) / (n * n)).sqrt();
         assert!(d < crit, "{profile:?}: KS D = {d} ≥ {crit}");
         // Poll pattern is identical whatever is queued.
         assert_eq!(idle_polls, busy_polls, "{profile:?}");
