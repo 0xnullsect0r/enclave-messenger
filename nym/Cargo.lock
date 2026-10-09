@@ -2055,6 +2055,7 @@ dependencies = [
  "nym-sdk",
  "nym-sphinx",
  "nym-topology",
+ "nym-validator-client",
  "rand_core 0.6.4",
  "reqwest 0.13.5",
  "rustls 0.23.45",

@@ -277,7 +277,8 @@ jobs:
           # The SOCKS5 front a device puts Tor behind, dialling directly
           # here (no Tor network in CI).
           cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
-          (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-dev-proxy)
+          (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-dev-proxy \
+            && cargo build --release --locked -p enclave-nym-sdk --example live_bench)
       - name: Three stacks and a mixnet, one foundation
         run: TRANSPORT=nym ci/federation/gen.sh up
       - name: End to end over the mixnet through tord, with a restart of one stack
@@ -286,11 +287,17 @@ jobs:
         run: |
           command -v tcpdump >/dev/null || sudo apt-get install -y --no-install-recommends tcpdump
           TRANSPORT=nym TORD=$PWD/target/release/enclave-tord ci/federation/gen.sh shape
+      - name: Mixnet path numbers (live_bench on the local mixnet)
+        run: |
+          TRANSPORT=nym ci/federation/gen.sh bench
+          { echo '### live_bench, local mixnet'; echo '```json'; cat target/federation/bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: traffic-shape
-          path: target/federation/shape/
+          path: |
+            target/federation/shape/
+            target/federation/bench.json
           if-no-files-found: ignore
       - if: failure()
         run: TRANSPORT=nym ci/federation/gen.sh logs

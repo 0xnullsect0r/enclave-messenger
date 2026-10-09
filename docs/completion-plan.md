@@ -303,8 +303,8 @@ Other crates:
 
 - **Fallback:** `enclave-ingress onion` (an arti onion service), with the descriptor's `onion` field filled and the consent sheet "Backup route: slower to hide who you talk to". It is never used in Maximum.
 - **Censorship mode:** obfs4 through `ptrs` in-process. Snowflake and WebTunnel run as declared Go-subprocess exceptions (IPtProxy on iOS), only in censorship mode, with "Try a bridge?" detection (`09` §7).
-- **Measurement:** `enclave-e2e bench` (RSS, cold connect, throughput, packets per class, bytes per hour, credential cost), plus a hidden **Network diagnostics** screen on mobile that exports JSON.
-- Workflow `nym-live.yml`: the sandbox nightly and mainnet weekly.
+- **Measurement:** `enclave-e2e bench` (RSS, cold connect, throughput, packets per class, bytes per hour, credential cost), plus a hidden **Network diagnostics** screen on mobile that exports JSON. Bench done as `live_bench` (`nym/enclave-nym-sdk/examples`): local mixnet in CI, sandbox nightly and mainnet weekly through Tor with the cost check (`nym-live.yml`; funded accounts are G7). Packets per class and bytes per hour come from the pcap shape check. The diagnostics screen waits for A1/I1.
+- Workflow `nym-live.yml`: the sandbox nightly and mainnet weekly. Done (jobs `tor-smoke` and `nym-bench`).
 - **Post-quantum Nym:** an adapter for Nym's PQ Sphinx (Outfox/Lewes) behind a feature, switched on when nym-sdk exposes it (External Gate G13).
 
 **Exit:** `docs/spikes/m4-network.md` is rewritten as the M4 gate report, with device numbers for the §7 gate. A failure triggers an RFC.

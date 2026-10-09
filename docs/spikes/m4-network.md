@@ -50,11 +50,24 @@ exchanged.** Everything below is build-level evidence plus in-process tests.
 | f | A local mixnet in Docker? | Yes, with a small patch (`ci/nym-localnet/offline.patch`): nym-node 1.21.5 wants a chain at start (network monitors, chain watcher, initial topology) and ignores its LP bind-address flags. Three mix nodes and a gateway run on 127.0.0.1 (`run-local.sh`) or in Docker (`compose.localnet.yml`); a static file stands in for nym-api. Measured: connect ≈0.2 s; request plus full reply ≈0.37–0.42 s. |
 | g | Packets per unit and poll | A unit is 11 regular packets, a poll with its 12 reply blocks 5, a reply 11 (`localnet_roundtrip` fails if they change). On the wire (`localnet_ticks` and `ci/federation/pcap-check.py`): 16.3 packets up a tick with loop cover and probes, frames of 2,452 B, 150 ms apart, the same idle and busy; 73 MB/h in Foreground at the WebSocket level, ≈80 MB/h with Tor (`math/cover-traffic.md` §10). CI checks the shape on every run (`09-transport.md` §6.7). |
 | h | In-memory storage | Devices use nym-sdk's ephemeral (in-memory) storage; nymd confines itself with nothing writable, and the round trip works that way. The ingress keeps its identity and reply store on disk. |
-| i | Sandbox credentials | Still open (N3). |
+| i | Sandbox credentials | The device path is built and runs end to end in CI against a stand-in proxy (N3, `09-transport.md` §7): Privacy Pass tokens from the credential gate, a ticketbook whose ecash keys never leave nymd, imported into the running client. Spending against the sandbox's gateways needs a funded account (External Gate G7); `nym-live.yml` runs `live_bench` there nightly once the `NYM_SANDBOX_MNEMONIC` secret exists. |
 
 The TLS under nym's gateway connection was on rustls 0.21; the patched copies use tungstenite 0.24 on rustls 0.23.
 
 ## Still to measure (M4 gate)
+
+`live_bench` (`nym/enclave-nym-sdk/examples/live_bench.rs`) measures the
+mixnet path from one process: cold connect of an ingress-role client and a
+device client, 20 round trips (a poll with its reply blocks, answered with a
+unit), 40 units one way in a bulk window, peak resident memory, tickets
+spent, and the ecash contract's ticketbook deposit. It runs on the local
+mixnet in every CI run (`gen.sh bench`, job summary and artifact), and on
+the sandbox nightly and mainnet weekly through real Tor (`nym-live.yml`),
+which also turns the deposit into dollars per user per month and fails
+above $1 on mainnet. On the local mixnet (2026-10-09, debug build, both
+clients in one process): connect 0.07–0.19 s, round trips p50 432 ms and
+p95 472 ms with none lost, bulk 43.6 KiB/s of payload (the 40 packets/s
+cap, with acknowledgements), peak memory 45 MiB.
 
 On a mid-range Android phone, an iPhone and a desktop, with live networks:
 

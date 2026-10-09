@@ -8,6 +8,9 @@
 #   ci/federation/gen.sh shape   # TRANSPORT=nym, after e2e: capture the
 #                                # device's link to its gateway, idle and
 #                                # busy, and check the traffic shape
+#   ci/federation/gen.sh bench   # TRANSPORT=nym: live_bench on the local
+#                                # mixnet (connect, round trips, bulk,
+#                                # memory) into $WORK/bench.json
 #   ci/federation/gen.sh logs    # every stack's logs (on failure)
 #   ci/federation/gen.sh down    # stop everything and remove the volumes
 #
@@ -382,6 +385,18 @@ shape() {
   return "${PIPESTATUS[0]}"
 }
 
+# The mixnet path's numbers on the local mixnet (N4): live_bench from the
+# nym/ workspace, its JSON in $WORK/bench.json. A regression check, not
+# the M4 gate's device numbers (nym-live.yml measures live networks).
+bench() {
+  if [ "$TRANSPORT" != nym ]; then
+    echo "bench: TRANSPORT=nym only" >&2
+    exit 2
+  fi
+  ENCLAVE_NYM_TOPOLOGY=$LOCALNET/network.json ENCLAVE_NYM_API=$NYM_API RUST_LOG=off \
+    "${BENCH:-$ROOT/nym/target/release/examples/live_bench}" --out "$WORK/bench.json"
+}
+
 down() {
   for s in "${STACKS[@]}"; do
     [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym --profile foundation down -v --remove-orphans || true
@@ -409,7 +424,8 @@ case "${1:-}" in
   up) up ;;
   e2e) e2e ;;
   shape) shape ;;
+  bench) bench ;;
   logs) logs ;;
   down) down ;;
-  *) echo "usage: $0 up|e2e|shape|logs|down" >&2; exit 2 ;;
+  *) echo "usage: $0 up|e2e|shape|bench|logs|down" >&2; exit 2 ;;
 esac
