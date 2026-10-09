@@ -233,8 +233,6 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/proto/pending-root` | CTX-R | — | Pending root action with `not_before` | 03 §8.1 |
-| `enclave/v1/proto/veto` | CTX-C | — | Device approval or veto of a manifest update | 03 §3.3, §8.1 |
 | `enclave/v1/proto/notify-key` | KMAC | 256 | Daily notification key chain step | 10 §4 |
 
 ### 3.2 Groups
@@ -272,6 +270,8 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 | `enclave/v1/net/grp-read-key`, `enclave/v1/net/grp-read-cred` | `enclave/v1/rpc/read-credential` of the mailbox's write token (`grp-write-token`): the server derives the read credential's hash from the first write, so a group mailbox is created and readable in one unit. A separate read key would need a registration request per mailbox per day (four per epoch) and protects against nobody: only members and the server ever hold the write token |
 | `enclave/v1/proto/invite-psk`, `enclave/v1/proto/invite-cap` | `enclave/v1/invite/psk` and `enclave/v1/invite/cap` (`eqxdh.rs` `invite_psk`, `invite_cap`): the same derivations, built under the invite namespace |
 | `enclave/v1/proto/link-cap` | None: the link rendezvous mailbox's owner secret is random (`link/owner`) and travels in the link code, so the server never sees anything derived from the link secret that keys the exchange |
+| `enclave/v1/proto/pending-root` | None: an update without a co-signature is the manifest itself, held by each contact from when it first saw it (`guard.rs`); a root-signed `not_before` would be chosen by whoever holds the root. The manifest and its attestations go into key transparency together as the account record (03 §8.1) |
+| `enclave/v1/proto/veto` | `enclave/v1/ctx/manifest-cosign` and `enclave/v1/ctx/manifest-veto` (`attest.rs`): one context per verdict, signing the root, version and manifest hash |
 | `enclave/v1/proto/msg-id` | None: a 1:1 message id is 16 random bytes its sender picks (`core/msg-id`), which a re-send keeps; a derived id would need a counter both sides agree on and add nothing |
 | `enclave/v1/proto/bond-reroot` | None: meeting again replaces the sessions with new bonded ones (an EQXDH greeting with the new bond PSK, `client/meet.rs`), which heals more than mixing a PSK into the old root would |
 | `enclave/v1/net/token-key` | Write tokens from a shared, per-device pool of hedged random values (`core/write-token`, 09 §3.3): per-contact keys let the server group writes by registration batch |

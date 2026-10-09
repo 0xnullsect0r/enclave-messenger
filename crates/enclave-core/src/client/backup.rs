@@ -92,6 +92,9 @@ impl Client {
         );
         store.delete("backup-secrets", b"account")?;
         let account = AccountKeys::import_shared(&shared, Some(&rs))?;
+        // The manifest the account's devices held when the backup was made:
+        // their verdicts on this restore are the ones contacts count.
+        let held = store.get(NS_PROFILE, b"manifest")?.unwrap_or_default();
         let mut profile = Profile::decode(
             &store
                 .get(NS_PROFILE, b"profile")?
@@ -181,6 +184,17 @@ impl Client {
         store.put(NS_PROFILE, b"profile", &profile.encode(), &mut rng)?;
         store.put(NS_PROFILE, b"manifest", &manifest.encode()?, &mut rng)?;
         store.put(NS_PROFILE, b"signed-manifest", &signed.to_bytes(), &mut rng)?;
+        // No device of the account co-signed this: contacts hold it for 72
+        // hours and the old devices may stop it (`guard.rs`).
+        let len = u32::try_from(held.len()).map_err(|_| CoreError::NotFound)?;
+        let rec = [
+            &now.to_be_bytes()[..],
+            &len.to_be_bytes(),
+            &held,
+            &prev_bytes,
+        ]
+        .concat();
+        store.put(NS_PROFILE, super::guard::RECOVERING, &rec, &mut rng)?;
 
         let mut contacts = BTreeMap::new();
         for (_, v) in store.scan(NS_CONTACTS)? {

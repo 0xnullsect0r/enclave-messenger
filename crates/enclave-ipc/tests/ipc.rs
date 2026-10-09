@@ -99,6 +99,8 @@ fn snapshot() -> Snapshot {
         join_code: "enclave:link#q".into(),
         join_words: "x y z".into(),
         recovery_alert: "3 Oct 14:02".into(),
+        recovery_hold: "9 Oct 08:00".into(),
+        recovery_stopped: true,
         meet_code: "enclave:meet#abc".into(),
         meet_words: "harbor ivory kettle".into(),
         meet_name: "Sam".into(),

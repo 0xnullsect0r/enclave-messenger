@@ -224,6 +224,11 @@ pub struct Snapshot {
     /// When someone else's change to this account takes effect unless it is
     /// stopped ("3 Oct 14:02"), or empty.
     pub recovery_alert: String,
+    /// This device restored the account and contacts hold it until this
+    /// time ("3 Oct 14:02"), or empty. It can't send meanwhile.
+    pub recovery_hold: String,
+    /// Another device of the account stopped this device's restore.
+    pub recovery_stopped: bool,
     /// Our in-person code while the meet sheet is open.
     pub meet_code: String,
     /// Seal words after scanning their code.
@@ -678,6 +683,8 @@ impl Snapshot {
             .str(&self.join_code)
             .str(&self.join_words)
             .str(&self.recovery_alert)
+            .str(&self.recovery_hold)
+            .bool(self.recovery_stopped)
             .str(&self.meet_code)
             .str(&self.meet_words)
             .str(&self.meet_name)
@@ -863,6 +870,8 @@ impl Snapshot {
             join_code: r.str()?,
             join_words: r.str()?,
             recovery_alert: r.str()?,
+            recovery_hold: r.str()?,
+            recovery_stopped: r.bool()?,
             meet_code: r.str()?,
             meet_words: r.str()?,
             meet_name: r.str()?,

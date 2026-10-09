@@ -748,6 +748,19 @@ pub fn name_key(name: &str) -> Option<[u8; 32]> {
 /// descriptor digest: the empty name, which no username can be.
 pub const DESCRIPTOR_LOOKUP_KEY: [u8; 32] = [0; 32];
 
+/// First byte of a `DirKind::Username` get for an account record: never
+/// the first byte of a UTF-8 name.
+pub const ACCOUNT_LOOKUP_TAG: u8 = 0xFF;
+
+/// The key of a `DirKind::Username` get for the key-transparency record of
+/// the account whose manifest directory key is `manifest_key`
+/// (`03-identity.md` §8.1): [`ACCOUNT_LOOKUP_TAG`] then its last 31 bytes.
+pub fn account_lookup_key(manifest_key: &[u8; 32]) -> [u8; 32] {
+    let mut k = *manifest_key;
+    k[0] = ACCOUNT_LOOKUP_TAG;
+    k
+}
+
 /// Inverse of [`name_key`].
 pub fn key_name(key: &[u8; 32]) -> Option<String> {
     let n = key.iter().position(|&b| b == 0).unwrap_or(32);

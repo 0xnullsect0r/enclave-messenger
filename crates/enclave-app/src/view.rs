@@ -333,6 +333,8 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     }
     ui.set_join_words(s.join_words.clone().into());
     ui.set_recovery_alert(s.recovery_alert.clone().into());
+    ui.set_recovery_hold(s.recovery_hold.clone().into());
+    ui.set_recovery_stopped(s.recovery_stopped);
     ui.set_username_problem(s.username_problem.clone().into());
     ui.set_kt_split(s.kt_split.clone().into());
     ui.set_route(i32::from(s.route));

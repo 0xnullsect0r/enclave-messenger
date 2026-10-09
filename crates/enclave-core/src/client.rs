@@ -90,6 +90,11 @@ pub struct Contact {
 }
 
 impl Contact {
+    /// The version of their manifest this device has taken.
+    pub fn manifest_version(&self) -> u64 {
+        self.manifest.version
+    }
+
     /// Number of linked devices the contact has.
     pub fn device_count(&self) -> usize {
         self.manifest.devices.len()
@@ -150,7 +155,7 @@ pub use braid::BRAID_DEADLINE_SECS;
 pub use gossip::{GossipItem, KtAlert};
 pub use group_hosts::HOST_VOTE_SECS;
 pub use groups::{GroupInfo, GroupMessage, GroupReaction};
-pub use guard::RecoveryAlert;
+pub use guard::{RecoveryAlert, RecoveryHold};
 pub use invites::{InviteInfo, JOIN_PREFIX, JoinLink};
 pub use link::{DeviceInfo, LinkCode, LinkOffer, LinkProgress, LinkingDevice};
 pub use location::{Location, MAX_LOCATION_LABEL};
@@ -287,6 +292,14 @@ pub enum Event {
     /// This device was removed from the account by another device. It can
     /// no longer read new messages; the app should say so and offer to erase.
     RemovedFromAccount,
+    /// This device restored the account, and one of the account's other
+    /// devices stopped the change: contacts will never accept it ("One of
+    /// your other devices stopped this change").
+    RecoveryStopped,
+    /// This device's restore of the account was co-signed by another
+    /// device or waited out its 72 hours: contacts accept it, and it can
+    /// send.
+    RecoveryDone,
     /// We were added to a group.
     GroupJoined {
         /// Group.
@@ -1490,6 +1503,7 @@ impl Client {
         events.append(&mut self.resend_outbox(now).await?);
         events.append(&mut self.release_held(now).await?);
         events.append(&mut self.check_own_manifest(now).await?);
+        events.append(&mut self.check_recovering(now).await?);
         // The third KEM for someone met through a group (`braid.rs`).
         if let Err(e) = self.upgrade_braids(now).await
             && matches!(e, CoreError::Net(_))
@@ -1665,6 +1679,11 @@ impl Client {
                             }
                             guard::Judgement::Vetoed => {
                                 return Err(ProtoError::BadSignature.into());
+                            }
+                            // Held until the server's log has it.
+                            guard::Judgement::Unlogged => {
+                                self.hold_request(&rid, env, now + 600, now)?;
+                                return Ok(None);
                             }
                         }
                     }
@@ -2135,6 +2154,9 @@ impl Client {
     }
 
     async fn send_content(&mut self, root: &[u8; 64], content: &Content, now: u64) -> Result<()> {
+        if content.is_personal() {
+            self.require_not_held()?;
+        }
         // On the record, what a person writes is signed (`record.rs`).
         let content = &self.sign_for(root, content)?;
         // Too large for one envelope: continuation units (`parts.rs`).

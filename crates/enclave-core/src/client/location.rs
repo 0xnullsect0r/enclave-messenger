@@ -96,6 +96,7 @@ impl Client {
             return Err(CoreError::NotAccepted);
         }
         let timer = c.timer;
+        self.require_not_held()?;
         let now = self.now();
         let id: MsgId = self.rng.array("core/msg-id")?;
         let mut m = self.new_message(root, id, true, "", timer, now)?;

@@ -1226,9 +1226,13 @@ impl Engine {
                 };
                 self.push();
                 if let Some(c) = self.client.as_mut()
-                    && c.send_group_text(&gid, &text).await.is_err()
+                    && let Err(e) = c.send_group_text(&gid, &text).await
                 {
-                    self.status = "Couldn't send to the group yet. We'll keep trying.".into();
+                    self.status = if matches!(e, CoreError::RecoveryHeld) {
+                        HELD_TEXT.into()
+                    } else {
+                        "Couldn't send to the group yet. We'll keep trying.".into()
+                    };
                 }
             }
             Cmd::Send(id, text) => {
@@ -1246,6 +1250,7 @@ impl Engine {
                         CoreError::OutOfTokens => {
                             "Waiting for them to come online before sending more.".into()
                         }
+                        CoreError::RecoveryHeld => HELD_TEXT.into(),
                         _ => "Couldn't send yet. We'll try again when you're back online.".into(),
                     };
                 }
@@ -2679,6 +2684,9 @@ impl Engine {
                             _ => {}
                         }
                     }
+                    if events.contains(&Event::RecoveryStopped) {
+                        self.status = "One of your other devices stopped this change. Your contacts won't accept this device.".into();
+                    }
                     if events.contains(&Event::RemovedFromAccount) {
                         self.status = "This device was removed from your account on another device. It can't get new messages.".into();
                     }
@@ -2859,17 +2867,21 @@ impl Engine {
                     .unwrap_or_else(|| "Your server".into())
             })
             .unwrap_or_default();
+        let when = |until: u64| {
+            use chrono::TimeZone;
+            chrono::Local
+                .timestamp_opt(until as i64, 0)
+                .single()
+                .map(|t| t.format("%-d %b %H:%M").to_string())
+                .unwrap_or_default()
+        };
         s.recovery_alert = c
             .recovery_alert()
-            .map(|a| {
-                use chrono::TimeZone;
-                chrono::Local
-                    .timestamp_opt(a.until as i64, 0)
-                    .single()
-                    .map(|t| t.format("%-d %b %H:%M").to_string())
-                    .unwrap_or_default()
-            })
+            .map(|a| when(a.until))
             .unwrap_or_default();
+        let hold = c.recovery_hold();
+        s.recovery_hold = hold.map(|h| when(h.until)).unwrap_or_default();
+        s.recovery_stopped = hold.is_some_and(|h| h.stopped);
         if self.reveal_words {
             let lang = c
                 .setting("words-language")
@@ -3334,6 +3346,10 @@ impl Engine {
 }
 
 /// "3 hours behind", "2 days ahead": a clock skew in words.
+/// Why a send was refused while contacts hold this device's restore.
+const HELD_TEXT: &str =
+    "You can send once your contacts accept this device. Until then they wouldn't get it.";
+
 fn describe_skew(skew: i64) -> String {
     let secs = skew.unsigned_abs();
     let (n, unit) = if secs < 2 * 3600 {

@@ -34,7 +34,7 @@ pub use client::{
 };
 pub use client::{
     ConvPrefs, Hit, Location, MAX_PINNED_CONVERSATIONS, MAX_PINS, MeetMatch, Place, RecoveryAlert,
-    words_from_shares,
+    RecoveryHold, words_from_shares,
 };
 pub use client::{ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS, TicketWallet, fetch_due};
 pub use enclave_kt::KtPolicy;
@@ -88,6 +88,10 @@ pub enum CoreError {
     /// contact ("Extra protection: finishing…", `docs/04-eqxdh.md` §7).
     #[error("extra protection is still finishing for this contact")]
     Finishing,
+    /// This device restored the account, and contacts hold the change for
+    /// up to 72 hours (`03-identity.md` §8.1): what it sent would be lost.
+    #[error("your account is still being set up on this device")]
+    RecoveryHeld,
     /// Not allowed in Maximum privacy (push, `docs/10-push.md`).
     #[error("not available in Maximum privacy")]
     MaximumPrivacy,

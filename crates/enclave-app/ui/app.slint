@@ -700,6 +700,8 @@ export component AppWindow inherits Window {
     in property <image> join-qr;
     in property <string> join-words;
     in property <string> recovery-alert;
+    in property <string> recovery-hold;
+    in property <bool> recovery-stopped;
     in property <string> username-problem;
     in property <string> kt-split;
     in property <string> clock-skew;
@@ -1063,6 +1065,16 @@ export component AppWindow inherits Window {
                         }
                         QuietButton { text: "It's me"; clicked => { root.approve-recovery(); } }
                     }
+                }
+                if root.recovery-stopped: Notice {
+                    title: "One of your other devices stopped this change";
+                    text: "Your contacts won't accept this device, so it can't send. If this was you, link this device from your other one instead.";
+                    kind: 2;
+                }
+                if root.recovery-hold != "" && !root.recovery-stopped: Notice {
+                    title: "Your contacts are checking this device";
+                    text: "You restored your account without one of your other devices, so contacts wait until " + root.recovery-hold + " before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then.";
+                    kind: 1;
                 }
                 if root.joining != "": Notice {
                     title: "Waiting to join " + root.joining;

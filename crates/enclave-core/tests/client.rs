@@ -905,7 +905,14 @@ async fn recovery_without_a_device_waits_and_can_be_vetoed() {
             .all(|e| !matches!(e, Event::Message { .. } | Event::Request { .. })),
         "{ev:?}"
     );
-    let _ = thief.send_text(&b.root(), "it's me, really").await;
+    // The thief's device learns it was stopped and refuses to send.
+    let ev = thief.sync().await.unwrap();
+    assert!(ev.contains(&Event::RecoveryStopped), "{ev:?}");
+    assert!(thief.recovery_hold().is_some_and(|h| h.stopped));
+    assert!(matches!(
+        thief.send_text(&b.root(), "it's me, really").await,
+        Err(CoreError::RecoveryHeld)
+    ));
     a.send_text(&b.root(), "ignore any new device of mine")
         .await
         .unwrap();
@@ -928,6 +935,12 @@ async fn recovery_without_a_device_waits_and_can_be_vetoed() {
     let mut a_new = Client::restore(&words.join(" "), &archive, memory(), Arc::new(net.clone()))
         .await
         .unwrap();
+    // Until then the new phone can't send: contacts would hold it.
+    assert!(a_new.recovery_hold().is_some_and(|h| !h.stopped));
+    assert!(matches!(
+        a_new.send_text(&b.root(), "too early").await,
+        Err(CoreError::RecoveryHeld)
+    ));
     net.advance(601);
     let ev = a.sync().await.unwrap();
     assert!(
@@ -942,7 +955,9 @@ async fn recovery_without_a_device_waits_and_can_be_vetoed() {
         ev.iter().all(|e| !matches!(e, Event::Request { .. })),
         "{ev:?}"
     );
-    a_new.sync().await.unwrap();
+    let ev = a_new.sync().await.unwrap();
+    assert!(ev.contains(&Event::RecoveryDone), "{ev:?}");
+    assert!(a_new.recovery_hold().is_none());
     a_new
         .send_text(&b.root(), "new phone, same me")
         .await
@@ -1148,6 +1163,9 @@ async fn rt04_split_view_detected_by_gossip() {
     net.with_server(&S1, |s| {
         s.enable_kt(real);
         s.enable_kt_fork(fork);
+        // Only the name goes in, so both logs sign its epoch: account
+        // records would move the real log ahead of the fork.
+        s.kt_withhold(true);
     })
     .unwrap();
     // Ben's home is another server, which takes proofs about S1's log.

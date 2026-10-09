@@ -19,6 +19,32 @@ use std::sync::Arc;
 /// descriptor's digest (not a valid username: it starts with a zero byte).
 pub const DESCRIPTOR_LABEL: &[u8] = b"\0descriptor";
 
+/// First byte of an account record's label (`03-identity.md` §8.1): the
+/// label is this byte and the last 31 bytes of the account's manifest
+/// directory key. Not a valid username (a control character), and not the
+/// descriptor's (a zero byte).
+pub const ACCOUNT_TAG: u8 = 0x01;
+
+/// Length of an account record's value: [`account_record`].
+pub const ACCOUNT_RECORD_LEN: usize = 128;
+
+/// The label of the account whose manifest directory key ends in `tail`
+/// (its last 31 bytes).
+pub fn account_label(tail: &[u8; 31]) -> Vec<u8> {
+    [&[ACCOUNT_TAG][..], tail].concat()
+}
+
+/// An account's record: SHA3-512 of its signed manifest as the server
+/// serves it, then SHA3-512 of its attestation list as served (the empty
+/// string when there is none). Everyone who checks it against the log sees
+/// the same manifest and the same co-signatures and vetoes.
+pub fn account_record(manifest: &[u8], attestations: &[u8]) -> [u8; ACCOUNT_RECORD_LEN] {
+    let mut r = [0u8; ACCOUNT_RECORD_LEN];
+    r[..64].copy_from_slice(&enclave_crypto::hash::sha3_512(manifest));
+    r[64..].copy_from_slice(&enclave_crypto::hash::sha3_512(attestations));
+    r
+}
+
 /// VRF key held in memory for the life of the process.
 #[derive(Clone)]
 pub struct VrfKey(Arc<[u8; 32]>);
@@ -194,13 +220,51 @@ impl KtLog {
         now: u64,
         rng: &mut HedgedRng,
     ) -> Result<SignedHead> {
-        self.publish_raw(
-            AkdLabel(DESCRIPTOR_LABEL.to_vec()),
-            digest.to_vec(),
-            now,
-            rng,
-        )
-        .await
+        self.commit_labels(vec![(DESCRIPTOR_LABEL.to_vec(), digest.to_vec())], now, rng)
+            .await
+    }
+
+    /// Commit raw `(label, value)` pairs in one new epoch. Labels must not
+    /// be usernames: callers use [`DESCRIPTOR_LABEL`] or
+    /// [`account_label`].
+    pub async fn commit_labels(
+        &mut self,
+        entries: Vec<(Vec<u8>, Vec<u8>)>,
+        now: u64,
+        rng: &mut HedgedRng,
+    ) -> Result<SignedHead> {
+        if entries
+            .iter()
+            .any(|(l, _)| !matches!(l.first(), Some(&b) if b == 0 || b == ACCOUNT_TAG))
+        {
+            return Err(KtError::Username);
+        }
+        let eh = self
+            .dir
+            .publish(
+                entries
+                    .into_iter()
+                    .map(|(l, v)| (AkdLabel(l), AkdValue(v)))
+                    .collect(),
+            )
+            .await
+            .map_err(akd_err)?;
+        self.sign_head(eh.epoch(), eh.hash(), now, rng)
+    }
+
+    /// Lookup proof for a raw label (see [`Self::commit_labels`]) against
+    /// the latest head.
+    pub async fn lookup_raw(&self, label: &[u8]) -> Result<(LookupProof, SignedHead)> {
+        let head = self.latest().cloned().ok_or(KtError::Lookup)?;
+        let (proof, eh) = self
+            .dir
+            .lookup(AkdLabel(label.to_vec()))
+            .await
+            .map_err(|_| KtError::Lookup)?;
+        if eh.epoch() != head.head.epoch {
+            return Err(KtError::Stale);
+        }
+        Ok((proof, head))
     }
 
     /// Proof that `name` was never registered, against the latest head:
@@ -250,16 +314,7 @@ impl KtLog {
     /// Lookup proof for the committed descriptor digest against the latest
     /// head.
     pub async fn lookup_descriptor(&self) -> Result<(LookupProof, SignedHead)> {
-        let head = self.latest().cloned().ok_or(KtError::Lookup)?;
-        let (proof, eh) = self
-            .dir
-            .lookup(AkdLabel(DESCRIPTOR_LABEL.to_vec()))
-            .await
-            .map_err(|_| KtError::Lookup)?;
-        if eh.epoch() != head.head.epoch {
-            return Err(KtError::Stale);
-        }
-        Ok((proof, head))
+        self.lookup_raw(DESCRIPTOR_LABEL).await
     }
 
     async fn publish_raw(
@@ -450,17 +505,44 @@ pub fn verify_descriptor_lookup(
     proof: LookupProof,
     now: u64,
 ) -> Result<([u8; 64], u64)> {
+    let (value, trusted) = verify_label_lookup(
+        policy,
+        server_key,
+        server_operator,
+        vrf_public,
+        sh,
+        DESCRIPTOR_LABEL,
+        proof,
+        now,
+    )?;
+    let digest = value.try_into().map_err(|_| KtError::Lookup)?;
+    Ok((digest, trusted))
+}
+
+/// Verify a lookup of a raw label ([`KtLog::commit_labels`]): the head is
+/// signed and cosigned per `policy`, and the proof binds `label` to the
+/// returned value under it. Returns the value and the trusted head time.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_label_lookup(
+    policy: &WitnessPolicy,
+    server_key: &CompositePublic,
+    server_operator: &str,
+    vrf_public: &[u8],
+    sh: &SignedHead,
+    label: &[u8],
+    proof: LookupProof,
+    now: u64,
+) -> Result<(Vec<u8>, u64)> {
     let trusted = policy.check(sh, server_key, server_operator, now)?;
     let r = akd::verify::lookup_verify::<EnclaveKtConfig>(
         vrf_public,
         sh.head.root,
         sh.head.epoch,
-        AkdLabel(DESCRIPTOR_LABEL.to_vec()),
+        AkdLabel(label.to_vec()),
         proof,
     )
     .map_err(|_| KtError::Lookup)?;
-    let digest = r.value.0.try_into().map_err(|_| KtError::Lookup)?;
-    Ok((digest, trusted))
+    Ok((r.value.0, trusted))
 }
 
 /// A witness as the log's server reaches it: in the same process

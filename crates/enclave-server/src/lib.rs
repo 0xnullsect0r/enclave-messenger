@@ -39,7 +39,7 @@ use enclave_rpc::api::{
 use enclave_rpc::{ServerKey, ServerSecret};
 use enclave_tokens::{PowProof, token_hash};
 use enclave_wire::{ENVELOPE_LEN, Op, RequestHeader};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 /// Why a server could not start.
 #[derive(Debug, thiserror::Error)]
@@ -306,6 +306,10 @@ pub struct Server {
     /// Directory uploads in progress, with when they started.
     uploads: HashMap<(u8, [u8; 32]), Upload>,
     kt: Option<KtService>,
+    /// Accounts whose record the log hasn't taken yet (manifest keys),
+    /// and whether the accounts stored before the log was enabled still
+    /// need theirs.
+    kt_accounts: (BTreeSet<[u8; 32]>, bool),
     /// Scheduled wakes by sealed-token hash.
     wakes: HashMap<[u8; 32], Wake>,
     /// A second log shown instead of `kt` (test hook, RT-04).
@@ -313,6 +317,10 @@ pub struct Server {
     kt_fork: Option<KtService>,
     #[cfg(feature = "test-hooks")]
     kt_serve_fork: bool,
+    /// Keep account records out of the log (test hook): a server hiding a
+    /// manifest change from the log.
+    #[cfg(feature = "test-hooks")]
+    kt_withhold: bool,
     /// What a curious server could log about tokens (test hook): each
     /// registration batch, and each burned hash in order.
     #[cfg(feature = "test-hooks")]
@@ -421,11 +429,14 @@ impl Server {
             claims: HashMap::new(),
             uploads: HashMap::new(),
             kt: None,
+            kt_accounts: (BTreeSet::new(), false),
             wakes: HashMap::new(),
             #[cfg(feature = "test-hooks")]
             kt_fork: None,
             #[cfg(feature = "test-hooks")]
             kt_serve_fork: false,
+            #[cfg(feature = "test-hooks")]
+            kt_withhold: false,
             #[cfg(feature = "test-hooks")]
             token_log: (Vec::new(), Vec::new()),
             #[cfg(feature = "test-hooks")]
@@ -759,6 +770,94 @@ impl Server {
     /// Attach a key-transparency log, enabling usernames.
     pub fn enable_kt(&mut self, kt: KtService) {
         self.kt = Some(kt);
+        // Accounts stored before this log was enabled get their records
+        // with the next commit (`commit_account`).
+        self.kt_accounts.1 = true;
+    }
+
+    /// An account's record for the log: its manifest and attestation list
+    /// as served here.
+    fn account_record(&self, key: &[u8; 32]) -> Option<[u8; enclave_kt::ACCOUNT_RECORD_LEN]> {
+        self.db
+            .read(|r| {
+                let Some(m) = r.get(db::MANIFESTS, key)? else {
+                    return Ok(None);
+                };
+                let atts = r
+                    .get(db::ATTESTATIONS, key)?
+                    .map(|v| enclave_proto::attest::encode_list(&decode_blobs(&v)))
+                    .unwrap_or_default();
+                Ok(Some(enclave_kt::account_record(tail(&m), &atts)))
+            })
+            .ok()
+            .flatten()
+    }
+
+    /// Commit the record of the account at `key` (its manifest or
+    /// attestations changed) to the log, with any earlier ones the log
+    /// didn't take (`03-identity.md` §8.1). Contacts accept a manifest
+    /// change only once its record is in the log.
+    fn commit_account(&mut self, key: Option<[u8; 32]>, now: u64) {
+        let Some(marker) = self
+            .kt
+            .as_ref()
+            .map(|kt| enclave_crypto::hash::sha3_512(&kt.info().vrf_public))
+        else {
+            return;
+        };
+        if let Some(k) = key {
+            self.kt_accounts.0.insert(k);
+        }
+        #[cfg(feature = "test-hooks")]
+        if self.kt_withhold {
+            return;
+        }
+        // Once per log: every account stored here, unless this log took
+        // them before (a restart).
+        let mut keys: BTreeSet<[u8; 32]> = std::mem::take(&mut self.kt_accounts.0);
+        if self.kt_accounts.1 {
+            let done = self
+                .db
+                .read(|r| r.get(db::META, b"kt-accounts"))
+                .ok()
+                .flatten()
+                .is_some_and(|v| v == marker);
+            if !done {
+                let all = self
+                    .db
+                    .read(|r| r.scan(db::MANIFESTS, b""))
+                    .unwrap_or_default();
+                keys.extend(
+                    all.into_iter()
+                        .filter_map(|(k, _)| <[u8; 32]>::try_from(k.as_slice()).ok()),
+                );
+            }
+        }
+        let records: Vec<([u8; 31], [u8; enclave_kt::ACCOUNT_RECORD_LEN])> = keys
+            .iter()
+            .filter_map(|k| {
+                let rec = self.account_record(k)?;
+                Some((k[1..].try_into().ok()?, rec))
+            })
+            .collect();
+        if records.is_empty() {
+            self.kt_accounts.1 = false;
+            return;
+        }
+        let Some(kt) = self.kt.as_ref() else {
+            return;
+        };
+        match kt.commit_accounts(records, now) {
+            Ok(_) => {
+                if std::mem::take(&mut self.kt_accounts.1) {
+                    let _ = self.tx(|t| t.put(db::META, b"kt-accounts", &marker));
+                }
+            }
+            Err(e) => {
+                eprintln!("enclave-server: key transparency: {e}");
+                self.kt_accounts.0 = keys;
+            }
+        }
     }
 
     /// **Test hook**: a second log (`KtService::start_dev_twins`) this
@@ -781,6 +880,13 @@ impl Server {
     #[cfg(feature = "test-hooks")]
     pub fn kt_serve_fork(&mut self, on: bool) {
         self.kt_serve_fork = on;
+    }
+
+    /// **Test hook**: keep account records out of the log (true) or put
+    /// the ones held back in with the next commit (false).
+    #[cfg(feature = "test-hooks")]
+    pub fn kt_withhold(&mut self, on: bool) {
+        self.kt_withhold = on;
     }
 
     /// The log lookups are answered from.
@@ -1876,6 +1982,9 @@ impl Server {
             DirKind::Equivocation => self.accept_equivocation(&req.key, &object),
             DirKind::Descriptor | DirKind::ServerList => Status::Denied,
         };
+        if status == Status::Ok && matches!(req.kind, DirKind::Manifest | DirKind::Attest) {
+            self.commit_account(Some(req.key), now);
+        }
         (status, Reply::Empty)
     }
 
@@ -1924,6 +2033,18 @@ impl Server {
         };
         let found = if req.key == api::DESCRIPTOR_LOOKUP_KEY {
             kt.lookup_descriptor(now)
+        } else if req.key[0] == api::ACCOUNT_LOOKUP_TAG {
+            let Ok(t) = <[u8; 31]>::try_from(&req.key[1..]) else {
+                return (Status::Malformed, Reply::Empty);
+            };
+            // Records the log hasn't taken yet go in first.
+            if self.kt_accounts.1 || !self.kt_accounts.0.is_empty() {
+                self.commit_account(None, now);
+            }
+            let Some(kt) = self.kt_lookups() else {
+                return (Status::NotFound, Reply::Empty);
+            };
+            kt.lookup_account(&t, now)
         } else {
             let Some(name) = api::key_name(&req.key) else {
                 return (Status::Malformed, Reply::Empty);

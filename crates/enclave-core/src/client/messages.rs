@@ -382,6 +382,9 @@ impl Client {
         text: &str,
         now: u64,
     ) -> Result<Message> {
+        if outgoing {
+            self.require_not_held()?;
+        }
         let id: MsgId = self.rng.array("core/msg-id")?;
         let timer = if outgoing {
             self.contacts.get(root).map_or(0, |c| c.timer)
@@ -550,6 +553,7 @@ impl Client {
             return Err(CoreError::NotAccepted);
         }
         let timer = c.timer;
+        self.require_not_held()?;
         let now = self.now();
         let host = self.profile.server;
         let (att, chunks) = files::seal_file(data, name, mime, host, &mut self.rng)?;

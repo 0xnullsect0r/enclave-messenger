@@ -225,6 +225,8 @@ fn fixture() -> Snapshot {
         join_code: String::new(),
         join_words: String::new(),
         recovery_alert: String::new(),
+        recovery_hold: String::new(),
+        recovery_stopped: false,
         meet_code: String::new(),
         meet_words: String::new(),
         meet_name: String::new(),

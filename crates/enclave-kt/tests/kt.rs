@@ -340,3 +340,41 @@ async fn descriptor_digests_are_committed() {
     // The label isn't a name.
     assert!(log.lookup("\0descriptor").await.is_err());
 }
+
+/// Account records (`03-identity.md` §8.1) are committed under labels no
+/// username can equal, verify with `verify_label_lookup`'s proof check, and
+/// a later commit replaces the value. Name labels can't be committed raw.
+#[tokio::test(flavor = "multi_thread")]
+async fn account_records_are_committed() {
+    let mut rng = HedgedRng::new().unwrap();
+    let key = CompositeSigningKey::generate(&mut rng).unwrap();
+    let mut log = KtLog::new([1; 16], key, [9; 32]).await.unwrap();
+    let label = enclave_kt::account_label(&[7; 31]);
+    assert_eq!(label[0], enclave_kt::ACCOUNT_TAG);
+    let first = enclave_kt::account_record(b"manifest v1", b"");
+    let second = enclave_kt::account_record(b"manifest v2", b"cosign");
+    assert_ne!(first, second);
+    log.commit_labels(vec![(label.clone(), first.to_vec())], NOW, &mut rng)
+        .await
+        .unwrap();
+    log.commit_labels(vec![(label.clone(), second.to_vec())], NOW, &mut rng)
+        .await
+        .unwrap();
+    let (proof, head) = log.lookup_raw(&label).await.unwrap();
+    let r = akd::verify::lookup_verify::<enclave_kt::EnclaveKtConfig>(
+        log.vrf_public(),
+        head.head.root,
+        head.head.epoch,
+        akd::AkdLabel(label.clone()),
+        proof,
+    )
+    .unwrap();
+    assert_eq!(r.value.0, second);
+    // Not a name, and a name can't be committed this way.
+    assert!(log.lookup("\u{1}").await.is_err());
+    assert!(
+        log.commit_labels(vec![(b"alice".to_vec(), vec![1])], NOW, &mut rng)
+            .await
+            .is_err()
+    );
+}

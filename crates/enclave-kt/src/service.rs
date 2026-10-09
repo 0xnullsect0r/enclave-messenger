@@ -30,17 +30,18 @@ enum Job {
         now: u64,
         reply: mpsc::Sender<Result<u64>>,
     },
-    /// A name, or the server's descriptor digest (`None`).
+    /// A name, or a raw label (`Err`: the descriptor digest, an account
+    /// record).
     Lookup {
-        name: Option<String>,
+        name: std::result::Result<String, Vec<u8>>,
         /// Answer with a [`NameAnswer`] (absence proved) rather than a bare
         /// [`LookupReply`].
         answer: bool,
         now: u64,
         reply: mpsc::Sender<Result<Vec<u8>>>,
     },
-    CommitDescriptor {
-        digest: [u8; 64],
+    Commit {
+        entries: Vec<(Vec<u8>, Vec<u8>)>,
         now: u64,
         reply: mpsc::Sender<Result<u64>>,
     },
@@ -250,31 +251,70 @@ impl KtService {
     /// Commit a descriptor digest in a new epoch (and collect witness
     /// cosignatures). Returns the epoch.
     pub fn commit_descriptor(&self, digest: [u8; 64], now: u64) -> Result<u64> {
+        self.commit(
+            vec![(crate::log::DESCRIPTOR_LABEL.to_vec(), digest.to_vec())],
+            now,
+        )
+    }
+
+    /// Commit account records (`03-identity.md` §8.1) in one new epoch:
+    /// `(last 31 bytes of the manifest directory key, record)` pairs.
+    pub fn commit_accounts(
+        &self,
+        records: Vec<([u8; 31], [u8; crate::log::ACCOUNT_RECORD_LEN])>,
+        now: u64,
+    ) -> Result<u64> {
+        self.commit(
+            records
+                .into_iter()
+                .map(|(t, r)| (crate::log::account_label(&t), r.to_vec()))
+                .collect(),
+            now,
+        )
+    }
+
+    fn commit(&self, entries: Vec<(Vec<u8>, Vec<u8>)>, now: u64) -> Result<u64> {
         let (reply, rx) = mpsc::channel();
         self.tx
-            .send(Job::CommitDescriptor { digest, now, reply })
+            .send(Job::Commit {
+                entries,
+                now,
+                reply,
+            })
             .map_err(|_| KtError::Stopped)?;
         rx.recv().map_err(|_| KtError::Stopped)?
     }
 
     /// An encoded [`LookupReply`] for `name` against a fresh, cosigned head.
     pub fn lookup(&self, name: &str, now: u64) -> Result<Vec<u8>> {
-        self.lookup_label(Some(name.to_string()), false, now)
+        self.lookup_label(Ok(name.to_string()), false, now)
     }
 
     /// An encoded [`NameAnswer`] for `name` against a fresh, cosigned head:
     /// its entry, or proof that it was never registered.
     pub fn lookup_name(&self, name: &str, now: u64) -> Result<Vec<u8>> {
-        self.lookup_label(Some(name.to_string()), true, now)
+        self.lookup_label(Ok(name.to_string()), true, now)
     }
 
     /// An encoded [`LookupReply`] for the server's committed descriptor
     /// digest (checked with [`crate::log::verify_descriptor_lookup`]).
     pub fn lookup_descriptor(&self, now: u64) -> Result<Vec<u8>> {
-        self.lookup_label(None, false, now)
+        self.lookup_label(Err(crate::log::DESCRIPTOR_LABEL.to_vec()), false, now)
     }
 
-    fn lookup_label(&self, name: Option<String>, answer: bool, now: u64) -> Result<Vec<u8>> {
+    /// An encoded [`LookupReply`] for the record of the account whose
+    /// manifest directory key ends in `tail` (checked with
+    /// [`crate::log::verify_label_lookup`]).
+    pub fn lookup_account(&self, tail: &[u8; 31], now: u64) -> Result<Vec<u8>> {
+        self.lookup_label(Err(crate::log::account_label(tail)), false, now)
+    }
+
+    fn lookup_label(
+        &self,
+        name: std::result::Result<String, Vec<u8>>,
+        answer: bool,
+        now: u64,
+    ) -> Result<Vec<u8>> {
         let (reply, rx) = mpsc::channel();
         self.tx
             .send(Job::Lookup {
@@ -361,9 +401,13 @@ fn run(
                 });
                 let _ = reply.send(r);
             }
-            Job::CommitDescriptor { digest, now, reply } => {
+            Job::Commit {
+                entries,
+                now,
+                reply,
+            } => {
                 let r = rt.block_on(async {
-                    let sh = log.commit_descriptor(digest, now, &mut rng).await?;
+                    let sh = log.commit_labels(entries, now, &mut rng).await?;
                     cosign_all(&mut log, &mut witnesses, &mut last, now, &mut rng).await;
                     Ok(sh.head.epoch)
                 });
@@ -384,15 +428,15 @@ fn run(
                         cosign_all(&mut log, &mut witnesses, &mut last, now, &mut rng).await;
                     }
                     let found = match &name {
-                        Some(n) => log.lookup(n).await,
-                        None => log.lookup_descriptor().await,
+                        Ok(n) => log.lookup(n).await,
+                        Err(label) => log.lookup_raw(label).await,
                     };
                     match (found, &name, answer) {
                         (Ok((proof, head)), _, false) => LookupReply { head, proof }.encode(),
                         (Ok((proof, head)), _, true) => {
                             NameAnswer::Found(LookupReply { head, proof }).encode()
                         }
-                        (Err(_), Some(n), true) => {
+                        (Err(_), Ok(n), true) => {
                             let (proof, head) = log.lookup_absent(n).await?;
                             NameAnswer::Absent { head, proof }.encode()
                         }

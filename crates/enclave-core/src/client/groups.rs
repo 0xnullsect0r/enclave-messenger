@@ -707,6 +707,10 @@ impl Client {
         flags: u8,
         now: u64,
     ) -> Result<()> {
+        // A restore contacts still hold can't be read by them yet.
+        if flags & FLAG_STATE_UPDATE == 0 {
+            self.require_not_held()?;
+        }
         // On the record, signed (`group_record.rs`).
         let (content, flags) = self.sign_group(gid, content, flags)?;
         let (unit, host, addr, secret) = {
@@ -1362,6 +1366,10 @@ impl Client {
         text: &str,
         now: u64,
     ) -> Result<GroupMessage> {
+        // Ours, from this device: refused while contacts hold its restore.
+        if from.is_none() {
+            self.require_not_held()?;
+        }
         // Sent by another device of ours: our own message.
         let from = from.filter(|(r, _)| *r != self.account.root_public.0);
         let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;

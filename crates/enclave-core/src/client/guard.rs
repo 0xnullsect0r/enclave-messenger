@@ -20,6 +20,7 @@
 
 use super::{Client, ContactState, Event};
 use crate::content::Content;
+use crate::persist::NS_PROFILE;
 use crate::{CoreError, Result};
 use enclave_crypto::sig::RootPublic;
 use enclave_net::transport::ServerId;
@@ -35,6 +36,22 @@ pub(crate) const NS_HELD: &str = "held-requests";
 const NS_VETOES: &str = "vetoes";
 /// How often held greetings and our own manifest are re-checked.
 const RECHECK_SECS: u64 = 600;
+/// `NS_PROFILE` key of a restore no device co-signed: `u64 since ‖ u32 len ‖
+/// the backup's manifest ‖ the signed manifest it replaced on the server`.
+/// The backup's is what the account's devices (and so contacts) held; the
+/// server's may be a change they stopped.
+pub(crate) const RECOVERING: &[u8] = b"recovering";
+/// `NS_PROFILE` key set once such a restore was stopped.
+const RECOVERY_STOPPED: &[u8] = b"recovery-stopped";
+
+/// This device restored the account and contacts are holding the change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryHold {
+    /// When contacts accept it at the latest, unless it is stopped.
+    pub until: u64,
+    /// A device of the account stopped it: contacts never will.
+    pub stopped: bool,
+}
 
 /// What to do with a manifest change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +62,9 @@ pub(crate) enum Judgement {
     Wait(u64),
     /// Never take it.
     Vetoed,
+    /// Not in the server's key-transparency log as served (`03-identity.md`
+    /// §8.1): ask again later.
+    Unlogged,
 }
 
 /// A change to our own account that none of our devices made.
@@ -75,12 +95,17 @@ impl Client {
         now: u64,
     ) -> Result<Judgement> {
         let hash = signed.hash();
-        let atts = self.fetch_attestations(server, root, now).await?;
+        let (atts, raw) = self.fetch_attestations(server, root, now).await?;
         let about = |v: Verdict| {
             atts.iter()
                 .any(|a| a.verdict == v && a.is_about(new.version, &hash) && a.verify(root, old))
         };
         if about(Verdict::Cosign) {
+            // Everyone checking this account sees the same manifest and
+            // attestations, or none of them takes it.
+            if !self.logged(server, root, signed, &raw, now).await? {
+                return Ok(Judgement::Unlogged);
+            }
             self.store.delete(NS_PENDING, root)?;
             return Ok(Judgement::Accept);
         }
@@ -102,6 +127,9 @@ impl Client {
             }
         };
         if first + RECOVERY_WAIT_SECS <= now {
+            if !self.logged(server, root, signed, &raw, now).await? {
+                return Ok(Judgement::Unlogged);
+            }
             self.store.delete(NS_PENDING, root)?;
             Ok(Judgement::Accept)
         } else {
@@ -109,12 +137,74 @@ impl Client {
         }
     }
 
+    /// Whether `server`'s key-transparency log holds this account's
+    /// record for exactly `signed` and the attestation list `atts` as
+    /// served (`03-identity.md` §8.1). True when no log is pinned for the
+    /// server (a development server).
+    async fn logged(
+        &mut self,
+        server: &ServerId,
+        root: &[u8; 64],
+        signed: &SignedManifest,
+        atts: &[u8],
+        now: u64,
+    ) -> Result<bool> {
+        let Some(info) = self.kt.as_ref().and_then(|p| p.by_server(server)).cloned() else {
+            return Ok(true);
+        };
+        let witnesses = self
+            .kt
+            .as_ref()
+            .map(|p| p.witnesses.clone())
+            .ok_or(CoreError::NotFound)?;
+        let key = manifest_key(root);
+        let reply = match self
+            .rpc
+            .dir_get(
+                server,
+                DirKind::Username,
+                DirAction::Get,
+                enclave_rpc::api::account_lookup_key(&key),
+                [0; 32],
+                now,
+                &mut self.rng,
+            )
+            .await
+        {
+            Ok(b) => b,
+            Err(e @ CoreError::Net(_)) => return Err(e),
+            Err(_) => return Ok(false),
+        };
+        let Ok(reply) = enclave_kt::LookupReply::decode(&reply) else {
+            return Ok(false);
+        };
+        let mut tail = [0u8; 31];
+        tail.copy_from_slice(&key[1..]);
+        let Ok((value, trusted)) = enclave_kt::verify_label_lookup(
+            &witnesses,
+            &info.head_key,
+            &info.operator,
+            &info.vrf_public,
+            &reply.head,
+            &enclave_kt::account_label(&tail),
+            reply.proof,
+            now,
+        ) else {
+            return Ok(false);
+        };
+        self.record_head(&reply.head)?;
+        self.observe_trusted_time(trusted, now)?;
+        Ok(value == enclave_kt::account_record(&signed.to_bytes(), atts))
+    }
+
+    /// The attestations about `root`'s manifest changes on `server`, and
+    /// the list as served (empty when there is none).
     async fn fetch_attestations(
         &mut self,
         server: &ServerId,
         root: &[u8; 64],
         now: u64,
-    ) -> Result<Vec<Attestation>> {
+    ) -> Result<(Vec<Attestation>, Vec<u8>)> {
         match self
             .rpc
             .dir_get(
@@ -128,9 +218,9 @@ impl Client {
             )
             .await
         {
-            Ok(b) => Ok(attest::decode_list(&b).unwrap_or_default()),
+            Ok(b) => Ok((attest::decode_list(&b).unwrap_or_default(), b)),
             Err(e @ CoreError::Net(_)) => Err(e),
-            Err(_) => Ok(Vec::new()),
+            Err(_) => Ok((Vec::new(), Vec::new())),
         }
     }
 
@@ -293,7 +383,7 @@ impl Client {
                     Vec::new()
                 })
             }
-            Judgement::Vetoed => Ok(Vec::new()),
+            Judgement::Vetoed | Judgement::Unlogged => Ok(Vec::new()),
         }
     }
 
@@ -301,6 +391,101 @@ impl Client {
     /// waiting.
     pub fn recovery_alert(&self) -> Option<&RecoveryAlert> {
         self.recovery_alert.as_ref()
+    }
+
+    /// If this device restored the account and contacts are still holding
+    /// the change: until when, and whether another device stopped it.
+    pub fn recovery_hold(&self) -> Option<RecoveryHold> {
+        let rec = self.store.get(NS_PROFILE, RECOVERING).ok()??;
+        let since = u64::from_be_bytes(rec.get(..8)?.try_into().ok()?);
+        Some(RecoveryHold {
+            until: since + RECOVERY_WAIT_SECS,
+            stopped: matches!(self.store.get(NS_PROFILE, RECOVERY_STOPPED), Ok(Some(_))),
+        })
+    }
+
+    /// For a device that restored the account: whether another device
+    /// co-signed or stopped the change, or its 72 hours are over (every 10
+    /// minutes).
+    pub(crate) async fn check_recovering(&mut self, now: u64) -> Result<Vec<Event>> {
+        let Some(rec) = self.store.get(NS_PROFILE, RECOVERING)? else {
+            return Ok(Vec::new());
+        };
+        let last = self
+            .setting("recovering-check")?
+            .and_then(|b| b.try_into().ok())
+            .map(u64::from_be_bytes)
+            .unwrap_or(0);
+        if last + RECHECK_SECS > now {
+            return Ok(Vec::new());
+        }
+        self.set_setting("recovering-check", &now.to_be_bytes())?;
+        let since = rec
+            .get(..8)
+            .and_then(|b| b.try_into().ok())
+            .map_or(0, u64::from_be_bytes);
+        let stopped = self.store.get(NS_PROFILE, RECOVERY_STOPPED)?.is_some();
+        let Some((held, prev_sm)) = recovering_parts(&rec) else {
+            self.store.delete(NS_PROFILE, RECOVERING)?;
+            return Ok(Vec::new());
+        };
+        let Ok(prev) = Manifest::decode(&prev_sm.body) else {
+            self.store.delete(NS_PROFILE, RECOVERING)?;
+            return Ok(Vec::new());
+        };
+        let root = self.account.root_public.0;
+        let server = self.profile.server;
+        let ours = self
+            .store
+            .get(NS_PROFILE, b"signed-manifest")?
+            .and_then(|b| SignedManifest::from_bytes(&b).ok())
+            .map(|s| s.hash())
+            .ok_or(CoreError::NotFound)?;
+        let (atts, _) = self.fetch_attestations(&server, &root, now).await?;
+        // The devices that may judge this restore: those in the backup's
+        // manifest, and those in the one it replaced unless that one was
+        // itself stopped by them.
+        let prev_hash = prev_sm.hash();
+        let prev_stopped = held.as_ref().is_some_and(|h| {
+            atts.iter().any(|a| {
+                a.verdict == Verdict::Veto
+                    && a.is_about(prev.version, &prev_hash)
+                    && a.verify(&root, h)
+            })
+        });
+        let judge = |a: &Attestation| {
+            held.as_ref().is_some_and(|h| a.verify(&root, h))
+                || (!prev_stopped && a.verify(&root, &prev))
+        };
+        let about = |v: Verdict| {
+            atts.iter()
+                .any(|a| a.verdict == v && a.is_about(self.manifest.version, &ours) && judge(a))
+        };
+        if about(Verdict::Veto) {
+            if stopped {
+                return Ok(Vec::new());
+            }
+            self.store
+                .put(NS_PROFILE, RECOVERY_STOPPED, &[], &mut self.rng)?;
+            return Ok(vec![Event::RecoveryStopped]);
+        }
+        if stopped {
+            return Ok(Vec::new());
+        }
+        if about(Verdict::Cosign) || now >= since + RECOVERY_WAIT_SECS {
+            self.store.delete(NS_PROFILE, RECOVERING)?;
+            return Ok(vec![Event::RecoveryDone]);
+        }
+        Ok(Vec::new())
+    }
+
+    /// Refuse to send what a person wrote while contacts hold this
+    /// device's restore: it would be lost (`03-identity.md` §8.1).
+    pub(crate) fn require_not_held(&self) -> Result<()> {
+        match self.recovery_hold() {
+            Some(_) => Err(CoreError::RecoveryHeld),
+            None => Ok(()),
+        }
     }
 
     /// "This wasn't me": veto the pending change. Contacts will never accept
@@ -397,4 +582,16 @@ impl Client {
         }
         Ok(())
     }
+}
+
+/// Split a [`RECOVERING`] record into the backup's manifest (if the backup
+/// had one) and the signed manifest the restore replaced.
+fn recovering_parts(rec: &[u8]) -> Option<(Option<Manifest>, SignedManifest)> {
+    let len = u32::from_be_bytes(rec.get(8..12)?.try_into().ok()?) as usize;
+    let held = rec.get(12..12usize.checked_add(len)?)?;
+    let held = (!held.is_empty())
+        .then(|| Manifest::decode(held).ok())
+        .flatten();
+    let prev = SignedManifest::from_bytes(rec.get(12 + len..)?).ok()?;
+    Some((held, prev))
 }
