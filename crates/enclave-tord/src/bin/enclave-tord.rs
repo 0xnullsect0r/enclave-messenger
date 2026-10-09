@@ -39,6 +39,7 @@ fn main() -> ExitCode {
             .and_then(|i| args.get(i + 1).cloned())
     };
     let direct = args.iter().any(|a| a == "--direct");
+    #[cfg_attr(not(feature = "tor"), allow(unused_mut))]
     let mut bridges: Vec<String> = args
         .windows(2)
         .filter(|p| p[0] == "--bridge")
