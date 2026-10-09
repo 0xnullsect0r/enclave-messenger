@@ -767,6 +767,17 @@ export component AppWindow inherits Window {
     callback add-members(string);
     callback unlock(string);
     callback lock-now();
+    callback set-app-lock(string);
+    callback set-lock-timeout(int);
+    callback set-emergency-pin(string);
+    // The window is locked by the app PIN (not the passphrase).
+    in property <bool> pin-lock;
+    // An app PIN is set.
+    in property <bool> app-lock;
+    // Seconds without use before Enclave locks (0: never).
+    in property <int> lock-timeout: 300;
+    in-out property <string> app-pin-input;
+    in-out property <string> emergency-pin-input;
     callback set-passphrase(string);
     callback new-invite();
     callback cancel-invites();
@@ -980,9 +991,9 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-m;
                 HorizontalLayout { alignment: start; Seal { state: SealState.checked; size: 48px; } }
                 ScreenTitle { text: "Enclave is locked"; }
-                Secondary { text: "Type your passphrase to open your messages on this computer."; }
+                Secondary { text: root.pin-lock ? "Type your PIN to open Enclave." : "Type your passphrase to open your messages on this computer."; }
                 unlock-field := Field {
-                    placeholder: "Passphrase";
+                    placeholder: root.pin-lock ? "PIN" : "Passphrase";
                     secret: true;
                     text <=> root.passphrase-input;
                     accepted => { if root.passphrase-input != "" { root.unlock(root.passphrase-input); root.passphrase-input = ""; } }
@@ -2473,6 +2484,59 @@ export component AppWindow inherits Window {
             spacing: Tokens.space-s;
             QuietButton { text: "Lock now"; outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
             QuietButton { text: "Remove passphrase"; danger: true; clicked => { root.set-passphrase(""); } }
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
+        Body { text: "Screen lock"; font-weight: 600; }
+        Secondary {
+            text: root.can-lock
+                ? "Enclave locks itself when you haven't used it for a while, and your passphrase opens it again."
+                : root.app-lock
+                    ? "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
+                    : "Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked.";
+        }
+        if !root.can-lock: HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: root.app-lock ? "New PIN" : "PIN (at least 4 digits)"; secret: true; text <=> root.app-pin-input; horizontal-stretch: 1; }
+            PrimaryButton {
+                text: root.app-lock ? "Change" : "Set";
+                enabled: root.app-pin-input != "";
+                clicked => { root.set-app-lock(root.app-pin-input); root.app-pin-input = ""; }
+            }
+        }
+        if root.can-lock || root.app-lock: Caption { text: "Lock after"; }
+        if root.can-lock || root.app-lock: HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-xs;
+            for t in [
+                { secs: 60, name: "1 minute" }, { secs: 300, name: "5 minutes" },
+                { secs: 900, name: "15 minutes" }, { secs: 3600, name: "1 hour" },
+                { secs: 0, name: "Never" },
+            ]: QuietButton {
+                text: t.name;
+                outlined: root.lock-timeout == t.secs;
+                accessible-label: "Lock after " + t.name;
+                clicked => { root.set-lock-timeout(t.secs); }
+            }
+        }
+        if root.app-lock && !root.can-lock: HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            QuietButton { text: "Lock now"; outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
+            QuietButton { text: "Turn off"; danger: true; clicked => { root.set-app-lock(""); } }
+        }
+        Body { text: "Emergency PIN"; font-weight: 600; }
+        Secondary {
+            text: "If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected.";
+        }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "Emergency PIN (at least 4 digits)"; secret: true; text <=> root.emergency-pin-input; horizontal-stretch: 1; }
+            PrimaryButton {
+                text: "Set";
+                enabled: root.emergency-pin-input != "";
+                clicked => { root.set-emergency-pin(root.emergency-pin-input); root.emergency-pin-input = ""; }
+            }
+            QuietButton { text: "Remove"; clicked => { root.set-emergency-pin(""); } }
         }
         Body { text: "Backup"; font-weight: 600; }
         Secondary { text: "An encrypted copy of your contacts and messages, saved to your Downloads. Only your recovery words open it."; }

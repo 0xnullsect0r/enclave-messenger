@@ -273,6 +273,9 @@ fn fixture() -> Snapshot {
         bridges: String::new(),
         bridges_error: String::new(),
         bridges_restart: false,
+        pin_lock: false,
+        app_lock: false,
+        lock_timeout: 300,
     }
 }
 

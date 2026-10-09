@@ -551,6 +551,11 @@ impl ManifestResolver for Resolver<'_> {
 impl Client {
     /// Set, change or remove the passphrase that protects this profile on
     /// this device. Records are not re-encrypted: the store's master key is
+    /// Whether `passphrase` is this profile's (it would open it).
+    pub fn is_passphrase(&self, passphrase: &str) -> bool {
+        self.store.is_passphrase(passphrase.as_bytes())
+    }
+
     /// rewrapped.
     pub fn change_passphrase(
         &mut self,

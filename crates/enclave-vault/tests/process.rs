@@ -356,3 +356,81 @@ async fn sandboxed_vault_keeps_its_profile() {
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+
+/// The app lock and the emergency PIN (`docs/14-storage.md` §5): the window
+/// locks after the idle time and only the app PIN opens it; the emergency
+/// PIN can't be the app PIN, and entered at the lock screen it erases
+/// everything and goes back to the welcome screen.
+#[tokio::test(flavor = "multi_thread")]
+async fn app_lock_and_emergency_pin() {
+    let dir = std::env::temp_dir().join(format!("enclave-vault-lock-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let sock = dir.join("v.sock");
+    let listener = UnixListener::bind(&sock).unwrap();
+    let token = [0x6b; TOKEN_LEN];
+    let mut child = Command::new(BIN)
+        .arg("--connect")
+        .arg(&sock)
+        .arg("--demo")
+        .stdin(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    writeln!(child.stdin.take().unwrap(), "{}", frame::token_hex(&token)).unwrap();
+    let (stream, _) = tokio::time::timeout(Duration::from_secs(30), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    let (mut rd, mut wr) = tokio::io::split(stream);
+    frame::check_token(&mut rd, &token).await.unwrap();
+    macro_rules! send {
+        ($c:expr) => {
+            frame::write_frame(&mut wr, &$c.encode()).await.unwrap()
+        };
+    }
+
+    send!(Cmd::Create("Robin".into(), String::new()));
+    next_snapshot(&mut rd, |s| s.my_name == "Robin").await;
+    send!(Cmd::SetAppLock("12".into()));
+    next_snapshot(&mut rd, |s| s.status.contains("at least")).await;
+    send!(Cmd::SetAppLock("2468".into()));
+    next_snapshot(&mut rd, |s| s.app_lock).await;
+    send!(Cmd::SetEmergencyPin("2468".into()));
+    next_snapshot(&mut rd, |s| s.status.contains("app PIN")).await;
+    send!(Cmd::SetEmergencyPin("1357".into()));
+    next_snapshot(&mut rd, |s| s.status.starts_with("Emergency PIN set")).await;
+    // Idle for a second: locked at the next tick, and nothing shows.
+    send!(Cmd::SetLockTimeout(1));
+    let s = next_snapshot(&mut rd, |s| s.locked).await;
+    assert!(s.pin_lock && s.my_name.is_empty() && s.contacts.is_empty());
+    send!(Cmd::Select(String::new()));
+    send!(Cmd::Unlock("0000".into()));
+    next_snapshot(&mut rd, |s| s.locked && !s.unlock_error.is_empty()).await;
+    send!(Cmd::Unlock("2468".into()));
+    let s = next_snapshot(&mut rd, |s| !s.locked).await;
+    assert_eq!(s.my_name, "Robin");
+    assert_eq!(s.lock_timeout, 1);
+
+    // The emergency PIN at the lock screen: everything goes.
+    send!(Cmd::Lock);
+    next_snapshot(&mut rd, |s| s.locked).await;
+    send!(Cmd::Unlock("1357".into()));
+    let erased = loop {
+        let body = tokio::time::timeout(Duration::from_secs(60), frame::read_frame(&mut rd))
+            .await
+            .unwrap()
+            .unwrap();
+        match Out::decode(&body).unwrap() {
+            Out::Effect(enclave_ipc::Effect::Erased) => break true,
+            _ => continue,
+        }
+    };
+    assert!(erased);
+    let s = next_snapshot(&mut rd, |s| !s.locked).await;
+    assert!(s.my_name.is_empty() && !s.app_lock, "a new start");
+    drop(rd);
+    drop(wr);
+    let _ = tokio::task::spawn_blocking(move || child.wait()).await;
+    let _ = std::fs::remove_dir_all(&dir);
+}

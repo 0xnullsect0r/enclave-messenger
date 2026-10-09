@@ -94,56 +94,7 @@ impl Store {
         passphrase: Option<&[u8]>,
     ) -> Result<Self> {
         let db = Database::open(path)?;
-        let (salt, verifier, params, wrapped, pwsalt) = {
-            let r = db.begin_read()?;
-            let t = r.open_table(META)?;
-            let salt: [u8; 32] = t
-                .get("salt")?
-                .ok_or(StoreError::Malformed)?
-                .value()
-                .try_into()
-                .map_err(|_| StoreError::Malformed)?;
-            let verifier = t
-                .get("verifier")?
-                .ok_or(StoreError::Malformed)?
-                .value()
-                .to_vec();
-            let params = t
-                .get("pwparams")?
-                .map(|v| v.value().to_vec())
-                .unwrap_or_default();
-            let wrapped = t.get("wrapped")?.map(|v| v.value().to_vec());
-            let pwsalt: Option<[u8; 32]> = t.get("pwsalt")?.and_then(|v| v.value().try_into().ok());
-            (salt, verifier, params, wrapped, pwsalt)
-        };
-        let device_secret = keystore.load(DEVICE_SECRET)?;
-        // After a passphrase change the master key is wrapped under a key
-        // from the device secret and the new passphrase (with its own salt);
-        // before one, it is derived from them directly.
-        let pw_salt = match (&wrapped, pwsalt) {
-            (Some(_), Some(s)) => s,
-            (Some(_), None) => return Err(StoreError::Malformed),
-            (None, _) => salt,
-        };
-        let pw = match (passphrase, decode_params(&params)) {
-            (Some(p), Some(params)) => Some(pwhash::derive(p, &pw_salt, params)?),
-            (None, None) => None,
-            _ => return Err(StoreError::Crypto),
-        };
-        let kek = derive_master(&device_secret, pw.as_deref());
-        let master = match wrapped {
-            Some(w) => {
-                let raw =
-                    Zeroizing::new(seal::open(&kek, WRAP_AD, &w).map_err(|_| StoreError::Crypto)?);
-                let key: [u8; 32] = raw
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| StoreError::Malformed)?;
-                SealKey::from_bytes(key)
-            }
-            None => kek,
-        };
-        seal::open(&master, b"verifier", &verifier).map_err(|_| StoreError::Crypto)?;
+        let (master, salt) = open_master(&db, keystore.as_ref(), passphrase)?;
         let index = Zeroizing::new(kmac256(master.as_bytes(), b"", LABEL_INDEX));
         Ok(Self {
             db,
@@ -152,6 +103,12 @@ impl Store {
             salt,
             keystore,
         })
+    }
+
+    /// Whether `passphrase` is this profile's (it would open it). For
+    /// refusing an emergency PIN that is the passphrase.
+    pub fn is_passphrase(&self, passphrase: &[u8]) -> bool {
+        open_master(&self.db, self.keystore.as_ref(), Some(passphrase)).is_ok()
     }
 
     fn ns_tag(&self, ns: &str) -> [u8; 8] {
@@ -294,6 +251,66 @@ impl Store {
     pub fn keystore(&self) -> &Arc<dyn Keystore> {
         &self.keystore
     }
+}
+
+/// The master key of the store in `db` (and its record salt), from the
+/// device secret and, if the profile has one, the passphrase.
+fn open_master(
+    db: &Database,
+    keystore: &dyn Keystore,
+    passphrase: Option<&[u8]>,
+) -> Result<(SealKey, [u8; 32])> {
+    let (salt, verifier, params, wrapped, pwsalt) = {
+        let r = db.begin_read()?;
+        let t = r.open_table(META)?;
+        let salt: [u8; 32] = t
+            .get("salt")?
+            .ok_or(StoreError::Malformed)?
+            .value()
+            .try_into()
+            .map_err(|_| StoreError::Malformed)?;
+        let verifier = t
+            .get("verifier")?
+            .ok_or(StoreError::Malformed)?
+            .value()
+            .to_vec();
+        let params = t
+            .get("pwparams")?
+            .map(|v| v.value().to_vec())
+            .unwrap_or_default();
+        let wrapped = t.get("wrapped")?.map(|v| v.value().to_vec());
+        let pwsalt: Option<[u8; 32]> = t.get("pwsalt")?.and_then(|v| v.value().try_into().ok());
+        (salt, verifier, params, wrapped, pwsalt)
+    };
+    let device_secret = keystore.load(DEVICE_SECRET)?;
+    // After a passphrase change the master key is wrapped under a key
+    // from the device secret and the new passphrase (with its own salt);
+    // before one, it is derived from them directly.
+    let pw_salt = match (&wrapped, pwsalt) {
+        (Some(_), Some(s)) => s,
+        (Some(_), None) => return Err(StoreError::Malformed),
+        (None, _) => salt,
+    };
+    let pw = match (passphrase, decode_params(&params)) {
+        (Some(p), Some(params)) => Some(pwhash::derive(p, &pw_salt, params)?),
+        (None, None) => None,
+        _ => return Err(StoreError::Crypto),
+    };
+    let kek = derive_master(&device_secret, pw.as_deref());
+    let master = match wrapped {
+        Some(w) => {
+            let raw =
+                Zeroizing::new(seal::open(&kek, WRAP_AD, &w).map_err(|_| StoreError::Crypto)?);
+            let key: [u8; 32] = raw
+                .as_slice()
+                .try_into()
+                .map_err(|_| StoreError::Malformed)?;
+            SealKey::from_bytes(key)
+        }
+        None => kek,
+    };
+    seal::open(&master, b"verifier", &verifier).map_err(|_| StoreError::Crypto)?;
+    Ok((master, salt))
 }
 
 fn open_db(path: Option<&Path>) -> Result<Database> {

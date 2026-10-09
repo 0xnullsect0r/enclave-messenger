@@ -156,6 +156,9 @@ fn snapshot() -> Snapshot {
         bridges: "builtin".into(),
         bridges_error: String::new(),
         bridges_restart: true,
+        pin_lock: true,
+        app_lock: true,
+        lock_timeout: 300,
     }
 }
 
@@ -207,6 +210,9 @@ fn cmds() -> Vec<Cmd> {
         Cmd::UnlockRoot("482913".into()),
         Cmd::SecureAccount,
         Cmd::SetPreviews(true),
+        Cmd::SetAppLock("2468".into()),
+        Cmd::SetLockTimeout(60),
+        Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
         Cmd::SetOnRecord(false),
         Cmd::Select(String::new()),

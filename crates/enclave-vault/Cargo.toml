@@ -22,6 +22,7 @@ path = "src/bin/enclave-vault.rs"
 dev-transport = ["enclave-net/dev-transport"]
 
 [dependencies]
+subtle = "2"
 enclave-core = { path = "../enclave-core" }
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-ipc = { path = "../enclave-ipc" }

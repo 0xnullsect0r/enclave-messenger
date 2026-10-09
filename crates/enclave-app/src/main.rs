@@ -9,6 +9,8 @@
 //! `--server SERVER_ID=HOST:PORT` a dev server (`enclave-server`) over TCP
 //! in a build with the `dev-transport` feature (never a release; add
 //! `--kt-pins FILE`, written by the server, to use usernames).
+//! `enclave --profile DIR --panic-wipe` erases the profile without opening
+//! it (`docs/14-storage.md` §5), for an OS shortcut.
 #![deny(unsafe_code)]
 
 use enclave_app::{AppWindow, Screen, Sheet, vault, view};
@@ -74,6 +76,21 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     };
     let single_process = args.iter().any(|a| a == "--single-process");
+    // The panic wipe from outside the window (an OS shortcut can run it):
+    // erase the profile without opening it, and stop.
+    if args.iter().any(|a| a == "--panic-wipe") {
+        let Mode::Server { profile, .. } = &mode else {
+            eprintln!("enclave: --panic-wipe needs --profile DIR");
+            std::process::exit(2);
+        };
+        match enclave_vault::lock::erase_profile(profile) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("enclave: couldn't erase {}: {e}", profile.display());
+                std::process::exit(1);
+            }
+        }
+    }
 
     let ui = AppWindow::new()?;
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
@@ -152,6 +169,18 @@ fn main() -> Result<(), slint::PlatformError> {
     let t = tx.clone();
     ui.on_lock_now(move || {
         let _ = t.send(Cmd::Lock);
+    });
+    let t = tx.clone();
+    ui.on_set_app_lock(move |p| {
+        let _ = t.send(Cmd::SetAppLock(p.to_string()));
+    });
+    let t = tx.clone();
+    ui.on_set_lock_timeout(move |secs| {
+        let _ = t.send(Cmd::SetLockTimeout(u32::try_from(secs).unwrap_or(0)));
+    });
+    let t = tx.clone();
+    ui.on_set_emergency_pin(move |p| {
+        let _ = t.send(Cmd::SetEmergencyPin(p.to_string()));
     });
     let t = tx.clone();
     ui.on_set_passphrase(move |p| {
@@ -605,9 +634,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_copy_text(move |text| {
         copy_with_timeout(text.to_string());
         if let Some(ui) = w.upgrade() {
-            ui.set_status_line(
-                "Invite link copied. It's cleared from the clipboard after 60 seconds.".into(),
-            );
+            ui.set_status_line("Copied. It's cleared from the clipboard after 60 seconds.".into());
         }
     });
     let _ = Sheet::None;

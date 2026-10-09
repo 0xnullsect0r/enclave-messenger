@@ -139,7 +139,7 @@ Not implemented yet: an archive header (magic, version, sequence number), server
 
 ## 5. Device protections
 
-`Store::crypto_erase` destroys the device secret in the keystore, which makes the database file unreadable. It is the primitive for the emergency PIN and panic wipe. The rest of the table below is specified for M5–M6 and not implemented:
+`Store::crypto_erase` destroys the device secret in the keystore, which makes the database file unreadable. It is the primitive for the emergency PIN and panic wipe. The specification:
 
 | Protection | Specification |
 |---|---|
@@ -149,6 +149,16 @@ Not implemented yet: an archive header (magic, version, sequence number), server
 | Screen security | Android `FLAG_SECURE`; Windows `WDA_EXCLUDEFROMCAPTURE`; macOS `NSWindow.sharingType = .none` (best effort); iOS cannot block screenshots, so the app blurs its snapshot and hides content while the screen is captured |
 | Input and clipboard | Android `IME_FLAG_NO_PERSONALIZED_LEARNING`; optional "Block third-party keyboards" on iOS; clipboard cleared 60 s after copying codes or recovery words |
 | Lock screen | Shows "New message" by default |
+
+**As implemented** (`enclave-vault/src/lock.rs`, the engine, Settings → Screen lock):
+
+- **Lock settings** live beside the profile in `lock.bin`, readable before it opens: `u8 version ‖ u8 app PIN set ‖ Argon2id parameters ‖ salt (32) ‖ app check (32) ‖ emergency check (32) ‖ u32 timeout`, each check `KMAC256(Argon2id(PIN, salt), "", 256, "enclave/v1/store/app-lock" | "enclave/v1/store/emergency-pin")`. A PIN that isn't set has random bytes in its place, so the file doesn't say whether there is an emergency PIN. One Argon2id run checks an entry against both.
+- **App lock**: after the chosen time without a command from the window (1, 5 (default), 15, 60 minutes or never), a profile with a passphrase closes (its keys leave memory; the passphrase opens it); one without gets locked by its **app PIN** (at least 4 digits): the profile stays open and keeps receiving, but the window gets nothing (an empty snapshot) and every command but `Unlock` is refused until the PIN comes. With an app PIN the window also starts locked. Wrong entries: after five, 30 s between tries, doubling to an hour. The app lock never unlocks root actions (the root PIN, §1.3, does). Biometrics come with the platform keystores (D1, A1, I1).
+- **Emergency PIN**: accepted wherever the PIN or the passphrase is asked for; it erases the profile (every keystore secret overwritten and removed, then the database and `lock.bin`) and the window goes back to the welcome screen, as on a new install. It can't be the app PIN or the passphrase (`Store::is_passphrase`). Settings shows the caveat.
+- **Panic wipe**: Settings → Erase this device, and `enclave --profile DIR --panic-wipe` (`lock::erase_profile`, without opening the profile) for an OS keyboard shortcut.
+- **Clipboard**: everything the app copies (codes, links, usernames, message text) is cleared 60 s later if still there.
+- Test: `app_lock_and_emergency_pin` (`enclave-vault/tests/process.rs`), `pins_are_told_apart` and `panic_wipe_from_outside` (`lock.rs`).
+- **With the platform milestones**: screen security (`FLAG_SECURE`, `WDA_EXCLUDEFROMCAPTURE`, `NSWindow.sharingType`, the iOS snapshot blur) and keyboard flags are `enclave-platform` shims (D1, A1, I1); desktop notifications, which show "New message" on the lock screen by default, come with D1. Linux has no way to keep other programs from capturing a window; D1 says so in Settings there.
 
 ## 6. Errors
 

@@ -335,6 +335,12 @@ pub struct Snapshot {
     /// The bridges changed since Enclave started: they apply after a
     /// restart.
     pub bridges_restart: bool,
+    /// The window is locked by the app PIN (not the passphrase).
+    pub pin_lock: bool,
+    /// An app PIN is set (`docs/14-storage.md` §5).
+    pub app_lock: bool,
+    /// Seconds without use before the app locks (0: never).
+    pub lock_timeout: u32,
 }
 
 /// UI → vault.
@@ -508,6 +514,13 @@ pub enum Cmd {
     SecureAccount,
     /// Ask contacts for previews in notification capsules (or stop).
     SetPreviews(bool),
+    /// Set the app PIN (empty: none) (`docs/14-storage.md` §5).
+    SetAppLock(String),
+    /// The time without use before the app locks, in seconds (0: never).
+    SetLockTimeout(u32),
+    /// Set the emergency PIN (empty: none): entered where a PIN or the
+    /// passphrase is asked for, it erases this device.
+    SetEmergencyPin(String),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -791,7 +804,10 @@ impl Snapshot {
             .bool(self.tor_blocked)
             .str(&self.bridges)
             .str(&self.bridges_error)
-            .bool(self.bridges_restart);
+            .bool(self.bridges_restart)
+            .bool(self.pin_lock)
+            .bool(self.app_lock)
+            .u32(self.lock_timeout);
         w.0
     }
 
@@ -1008,6 +1024,9 @@ impl Snapshot {
             bridges: r.str()?,
             bridges_error: r.str()?,
             bridges_restart: r.bool()?,
+            pin_lock: r.bool()?,
+            app_lock: r.bool()?,
+            lock_timeout: r.u32()?,
         };
         r.end()?;
         Ok(s)
@@ -1101,6 +1120,9 @@ impl Cmd {
             Cmd::UnlockRoot(p) => w.u8(74).str(p),
             Cmd::SecureAccount => w.u8(75),
             Cmd::SetPreviews(on) => w.u8(76).bool(*on),
+            Cmd::SetAppLock(p) => w.u8(77).str(p),
+            Cmd::SetLockTimeout(t) => w.u8(79).u32(*t),
+            Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
     }
@@ -1189,6 +1211,9 @@ impl Cmd {
             74 => Cmd::UnlockRoot(r.str()?),
             75 => Cmd::SecureAccount,
             76 => Cmd::SetPreviews(r.bool()?),
+            77 => Cmd::SetAppLock(r.str()?),
+            79 => Cmd::SetLockTimeout(r.u32()?),
+            78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

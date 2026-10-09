@@ -400,6 +400,9 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_sticker_cells(ModelRc::from(Rc::new(VecModel::from(cells))));
     ui.set_unlock_error(s.unlock_error.clone().into());
     ui.set_can_lock(s.can_lock);
+    ui.set_pin_lock(s.pin_lock);
+    ui.set_app_lock(s.app_lock);
+    ui.set_lock_timeout(i32::try_from(s.lock_timeout).unwrap_or(i32::MAX));
     ui.set_invites(s.invites as i32);
     ui.set_typing_setting(s.typing_setting);
     ui.set_typing(s.typing);

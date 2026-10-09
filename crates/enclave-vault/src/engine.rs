@@ -268,6 +268,15 @@ struct Engine {
     unlock_error: String,
     /// The open profile has a passphrase (so "Lock now" makes sense).
     passphrase_set: bool,
+    /// The app PIN, the emergency PIN and the idle time (`lock.rs`).
+    lock: Option<crate::lock::LockFile>,
+    /// The window is locked by the app PIN (the profile stays open).
+    pin_locked: bool,
+    /// The last command from the window.
+    last_use: std::time::Instant,
+    /// Wrong PINs or passphrases in a row, and the earliest next try.
+    lock_tries: u32,
+    lock_wait: Option<std::time::Instant>,
     search: String,
     username_problem: String,
     meet_code: String,
@@ -742,6 +751,11 @@ pub async fn run_with(
         locked: false,
         unlock_error: String::new(),
         passphrase_set: false,
+        lock: None,
+        pin_locked: false,
+        last_use: std::time::Instant::now(),
+        lock_tries: 0,
+        lock_wait: None,
         search: String::new(),
         username_problem: String::new(),
         meet_code: String::new(),
@@ -781,8 +795,16 @@ pub async fn run_with(
                 e.client = Some(c);
             }
             // Protected by a passphrase: ask for it.
-            Err(CoreError::Store(enclave_store::StoreError::Crypto)) => e.locked = true,
+            Err(CoreError::Store(enclave_store::StoreError::Crypto)) => {
+                e.locked = true;
+                e.passphrase_set = true;
+            }
             Err(err) => e.status = format!("Couldn't open your profile: {err}"),
+        }
+        e.load_lock();
+        // With an app PIN the window starts locked.
+        if e.client.is_some() && e.lock.as_ref().is_some_and(|l| l.app_set) {
+            e.lock_now();
         }
         e.apply_privacy();
         e.push();
@@ -819,6 +841,10 @@ pub async fn run_with(
                     e.push();
                 }
                 e.ensure_mixnet().await;
+                if e.idle_lock_due() {
+                    e.lock_now();
+                    e.push();
+                }
                 if e.client.is_some() {
                     e.sync().await;
                     e.push();
@@ -1065,6 +1091,12 @@ impl Engine {
     }
 
     async fn handle(&mut self, cmd: Cmd) {
+        self.last_use = std::time::Instant::now();
+        // Locked by the app PIN, the profile is open but the window gets
+        // nothing until the PIN (or the emergency PIN) comes.
+        if self.pin_locked && !matches!(cmd, Cmd::Unlock(_)) {
+            return;
+        }
         // Setting up, restoring and linking need the mixnet.
         if matches!(cmd, Cmd::Create(..) | Cmd::Restore(..)) || self.client.is_some() {
             self.ensure_mixnet().await;
@@ -2115,6 +2147,36 @@ impl Engine {
             }
             Cmd::Unlock(passphrase) => {
                 self.unlock_error.clear();
+                if let Some(until) = self.lock_wait
+                    && std::time::Instant::now() < until
+                {
+                    let secs = until
+                        .saturating_duration_since(std::time::Instant::now())
+                        .as_secs()
+                        + 1;
+                    self.unlock_error = format!("Too many tries. Try again in {secs} seconds.");
+                    return;
+                }
+                if let Some(lf) = &self.lock {
+                    match lf.entered(&passphrase) {
+                        crate::lock::Entered::Emergency => {
+                            self.emergency_erase();
+                            return;
+                        }
+                        crate::lock::Entered::App if self.pin_locked => {
+                            self.pin_locked = false;
+                            self.locked = false;
+                            self.lock_tries = 0;
+                            self.lock_wait = None;
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+                if self.pin_locked {
+                    self.wrong_unlock("That PIN isn't right.");
+                    return;
+                }
                 self.busy = true;
                 self.push();
                 match Client::open(self.options(Some(&passphrase)), Arc::clone(&self.transport)) {
@@ -2123,25 +2185,29 @@ impl Engine {
                         self.client = Some(c);
                         self.locked = false;
                         self.passphrase_set = true;
+                        self.lock_tries = 0;
+                        self.lock_wait = None;
                     }
                     Err(CoreError::Store(enclave_store::StoreError::Crypto)) => {
-                        self.unlock_error = "That passphrase doesn't open this profile.".into();
+                        self.wrong_unlock("That passphrase doesn't open this profile.");
                     }
                     Err(err) => self.unlock_error = format!("Couldn't open your profile: {err}"),
                 }
                 self.busy = false;
             }
-            Cmd::Lock if self.passphrase_set => {
-                // Dropping the client drops its keys and the open database.
-                self.client = None;
-                self.locked = true;
-                self.selected = None;
-                self.selected_group = None;
-                self.selected_notes = false;
-                self.reveal_words = false;
-                self.search.clear();
+            Cmd::Lock => self.lock_now(),
+            Cmd::SetAppLock(pin) => self.set_app_lock(&pin),
+            Cmd::SetLockTimeout(t) => {
+                if self.client.is_some()
+                    && let Some(lf) = self.lock_mut()
+                {
+                    lf.timeout = t;
+                    if !self.save_lock() {
+                        self.status = "Couldn't save the lock settings.".into();
+                    }
+                }
             }
-            Cmd::Lock => {}
+            Cmd::SetEmergencyPin(pin) => self.set_emergency_pin(&pin),
             Cmd::SetPassphrase(p) if matches!(self.mode, Mode::Server { .. }) => {
                 self.busy = true;
                 self.push();
@@ -2896,6 +2962,183 @@ impl Engine {
         let _ = self.out.send(Out::Snapshot(Box::new(self.snapshot())));
     }
 
+    /// Where the lock settings live (beside the profile; the demo keeps
+    /// them in memory).
+    fn lock_path(&self) -> Option<PathBuf> {
+        match &self.mode {
+            Mode::Server { profile, .. } => Some(profile.join("lock.bin")),
+            Mode::Demo => None,
+        }
+    }
+
+    fn load_lock(&mut self) {
+        if let Some(p) = self.lock_path()
+            && let Ok(b) = std::fs::read(p)
+        {
+            self.lock = crate::lock::LockFile::decode(&b);
+        }
+    }
+
+    fn save_lock(&mut self) -> bool {
+        let (Some(p), Some(l)) = (self.lock_path(), &self.lock) else {
+            return self.lock_path().is_none();
+        };
+        let tmp = p.with_extension("tmp");
+        std::fs::write(&tmp, l.encode()).is_ok() && std::fs::rename(&tmp, &p).is_ok()
+    }
+
+    /// The lock settings, made if there are none yet.
+    fn lock_mut(&mut self) -> Option<&mut crate::lock::LockFile> {
+        if self.lock.is_none() {
+            let params = match self.mode {
+                Mode::Demo => PwParams::FLOOR,
+                Mode::Server { .. } => PwParams::DESKTOP_DEFAULT,
+            };
+            let mut rng = enclave_crypto::rng::HedgedRng::new().ok()?;
+            self.lock = crate::lock::LockFile::new(params, &mut rng);
+        }
+        self.lock.as_mut()
+    }
+
+    /// Lock now: with a passphrase the profile closes (its keys leave
+    /// memory); with an app PIN the window locks and the profile keeps
+    /// receiving. Neither: nothing to lock with.
+    fn lock_now(&mut self) {
+        if self.client.is_none() {
+            return;
+        }
+        if self.passphrase_set {
+            // Dropping the client drops its keys and the open database.
+            self.client = None;
+        } else if self.lock.as_ref().is_some_and(|l| l.app_set) {
+            self.pin_locked = true;
+        } else {
+            return;
+        }
+        self.locked = true;
+        self.selected = None;
+        self.selected_group = None;
+        self.selected_notes = false;
+        self.reveal_words = false;
+        self.search.clear();
+    }
+
+    /// Time to lock: unused for longer than the timeout, with something to
+    /// lock with.
+    fn idle_lock_due(&self) -> bool {
+        let timeout = self
+            .lock
+            .as_ref()
+            .map_or(crate::lock::DEFAULT_TIMEOUT, |l| l.timeout);
+        !self.locked
+            && self.client.is_some()
+            && timeout > 0
+            && (self.passphrase_set || self.lock.as_ref().is_some_and(|l| l.app_set))
+            && self.last_use.elapsed() >= Duration::from_secs(u64::from(timeout))
+    }
+
+    /// A wrong PIN or passphrase: after five, tries are spaced out (30 s,
+    /// doubling up to an hour).
+    fn wrong_unlock(&mut self, why: &str) {
+        self.unlock_error = why.into();
+        self.lock_tries += 1;
+        if self.lock_tries >= 5 {
+            let secs = (30u64 << (self.lock_tries - 5).min(7)).min(3600);
+            self.lock_wait = Some(std::time::Instant::now() + Duration::from_secs(secs));
+        }
+    }
+
+    fn set_app_lock(&mut self, pin: &str) {
+        if self.client.is_none() {
+            return;
+        }
+        let pin = pin.trim();
+        if !pin.is_empty() && pin.chars().count() < crate::lock::MIN_PIN {
+            self.status = format!("A PIN needs at least {} digits.", crate::lock::MIN_PIN);
+            return;
+        }
+        let Some(lf) = self.lock_mut() else {
+            return;
+        };
+        if !pin.is_empty() && lf.entered(pin) == crate::lock::Entered::Emergency {
+            self.status = "That's your emergency PIN. Choose another.".into();
+            return;
+        }
+        let Ok(mut rng) = enclave_crypto::rng::HedgedRng::new() else {
+            return;
+        };
+        if lf
+            .set_app((!pin.is_empty()).then_some(pin), &mut rng)
+            .is_none()
+        {
+            return;
+        }
+        let on = lf.app_set;
+        self.status = if !self.save_lock() {
+            "Couldn't save the lock settings.".into()
+        } else if on {
+            "App PIN set.".into()
+        } else {
+            "Lock settings saved.".into()
+        };
+    }
+
+    fn set_emergency_pin(&mut self, pin: &str) {
+        let pin = pin.trim();
+        let Some(c) = self.client.as_ref() else {
+            return;
+        };
+        if !pin.is_empty() && pin.chars().count() < crate::lock::MIN_PIN {
+            self.status = format!("A PIN needs at least {} digits.", crate::lock::MIN_PIN);
+            return;
+        }
+        // Entering it must never be taken for unlocking.
+        if !pin.is_empty() && c.is_passphrase(pin) {
+            self.status = "That's your passphrase. Choose another emergency PIN.".into();
+            return;
+        }
+        let Some(lf) = self.lock_mut() else {
+            return;
+        };
+        if !pin.is_empty() && lf.entered(pin) == crate::lock::Entered::App {
+            self.status = "That's your app PIN. Choose another emergency PIN.".into();
+            return;
+        }
+        let Ok(mut rng) = enclave_crypto::rng::HedgedRng::new() else {
+            return;
+        };
+        if lf
+            .set_emergency((!pin.is_empty()).then_some(pin), &mut rng)
+            .is_none()
+        {
+            return;
+        }
+        self.status = if !self.save_lock() {
+            "Couldn't save the lock settings.".into()
+        } else if pin.is_empty() {
+            "Emergency PIN removed.".into()
+        } else {
+            "Emergency PIN set. Entering it where Enclave asks for your PIN or passphrase erases this device.".into()
+        };
+    }
+
+    /// The emergency PIN: erase everything here and show the welcome
+    /// screen, as on a new install.
+    fn emergency_erase(&mut self) {
+        self.erase_local();
+        if let Some(p) = self.lock_path() {
+            let _ = std::fs::remove_file(p);
+        }
+        self.lock = None;
+        self.locked = false;
+        self.pin_locked = false;
+        self.passphrase_set = false;
+        self.lock_tries = 0;
+        self.lock_wait = None;
+        self.unlock_error.clear();
+        self.status.clear();
+    }
+
     /// Crypto-erase the profile (its key goes, then its files) and go back
     /// to the welcome screen.
     fn erase_local(&mut self) {
@@ -2903,8 +3146,9 @@ impl Engine {
             let _ = c.erase();
         }
         if let Mode::Server { profile, .. } = &self.mode {
-            let _ = std::fs::remove_file(profile.join("profile.redb"));
-            let _ = std::fs::remove_dir_all(profile.join("keys"));
+            // Every keystore secret left (all of them, if the profile was
+            // closed by its passphrase) overwritten, then the files.
+            let _ = crate::lock::erase_profile(profile);
         }
         self.selected = None;
         self.selected_group = None;
@@ -2924,6 +3168,12 @@ impl Engine {
             locked: self.locked,
             unlock_error: self.unlock_error.clone(),
             can_lock: self.passphrase_set && self.client.is_some(),
+            pin_lock: self.pin_locked,
+            app_lock: self.lock.as_ref().is_some_and(|l| l.app_set),
+            lock_timeout: self
+                .lock
+                .as_ref()
+                .map_or(crate::lock::DEFAULT_TIMEOUT, |l| l.timeout),
             status: self.status.clone(),
             add_error: self.add_error.clone(),
             username_error: self.username_error.clone(),
@@ -2948,6 +3198,10 @@ impl Engine {
         if let Some(r) = &self.share_request {
             s.share_request = r.code();
             s.share_request_words = r.words().join(" ");
+        }
+        // Locked by the app PIN: nothing from the profile.
+        if self.pin_locked {
+            return s;
         }
         let Some(c) = self.client.as_ref() else {
             return s;

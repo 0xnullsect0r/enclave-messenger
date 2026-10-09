@@ -17,6 +17,7 @@ pub mod built {
 }
 pub mod engine;
 pub mod harden;
+pub mod lock;
 pub mod media;
 pub mod netd;
 
