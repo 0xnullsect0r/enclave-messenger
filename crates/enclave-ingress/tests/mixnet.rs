@@ -507,9 +507,19 @@ async fn clients_over_the_mixnet() {
         "{ev:?}"
     );
     ben.accept(&ada.root()).await.unwrap();
-    ada.sync().await.unwrap();
     // Writes go one way: what was sent may still be crossing the (fake)
-    // mixnet when the other side polls, so poll a few times.
+    // mixnet when the other side polls, so poll a few times (the
+    // acceptance too).
+    for _ in 0..50 {
+        ada.sync().await.unwrap();
+        if ada
+            .contact(&ben.root())
+            .is_some_and(|c| c.state == enclave_core::ContactState::Accepted)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     ada.send_text(&ben.root(), "over the mixnet").await.unwrap();
     let mut got = Vec::new();
     for _ in 0..50 {
