@@ -7541,8 +7541,6 @@ dependencies = [
 [[package]]
 name = "ptrs"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50628fec509059dddc61b0726047b7d455f381de3cb2dea0d16fb47b4bafc681"
 dependencies = [
  "futures",
  "itertools 0.12.1",
