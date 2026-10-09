@@ -17,7 +17,7 @@ Account creation MUST NOT require a phone number, email, or any other identifier
 
 ## 2. Recovery secret and root key
 
-- `rs` is 256 bits, shown as 24 English BIP-39 words with the BIP-39 checksum (`recovery::RecoverySecret`). Import ignores case and extra whitespace and MUST reject a failed checksum with "These words don't match. Check each word and try again." Other BIP-39 languages are not implemented.
+- `rs` is 256 bits, shown as 24 BIP-39 words with the BIP-39 checksum (`recovery::RecoverySecret`), in any of BIP-39's ten lists (English, Spanish, French, Italian, Portuguese, Czech, Japanese, Korean, Simplified and Traditional Chinese; `to_words_in`). The words stand for the same secret in every list, so the account is the same whichever was written down; the recovery-words sheet shows them in the list the person picks (setting `words-language`, English by default). Import finds the list from the words and ignores case, extra whitespace and Unicode form, and MUST reject a failed checksum with "These words don't match. Check each word and try again." Test `every_language`. Showing the CJK lists needs fonts for those scripts, which ship with L2 (`18-a11y-i18n.md`).
 - The root is derived as `SLH-DSA.KeyGen(KMAC256(rs, "", 768, "enclave/v1/root/keygen"))` (`02b-key-schedule.md` §2.1). `AccountKeys::create` derives it, generates the X448 identity key, and generates the McEliece vault key (a few seconds; run in the background).
 - **Not implemented yet:** storing `rs` wrapped on the primary device under `k_root = KMAC256(hw_root_secret, Argon2id(PIN), 256, "enclave/v1/store/root-wrap")` (`14-storage.md` §1.3), where both the hardware key and the PIN are needed and biometrics MUST NOT unlock root operations.
 - Root operations unwrap `rs`, derive the root secret key, sign, and zeroize both within one call in the vault process. Linked devices without the "may add devices" role hold no root key (`AccountKeys.root` is `None`).
@@ -183,7 +183,7 @@ For each side, `fp = SHAKE256^5200(root_pk)` as specified in `02b-key-schedule.m
 
 - Order: the two fingerprints are sorted lexicographically by their 64 B values; call them `fp_lo` and `fp_hi`. Both phones show the same order.
 - Digits: `digits(fp_lo) ‖ digits(fp_hi)`, 60 digits in 12 groups of 5, in Atkinson Hyperlegible Mono (`17-design.md`).
-- Words: `words(fp_lo) ‖ words(fp_hi)`, 10 BIP-39 words in the user's language (110 bits).
+- Words: `words(fp_lo) ‖ words(fp_hi)`, 10 BIP-39 words in the user's language (110 bits). **As implemented** (`recovery::security_words`): each side's five words are the 55 bits after the 30 bytes the digits use, in the recovery words' list, with "Show in English" when the two people's lists differ (`18-a11y-i18n.md`). The code sheet shows the words under the digits, and the contact's art (`17-design.md` §6.7). Test `spoken_security_code`.
 - QR: the contact QR (§9.1) carries the full `root_pk`, from which the scanner computes the full 64 B digest.
 - Screen readers read one group of 5 digits at a time.
 
@@ -419,12 +419,13 @@ u8(3) ‖ root_pk (64) ‖ server_id (16) ‖ request_inbox (32) ‖ vault_locat
 
 **As implemented** (`card.rs`, `client/invites.rs`, server `write_request`):
 
-- The link is the contact link (`enclave:add#`, §9.1 as implemented) with card version 2: the version-1 fields, then `invite_secret (32) ‖ uses (u8, 1–20)`. The plain QR code stays version 1 with no secret. The `https://<invite-host>/` wrapper is not built yet (Open question 1).
+- The link is the contact link (`enclave:add#`, §9.1 as implemented) with card version 2: the version-1 fields, then `invite_secret (32) ‖ uses (u8, 1–20)`. The plain QR code stays version 1 with no secret.
+- **The https form.** "Copy invite link" gives `https://<home server domain>/i#<the same payload>` (`ContactCard::to_share_link`) when the card names the home server's domain, for apps that don't open `enclave:` links; the scanner and the Add screen take either form. The invite host is the inviter's own server's front (`enclave-front`): its `/i` page is the same static page for every link, with no script and no outside resources (a strict content security policy, `no-referrer`), says to open the link in Enclave, and never sees the invite, which is in the fragment. Opening such links in the app directly (Android App Links, iOS universal links) needs the app's identifiers in files the front serves, added with A1 and I1. Tests `card_links` (core) and `front_serves_descriptor_and_witness_over_enclave_tls` (front).
 - **Capabilities**: `invite_cap_i = KMAC256(invite_secret, u32(i), 256, "enclave/v1/invite/cap")` for `i < uses × 5` (one per device of each person joining; a greeting goes to each of the host's devices). The host registers `token_hash(invite_cap_i)` on its request inbox (`RegisterTokens`), and a writer sets `FLAG_INVITE` on `WriteRequest` with a capability as the token instead of a proof of work. The server burns it on use. The writer tries the capabilities in order, skipping ones others have spent; if none is left it gets `InviteUsed` ("This invite link was already used, has expired or was cancelled") and nothing is kept.
 - **Limits**: the host counts the distinct accounts each link opened; once it has brought `uses` people it cancels the remaining capabilities (`RegisterTokens` with `FLAG_REVOKE`), and later greetings with its PSK from anyone else are dropped. More devices of someone it already brought are fine. Links lapse after 7 days (cancelled at the next sync). "Cancel them" cancels every unused link.
 - A contact never keeps the invite: the card stored for them has it stripped, so later greetings (new devices, restores) use the proof of work as before.
 - **App**: "Copy invite link" makes a new single-use link each time and copies it (cleared from the clipboard after 60 s); the code sheet shows how many links are unused, with "Cancel them".
-- Not done: group invite links (07 §7), admin approval of joins, and choosing more than one use in the app.
+- Group invite links and admin approval of joins are built (`07-groups.md` §9). Not done: choosing more than one use in the app (F3).
 
 ### 9.3 Usernames
 
@@ -452,7 +453,7 @@ u8(3) ‖ root_pk (64) ‖ server_id (16) ‖ request_inbox (32) ‖ vault_locat
 
 ## Open questions
 
-1. The invite-link host (`<invite-host>`) is not fixed by PLAN.md. It must be a static page that never sees the fragment and offers store links. Candidate: a foundation-run domain, decided at M6.
+1. Resolved: the invite-link host is the inviter's own home server's front (§9.2 as implemented), so no foundation-run domain sees who shares links; its `/i` page is static and never sees the fragment.
 2. The rendezvous mailbox for linking is hosted on the new device's chosen default server. Whether the primary should instead choose it (so the new device's first network activity is not tied to a server choice) is open.
 3. Whether the 30-day inactivity removal should be performed by any device with role 3 as well as the primary, to avoid a PIN prompt on the primary.
 4. The manifest carries `expires` per device key (1 year). PLAN.md does not say whether an expired device key blocks that device from sending until relinking or whether the primary can extend it in place with a new manifest. This spec allows in-place extension by the primary.

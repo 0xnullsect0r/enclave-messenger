@@ -118,3 +118,41 @@ async fn group_moves_by_admin_vote() {
         assert!(texts(c, &gid).contains(&"on the new server".to_string()));
     }
 }
+
+/// Two people who meet through a group start on two KEMs (no 1.36 MB
+/// vault key per member); the vault key comes later and the braid adds the
+/// third, at the latest 7 days in on a metered network
+/// (`docs/04-eqxdh.md` §7).
+#[tokio::test(flavor = "multi_thread")]
+async fn group_only_peers_braid_within_seven_days() {
+    let net = network();
+    let new = |s, n| Client::create(memory(), Arc::new(net.clone()), s, n);
+    let (mut ada, _) = new(S1, "Ada").await.unwrap();
+    let (mut mo, _) = new(S2, "Mo").await.unwrap();
+    let (mut jo, _) = new(S1, "Jo").await.unwrap();
+    connect(&mut ada, &mut mo).await;
+    connect(&mut ada, &mut jo).await;
+    mo.set_metered(true);
+    jo.set_metered(true);
+    ada.create_group("Trip", &[mo.root(), jo.root()])
+        .await
+        .unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 4).await;
+    // Whoever introduced themselves first holds two-KEM sessions and waits.
+    let (mo_r, jo_r) = (mo.root(), jo.root());
+    assert!(mo.contact(&jo_r).is_some() && jo.contact(&mo_r).is_some());
+    assert!(mo.braid_pending(&jo_r) || jo.braid_pending(&mo_r));
+    assert!(!mo.fully_protected(&jo_r) && !jo.fully_protected(&mo_r));
+
+    // Metered: still waiting after six days…
+    net.advance(6 * 86_400);
+    settle(&mut [&mut ada, &mut mo, &mut jo], 2).await;
+    assert!(mo.braid_pending(&jo_r) || jo.braid_pending(&mo_r));
+
+    // …and done past the deadline: both hold all three KEMs.
+    net.advance(86_400 + 60);
+    settle(&mut [&mut mo, &mut jo], 4).await;
+    assert!(!mo.braid_pending(&jo_r) && !jo.braid_pending(&mo_r));
+    assert!(mo.fully_protected(&jo_r), "Mo");
+    assert!(jo.fully_protected(&mo_r), "Jo");
+}

@@ -128,7 +128,27 @@ fn row(r: &Row) -> ContactRow {
         archived: r.archived,
         blocked: r.blocked,
         admin: r.admin,
+        art: (r.art & 0x01ff_ffff) as i32,
+        art_tint: art_tint((r.art >> 25) as usize),
     }
+}
+
+/// Contact-art tints (`docs/17-design.md` §6.7): Pine and neutrals, never
+/// Saffron.
+const ART_TINTS: [(u8, u8, u8); 8] = [
+    (0x1F, 0x5C, 0x4A),
+    (0x2F, 0x7A, 0x63),
+    (0x3E, 0x8F, 0x76),
+    (0x4E, 0x6B, 0x5E),
+    (0x5B, 0x5F, 0x57),
+    (0x6F, 0x6A, 0x5E),
+    (0x3D, 0x4A, 0x45),
+    (0x7C, 0x8C, 0x83),
+];
+
+fn art_tint(i: usize) -> Color {
+    let (r, g, b) = ART_TINTS[i % ART_TINTS.len()];
+    Color::from_rgb_u8(r, g, b)
 }
 
 fn pick_row(p: &Pick) -> PickRow {
@@ -271,9 +291,12 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     );
     ui.set_messages(ModelRc::from(Rc::new(VecModel::from(msgs))));
     ui.set_code_groups(strings(&s.code_groups));
+    ui.set_code_words(strings(&s.code_words));
+    ui.set_code_words_english(s.code_words_english);
     ui.set_status_line(s.status.clone().into());
     ui.set_recovery_words(strings(&s.recovery_words));
     ui.set_recovery_saved(s.recovery_saved);
+    ui.set_words_language(s.words_language.clone().into());
     ui.set_privacy(s.privacy);
     ui.set_finishing(s.finishing);
     ui.set_gap(s.gap);

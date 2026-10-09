@@ -217,6 +217,7 @@ impl Client {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            metered: false,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: std::collections::HashMap::new(),
@@ -242,7 +243,7 @@ impl Client {
             }
             let hello = client.hello_for(&root, now).await?;
             client
-                .initiate_to(&card, &peer_manifest, &vault, &hello, None, now, None)
+                .initiate_to(&card, &peer_manifest, Some(&vault), &hello, None, now, None)
                 .await?;
         }
         Ok(client)

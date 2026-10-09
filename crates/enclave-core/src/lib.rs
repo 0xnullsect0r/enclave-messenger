@@ -18,6 +18,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod art;
 pub mod card;
 pub mod client;
 pub mod content;

@@ -261,6 +261,8 @@ struct Engine {
     busy: bool,
     /// The recovery sheet is open: only then do the words leave the vault.
     reveal_words: bool,
+    /// Security-code words in English (`Cmd::CodeWordsEnglish`).
+    code_words_english: bool,
     /// The profile on disk needs its passphrase to open.
     locked: bool,
     unlock_error: String,
@@ -393,6 +395,12 @@ fn hex_short(k: &[u8; 32]) -> String {
 const NOTES_ID: &str = "notes";
 
 /// How a group message reads in the conversation.
+/// A contact's art for the UI (`enclave_core::art`): cells and tint packed.
+fn art_of(root: &[u8; 64]) -> u32 {
+    let a = enclave_core::art::contact_art(root);
+    a.cells | (u32::from(a.tint) << 25)
+}
+
 fn group_text(m: &enclave_core::GroupMessage) -> String {
     if m.deleted {
         return "This message was deleted.".into();
@@ -720,6 +728,7 @@ pub async fn run_with(
         join_words: String::new(),
         busy: false,
         reveal_words: false,
+        code_words_english: false,
         locked: false,
         unlock_error: String::new(),
         passphrase_set: false,
@@ -1945,6 +1954,14 @@ impl Engine {
                 }
             }
             Cmd::RevealWords(on) => self.reveal_words = on,
+            Cmd::CodeWordsEnglish(on) => self.code_words_english = on,
+            Cmd::WordsLanguage(code) => {
+                if let Some(c) = self.client.as_mut()
+                    && c.recovery_words_in(&code).is_ok()
+                {
+                    let _ = c.set_setting("words-language", code.as_bytes());
+                }
+            }
             Cmd::Unlock(passphrase) => {
                 self.unlock_error.clear();
                 self.busy = true;
@@ -2750,9 +2767,11 @@ impl Engine {
                 .unwrap_or_default()
                 .into_iter()
                 .map(|h| {
-                    let (id, kind, tint) = match h.place {
-                        enclave_core::Place::Contact(r) => (hex_id(&r), 0, tint_for(&r)),
-                        enclave_core::Place::Group(g) => (group_id_str(&g), 1, tint_for(&g)),
+                    let (id, kind, tint, art) = match h.place {
+                        enclave_core::Place::Contact(r) => {
+                            (hex_id(&r), 0, tint_for(&r), art_of(&r))
+                        }
+                        enclave_core::Place::Group(g) => (group_id_str(&g), 1, tint_for(&g), 0),
                     };
                     Row {
                         id,
@@ -2765,6 +2784,7 @@ impl Engine {
                         time: clock(h.at),
                         state: 2,
                         tint,
+                        art,
                         kind,
                         ..Default::default()
                     }
@@ -2851,7 +2871,14 @@ impl Engine {
             })
             .unwrap_or_default();
         if self.reveal_words {
-            s.recovery_words = c.recovery_words().unwrap_or_default();
+            let lang = c
+                .setting("words-language")
+                .ok()
+                .flatten()
+                .and_then(|b| String::from_utf8(b).ok())
+                .unwrap_or_else(|| "en".into());
+            s.recovery_words = c.recovery_words_in(&lang).unwrap_or_default();
+            s.words_language = lang;
         }
         s.recovery_saved = matches!(c.setting("recovery-saved"), Ok(Some(v)) if v == [1]);
         s.privacy = i32::from(matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
@@ -2911,6 +2938,7 @@ impl Engine {
                 verified: ct.verified,
                 met: c.met_in_person(&ct.root),
                 tint: tint_for(&ct.root),
+                art: art_of(&ct.root),
                 kind: 0,
                 members: 0,
                 blocked,
@@ -2997,6 +3025,19 @@ impl Engine {
                     .chunks(5)
                     .map(|g| String::from_utf8_lossy(g).into_owned())
                     .collect();
+                // Read aloud in the recovery words' list, or English when
+                // the two people's languages differ (18-a11y-i18n.md).
+                let lang = if self.code_words_english {
+                    "en".to_string()
+                } else {
+                    c.setting("words-language")
+                        .ok()
+                        .flatten()
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .unwrap_or_else(|| "en".into())
+                };
+                s.code_words = c.security_words(&ct.root, &lang).unwrap_or_default();
+                s.code_words_english = self.code_words_english;
             }
             rows.push((last.map(|m| m.at).unwrap_or(ct.added_at), row));
         }
@@ -3039,6 +3080,7 @@ impl Engine {
                         verified: c.contact(r).is_some_and(|ct| ct.verified),
                         met: c.met_in_person(r),
                         tint: tint_for(r),
+                        art: art_of(r),
                         admin: g.admins.contains(r),
                         ..Default::default()
                     })

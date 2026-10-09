@@ -50,6 +50,7 @@ use zeroize::Zeroizing;
 const L_TRANSCRIPT: &str = "enclave/v1/proto/link-transcript";
 const L_PHRASE: &str = "enclave/v1/proto/link-phrase";
 const L_KEYS: &str = "enclave/v1/proto/link-keys";
+const L_PSK: &str = "enclave/v1/proto/link-psk";
 const AD_LINK: &str = "enclave/v1/wire/ad-link";
 
 const U_OFFER: u8 = 1;
@@ -150,11 +151,14 @@ fn link_key(
     code: &LinkCode,
 ) -> Zeroizing<[u8; 64]> {
     let transcript = [L_TRANSCRIPT.as_bytes(), &code.commit, &code.mailbox].concat();
+    // The PSK is derived from the code's secret, not the secret itself, so
+    // it is used for nothing else (`02b-key-schedule.md` §5).
+    let psk: Zeroizing<[u8; 32]> = Zeroizing::new(kmac256(&code.secret, b"", L_PSK));
     combine(
         Suite::TwoKem,
         &[dh, ss],
         &[x_new, ek, x_primary, ct, &transcript],
-        Some(&code.secret),
+        Some(&psk),
     )
 }
 
@@ -461,6 +465,7 @@ impl LinkingDevice {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            metered: false,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: std::collections::HashMap::new(),
@@ -494,7 +499,7 @@ impl LinkingDevice {
             client.save_contact(&c)?;
             let hello = client.hello_for(&card.root, now).await?;
             client
-                .initiate_to(&card, &peer_manifest, &vault, &hello, None, now, None)
+                .initiate_to(&card, &peer_manifest, Some(&vault), &hello, None, now, None)
                 .await?;
         }
         // Our other devices, for self-copies.
@@ -503,7 +508,15 @@ impl LinkingDevice {
         let hello = Content::Tokens(Vec::new()).encode()?;
         let me = client.device.id;
         client
-            .initiate_to(&own, &own_manifest, &own_vault, &hello, Some(me), now, None)
+            .initiate_to(
+                &own,
+                &own_manifest,
+                Some(&own_vault),
+                &hello,
+                Some(me),
+                now,
+                None,
+            )
             .await?;
         Ok(client)
     }

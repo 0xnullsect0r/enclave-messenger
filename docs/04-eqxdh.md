@@ -218,11 +218,9 @@ The caller then opens the first message in the request envelope with the new ses
 If Alice does not have Bob's vault key when she initiates, she uses the 2-KEM suite: `ct_mce` is zero, the McEliece secret is empty, and Bob's `vault_hash` is still in the transcript. When the vault key later arrives and verifies against the manifest commitment, Alice's client calls `Session::schedule_braid(vault_pk)`; the McEliece encapsulation is then folded into Alice's next PQ ratchet out-step (`05-ratchet.md` §7.4), after which both sides report `three_kem() == true`.
 
 As implemented:
-- Enclave's own initiator always has the vault key (`fetch_peer` requires it), so 2-KEM sessions come only from other clients.
-- When a session does start on two KEMs, the initiator schedules the braid at once (`initiate_to`).
+- Enclave's initiator fetches the vault key before greeting anyone it adds itself (a card, a link, a username, meeting in person), so those sessions start on all three KEMs; a session that still starts on two (the vault key was missing, or another client) has the braid scheduled at once (`initiate_to`).
+- **Group-only peers** (PLAN: "for people you share only a group with, sessions start on two KEMs; they must upgrade to three within 7 days, on an unmetered network"): when a member introduces themselves to another member through a group (`connect_members`), the initiator skips the 1.36 MB vault-key fetch and starts on two KEMs, and remembers the contact as due (`client/braid.rs`). Each upkeep round fetches one due contact's vault key, checks it against their manifest's `vault_hash`, schedules the braid on every session with them that lacks it, and sends a `PqStep { reply: true }` so the next PQ step carries it at once, since people who share only a group may never write to each other. On a metered network (`Client::set_metered`, set by the platform) the fetch waits, but no longer than 7 days after the session started (`BRAID_DEADLINE_SECS`). In Maximum privacy the vault key is fetched before the greeting, so nothing starts on two KEMs. Test `group_only_peers_braid_within_seven_days`.
 - Bob accepts a 2-KEM initial message. In Maximum privacy, though, he sends nothing a person wrote until `three_kem()` holds; contact info shows "Extra protection: finishing…" meanwhile (`09-transport.md` §6.6; test `maximum_waits_for_three_kems`).
-
-Not implemented yet: the 7-day braid deadline, and group-only peers (§8 of the M0 draft).
 
 ## 8. Replay protection
 

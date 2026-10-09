@@ -705,7 +705,7 @@ impl Client {
             self.save_contact(&c)?;
             self.store.delete(NS_GREET, &k)?;
             let hello = self.hello_for(&root, now).await?;
-            self.initiate_to(&card, &manifest, &vault, &hello, None, now, None)
+            self.initiate_to(&card, &manifest, Some(&vault), &hello, None, now, None)
                 .await?;
             events.push(Event::Synced);
         }

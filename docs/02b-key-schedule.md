@@ -115,7 +115,7 @@ digits = for j in 0..6: decimal( u40_be(digest[5j..5j+5]) mod 100000, zero-padde
 
 The pair code (`hash::security_code`) is the two 30-digit strings in ascending order of their 64 B digests (byte-wise comparison), concatenated: 60 digits, shown as 12 groups of 5. Both sides compute the same code. This is PLAN §3.5's `SHAKE256^5200(root_pk)` realized as one KMAC256 step followed by 5,200 SHA3-512 iterations that re-absorb `root_pk`.
 
-Reserved: the 10-word spoken form (PLAN §3.5); it is not implemented.
+The 10-word spoken form (PLAN §3.5, `recovery::security_words`): for each side, the 55 bits of `digest[30..37]` after the digits' 30 bytes, as five 11-bit indices into a BIP-39 list, the lower digest's words first.
 
 ### 4.2 In-person bond PSK and Seal words
 
@@ -128,13 +128,13 @@ seal_words = BIP-39 English words at indices u16_be(d[2i..2i+2]) mod 2048, i = 0
 
 This is PLAN §3.6's `KMAC256(s_A‖s_B (ordered), "enclave/v1/bond", SHA3-512(QR_A‖QR_B))` with the key, input framing and length made explicit (`eqxdh::bond_psk`, `eqxdh::seal_words`).
 
-### 4.3 Contact art (reserved)
+### 4.3 Contact art
 
-`art_seed = KMAC256(root_hash, "", 256, "enclave/v1/proto/contact-art")`.
+`art_seed = KMAC256(root_hash, "", 256, "enclave/v1/proto/contact-art")` (`enclave-core/src/art.rs`): bits 0–14 of `u16_be(art_seed[0..2])` fill columns 0–2 of a 5 × 5 grid row by row, mirrored onto columns 4 and 3 (all 15 if they are all zero), and `art_seed[2] mod 8` picks the tint. Test `rt26_contact_art_depends_on_root`.
 
 ## 5. PSKs
 
-The implemented PSK is `psk_bond` (§4.2), passed as the 32 B PSK to EnclaveCombine with `psk_flag = 1`. Reserved: the invite PSK (`enclave/v1/proto/invite-psk`) and the device-link PSK (`enclave/v1/proto/link-psk`), and distinct `psk_flag` values per PSK source.
+Three PSKs reach EnclaveCombine, each derived from its own secret so none is used for anything else: `psk_bond` (§4.2, meeting in person), the invite PSK `KMAC256(invite_secret, "", 256, "enclave/v1/invite/psk")` (`03-identity.md` §9.2) and the device-link PSK `link_psk = KMAC256(link_secret, "", 256, "enclave/v1/proto/link-psk")` (§11). The EQXDH `psk_flag` is 1 for any of them: which source keyed a session doesn't need to be on the wire, because each binds a different transcript (the bond the scanned codes, the invite the card, the link the code's commitment and mailbox).
 
 ## 6. Session establishment (EQXDH)
 
@@ -242,15 +242,20 @@ manifest_key(root_pk) = SHAKE256("enclave/v1/dir/manifest" ‖ root_pk, 32)
 device_key(device_id) = device_id ‖ 0^16
 ```
 
-## 11. Device linking (reserved)
+## 11. Device linking
+
+As implemented (`enclave-core/src/client/link.rs`, `03-identity.md` §4.x):
 
 ```
-link_secret = HedgedRng.fill("link-secret", 16)
-ss_link     = EnclaveCombine(TwoKem, [X448(…), ss_mlkem], [… , "enclave/v1/proto/link-transcript", SHA3-512(link_qr), root_pk], psk = link_psk)
-(k_p2n, k_n2p) = split32( KMAC256(ss_link, "", 512, "enclave/v1/proto/link-keys") )
-phrase_words   = first three 11-bit groups of KMAC256(ss_link, "", 256, "enclave/v1/proto/link-phrase")
-link_cap       = KMAC256(link_secret, "", 256, "enclave/v1/proto/link-cap")
+link_secret = HedgedRng.fill("link/secret", 32)                  # in the link code
+link_psk    = KMAC256(link_secret, "", 256, "enclave/v1/proto/link-psk")
+ss_link     = EnclaveCombine(TwoKem, [X448(x_new, x_primary), ss_mlkem],
+                             [x_new, ek, x_primary, ct, "enclave/v1/proto/link-transcript" ‖ commit ‖ mailbox], psk = link_psk)
+phrase_words   = three 11-bit groups of KMAC256(ss_link, "", 64, "enclave/v1/proto/link-phrase")
+package key    = derive_key(ss_link, "package", "enclave/v1/proto/link-keys")
 ```
+
+The rendezvous mailbox's owner secret is random (`link/owner`) and in the code; the draft's `link_cap` derivation is retired (`label-registry.md` §4).
 
 ## 12. Calls (reserved)
 

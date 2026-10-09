@@ -298,13 +298,34 @@ export component Avatar inherits Rectangle {
     in property <string> initials;
     in property <color> tint;
     in property <length> size: 40px;
+    // Key-derived contact art (17-design.md §6.7): a mirrored 5 × 5 grid
+    // whose filled cells are bits 0–24 of `art`, in `art-tint`. 0: initials.
+    in property <int> art: 0;
+    in property <color> art-tint;
     width: root.size;
     height: root.size;
     border-radius: root.size / 2;
-    background: root.tint;
+    background: root.art != 0 ? Tokens.surface : root.tint;
+    border-width: root.art != 0 ? 1px : 0px;
+    border-color: Tokens.hairline;
+    clip: true;
     accessible-role: image;
     accessible-label: "";
-    Text {
+    if root.art != 0: Rectangle {
+        // The grid sits inside the circle.
+        x: root.size * 0.2;
+        y: root.size * 0.2;
+        width: root.size * 0.6;
+        height: root.size * 0.6;
+        for i in 25: Rectangle {
+            x: mod(i, 5) * parent.width / 5;
+            y: floor(i / 5) * parent.height / 5;
+            width: parent.width / 5;
+            height: parent.height / 5;
+            background: mod(floor(root.art / pow(2, i)), 2) == 1 ? root.art-tint : transparent;
+        }
+    }
+    if root.art == 0: Text {
         text: root.initials;
         font-size: root.size * 0.4;
         font-weight: 600;

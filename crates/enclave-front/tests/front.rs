@@ -167,6 +167,22 @@ async fn front_serves_descriptor_and_witness_over_enclave_tls() {
         b"ok"
     );
     assert_eq!(get(&http, &format!("{front}/other")).await.unwrap().0, 404);
+    // The page behind an invite link: the same for every link (the invite
+    // is in the fragment, never sent), no script allowed.
+    let (status, headers, body) = get(&http, &format!("{front}/i")).await.unwrap();
+    assert_eq!(status, 200);
+    assert!(
+        String::from_utf8(body)
+            .unwrap()
+            .contains("open the link again")
+    );
+    assert_eq!(headers["referrer-policy"], "no-referrer");
+    assert!(
+        headers["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .starts_with("default-src 'none'")
+    );
 
     // The witness, reached through the front by the client a log uses.
     let w = enclave_witness::HttpWitness::connect(&front, Some(&ca), now())

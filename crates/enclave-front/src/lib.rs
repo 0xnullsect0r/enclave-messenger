@@ -124,11 +124,53 @@ impl Site {
         Router::new()
             .route("/.well-known/enclave", get(descriptor))
             .route("/healthz", get(|| async { "ok" }))
+            .route("/i", get(invite_page))
             .route("/witness/v1/{*rest}", any(witness))
             .route("/credgate/v1/{*rest}", any(credgate))
             .with_state(Arc::new(self))
     }
 }
+
+/// The page behind an `https://<domain>/i#…` invite link (`docs/03-identity.md`
+/// §9.2). The invite is in the fragment, which the browser never sends, so
+/// the page is the same for every link: it says to open the link in
+/// Enclave. No script, no outside resources, nothing kept.
+async fn invite_page() -> Response {
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("max-age=86400"),
+            ),
+            (
+                header::REFERRER_POLICY,
+                HeaderValue::from_static("no-referrer"),
+            ),
+            (
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'"),
+            ),
+        ],
+        INVITE_PAGE,
+    )
+        .into_response()
+}
+
+const INVITE_PAGE: &str = "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+<title>An Enclave invite</title>\
+<style>body{font:17px/1.5 system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#1c2321;background:#f6f4ef}\
+h1{font-size:1.4rem}@media(prefers-color-scheme:dark){body{color:#e8e6e1;background:#141816}}</style></head><body>\
+<h1>Someone invited you to talk on Enclave</h1>\
+<p>Open this link on a phone or computer that has Enclave, or copy it into Enclave's \
+<b>Add someone</b> screen. The invite is in the part of the link after the <code>#</code>, \
+which never reached this server.</p>\
+<p>Don't have Enclave yet? Install it, then open the link again.</p>\
+</body></html>\n";
 
 async fn descriptor(State(site): State<Arc<Site>>) -> Response {
     match tokio::fs::read(site.public_dir.join("descriptor.bin")).await {

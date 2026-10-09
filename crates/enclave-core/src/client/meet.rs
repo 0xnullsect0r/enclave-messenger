@@ -126,8 +126,16 @@ impl Client {
                 .delete(NS_SESSIONS, &super::session_key(&root, &d))?;
         }
         let hello = self.hello_for(&root, now).await?;
-        self.initiate_to(&card, &manifest, &vault, &hello, None, now, Some(&psk))
-            .await?;
+        self.initiate_to(
+            &card,
+            &manifest,
+            Some(&vault),
+            &hello,
+            None,
+            now,
+            Some(&psk),
+        )
+        .await?;
         Ok(root)
     }
 

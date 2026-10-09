@@ -99,6 +99,7 @@ impl Contact {
 mod backup;
 mod blobs;
 mod blocks;
+mod braid;
 pub mod clock;
 mod closing;
 mod devices;
@@ -145,6 +146,7 @@ mod wallet;
 
 pub use crate::rpc::Sending;
 pub use blobs::fetch_due;
+pub use braid::BRAID_DEADLINE_SECS;
 pub use gossip::{GossipItem, KtAlert};
 pub use group_hosts::HOST_VOTE_SECS;
 pub use groups::{GroupInfo, GroupMessage, GroupReaction};
@@ -419,6 +421,8 @@ pub struct Client {
     pq_carried: HashMap<SessionKey, u64>,
     /// The envelope being handled arrived late (`Message::late`).
     late_unit: bool,
+    /// The network is metered: braids wait (`braid.rs`).
+    metered: bool,
     /// The envelope being handled was personal content in a conversation
     /// on the record, or signed: its verified signature, if any
     /// (`Message::signed`).
@@ -675,6 +679,7 @@ impl Client {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            metered: false,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: HashMap::new(),
@@ -760,6 +765,7 @@ impl Client {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            metered: false,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: HashMap::new(),
@@ -812,6 +818,30 @@ impl Client {
         );
         let arr: [u8; 32] = b.as_slice().try_into().map_err(|_| CoreError::NotFound)?;
         Ok(RecoverySecret::from_bytes(arr).to_words()?)
+    }
+
+    /// The spoken security code with `root`: 10 words in the BIP-39 list
+    /// `language` (`03-identity.md` §6.2).
+    pub fn security_words(&self, root: &[u8; 64], language: &str) -> Result<Vec<String>> {
+        let lang = enclave_proto::recovery::language(language).ok_or(CoreError::NotFound)?;
+        Ok(enclave_proto::recovery::security_words(
+            &self.account.root_public.0,
+            root,
+            lang,
+        ))
+    }
+
+    /// The recovery words in another BIP-39 language (`recovery::language`
+    /// codes). They stand for the same secret.
+    pub fn recovery_words_in(&self, language: &str) -> Result<Vec<String>> {
+        let lang = enclave_proto::recovery::language(language).ok_or(CoreError::NotFound)?;
+        let b = Zeroizing::new(
+            self.store
+                .get(NS_SECRETS, b"recovery")?
+                .ok_or(CoreError::NotFound)?,
+        );
+        let arr: [u8; 32] = b.as_slice().try_into().map_err(|_| CoreError::NotFound)?;
+        Ok(RecoverySecret::from_bytes(arr).to_words_in(lang)?)
     }
 
     /// All contacts.
@@ -935,7 +965,15 @@ impl Client {
         let card = &self.follow_moves(card).await?;
         let now = self.now();
         let server = card.server;
-        let (peer_manifest, vault) = self.fetch_peer(card, now).await?;
+        let peer_manifest = self.fetch_manifest(card, now).await?;
+        // Someone met through a group starts on two KEMs: their 1.36 MB
+        // vault key is fetched later (`braid.rs`, `04-eqxdh.md` §7), unless
+        // Maximum privacy needs all three before anything is sent.
+        let vault = if group.is_some() && !self.maximum {
+            None
+        } else {
+            Some(self.fetch_vault(card, &peer_manifest, now).await?)
+        };
         // An invite link's secret is a one-way PSK (weaker than meeting in
         // person, so it doesn't mark them checked).
         let invite_psk = card.invite.as_ref().map(|i| eqxdh::invite_psk(&i.secret));
@@ -984,7 +1022,15 @@ impl Client {
         }
 
         let r = self
-            .initiate_to(card, &peer_manifest, &vault, &hello, None, now, session_psk)
+            .initiate_to(
+                card,
+                &peer_manifest,
+                vault.as_ref(),
+                &hello,
+                None,
+                now,
+                session_psk,
+            )
             .await;
         if let Err(CoreError::Link(LinkError::InviteUsed)) = r {
             // Nothing reached them: forget the half-added contact.
@@ -1000,6 +1046,17 @@ impl Client {
         card: &ContactCard,
         now: u64,
     ) -> Result<(Manifest, McEliecePublic)> {
+        let peer_manifest = self.fetch_manifest(card, now).await?;
+        let vault = self.fetch_vault(card, &peer_manifest, now).await?;
+        Ok((peer_manifest, vault))
+    }
+
+    /// `card`'s account manifest, checked against its root.
+    pub(crate) async fn fetch_manifest(
+        &mut self,
+        card: &ContactCard,
+        now: u64,
+    ) -> Result<Manifest> {
         let server = card.server;
         let mb = self
             .rpc
@@ -1013,7 +1070,18 @@ impl Client {
                 &mut self.rng,
             )
             .await?;
-        let peer_manifest = SignedManifest::from_bytes(&mb)?.verify(&RootPublic(card.root), now)?;
+        Ok(SignedManifest::from_bytes(&mb)?.verify(&RootPublic(card.root), now)?)
+    }
+
+    /// `card`'s McEliece vault key (1.36 MB), checked against the hash in
+    /// its manifest.
+    pub(crate) async fn fetch_vault(
+        &mut self,
+        card: &ContactCard,
+        peer_manifest: &Manifest,
+        now: u64,
+    ) -> Result<McEliecePublic> {
+        let server = card.server;
         let vb = self
             .rpc
             .dir_get(
@@ -1033,7 +1101,7 @@ impl Client {
         if sha3_512(&vault.0[..]) != peer_manifest.vault_hash {
             return Err(ProtoError::BadSignature.into());
         }
-        Ok((peer_manifest, vault))
+        Ok(vault)
     }
 
     /// Start a session with every device of `card`'s account (except `skip`)
@@ -1042,7 +1110,7 @@ impl Client {
         &mut self,
         card: &ContactCard,
         peer_manifest: &Manifest,
-        vault: &McEliecePublic,
+        vault: Option<&McEliecePublic>,
         hello: &[u8],
         skip: Option<[u8; 16]>,
         now: u64,
@@ -1086,14 +1154,18 @@ impl Client {
                     manifest: peer_manifest,
                     device: dev,
                     bundle: &bundle,
-                    vault: with_vault.then_some(vault),
+                    vault: vault.filter(|_| with_vault),
                 };
                 let init = eqxdh::initiate(&local, &peer, Mode::OffTheRecord, psk, &mut self.rng)?;
                 let mut session = init.session;
                 // Started on two KEMs: the next PQ step braids in the third
-                // (`docs/04-eqxdh.md` §7).
+                // (`docs/04-eqxdh.md` §7), now if we hold the vault key,
+                // else once `braid.rs` has fetched it.
                 if !session.three_kem() {
-                    session.schedule_braid(vault.clone());
+                    match vault {
+                        Some(v) => session.schedule_braid(v.clone()),
+                        None => self.braid_due(&card.root, now)?,
+                    }
                 }
                 let env =
                     envelope::seal_request(&init.message, &mut session, hello, &mut self.rng)?;
@@ -1418,6 +1490,12 @@ impl Client {
         events.append(&mut self.resend_outbox(now).await?);
         events.append(&mut self.release_held(now).await?);
         events.append(&mut self.check_own_manifest(now).await?);
+        // The third KEM for someone met through a group (`braid.rs`).
+        if let Err(e) = self.upgrade_braids(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
         if let Err(e) = self.push_migration(now).await
             && matches!(e, CoreError::Net(_))
         {

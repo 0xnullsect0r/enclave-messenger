@@ -21,6 +21,22 @@ impl Platform for Headless {
     }
 }
 
+/// Mirrored placeholder art from a name (the app's comes from the root
+/// key, `enclave_core::art`).
+fn placeholder_art(name: &str) -> u32 {
+    let h = enclave_crypto::hash::sha3_512(name.as_bytes());
+    let bits = u32::from(u16::from_be_bytes([h[0], h[1]])) & 0x7fff;
+    let mut cells = 0;
+    for row in 0..5 {
+        for col in 0..3 {
+            if bits & (1 << (3 * row + col)) != 0 {
+                cells |= (1 << (5 * row + col)) | (1 << (5 * row + 4 - col));
+            }
+        }
+    }
+    cells | (u32::from(h[2] % 8) << 25)
+}
+
 fn fixture() -> Snapshot {
     let row = |id: &str,
                name: &str,
@@ -41,6 +57,7 @@ fn fixture() -> Snapshot {
         tint,
         kind: 0,
         members: 0,
+        art: placeholder_art(name),
         ..Default::default()
     };
     let seq = std::cell::Cell::new(0u64);
@@ -140,6 +157,11 @@ fn fixture() -> Snapshot {
             msg("Tomorrow works. Same café?", false, "14:02", 2),
             msg("Same café.", true, "14:03", 0),
         ],
+        code_words: "orbit cedar lunar ember quartz harbor noble kettle ridge fabric"
+            .split(' ')
+            .map(String::from)
+            .collect(),
+        code_words_english: false,
         code_groups: [
             "38201", "99465", "10273", "58830", "47112", "20958", "61347", "80025", "13690",
             "72481", "56039", "04418",
@@ -149,6 +171,7 @@ fn fixture() -> Snapshot {
         status: String::new(),
         recovery_words: words.split(' ').map(String::from).collect(),
         recovery_saved: false,
+        words_language: "en".into(),
         privacy: 0,
         finishing: false,
         gap: false,

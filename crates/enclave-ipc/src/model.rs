@@ -46,6 +46,9 @@ pub struct Row {
     pub blocked: bool,
     /// A group member who is an admin (members sheet).
     pub admin: bool,
+    /// Contact art (`enclave_core::art`): filled cells in bits 0–24, the
+    /// tint (0–7) in bits 25–27; 0 for none (groups, notes).
+    pub art: u32,
 }
 
 /// A sticker pack added on this device.
@@ -167,12 +170,18 @@ pub struct Snapshot {
     pub messages: Vec<Msg>,
     /// Security code in groups of five digits.
     pub code_groups: Vec<String>,
+    /// The same code as 10 words to read aloud.
+    pub code_words: Vec<String>,
+    /// The words are shown in English (else in the recovery words' list).
+    pub code_words_english: bool,
     /// Status line.
     pub status: String,
     /// Recovery words: empty unless the UI asked with `RevealWords(true)`.
     pub recovery_words: Vec<String>,
     /// Recovery words saved.
     pub recovery_saved: bool,
+    /// The language the recovery words are shown in (a BIP-39 list code).
+    pub words_language: String,
     /// Privacy: 0 Standard, 1 Maximum (the saved setting).
     pub privacy: i32,
     /// Maximum privacy is holding what was written in the current
@@ -445,6 +454,11 @@ pub enum Cmd {
     SetBridges(String),
     /// Put the current conversation on the record (or off it).
     SetOnRecord(bool),
+    /// Show the recovery words in this BIP-39 language (its code).
+    WordsLanguage(String),
+    /// Show the security code's words in English (else in the recovery
+    /// words' language).
+    CodeWordsEnglish(bool),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -529,7 +543,8 @@ fn put_row(w: &mut Writer, r: &Row) {
         .bool(r.muted)
         .bool(r.archived)
         .bool(r.blocked)
-        .bool(r.admin);
+        .bool(r.admin)
+        .u32(r.art);
 }
 
 fn get_row(r: &mut Reader<'_>) -> Result<Row> {
@@ -550,6 +565,7 @@ fn get_row(r: &mut Reader<'_>) -> Result<Row> {
         archived: r.bool()?,
         blocked: r.bool()?,
         admin: r.bool()?,
+        art: r.u32()? & 0x0fff_ffff,
     })
 }
 
@@ -624,9 +640,12 @@ impl Snapshot {
                 .u32(m.clip_ms);
         }
         w.strs(&self.code_groups)
+            .strs(&self.code_words)
+            .bool(self.code_words_english)
             .str(&self.status)
             .strs(&self.recovery_words)
             .bool(self.recovery_saved)
+            .str(&self.words_language)
             .u8(u8::from(self.privacy == 1))
             .bool(self.finishing)
             .bool(self.gap)
@@ -770,9 +789,12 @@ impl Snapshot {
             })
             .collect::<Result<_>>()?;
         let code_groups = r.strs()?;
+        let code_words = r.strs()?;
+        let code_words_english = r.bool()?;
         let status = r.str()?;
         let recovery_words = r.strs()?;
         let recovery_saved = r.bool()?;
+        let words_language = r.str()?;
         let privacy = match r.u8()? {
             0 => 0,
             1 => 1,
@@ -816,9 +838,12 @@ impl Snapshot {
             current,
             messages,
             code_groups,
+            code_words,
+            code_words_english,
             status,
             recovery_words,
             recovery_saved,
+            words_language,
             privacy,
             finishing,
             gap,
@@ -993,6 +1018,8 @@ impl Cmd {
             Cmd::BackupRoute(on) => w.u8(63).bool(*on),
             Cmd::SetBridges(b) => w.u8(64).str(b),
             Cmd::SetOnRecord(on) => w.u8(65).bool(*on),
+            Cmd::WordsLanguage(l) => w.u8(67).str(l),
+            Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
         };
         w.0
     }
@@ -1071,6 +1098,8 @@ impl Cmd {
             63 => Cmd::BackupRoute(r.bool()?),
             64 => Cmd::SetBridges(r.str()?),
             65 => Cmd::SetOnRecord(r.bool()?),
+            67 => Cmd::WordsLanguage(r.str()?),
+            68 => Cmd::CodeWordsEnglish(r.bool()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

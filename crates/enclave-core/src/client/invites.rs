@@ -178,7 +178,7 @@ impl Client {
     /// A new invite link for up to `uses` people (1 to 20), good for
     /// [`INVITE_TTL_SECS`].
     pub async fn create_invite(&mut self, uses: u8) -> Result<String> {
-        Ok(self.make_invite(uses, None).await?.to_link())
+        Ok(self.make_invite(uses, None).await?.to_share_link())
     }
 
     /// A group invite link for up to `uses` people. `approve`: each join

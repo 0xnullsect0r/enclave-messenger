@@ -190,6 +190,7 @@ Contact art is key-derived (`art_seed`, `02b-key-schedule.md` §4.3) so that a l
 - A 5 × 5 grid, mirrored left to right, on a circle clipped to the avatar size. Each cell is filled or empty from the seed's bits; the fill color is one of 8 Pine and neutral tints chosen from the seed. Saffron is never used.
 - Art is shown only when the contact has no photo, and next to the name in the security-code screen.
 - It is decorative for screen readers (the name is the label) and never the only identifier.
+- **As implemented** (`enclave-core/src/art.rs`, `controls.slint` `Avatar`): every 1:1 contact's avatar is its art (there are no profile photos yet, F4), cells in one of 8 Pine and neutral tints on the surface color, in the conversation list, the header, the members sheet and, larger, on the security-code sheet. Groups and Note to self keep initials. Test `rt26_contact_art_depends_on_root`.
 
 ## 7. Copy voice
 

@@ -35,6 +35,9 @@ export struct ContactRow {
     blocked: bool,
     // A group member who is an admin (members sheet).
     admin: bool,
+    // Contact art: filled cells in bits 0–24 (0 for none), and its tint.
+    art: int,
+    art-tint: color,
 }
 
 export struct PickRow {
@@ -407,7 +410,7 @@ component ContactItem inherits Rectangle {
         spacing: Tokens.space-sm;
         VerticalLayout {
             alignment: center;
-            Avatar { initials: root.item.initials; tint: root.item.tint; size: 44px; }
+            Avatar { initials: root.item.initials; tint: root.item.tint; art: root.item.art; art-tint: root.item.art-tint; size: 44px; }
         }
         VerticalLayout {
             alignment: center;
@@ -650,6 +653,13 @@ export component AppWindow inherits Window {
     in property <bool> show-delivery-hint: true;
     in-out property <int> privacy: 0;
     in property <[string]> recovery-words;
+    // BIP-39 list the words are shown in (`en`, `es`, … `zh-Hant`).
+    in property <string> words-language: "en";
+    // The security code as 10 words, and whether they're in English.
+    in property <[string]> code-words;
+    in property <bool> code-words-english;
+    callback code-words-english-toggled(bool);
+    callback choose-words-language(string);
     in property <[PickRow]> pick;
     in property <[DeviceRow]> devices;
     in property <[string]> link-choices;
@@ -1260,7 +1270,7 @@ export component AppWindow inherits Window {
                         }
                         VerticalLayout {
                             alignment: center;
-                            Avatar { initials: root.current.initials; tint: root.current.tint; size: 40px; }
+                            Avatar { initials: root.current.initials; tint: root.current.tint; art: root.current.art; art-tint: root.current.art-tint; size: 40px; }
                         }
                         VerticalLayout {
                             alignment: center;
@@ -2202,6 +2212,10 @@ export component AppWindow inherits Window {
         }
         HorizontalLayout {
             alignment: center;
+            Avatar { initials: root.current.initials; tint: root.current.tint; art: root.current.art; art-tint: root.current.art-tint; size: 56px; }
+        }
+        HorizontalLayout {
+            alignment: center;
             GridLayout {
                 spacing-horizontal: Tokens.space-l;
                 spacing-vertical: Tokens.space-s;
@@ -2210,6 +2224,25 @@ export component AppWindow inherits Window {
                     row: i / 3;
                     col: mod(i, 3);
                     accessible-label: "Group " + (i + 1) + ": " + g;
+                }
+            }
+        }
+        // The same code to read aloud on a call.
+        if root.code-words.length > 0: VerticalLayout {
+            spacing: Tokens.space-xs;
+            Caption { text: "Or read these words to each other:"; }
+            Text {
+                text: root.code-words[0] + " " + root.code-words[1] + " " + root.code-words[2] + " " + root.code-words[3] + " " + root.code-words[4] + " · " + root.code-words[5] + " " + root.code-words[6] + " " + root.code-words[7] + " " + root.code-words[8] + " " + root.code-words[9];
+                font-family: "Atkinson Hyperlegible Mono";
+                font-size: Tokens.type-body;
+                color: Tokens.text;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                QuietButton {
+                    text: root.code-words-english ? "Show in my language" : "Show in English";
+                    clicked => { root.code-words-english-toggled(!root.code-words-english); }
                 }
             }
         }
@@ -2486,7 +2519,7 @@ export component AppWindow inherits Window {
         for m in root.members: HorizontalLayout {
             spacing: Tokens.space-sm;
             height: 56px;
-            VerticalLayout { alignment: center; Avatar { initials: m.initials; tint: m.tint; size: 36px; } }
+            VerticalLayout { alignment: center; Avatar { initials: m.initials; tint: m.tint; art: m.art; art-tint: m.art-tint; size: 36px; } }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 1;
@@ -2691,6 +2724,26 @@ export component AppWindow inherits Window {
         close => { root.sheet = Sheet.none; }
         Secondary {
             text: "If you lose this device, these 24 words bring your account back. Anyone who has them can become you. Write them down on paper and keep them somewhere safe.";
+        }
+        // The same words in any of BIP-39's lists: whichever is written
+        // down brings the same account back.
+        Caption { text: "Show them in:"; }
+        GridLayout {
+            spacing: Tokens.space-xs;
+            for l[i] in [
+                { code: "en", name: "English" }, { code: "es", name: "Español" },
+                { code: "fr", name: "Français" }, { code: "it", name: "Italiano" },
+                { code: "pt", name: "Português" }, { code: "cs", name: "Čeština" },
+                { code: "ja", name: "日本語" }, { code: "ko", name: "한국어" },
+                { code: "zh-Hans", name: "简体中文" }, { code: "zh-Hant", name: "繁體中文" },
+            ]: QuietButton {
+                row: root.wide ? i / 5 : i / 2;
+                col: root.wide ? mod(i, 5) : mod(i, 2);
+                text: l.name;
+                outlined: l.code == root.words-language;
+                accessible-label: "Show the words in " + l.name;
+                clicked => { root.choose-words-language(l.code); }
+            }
         }
         GridLayout {
             spacing-horizontal: Tokens.space-m;

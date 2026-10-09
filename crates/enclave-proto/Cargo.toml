@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-wire = { path = "../enclave-wire" }
-bip39 = { version = "3.0.0", default-features = false, features = ["std"] }
+bip39 = { version = "3.0.0", default-features = false, features = ["std", "all-languages"] }
 zeroize = { version = "1.9.0", features = ["derive"] }
 subtle = "2.6.1"
 thiserror = "2"

@@ -432,6 +432,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::ConvPrefs(id.to_string(), archived, pinned, muted));
     });
     let t = tx.clone();
+    ui.on_code_words_english_toggled(move |on| {
+        let _ = t.send(Cmd::CodeWordsEnglish(on));
+    });
+    let t = tx.clone();
+    ui.on_choose_words_language(move |code| {
+        let _ = t.send(Cmd::WordsLanguage(code.to_string()));
+    });
+    let t = tx.clone();
     ui.on_set_on_record(move |on| {
         let _ = t.send(Cmd::SetOnRecord(on));
     });

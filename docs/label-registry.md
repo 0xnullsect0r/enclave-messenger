@@ -90,6 +90,8 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | `enclave/v1/bond/seal-words` | KMAC | 256 (48 bits used) | `eqxdh.rs` `seal_words` | Three Seal words after an in-person scan |
 | `enclave/v1/invite/psk` | KMAC | 256 | `eqxdh.rs` `invite_psk` | One-way PSK from an invite link's secret (03 §7.3) |
 | `enclave/v1/invite/cap` | KMAC | 256 | `eqxdh.rs` `invite_cap` | The i-th request-inbox capability of an invite link (03 §9.2) |
+| `enclave/v1/proto/contact-art` | KMAC | 256 | `enclave-core/src/art.rs` `contact_art` | Seed for key-derived contact art (02b §4.3, RT-26) |
+| `enclave/v1/proto/link-psk` | KMAC | 256 | `enclave-core/src/client/link.rs` `link_key` | Device-link PSK from the link code's secret (02b §5, §11) |
 
 ### 2.3 Sealed requests and server API (`enclave-rpc`)
 
@@ -233,11 +235,6 @@ These labels belong to features that are specified but not in code. They are res
 |---|---|---|---|---|
 | `enclave/v1/proto/pending-root` | CTX-R | — | Pending root action with `not_before` | 03 §8.1 |
 | `enclave/v1/proto/veto` | CTX-C | — | Device approval or veto of a manifest update | 03 §3.3, §8.1 |
-| `enclave/v1/proto/contact-art` | KMAC | 256 | Seed for key-derived contact art | 02b §4.3 |
-| `enclave/v1/proto/invite-psk` | KMAC | 256 | Normalized one-way invite PSK | 02b §5 |
-| `enclave/v1/proto/invite-cap` | KMAC | 256 | Request-inbox write capability from an invite secret | 02b §2.7 |
-| `enclave/v1/proto/link-psk` | KMAC | 256 | Normalized device-link PSK | 02b §5 |
-| `enclave/v1/proto/link-cap` | KMAC | 256 | Link rendezvous mailbox capability | 02b §11 |
 | `enclave/v1/proto/notify-key` | KMAC | 256 | Daily notification key chain step | 10 §4 |
 
 ### 3.2 Groups
@@ -273,6 +270,8 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 | Retired label | Replaced by |
 |---|---|
 | `enclave/v1/net/grp-read-key`, `enclave/v1/net/grp-read-cred` | `enclave/v1/rpc/read-credential` of the mailbox's write token (`grp-write-token`): the server derives the read credential's hash from the first write, so a group mailbox is created and readable in one unit. A separate read key would need a registration request per mailbox per day (four per epoch) and protects against nobody: only members and the server ever hold the write token |
+| `enclave/v1/proto/invite-psk`, `enclave/v1/proto/invite-cap` | `enclave/v1/invite/psk` and `enclave/v1/invite/cap` (`eqxdh.rs` `invite_psk`, `invite_cap`): the same derivations, built under the invite namespace |
+| `enclave/v1/proto/link-cap` | None: the link rendezvous mailbox's owner secret is random (`link/owner`) and travels in the link code, so the server never sees anything derived from the link secret that keys the exchange |
 | `enclave/v1/proto/msg-id` | None: a 1:1 message id is 16 random bytes its sender picks (`core/msg-id`), which a re-send keeps; a derived id would need a counter both sides agree on and add nothing |
 | `enclave/v1/proto/bond-reroot` | None: meeting again replaces the sessions with new bonded ones (an EQXDH greeting with the new bond PSK, `client/meet.rs`), which heals more than mixing a PSK into the old root would |
 | `enclave/v1/net/token-key` | Write tokens from a shared, per-device pool of hedged random values (`core/write-token`, 09 §3.3): per-contact keys let the server group writes by registration batch |

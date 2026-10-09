@@ -11,6 +11,23 @@ use enclave_proto::codec::{Reader, Writer};
 pub const ADD_PREFIX: &str = "enclave:add#";
 /// URI prefix of device-link codes (only accepted in Settings → Your devices).
 pub const LINK_PREFIX: &str = "enclave:link#";
+/// Path and fragment mark of an `https://` contact link (§9.2).
+pub const HTTPS_PATH: &str = "/i#";
+
+/// Whether `s` looks like a domain an invite link can name.
+fn is_domain(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= MAX_DOMAIN
+        && s.contains('.')
+        && s.split('.').all(|l| {
+            !l.is_empty()
+                && l.len() <= 63
+                && !l.starts_with('-')
+                && !l.ends_with('-')
+                && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
 /// Maximum display-name length in bytes.
 pub const MAX_NAME: usize = 64;
 const CARD_VERSION: u8 = 1;
@@ -158,6 +175,23 @@ impl ContactCard {
         format!("{ADD_PREFIX}{}", b64url_encode(&self.encode()))
     }
 
+    /// A link to share where `enclave:` links don't open: `https://<home
+    /// server domain>/i#…` (`docs/03-identity.md` §9.2). The part after `#`
+    /// is the same as in [`Self::to_link`], and browsers never send it to
+    /// the server, whose page only says to open the link in Enclave. Without
+    /// a domain, the `enclave:` link.
+    pub fn to_share_link(&self) -> String {
+        if is_domain(&self.server_domain) {
+            format!(
+                "https://{}{HTTPS_PATH}{}",
+                self.server_domain,
+                b64url_encode(&self.encode())
+            )
+        } else {
+            self.to_link()
+        }
+    }
+
     /// Parse a scanned or pasted link.
     pub fn from_link(s: &str) -> Result<Self, LinkError> {
         let s = s.trim();
@@ -167,7 +201,18 @@ impl ContactCard {
         if s.starts_with(crate::client::MEET_PREFIX) {
             return Err(LinkError::MeetCode);
         }
-        let body = s.strip_prefix(ADD_PREFIX).ok_or(LinkError::NotEnclave)?;
+        let body = match s.strip_prefix(ADD_PREFIX) {
+            Some(b) => b,
+            None => {
+                // `https://<host>/i#…`: only the fragment matters.
+                let rest = s.strip_prefix("https://").ok_or(LinkError::NotEnclave)?;
+                let (host, body) = rest.split_once(HTTPS_PATH).ok_or(LinkError::NotEnclave)?;
+                if !is_domain(host) {
+                    return Err(LinkError::NotEnclave);
+                }
+                body
+            }
+        };
         Self::decode(&b64url_decode(body).ok_or(LinkError::Malformed)?)
     }
 }
@@ -283,6 +328,27 @@ mod tests {
         let mut bad = link.clone();
         bad.push('A');
         assert!(ContactCard::from_link(&bad).is_err());
+
+        // The https form (§9.2): the same card after `/i#`.
+        let web = invited.to_share_link();
+        assert!(web.starts_with("https://a.example/i#"), "{web}");
+        assert_eq!(ContactCard::from_link(&web).unwrap(), invited);
+        for not in [
+            "https://a.example/x#AAAA",
+            "https://bad_host/i#AAAA",
+            "http://a.example/i#AAAA",
+        ] {
+            assert_eq!(
+                ContactCard::from_link(not),
+                Err(LinkError::NotEnclave),
+                "{not}"
+            );
+        }
+        let local = ContactCard {
+            server_domain: String::new(),
+            ..invited.clone()
+        };
+        assert!(local.to_share_link().starts_with(ADD_PREFIX), "no domain");
 
         // Cards from before domains (versions 1 and 2) still read, with no
         // domain.
