@@ -17,6 +17,9 @@ impl TicketSource for Echo {
     async fn obtain(&self, request: &[u8]) -> Result<Vec<u8>, GateError> {
         Ok([b"book:".as_slice(), request].concat())
     }
+    async fn partial_keys(&self) -> Result<Vec<u8>, GateError> {
+        Ok(b"keys".to_vec())
+    }
 }
 
 async fn post(base: &str, path: &str, body: Vec<u8>) -> (u16, Vec<u8>) {
@@ -58,6 +61,8 @@ async fn a_device_gets_a_ticketbook_over_http() {
     let base = format!("http://{}", l.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(l, Arc::new(gate).router()).await });
 
+    let (status, keys) = request("GET", &base, "/credgate/v1/partial-keys", vec![]).await;
+    assert_eq!((status, keys.as_slice()), (200, b"keys".as_slice()));
     let (status, key) = request("GET", &base, "/credgate/v1/key", vec![]).await;
     assert_eq!(status, 200);
     let pk = IssuerPublic(key[4..].try_into().unwrap());

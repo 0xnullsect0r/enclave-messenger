@@ -10,6 +10,7 @@
 //!                              → n × TokenResponse (145)               Privacy Pass tokens
 //! POST /credgate/v1/ticketbook Token (146) ‖ request                   one token buys one ticketbook
 //!                              → the ticket source's answer
+//! GET  /credgate/v1/partial-keys                                       the signers' partial keys
 //! ```
 //!
 //! 1. **Work for tokens.** A challenge is solved with Equi-X
@@ -92,6 +93,9 @@ fn store_err(e: impl core::fmt::Display) -> GateError {
 pub trait TicketSource: Send + Sync {
     /// Answer a device's ticketbook request.
     async fn obtain(&self, request: &[u8]) -> Result<Vec<u8>, GateError>;
+    /// The signers' partial verification keys for this epoch (public; a
+    /// device needs them to unblind the shares it gets).
+    async fn partial_keys(&self) -> Result<Vec<u8>, GateError>;
 }
 
 /// The upstream `nym-credential-proxy`, funded by the foundation's
@@ -121,7 +125,6 @@ impl CredentialProxy {
 #[async_trait]
 impl TicketSource for CredentialProxy {
     async fn obtain(&self, request: &[u8]) -> Result<Vec<u8>, GateError> {
-        use http_body_util::BodyExt;
         // The shares, plus everything the device needs to aggregate and
         // use them, in one answer.
         let uri = format!(
@@ -129,10 +132,29 @@ impl TicketSource for CredentialProxy {
              &include-coin-index-signatures=true&include-expiration-date-signatures=true",
             self.url
         );
-        let req = hyper::Request::post(uri)
+        self.call(hyper::Method::POST, &uri, request).await
+    }
+
+    async fn partial_keys(&self) -> Result<Vec<u8>, GateError> {
+        let uri = format!("{}/api/v1/ticketbook/partial-verification-keys", self.url);
+        self.call(hyper::Method::GET, &uri, &[]).await
+    }
+}
+
+impl CredentialProxy {
+    async fn call(
+        &self,
+        method: hyper::Method,
+        uri: &str,
+        body: &[u8],
+    ) -> Result<Vec<u8>, GateError> {
+        use http_body_util::BodyExt;
+        let req = hyper::Request::builder()
+            .method(method)
+            .uri(uri)
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {}", self.bearer.as_str()))
-            .body(http_body_util::Full::new(Bytes::copy_from_slice(request)))
+            .body(http_body_util::Full::new(Bytes::copy_from_slice(body)))
             .map_err(|e| GateError::Source(e.to_string()))?;
         let res = self
             .http
@@ -166,6 +188,10 @@ impl TicketSource for DevTickets {
         let mut out = b"enclave-dev-ticketbook".to_vec();
         out.extend_from_slice(&sha2::Sha256::digest(request));
         Ok(out)
+    }
+
+    async fn partial_keys(&self) -> Result<Vec<u8>, GateError> {
+        Ok(br#"{"epochId":0,"keys":[]}"#.to_vec())
     }
 }
 
@@ -413,6 +439,7 @@ impl Gate {
             .route("/credgate/v1/challenge", post(challenge))
             .route("/credgate/v1/tokens", post(tokens))
             .route("/credgate/v1/ticketbook", post(ticketbook))
+            .route("/credgate/v1/partial-keys", get(partial_keys))
             .route("/healthz", get(|| async { "ok" }))
             .with_state(self)
     }
@@ -450,6 +477,13 @@ async fn tokens(State(g): State<Arc<Gate>>, body: Bytes) -> Response {
     match g.tokens(&body, &mut rng) {
         Ok(b) => octets(b),
         Err(s) => s.into_response(),
+    }
+}
+
+async fn partial_keys(State(g): State<Arc<Gate>>) -> Response {
+    match g.source.partial_keys().await {
+        Ok(b) => ([("content-type", "application/json")], b).into_response(),
+        Err(_) => StatusCode::BAD_GATEWAY.into_response(),
     }
 }
 
