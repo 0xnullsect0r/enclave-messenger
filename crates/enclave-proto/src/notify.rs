@@ -262,4 +262,26 @@ mod tests {
         assert_eq!(t.open(&cap), Some(("Ben".into(), "late".into())));
         assert_eq!(t.open(&random), None);
     }
+
+    /// RT-16: a capsule is 1,024 bytes whatever it holds, and an envelope
+    /// carries one whether previews are on or not.
+    #[test]
+    fn rt16_capsule_always_1024_bytes() {
+        let mut rng = HedgedRng::new().unwrap();
+        let k = [9u8; 32];
+        for (name, preview) in [
+            ("", ""),
+            ("A", "hi"),
+            (&*"n".repeat(500), &*"p".repeat(5000)),
+        ] {
+            let cap = seal_capsule(&k, 1, name, preview, &mut rng).unwrap();
+            assert_eq!(cap.len(), CAPSULE_LEN);
+        }
+        let env = crate::envelope::cover_direct(&mut rng).unwrap();
+        assert_eq!(
+            crate::envelope::capsule_of(&env).map(<[u8]>::len),
+            Some(CAPSULE_LEN)
+        );
+        assert_eq!(CAPSULE_LEN, 1024, "docs/10-push.md §4");
+    }
 }

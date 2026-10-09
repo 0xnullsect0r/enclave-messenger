@@ -35,6 +35,32 @@ fn tokens_seal_open_and_look_unrelated() {
     assert!(seal_token(&public, Platform::Fcm, &[0; MAX_TOKEN + 1], 0, &mut rng).is_err());
 }
 
+/// RT-20: every registration seals the token afresh, so two of them share
+/// no bytes past the epoch, and only the relay opens them.
+#[test]
+fn rt20_sealed_token_differs_per_registration() {
+    let mut rng = HedgedRng::new().unwrap();
+    let key = RelaySecret::generate(3, &mut rng).unwrap();
+    let public = key.public().clone();
+    let token = b"apns-device-token-0123456789";
+    let sealed: Vec<Vec<u8>> = (0..8)
+        .map(|_| seal_token(&public, Platform::Apns, token, 0, &mut rng).unwrap())
+        .collect();
+    for (i, a) in sealed.iter().enumerate() {
+        assert_eq!(a.len(), SEALED_LEN);
+        assert!(!a.windows(token.len()).any(|w| w == token), "sealed");
+        for b in &sealed[i + 1..] {
+            assert_eq!(a[..4], b[..4], "the epoch is all they share");
+            assert_ne!(a[4..4 + 56], b[4..4 + 56], "fresh ephemeral key");
+            assert_ne!(a[a.len() - 64..], b[b.len() - 64..]);
+        }
+    }
+    let relay = Relay::new(vec![key]);
+    for s in &sealed {
+        assert_eq!(relay.open(s).unwrap().token, token);
+    }
+}
+
 #[test]
 fn one_wake_per_token_per_window() {
     let mut rng = HedgedRng::new().unwrap();

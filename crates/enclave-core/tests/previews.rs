@@ -187,3 +187,113 @@ async fn group_wakes_and_dummies() {
             .is_empty()
     );
 }
+
+/// RT-16: however many messages arrive in a window, a device gets one wake
+/// for it, and every wake has the same size with a 1,024-byte capsule,
+/// previews off (random) or on (sealed).
+#[tokio::test(flavor = "multi_thread")]
+async fn rt16_one_wake_per_window() {
+    let net = network();
+    let (mut alice, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Alice")
+        .await
+        .unwrap();
+    let (mut bob, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Bob")
+        .await
+        .unwrap();
+    alice.add_contact(&bob.card(), "hi").await.unwrap();
+    bob.sync().await.unwrap();
+    bob.accept(&alice.root()).await.unwrap();
+    alice.sync().await.unwrap();
+    let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+    let key = RelaySecret::generate(1, &mut rng).unwrap();
+    let public = key.public().clone();
+    let mut relay = Relay::new(vec![key]);
+    bob.register_push(&public, Platform::Apns, b"bob-phone")
+        .await
+        .unwrap();
+    let window = enclave_server::PUSH_WINDOW_SECS;
+    let due = |net: &LocalTransport| {
+        let now = net.now();
+        net.with_server(&S2, |s| s.due_wakes(now)).unwrap()
+    };
+    for previews in [false, true] {
+        if previews {
+            bob.set_previews(true).await.unwrap();
+            bob.sync().await.unwrap();
+            alice.sync().await.unwrap();
+        }
+        // Start from a quiet window.
+        net.advance(3 * window);
+        due(&net);
+        for i in 0..5 {
+            alice
+                .send_text(&bob.root(), &format!("m{i}"))
+                .await
+                .unwrap();
+        }
+        net.advance(window + enclave_server::PUSH_JITTER_SECS + 1);
+        let wakes = due(&net);
+        assert_eq!(wakes.len(), 1, "one wake for five messages");
+        assert_eq!(wakes[0].len(), enclave_push_relay::WAKE_LEN);
+        let d = relay.wake(&wakes[0], net.now()).unwrap();
+        assert_eq!(d.capsule.len(), enclave_push_relay::CAPSULE_LEN);
+        let opened = bob.notify_table(net.now()).open(&d.capsule);
+        if previews {
+            assert_eq!(opened, Some(("Alice".into(), "m4".into())), "the newest");
+        } else {
+            assert_eq!(opened, None, "random");
+        }
+        net.advance(window);
+        assert!(due(&net).is_empty(), "nothing new, no wake");
+    }
+}
+
+/// RT-20: the server holds only sealed tokens, each registration's
+/// different, never the platform token itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn rt20_server_never_sees_plain_token() {
+    let net = network();
+    let (mut bob, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Bob")
+        .await
+        .unwrap();
+    let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+    let key = RelaySecret::generate(1, &mut rng).unwrap();
+    let public = key.public().clone();
+    let token = b"fcm:plain-device-token-RT20";
+    let dir = std::env::temp_dir().join(format!("enclave-rt20-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut seen = Vec::new();
+    for i in 0..2 {
+        bob.register_push(&public, Platform::Fcm, token)
+            .await
+            .unwrap();
+        let path = dir.join(format!("snap-{i}.redb"));
+        net.with_server(&S2, |s| s.db().snapshot(&path).unwrap())
+            .unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(
+            !bytes.windows(token.len()).any(|w| w == token),
+            "the token isn't in the server's state"
+        );
+        let push = net
+            .with_server(&S2, |s| {
+                s.db().read(|r| r.scan(enclave_server::db::PUSH, b""))
+            })
+            .unwrap()
+            .unwrap();
+        // One per live inbox (this week's and next), replaced each time.
+        assert!(!push.is_empty());
+        seen.push(push.into_iter().map(|(_, v)| v).collect::<Vec<_>>());
+    }
+    assert_eq!(seen[0].len(), seen[1].len(), "replaced, not added");
+    // Each registration is an unrelated sealing of the same token.
+    for a in &seen[0] {
+        for b in &seen[1] {
+            for (x, y) in a.windows(32).zip(b.windows(32)).step_by(32) {
+                assert_ne!(x, y, "no 32-byte block in common");
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
