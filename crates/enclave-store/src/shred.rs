@@ -88,9 +88,16 @@ impl<'s> Shredder<'s> {
         let wrap: Zeroizing<[u8; 32]> = Zeroizing::new(rng.array("store/shred-wrap")?);
         self.store.keystore().create(&wrap_name(next), &wrap)?;
         let sealed = seal_chunked(&SealKey::from_bytes(*wrap), b"keyring", &pt, rng)?;
-        self.store.put(NS, b"keyring", &sealed, rng)?;
-        self.store
-            .put(NS, b"generation", &next.to_be_bytes(), rng)?;
+        // The keyring and its generation in one transaction: a crash can't
+        // leave a keyring sealed under a generation not yet recorded.
+        self.store.write_batch(
+            NS,
+            &[
+                (b"keyring".to_vec(), Some(sealed)),
+                (b"generation".to_vec(), Some(next.to_be_bytes().to_vec())),
+            ],
+            rng,
+        )?;
         self.store.keystore().destroy(&wrap_name(old))?;
         self.generation = next;
         Ok(())

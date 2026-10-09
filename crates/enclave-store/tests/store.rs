@@ -124,27 +124,44 @@ fn backups_exclude_sessions_and_need_the_recovery_secret() {
     a.put("sessions", b"alice/1", b"ratchet state", &mut rng)
         .unwrap();
     let recovery = [42u8; 32];
+    let key = backup::backup_key(&recovery);
+    let hdr = backup::Header {
+        sequence: 7,
+        created_at: 1_700_000_000,
+        media: false,
+    };
     let archive = backup::export(
         &a,
         &["contacts", "messages", "sessions"],
-        &recovery,
+        &key,
+        &hdr,
         &mut rng,
     )
     .unwrap();
+    assert_eq!(
+        backup::header(&archive),
+        Some(hdr),
+        "readable without the key"
+    );
 
     let b = Store::create(None, Arc::new(MemoryKeystore::default()), None, &mut rng).unwrap();
-    assert!(backup::import(&b, &archive, &[41u8; 32], &mut rng).is_err());
+    let wrong = backup::backup_key(&[41u8; 32]);
+    assert!(backup::import(&b, &archive, &wrong, &mut rng).is_err());
     assert_eq!(
-        backup::import(&b, &archive, &recovery, &mut rng).unwrap(),
-        2
+        backup::import(&b, &archive, &key, &mut rng).unwrap(),
+        (Some(hdr), 2)
     );
     assert_eq!(b.get("messages", b"1").unwrap().unwrap(), b"hello");
     assert!(
         b.get("sessions", b"alice/1").unwrap().is_none(),
         "ratchet state never restored"
     );
+    // The header is bound: changing it breaks the archive.
+    let mut forged = archive.clone();
+    forged[15] ^= 1;
+    assert!(backup::read(&forged, &key).is_err());
     // Truncated archive is rejected.
-    assert!(backup::import(&b, &archive[..archive.len() - 1], &recovery, &mut rng).is_err());
+    assert!(backup::import(&b, &archive[..archive.len() - 1], &key, &mut rng).is_err());
 }
 
 #[test]

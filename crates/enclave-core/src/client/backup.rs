@@ -25,12 +25,89 @@ use zeroize::Zeroizing;
 
 const NS_SETTINGS: &str = "settings";
 
+/// `NS_SECRETS` key: the backup key ‖ the server-backup secret, from the
+/// recovery secret, kept so backups need neither the words nor the PIN
+/// (they open backups; they can't act as the account).
+const KEY_BACKUP_KEYS: &[u8] = b"backup-keys";
+/// `NS_SETTINGS` key: the sequence number of the last backup made.
+const KEY_SEQ: &[u8] = b"backup-seq";
+/// Label of the server-backup secret.
+pub(crate) const L_BACKUP_BLOB: &str = "enclave/v1/store/backup-blob-id";
+/// Where local copies of files are kept (`messages.rs`).
+const NS_FILES: &str = "files";
+
+/// The backup keys from a recovery secret: the archive key and the secret
+/// of the server copy's slot.
+pub(crate) fn backup_keys_from(rs: &RecoverySecret) -> Zeroizing<[u8; 64]> {
+    let mut k = Zeroizing::new([0u8; 64]);
+    k[..32].copy_from_slice(&enclave_crypto::kmac::kmac256::<32>(
+        rs.as_bytes(),
+        b"",
+        enclave_crypto::labels::BACKUP_KEY,
+    ));
+    k[32..].copy_from_slice(&enclave_crypto::kmac::kmac256::<32>(
+        rs.as_bytes(),
+        b"",
+        L_BACKUP_BLOB,
+    ));
+    k
+}
+
+/// What checking a backup found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackupCheck {
+    /// The archive's header (none for one from before headers).
+    pub header: Option<backup::Header>,
+    /// Contacts in it.
+    pub contacts: usize,
+    /// Messages and notes in it.
+    pub messages: usize,
+    /// Its words are this account's (when checked against one).
+    pub ours: bool,
+}
+
 impl Client {
-    /// Export an encrypted backup (primary device only: it needs the
-    /// recovery secret).
+    /// Keep the backup keys for `rs` (with new words, the new ones).
+    pub(crate) fn store_backup_keys(&mut self, rs: &RecoverySecret) -> Result<()> {
+        let k = backup_keys_from(rs);
+        self.store
+            .put(NS_SECRETS, KEY_BACKUP_KEYS, &k[..], &mut self.rng)?;
+        Ok(())
+    }
+
+    /// The backup keys: kept, or made from the words (on the device that
+    /// holds them; behind a PIN, while unlocked).
+    pub(crate) fn backup_keys(&mut self) -> Result<Zeroizing<[u8; 64]>> {
+        if let Some(b) = self.store.get(NS_SECRETS, KEY_BACKUP_KEYS)?
+            && b.len() == 64
+        {
+            let mut k = Zeroizing::new([0u8; 64]);
+            k.copy_from_slice(&b);
+            return Ok(k);
+        }
+        if !self.holds_recovery_words() {
+            return Err(CoreError::NotAccepted);
+        }
+        let rs = self.recovery_secret()?;
+        self.store_backup_keys(&rs)?;
+        Ok(backup_keys_from(&rs))
+    }
+
+    /// Export an encrypted backup without photos and files.
     pub fn export_backup(&mut self) -> Result<Vec<u8>> {
-        let rs = *self.recovery_secret()?.as_bytes();
-        let rs = Zeroizing::new(rs);
+        self.export_backup_with(false)
+    }
+
+    /// Export an encrypted backup (on the device that holds the words):
+    /// the profile, the account's shared keys, contacts, every
+    /// conversation's messages, notes and settings, and with `media` the
+    /// photos and files kept here. Sealed under the backup key from the
+    /// recovery words, with a header saying which backup it is.
+    pub fn export_backup_with(&mut self, media: bool) -> Result<Vec<u8>> {
+        let keys = self.backup_keys()?;
+        let mut bk = [0u8; 32];
+        bk.copy_from_slice(&keys[..32]);
+        let key = enclave_crypto::seal::SealKey::from_bytes(bk);
         // Only the shared account keys from "secrets", never device or prekey
         // state; the export below skips excluded namespaces as well.
         let tmp_ns = "backup-secrets";
@@ -47,14 +124,45 @@ impl Client {
             NS_SETTINGS.into(),
             tmp_ns.into(),
         ];
-        for root in self.contacts.keys() {
+        // Every conversation, and our notes.
+        let own = self.account.root_public.0;
+        for root in self.contacts.keys().chain(std::iter::once(&own)) {
             namespaces.push(persist::msg_ns(root));
             namespaces.push(format!("mid/{}", &persist::msg_ns(root)[2..]));
         }
+        if media {
+            namespaces.push(NS_FILES.into());
+        }
+        let sequence = self
+            .store
+            .get(NS_SETTINGS, KEY_SEQ)?
+            .and_then(|b| b.try_into().ok())
+            .map_or(0, u64::from_be_bytes)
+            + 1;
+        self.store
+            .put(NS_SETTINGS, KEY_SEQ, &sequence.to_be_bytes(), &mut self.rng)?;
+        let header = backup::Header {
+            sequence,
+            created_at: self.now(),
+            media,
+        };
         let refs: Vec<&str> = namespaces.iter().map(String::as_str).collect();
-        let archive = backup::export(&self.store, &refs, &rs, &mut self.rng)?;
+        let archive = backup::export(&self.store, &refs, &key, &header, &mut self.rng);
         self.store.delete(tmp_ns, b"account")?;
-        Ok(archive)
+        Ok(archive?)
+    }
+
+    /// "Check my backup" (`docs/14-storage.md` §4): open `archive` with the
+    /// words written down, without restoring anything, and say what is in
+    /// it and whether the words are this account's.
+    pub fn check_backup(&self, words: &str, archive: &[u8]) -> Result<BackupCheck> {
+        let mut c = check_archive(words, archive)?;
+        c.ours = c.ours && {
+            let rs = RecoverySecret::from_words(words)?;
+            enclave_crypto::sig::RootSigningKey::from_recovery_secret(rs.as_bytes()).public()
+                == self.account.root_public
+        };
+        Ok(c)
     }
 
     /// Restore onto a new device from the recovery words and a backup. The
@@ -80,7 +188,14 @@ impl Client {
             pw,
             &mut rng,
         )?;
-        backup::import(&store, archive, rs.as_bytes(), &mut rng)?;
+        backup::import(
+            &store,
+            archive,
+            &backup::backup_key(rs.as_bytes()),
+            &mut rng,
+        )?;
+        // The index isn't in a backup: built afresh below.
+        super::search_index::forget_built(&store)?;
         let shared = Zeroizing::new(
             store
                 .get("backup-secrets", b"account")?
@@ -176,6 +291,12 @@ impl Client {
         let wrapped = super::root_wrap::initial(&store, &rs, &mut rng)?;
         store.put(
             NS_SECRETS,
+            KEY_BACKUP_KEYS,
+            &backup_keys_from(&rs)[..],
+            &mut rng,
+        )?;
+        store.put(
+            NS_SECRETS,
             super::root_wrap::KEY_ROOT_WRAP,
             &wrapped,
             &mut rng,
@@ -259,13 +380,54 @@ impl Client {
             if let Some(c) = client.contacts.get_mut(&root) {
                 c.manifest = peer_manifest.clone();
             }
-            let hello = client.hello_for(&root, now).await?;
-            client
-                .initiate_to(&card, &peer_manifest, Some(&vault), &hello, None, now, None)
-                .await?;
+            // A contact we can't start a session with now (say, prekeys
+            // that lapsed while they were away) doesn't stop the restore:
+            // they reach this device when they next write, as it is in
+            // the account's manifest. Only the network failing does.
+            let started = match client.hello_for(&root, now).await {
+                Ok(hello) => {
+                    client
+                        .initiate_to(&card, &peer_manifest, Some(&vault), &hello, None, now, None)
+                        .await
+                }
+                Err(e) => Err(e),
+            };
+            if let Err(e @ CoreError::Net(_)) = started {
+                return Err(e);
+            }
         }
         client.ensure_search_index()?;
         client.store.set_schema(super::SCHEMA)?;
         Ok(client)
     }
+}
+
+/// Open `archive` with `words` and count what is in it, restoring
+/// nothing. `ours`: its account keys are the words' (false for an archive
+/// that opens but holds another account's keys).
+pub fn check_archive(words: &str, archive: &[u8]) -> Result<BackupCheck> {
+    let rs = RecoverySecret::from_words(words)?;
+    let (header, records) = backup::read(archive, &backup::backup_key(rs.as_bytes()))
+        .map_err(|_| CoreError::NotAccepted)?;
+    let mut c = BackupCheck {
+        header,
+        contacts: 0,
+        messages: 0,
+        ours: false,
+    };
+    for (ns, key, value) in &records {
+        match ns.as_str() {
+            NS_CONTACTS => c.contacts += 1,
+            "backup-secrets" if key == b"account" => {
+                c.ours = AccountKeys::import_shared(value, Some(&rs)).is_ok_and(|a| {
+                    a.root_public
+                        == enclave_crypto::sig::RootSigningKey::from_recovery_secret(rs.as_bytes())
+                            .public()
+                });
+            }
+            n if n.starts_with("m/") => c.messages += 1,
+            _ => {}
+        }
+    }
+    Ok(c)
 }

@@ -739,7 +739,15 @@ export component AppWindow inherits Window {
     in-out property <string> restore-s5;
     in-out property <string> restore-file;
     callback restore(string, string, string, string, string, string, string);
-    callback save-backup();
+    callback save-backup(bool);
+    callback set-server-backup(bool);
+    callback check-backup(string, string);
+    in-out property <bool> backup-media;
+    in property <bool> server-backup;
+    in property <string> server-backup-at;
+    in property <string> backup-check;
+    in-out property <string> check-words;
+    in-out property <string> check-file;
     callback give-shares(int);
     callback reveal-share(string);
     callback release-share(string);
@@ -920,7 +928,7 @@ export component AppWindow inherits Window {
                     Field { placeholder: "Share 3 (if needed)"; mono: true; text <=> root.restore-s3; }
                     Field { placeholder: "Share 4 (if needed)"; mono: true; text <=> root.restore-s4; }
                     Field { placeholder: "Share 5 (if needed)"; mono: true; text <=> root.restore-s5; }
-                    Field { placeholder: "Path to your backup file"; mono: true; text <=> root.restore-file; }
+                    Field { placeholder: "Path to your backup file (or leave empty for the one on your server)"; mono: true; text <=> root.restore-file; }
                     if root.restore-error != "": Text {
                         text: root.restore-error;
                         color: Tokens.danger;
@@ -932,8 +940,8 @@ export component AppWindow inherits Window {
                         alignment: start;
                         spacing: Tokens.space-s;
                         PrimaryButton {
-                            text: root.busy ? "Restoring…" : "Restore";
-                            enabled: root.restore-file != "" && (root.restore-words != "" || (root.restore-s1 != "" && root.restore-s2 != "")) && !root.busy;
+                            text: root.busy ? "Restoring…" : (root.restore-file == "" ? "Restore from my server" : "Restore");
+                            enabled: (root.restore-words != "" || (root.restore-s1 != "" && root.restore-s2 != "")) && !root.busy;
                             clicked => { root.restore(root.restore-words, root.restore-s1, root.restore-s2, root.restore-s3, root.restore-s4, root.restore-s5, root.restore-file); }
                         }
                         QuietButton { text: "Back"; clicked => { root.screen = Screen.welcome; } }
@@ -2539,11 +2547,38 @@ export component AppWindow inherits Window {
             QuietButton { text: "Remove"; clicked => { root.set-emergency-pin(""); } }
         }
         Body { text: "Backup"; font-weight: 600; }
-        Secondary { text: "An encrypted copy of your contacts and messages, saved to your Downloads. Only your recovery words open it."; }
+        Secondary { text: "An encrypted copy of your contacts, messages and notes. Only your recovery words open it."; }
+        if root.can-change-words: SwitchRow {
+            label: "Keep a backup on my server";
+            detail: root.server-backup
+                ? (root.server-backup-at != "" ? "Renewed every week. Last: " + root.server-backup-at + "." : "Renewed every week.")
+                : "Renewed every week. Your server sees only an encrypted file; your words alone bring it back.";
+            on: root.server-backup;
+            toggled => { if !root.busy { root.set-server-backup(!root.server-backup); } }
+        }
+        SwitchRow {
+            label: "Include photos and files";
+            detail: "In backups you save here. They can get large.";
+            on: root.backup-media;
+            toggled => { root.backup-media = !root.backup-media; }
+        }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Save a backup"; outlined: true; clicked => { root.save-backup(); } }
+            QuietButton { text: "Save a backup"; outlined: true; clicked => { root.save-backup(root.backup-media); } }
         }
+        Caption { text: "Check my backup"; }
+        Secondary { text: "Make sure the words you wrote down open your backup, without restoring anything."; }
+        Field { placeholder: "Your 24 recovery words"; mono: true; secret: true; text <=> root.check-words; }
+        Field { placeholder: "Path to a backup file (or leave empty for the one on your server)"; mono: true; text <=> root.check-file; }
+        HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: root.busy ? "Checking…" : "Check";
+                outlined: true;
+                clicked => { if root.check-words != "" && !root.busy { root.check-backup(root.check-words, root.check-file); root.check-words = ""; } }
+            }
+        }
+        if root.backup-check != "": Secondary { text: root.backup-check; }
         Body { text: "PIN"; font-weight: 600; }
         Secondary { text: root.has-root-pin ? "Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account." : "Set a PIN, and Enclave asks for it before removing a device, changing your recovery words or deleting your account. Someone who picks up your unlocked phone can't do those."; }
         if root.has-root-pin: Field { placeholder: "Current PIN"; secret: true; text <=> root.root-pin-input; }

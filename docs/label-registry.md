@@ -179,6 +179,7 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/store/ad-root` | AD | — | `enclave-core/src/client/root_wrap.rs` | Wrapped recovery secret AD prefix, then the record header (spec: 14 §1.3) |
 | `enclave/v1/store/search-key` | KMAC | 256 | `enclave-core/src/client/search_index.rs` | Search index key, from the store's master key (`Store::derive_key`) (spec: 14 §2.4) |
 | `enclave/v1/store/search-token` | KMAC | 256 (first 128 used) | `enclave-core/src/client/search_index.rs` | A word prefix's token in the search index (spec: 14 §2.4) |
+| `enclave/v1/store/backup-blob-id` | KMAC | 256 | `enclave-core/src/client/backup.rs`, `server_backup.rs` | The server-backup secret from the recovery secret, and (data `locator`, `owner`, `pointer`) the slot's locator, owner secret and pointer key from it (spec: 14 §4) |
 | `enclave/v1/store/app-lock` | KMAC | 256 | `enclave-vault/src/lock.rs` | Check value of the app PIN in `lock.bin`, keyed by Argon2id(PIN, salt) (spec: 14 §5) |
 | `enclave/v1/store/emergency-pin` | KMAC | 256 | `enclave-vault/src/lock.rs` | Check value of the emergency PIN in `lock.bin`, from the same Argon2id output (spec: 14 §5) |
 | `enclave/v1/net/vault-owner` | KMAC | 256 | `enclave-rpc/src/api.rs` `vault_owner` | Owner secret of the account's vault-key blob, from the key it's sealed under, so the account can replace or delete it (spec: 03 §8.5) |
@@ -265,7 +266,6 @@ These labels belong to features that are specified but not in code. They are res
 |---|---|---|---|---|
 | `enclave/v1/kt/leaf` | HASH | 512 | KT leaf value commitment | 12 §3 |
 | `enclave/v1/update/release` | CTX-R | — | Maintainer co-signature on a release | 19 §1 |
-| `enclave/v1/store/backup-blob-id` | KMAC | 256 | Blob secret for server-stored backup archives | 14 §4 |
 | `enclave/v1/calls/link-cap` | KMAC | 256 | Call-link capability | 11 §8 |
 
 ## 4. Retired draft labels

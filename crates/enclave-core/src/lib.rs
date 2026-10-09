@@ -28,6 +28,7 @@ mod persist;
 mod rpc;
 
 pub use card::{ContactCard, Invite, LinkError};
+pub use client::{BackupCheck, SERVER_BACKUP_EVERY, check_archive};
 pub use client::{
     Client, Contact, ContactState, DeviceInfo, Event, GroupInfo, GroupMessage, GroupReaction,
     LinkCode, LinkOffer, LinkProgress, LinkingDevice, Message, Options, Reaction,

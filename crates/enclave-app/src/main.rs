@@ -68,6 +68,27 @@ fn save_download(name: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf
 
 fn main() -> Result<(), slint::PlatformError> {
     let args: Vec<String> = std::env::args().collect();
+    // The panic wipe from outside the window (an OS shortcut can run it):
+    // erase the profile without opening it, and stop. Only `--profile`
+    // matters (no server needs to be named).
+    if args.iter().any(|a| a == "--panic-wipe") {
+        let Some(profile) = args
+            .iter()
+            .position(|a| a == "--profile")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from)
+        else {
+            eprintln!("enclave: --panic-wipe needs --profile DIR");
+            std::process::exit(2);
+        };
+        match enclave_vault::lock::erase_profile(&profile) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("enclave: couldn't erase {}: {e}", profile.display());
+                std::process::exit(1);
+            }
+        }
+    }
     let mode = match Mode::from_args(&args) {
         Ok(m) => m,
         Err(e) => {
@@ -76,22 +97,6 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     };
     let single_process = args.iter().any(|a| a == "--single-process");
-    // The panic wipe from outside the window (an OS shortcut can run it):
-    // erase the profile without opening it, and stop.
-    if args.iter().any(|a| a == "--panic-wipe") {
-        let Mode::Server { profile, .. } = &mode else {
-            eprintln!("enclave: --panic-wipe needs --profile DIR");
-            std::process::exit(2);
-        };
-        match enclave_vault::lock::erase_profile(profile) {
-            Ok(()) => std::process::exit(0),
-            Err(e) => {
-                eprintln!("enclave: couldn't erase {}: {e}", profile.display());
-                std::process::exit(1);
-            }
-        }
-    }
-
     let ui = AppWindow::new()?;
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
     // Outputs from the vault, applied on the UI thread.
@@ -193,6 +198,20 @@ fn main() -> Result<(), slint::PlatformError> {
     let t = tx.clone();
     let w = ui.as_weak();
     ui.on_restore(move |words, s1, s2, s3, s4, s5, path| {
+        let secrets: Vec<String> = if words.trim().is_empty() {
+            [&s1, &s2, &s3, &s4, &s5]
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            vec![words.trim().to_string()]
+        };
+        // No file: the backup kept on the server.
+        if path.trim().is_empty() {
+            let _ = t.send(Cmd::RestoreFromServer(secrets));
+            return;
+        }
         // The backup is read here, in the UI process: the vault never
         // touches the person's files.
         let archive = match std::fs::read(path.trim()) {
@@ -210,20 +229,34 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             }
         };
-        let secrets: Vec<String> = if words.trim().is_empty() {
-            [s1, s2, s3, s4, s5]
-                .iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        } else {
-            vec![words.trim().to_string()]
-        };
         let _ = t.send(Cmd::Restore(secrets, archive));
     });
     let t = tx.clone();
-    ui.on_save_backup(move || {
-        let _ = t.send(Cmd::SaveBackup);
+    ui.on_save_backup(move |media| {
+        let _ = t.send(Cmd::SaveBackup(media));
+    });
+    let t = tx.clone();
+    ui.on_set_server_backup(move |on| {
+        let _ = t.send(Cmd::ServerBackup(on));
+    });
+    let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_check_backup(move |words, path| {
+        // A file is read here, in the UI process, as for a restore.
+        let archive = if path.trim().is_empty() {
+            Vec::new()
+        } else {
+            match std::fs::read(path.trim()) {
+                Ok(b) if b.len() as u64 <= MAX_FILE => b,
+                _ => {
+                    if let Some(ui) = w.upgrade() {
+                        ui.set_backup_check("Couldn't open that file.".into());
+                    }
+                    return;
+                }
+            }
+        };
+        let _ = t.send(Cmd::CheckBackup(words.trim().to_string(), archive));
     });
     let t = tx.clone();
     let w = ui.as_weak();

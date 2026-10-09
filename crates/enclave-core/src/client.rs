@@ -146,6 +146,7 @@ mod root_wrap;
 mod search;
 mod search_index;
 mod secure;
+mod server_backup;
 mod servers;
 mod sharing;
 mod social;
@@ -156,6 +157,7 @@ mod usernames;
 mod wallet;
 
 pub use crate::rpc::Sending;
+pub use backup::{BackupCheck, check_archive};
 pub use blobs::fetch_due;
 pub use braid::BRAID_DEADLINE_SECS;
 pub use gossip::{GossipItem, KtAlert};
@@ -177,6 +179,7 @@ pub use prefs::{ConvPrefs, MAX_PINNED_CONVERSATIONS};
 pub use record::Evidence;
 pub use reports::{CALM_PER_DAY, FLOOD_PER_DAY, RAISED_EFFORT_SECS};
 pub use search::{Hit, Place};
+pub use server_backup::SERVER_BACKUP_EVERY;
 pub use servers::ListUpdate;
 pub use social::{
     MAX_HOLDERS, RELEASE_PREFIX, SHARE_PREFIX, ShareRelease, ShareRequest, words_from_shares,
@@ -691,6 +694,12 @@ impl Client {
         let store = Store::create(opts.path.as_deref(), opts.keystore, pw, &mut rng)?;
         let wrapped = root_wrap::initial(&store, &recovery, &mut rng)?;
         store.put(NS_SECRETS, root_wrap::KEY_ROOT_WRAP, &wrapped, &mut rng)?;
+        store.put(
+            NS_SECRETS,
+            b"backup-keys",
+            &backup::backup_keys_from(&recovery)[..],
+            &mut rng,
+        )?;
         store.put(NS_SECRETS, b"account", &account.export_shared(), &mut rng)?;
         store.put(NS_SECRETS, b"device", &device.export(), &mut rng)?;
         store.put(NS_SECRETS, b"prekeys", &prekeys.export(), &mut rng)?;
@@ -1567,6 +1576,9 @@ impl Client {
     async fn sync_upkeep(&mut self, now: u64) -> Result<Vec<Event>> {
         // A PIN unlock that has lapsed takes the unwrapped root with it.
         self.relock_root_if_due();
+        if let Err(e @ CoreError::Net(_)) = self.server_backup_upkeep(now).await {
+            return Err(e);
+        }
         let mut events = Vec::new();
         match self.check_clock(now).await {
             Ok(mut e) => events.append(&mut e),

@@ -341,6 +341,12 @@ pub struct Snapshot {
     pub app_lock: bool,
     /// Seconds without use before the app locks (0: never).
     pub lock_timeout: u32,
+    /// A backup is kept on the home server.
+    pub server_backup: bool,
+    /// When it last went up (a date), or empty.
+    pub server_backup_at: String,
+    /// What checking a backup found, or empty.
+    pub backup_check: String,
 }
 
 /// UI → vault.
@@ -438,8 +444,9 @@ pub enum Cmd {
     Vote(String, u64, u32),
     /// Close our poll at a group message: group, position.
     ClosePoll(String, u64),
-    /// Export an encrypted backup; it comes back as [`Out::File`].
-    SaveBackup,
+    /// Export an encrypted backup (with photos and files if `true`); it
+    /// comes back as [`Out::File`].
+    SaveBackup(bool),
     /// Restore on this new device: the recovery words (one item) or
     /// friends' shares (one per item), and the backup file.
     Restore(Vec<String>, Vec<u8>),
@@ -518,6 +525,15 @@ pub enum Cmd {
     SetAppLock(String),
     /// The time without use before the app locks, in seconds (0: never).
     SetLockTimeout(u32),
+    /// Keep a backup on the home server, renewed weekly (or stop, and
+    /// delete it) (`docs/14-storage.md` §4).
+    ServerBackup(bool),
+    /// Check a backup with the recovery words: the archive given, or (if
+    /// empty) the one on the home server.
+    CheckBackup(String, Vec<u8>),
+    /// Restore from the backup on the home server: the words, or friends'
+    /// shares, as for [`Cmd::Restore`].
+    RestoreFromServer(Vec<String>),
     /// Set the emergency PIN (empty: none): entered where a PIN or the
     /// passphrase is asked for, it erases this device.
     SetEmergencyPin(String),
@@ -807,7 +823,10 @@ impl Snapshot {
             .bool(self.bridges_restart)
             .bool(self.pin_lock)
             .bool(self.app_lock)
-            .u32(self.lock_timeout);
+            .u32(self.lock_timeout)
+            .bool(self.server_backup)
+            .str(&self.server_backup_at)
+            .str(&self.backup_check);
         w.0
     }
 
@@ -1027,6 +1046,9 @@ impl Snapshot {
             pin_lock: r.bool()?,
             app_lock: r.bool()?,
             lock_timeout: r.u32()?,
+            server_backup: r.bool()?,
+            server_backup_at: r.str()?,
+            backup_check: r.str()?,
         };
         r.end()?;
         Ok(s)
@@ -1082,7 +1104,7 @@ impl Cmd {
             Cmd::CreatePoll(g, q, o) => w.u8(41).str(g).str(q).strs(o),
             Cmd::Vote(g, s, c) => w.u8(42).str(g).u64(*s).u32(*c),
             Cmd::ClosePoll(g, s) => w.u8(43).str(g).u64(*s),
-            Cmd::SaveBackup => w.u8(44),
+            Cmd::SaveBackup(media) => w.u8(44).bool(*media),
             Cmd::Restore(s, b) => w.u8(45).strs(s).bytes(b),
             Cmd::GiveShares(ids, t) => w.u8(46).strs(ids).u32(*t),
             Cmd::RevealShare(id) => w.u8(47).str(id),
@@ -1122,6 +1144,9 @@ impl Cmd {
             Cmd::SetPreviews(on) => w.u8(76).bool(*on),
             Cmd::SetAppLock(p) => w.u8(77).str(p),
             Cmd::SetLockTimeout(t) => w.u8(79).u32(*t),
+            Cmd::ServerBackup(on) => w.u8(80).bool(*on),
+            Cmd::CheckBackup(words, a) => w.u8(81).str(words).bytes(a),
+            Cmd::RestoreFromServer(s) => w.u8(82).strs(s),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1175,7 +1200,7 @@ impl Cmd {
             41 => Cmd::CreatePoll(r.str()?, r.str()?, r.strs()?),
             42 => Cmd::Vote(r.str()?, r.u64()?, r.u32()?),
             43 => Cmd::ClosePoll(r.str()?, r.u64()?),
-            44 => Cmd::SaveBackup,
+            44 => Cmd::SaveBackup(r.bool()?),
             45 => Cmd::Restore(r.strs()?, r.bytes()?),
             46 => Cmd::GiveShares(r.strs()?, r.u32()?),
             47 => Cmd::RevealShare(r.str()?),
@@ -1213,6 +1238,9 @@ impl Cmd {
             76 => Cmd::SetPreviews(r.bool()?),
             77 => Cmd::SetAppLock(r.str()?),
             79 => Cmd::SetLockTimeout(r.u32()?),
+            80 => Cmd::ServerBackup(r.bool()?),
+            81 => Cmd::CheckBackup(r.str()?, r.bytes()?),
+            82 => Cmd::RestoreFromServer(r.strs()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };

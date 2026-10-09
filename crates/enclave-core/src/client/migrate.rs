@@ -106,6 +106,10 @@ pub(crate) fn finish_staged(store: &Store, rng: &mut HedgedRng) -> Result<()> {
         &get(b"mig/root-wrap")?,
         rng,
     )?;
+    // Backups from here on open with the new words only.
+    if let Some(k) = store.get(NS_SECRETS, b"mig/backup-keys")? {
+        store.put(NS_SECRETS, b"backup-keys", &k, rng)?;
+    }
     store.put(NS_SECRETS, b"account", &get(b"mig/account")?, rng)?;
     store.put(NS_PROFILE, b"manifest", &get(b"mig/manifest")?, rng)?;
     store.put(NS_PROFILE, b"signed-manifest", &get(b"mig/signed")?, rng)?;
@@ -123,6 +127,7 @@ pub(crate) fn finish_staged(store: &Store, rng: &mut HedgedRng) -> Result<()> {
     }
     for k in [
         &b"mig/root-wrap"[..],
+        b"mig/backup-keys",
         b"recovery",
         b"mig/account",
         b"mig/manifest",
@@ -250,6 +255,12 @@ impl Client {
         let account = self.account.export_shared();
         let s = &self.store;
         s.put(NS_SECRETS, b"mig/root-wrap", &wrapped, &mut self.rng)?;
+        s.put(
+            NS_SECRETS,
+            b"mig/backup-keys",
+            &super::backup::backup_keys_from(&rs)[..],
+            &mut self.rng,
+        )?;
         s.put(NS_SECRETS, b"mig/account", &account, &mut self.rng)?;
         s.put(NS_SECRETS, b"mig/manifest", &m.encode()?, &mut self.rng)?;
         s.put(NS_SECRETS, b"mig/signed", &signed.to_bytes(), &mut self.rng)?;

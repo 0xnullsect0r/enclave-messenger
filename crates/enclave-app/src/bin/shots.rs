@@ -276,6 +276,9 @@ fn fixture() -> Snapshot {
         pin_lock: false,
         app_lock: false,
         lock_timeout: 300,
+        server_backup: false,
+        server_backup_at: String::new(),
+        backup_check: String::new(),
     }
 }
 

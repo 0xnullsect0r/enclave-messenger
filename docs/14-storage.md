@@ -136,12 +136,18 @@ Opening a store with no shred generation starts at generation 0 with an empty ke
 ## 4. Backups
 
 - `backup_key = KMAC256(rs, "", 256, "enclave/v1/backup/key")`, where `rs` is the 256-bit recovery secret (PLAN: `KMAC(recovery, "backup")`).
-- `backup::export(store, namespaces, rs)` walks the requested namespaces, skips the excluded ones, and encodes every record as `u32(len(ns)) ‖ ns ‖ u32(len(key)) ‖ key ‖ u32(len(value)) ‖ value`. The concatenation is sealed with `seal_chunked(backup_key, "enclave-backup-v1", …)`. No compression.
+- `backup::export(store, namespaces, key, header)` walks the requested namespaces, skips the excluded ones, and encodes every record as `u32(len(ns)) ‖ ns ‖ u32(len(key)) ‖ key ‖ u32(len(value)) ‖ value`. The archive is `"ENCLBAK2" ‖ u64 sequence ‖ u64 created ‖ u8 flags (1: photos and files) ‖ seal_chunked(backup_key, "enclave-backup-v2" ‖ header, records)`: the header is readable without the key (which backup a file is) and bound into the sealing. Archives from before headers (sealed with AD `"enclave-backup-v1"`) still import. No compression.
 - **Excluded namespaces** (`backup::EXCLUDED`): `sessions`, `sender-keys`, `__shred`, `prekeys`. Ratchet sessions, sender keys, the shred keyring and prekey secrets therefore never enter a backup, so a restored backup cannot cause key reuse.
-- `backup::import(store, archive, rs)` opens the archive, skips any excluded namespace it finds, writes every other record into the store, and returns the count.
+- `backup::import(store, archive, key)` opens the archive, skips any excluded namespace it finds, writes every other record into the store, and returns the header and the count.
 - **Restoring creates a new device that re-establishes sessions.** Restore needs the recovery words.
 
-Not implemented yet: an archive header (magic, version, sequence number), server-stored backups with blob IDs (`enclave/v1/store/backup-blob-id` reserved), media selection, and the "Check my backup" restore test.
+**As implemented** (`client/backup.rs`, `client/server_backup.rs`):
+
+- **What goes in**: the profile, the account's shared keys, contacts, every conversation's messages, **notes**, and settings; with **photos and files** only when chosen (the local copies, `files`). The sequence number counts up per account. The device keeps the backup key and the server-backup secret (`backup-keys`, both from the recovery secret), so backups need neither the words nor the PIN; they open backups but can't act as the account, and new words replace them in the same migration step.
+- **Kept on the server** (Settings → Keep a backup on my server): the archive (without files) goes up as an ordinary blob, renewed every 7 days from sync so it never reaches the blobs' 30-day expiry, and a pointer sealed under a key from `s = KMAC256(recovery, "", 256, "enclave/v1/store/backup-blob-id")` (the blob reference) is kept as a `DirKind::Vault` object, which doesn't expire, at a locator from `s`, replaceable and deletable only with an owner secret from `s`. A new device with only the words and the server finds and restores it (`Client::fetch_server_backup`, `restore_from_server`; "Restore from my server" when no file is given). Turning it off deletes the pointer.
+- **Check my backup**: the words written down open the archive (a file, or the server's) in memory, without restoring anything; it reports the contacts and messages in it and whether its keys are this account's (`Client::check_backup`, `check_archive`).
+- **Restoring** builds the search index afresh (it is never backed up) and doesn't stop at a contact it can't start a session with yet (say, their prekeys lapsed while they were away): they reach the new device when they next write.
+- Test: `backups_local_and_on_the_server` (`tests/backups.rs`), `backups_exclude_sessions_and_need_the_recovery_secret` (`enclave-store`).
 
 ## 5. Device protections
 
@@ -182,8 +188,8 @@ Not implemented yet: an archive header (magic, version, sequence number), server
 
 1. PLAN §13 describes the Apple master key as a Keychain secret "combined with" a Secure Enclave P-256 unwrap. This spec reads "combined" as two nested wraps of the device secret (both must be removed). An alternative is to feed two independent secrets into the master-key KMAC.
 2. ~~The PIN attempt limit and wipe behavior for the wrapped root secret.~~ Decided (§1.3): no wipe on wrong PINs (that would hand anyone holding the phone a way to destroy the account); three free tries, then 30 s doubling to an hour between tries, kept in the profile. Wiping is the emergency PIN's job (§5).
-3. A shred rewrap writes the keyring and the generation in two separate database transactions after creating the new keystore entry, and destroys the old entry last. A crash between the two writes leaves a keyring sealed under generation `g + 1` while the stored generation is still `g`, so the keyring cannot be opened. The two writes should be one transaction.
-4. The reference backup format has no header or version. PLAN's "Enclave Backup v1" needs one before backups leave the device.
+3. ~~A shred rewrap wrote the keyring and the generation in two transactions.~~ Fixed: they are one transaction (`Store::write_batch`), after the new keystore entry is made and before the old one is destroyed.
+4. ~~The backup format has no header or version.~~ Decided: archives have a header (§4), version 2.
 
 
 ## Implementation status: backup and restore (M5 follow-up)

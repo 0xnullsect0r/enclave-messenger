@@ -272,6 +272,8 @@ struct Engine {
     lock: Option<crate::lock::LockFile>,
     /// The window is locked by the app PIN (the profile stays open).
     pin_locked: bool,
+    /// What the last "Check my backup" found.
+    backup_check: String,
     /// The last command from the window.
     last_use: std::time::Instant,
     /// Wrong PINs or passphrases in a row, and the earliest next try.
@@ -366,6 +368,16 @@ fn clock(at: u64) -> String {
         .timestamp_opt(at as i64, 0)
         .single()
         .map(|t| t.format("%H:%M").to_string())
+        .unwrap_or_default()
+}
+
+/// A day, as "9 Oct 2026".
+fn day_label(at: u64) -> String {
+    use chrono::TimeZone;
+    chrono::Local
+        .timestamp_opt(at as i64, 0)
+        .single()
+        .map(|t| t.format("%-d %b %Y").to_string())
         .unwrap_or_default()
 }
 
@@ -753,6 +765,7 @@ pub async fn run_with(
         passphrase_set: false,
         lock: None,
         pin_locked: false,
+        backup_check: String::new(),
         last_use: std::time::Instant::now(),
         lock_tries: 0,
         lock_wait: None,
@@ -1157,9 +1170,9 @@ impl Engine {
                     Err(err) => self.status = format!("Couldn't set up your address: {err}"),
                 }
             }
-            Cmd::SaveBackup => {
+            Cmd::SaveBackup(media) => {
                 if let Some(c) = self.client.as_mut() {
-                    match c.export_backup() {
+                    match c.export_backup_with(media) {
                         Ok(b) if b.len() <= 15 * 1024 * 1024 => {
                             let day = chrono::Local::now().format("%Y-%m-%d");
                             let _ = self
@@ -1167,69 +1180,79 @@ impl Engine {
                                 .send(Out::File(format!("Enclave backup {day}.enclave"), b));
                         }
                         Ok(_) => {
-                            self.status = "Your backup is too large to save from here yet.".into()
+                            self.status = if media {
+                                "With photos and files your backup is too large to save from here. Save it without them, or keep one on your server.".into()
+                            } else {
+                                "Your backup is too large to save from here. Keep one on your server instead.".into()
+                            }
+                        }
+                        Err(CoreError::PinRequired) => {
+                            self.status = "Enter your PIN on the recovery words sheet first.".into()
                         }
                         Err(_) => self.status = "Couldn't make a backup.".into(),
                     }
                 }
             }
-            Cmd::Restore(secrets, archive) if self.client.is_none() => {
-                self.restore_error.clear();
-                self.busy = true;
-                self.push();
-                // A friend's sealed code opens with our request's keys.
-                let mut opened = Vec::new();
-                let mut sealed_bad = false;
-                for s in secrets.iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                    if s.starts_with(enclave_core::client::SHARE_PREFIX) {
-                        match self.share_request.as_ref().map(|r| r.open(s)) {
-                            Some(Ok(w)) => opened.push(w.to_string()),
-                            _ => sealed_bad = true,
+            Cmd::ServerBackup(on) => {
+                if self.client.is_some() {
+                    self.busy = true;
+                    self.push();
+                }
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.set_server_backup(on).await {
+                        Ok(()) if on => {
+                            "A backup is on your server now, and is renewed every week.".into()
                         }
-                    } else {
-                        opened.push(s.to_string());
-                    }
-                }
-                if sealed_bad {
-                    self.restore_error = "One of your friends' codes doesn't open on this device. Ask them to scan the code on this screen again.".into();
+                        Ok(()) => "The backup on your server is deleted.".into(),
+                        Err(CoreError::PinRequired) => {
+                            "Enter your PIN on the recovery words sheet first.".into()
+                        }
+                        Err(CoreError::NotAccepted) => {
+                            "Backups are made on the device that holds your recovery words.".into()
+                        }
+                        Err(_) => "Couldn't reach your server. Try again in a moment.".into(),
+                    };
                     self.busy = false;
-                    return;
                 }
-                let secrets: Vec<&str> = opened.iter().map(String::as_str).collect();
-                let words = if secrets.len() == 1 {
-                    Ok(secrets[0].to_string())
-                } else {
-                    enclave_core::words_from_shares(&secrets)
-                };
-                let restored = match words {
-                    Ok(w) => {
-                        Client::restore(
-                            &w,
-                            &archive,
-                            self.options(None),
+            }
+            Cmd::CheckBackup(words, archive) => {
+                if self.client.is_some() {
+                    self.busy = true;
+                    self.push();
+                }
+                if let Some(c) = self.client.as_ref() {
+                    let archive = if archive.is_empty() {
+                        Client::fetch_server_backup(
+                            &words,
+                            self.server,
                             Arc::clone(&self.transport),
                         )
                         .await
-                    }
-                    Err(e) => Err(e),
-                };
-                match restored {
-                    Ok(mut c) => {
-                        self.configure(&mut c);
-                        self.client = Some(c);
-                        self.share_request = None;
-                        self.status = "Your account is back on this device. Contacts will accept it after 72 hours unless one of your other devices stops it.".into();
-                    }
-                    Err(_) => {
-                        self.restore_error = if secrets.len() > 1 {
-                            "Those shares don't fit together, or there aren't enough of them. Check each one, or ask one more friend.".into()
-                        } else {
-                            "The recovery words or the backup file don't match. Check the words, and that the file is your Enclave backup.".into()
-                        };
-                    }
+                        .map_err(|_| {
+                            "There's no backup on your server for these words.".to_string()
+                        })
+                    } else {
+                        Ok(archive)
+                    };
+                    self.backup_check = match archive.map(|a| c.check_backup(&words, &a)) {
+                        Ok(Ok(r)) if r.ours => {
+                            let when = r.header.map(|h| format!(", made {}", day_label(h.created_at))).unwrap_or_default();
+                            format!("Your words open this backup{when}: {} contacts and {} messages and notes. It would bring your account back.", r.contacts, r.messages)
+                        }
+                        Ok(Ok(_)) => "These words open the backup, but it's another account's.".into(),
+                        Ok(Err(_)) => "These words don't open this backup. Check them, and that it is your Enclave backup.".into(),
+                        Err(why) => why,
+                    };
+                    self.busy = false;
                 }
-                self.busy = false;
             }
+            Cmd::Restore(secrets, archive) if self.client.is_none() => {
+                self.restore_from(secrets, Some(archive)).await;
+            }
+            Cmd::RestoreFromServer(secrets) if self.client.is_none() => {
+                self.restore_from(secrets, None).await;
+            }
+            Cmd::RestoreFromServer(..) => {}
             Cmd::Restore(..) => {}
             Cmd::GiveShares(ids, threshold) => {
                 self.busy = true;
@@ -2965,6 +2988,82 @@ impl Engine {
         let _ = self.out.send(Out::Snapshot(Box::new(self.snapshot())));
     }
 
+    /// The recovery words from what was typed: the words themselves, or
+    /// friends' shares (sealed codes open with our share request's keys).
+    fn words_from(&self, secrets: &[String]) -> std::result::Result<String, String> {
+        let mut opened = Vec::new();
+        for s in secrets.iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            if s.starts_with(enclave_core::client::SHARE_PREFIX) {
+                match self.share_request.as_ref().map(|r| r.open(s)) {
+                    Some(Ok(w)) => opened.push(w.to_string()),
+                    _ => return Err("One of your friends' codes doesn't open on this device. Ask them to scan the code on this screen again.".into()),
+                }
+            } else {
+                opened.push(s.to_string());
+            }
+        }
+        let refs: Vec<&str> = opened.iter().map(String::as_str).collect();
+        if refs.len() == 1 {
+            Ok(refs[0].to_string())
+        } else {
+            enclave_core::words_from_shares(&refs).map_err(|_| {
+                "Those shares don't fit together, or there aren't enough of them. Check each one, or ask one more friend.".into()
+            })
+        }
+    }
+
+    /// Restore from `archive`, or (`None`) from the backup on the server.
+    async fn restore_from(&mut self, secrets: Vec<String>, archive: Option<Vec<u8>>) {
+        self.restore_error.clear();
+        self.busy = true;
+        self.push();
+        let words = match self.words_from(&secrets) {
+            Ok(w) => w,
+            Err(why) => {
+                self.restore_error = why;
+                self.busy = false;
+                return;
+            }
+        };
+        let restored = match &archive {
+            Some(a) => {
+                Client::restore(&words, a, self.options(None), Arc::clone(&self.transport)).await
+            }
+            None => {
+                Client::restore_from_server(
+                    &words,
+                    self.server,
+                    self.options(None),
+                    Arc::clone(&self.transport),
+                )
+                .await
+            }
+        };
+        match restored {
+            Ok(mut c) => {
+                self.configure(&mut c);
+                self.client = Some(c);
+                self.share_request = None;
+                self.status = "Your account is back on this device. Contacts will accept it after 72 hours unless one of your other devices stops it.".into();
+            }
+            Err(CoreError::Server(_)) if archive.is_none() => {
+                self.restore_error = "Your server has no backup for these words. Check the words, or restore from a backup file.".into();
+            }
+            Err(CoreError::Net(_)) => {
+                self.restore_error = "Couldn't reach your server. Try again in a moment.".into();
+            }
+            Err(_) => {
+                self.restore_error = if secrets.iter().filter(|s| !s.trim().is_empty()).count() > 1
+                {
+                    "Those shares don't fit together, or there aren't enough of them. Check each one, or ask one more friend.".into()
+                } else {
+                    "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup.".into()
+                };
+            }
+        }
+        self.busy = false;
+    }
+
     /// Where the lock settings live (beside the profile; the demo keeps
     /// them in memory).
     fn lock_path(&self) -> Option<PathBuf> {
@@ -3177,6 +3276,7 @@ impl Engine {
                 .lock
                 .as_ref()
                 .map_or(crate::lock::DEFAULT_TIMEOUT, |l| l.timeout),
+            backup_check: self.backup_check.clone(),
             status: self.status.clone(),
             add_error: self.add_error.clone(),
             username_error: self.username_error.clone(),
@@ -3257,6 +3357,9 @@ impl Engine {
         s.invites = c.invites().map(|v| v.len() as u32).unwrap_or(0);
         s.typing_setting = c.typing_enabled();
         s.can_change_words = c.holds_recovery_words();
+        let (on, at) = c.server_backup();
+        s.server_backup = on;
+        s.server_backup_at = if at > 0 { day_label(at) } else { String::new() };
         s.removed = self.removed;
         s.has_root_pin = c.has_root_pin();
         s.securing = c.securing();

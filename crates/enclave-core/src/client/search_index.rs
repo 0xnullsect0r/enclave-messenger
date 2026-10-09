@@ -115,6 +115,13 @@ fn encode_positions(p: &BTreeSet<u64>) -> Vec<u8> {
     p.iter().flat_map(|s| s.to_be_bytes()).collect()
 }
 
+/// Forget that the index was built (a restored profile has the marker in
+/// its settings but not the index, which is never backed up).
+pub(crate) fn forget_built(store: &enclave_store::Store) -> Result<()> {
+    store.delete(NS_SETTINGS, KEY_BUILT)?;
+    Ok(())
+}
+
 impl Client {
     fn search_key(&self) -> Zeroizing<[u8; 32]> {
         self.store.derive_key(L_KEY)

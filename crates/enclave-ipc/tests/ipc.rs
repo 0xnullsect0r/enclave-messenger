@@ -159,6 +159,9 @@ fn snapshot() -> Snapshot {
         pin_lock: true,
         app_lock: true,
         lock_timeout: 300,
+        server_backup: true,
+        server_backup_at: "9 Oct".into(),
+        backup_check: "ok".into(),
     }
 }
 
@@ -178,7 +181,7 @@ fn cmds() -> Vec<Cmd> {
         ),
         Cmd::Vote("g01".into(), 7, 1),
         Cmd::ClosePoll("g01".into(), 7),
-        Cmd::SaveBackup,
+        Cmd::SaveBackup(false),
         Cmd::Restore(vec!["a b c".into()], vec![1, 2, 3]),
         Cmd::GiveShares(vec!["ab".into(), "cd".into()], 2),
         Cmd::RevealShare(String::new()),
@@ -212,6 +215,10 @@ fn cmds() -> Vec<Cmd> {
         Cmd::SetPreviews(true),
         Cmd::SetAppLock("2468".into()),
         Cmd::SetLockTimeout(60),
+        Cmd::ServerBackup(true),
+        Cmd::CheckBackup("words".into(), vec![1, 2]),
+        Cmd::RestoreFromServer(vec!["words".into()]),
+        Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
         Cmd::SetOnRecord(false),
