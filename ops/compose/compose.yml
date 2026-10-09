@@ -126,10 +126,14 @@ services:
     profiles: [nym]
     image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
-    command: ["run", "--server", "server:7443"]
+    # On Nym's networks it buys its own zk-nym tickets from the operator's
+    # Nyx account: the mnemonic in secrets/nym/mnemonic (mode 0444; empty or
+    # missing on a local mixnet). Unhealthy while it runs out and can't buy.
+    command: ["run", "--server", "server:7443", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
     volumes:
       - ingress-data:/var/lib/enclave/ingress
       - public:/var/lib/enclave/public
+      - ./secrets/nym:/run/secrets/nym:ro
     networks: [backend, egress]
     depends_on: [server]
     healthcheck:
@@ -148,8 +152,9 @@ services:
     profiles: [nym]
     image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
-    command: ["forward", "--listen", "0.0.0.0:7446", "--to", "${PUSH_RELAY_NYM:-}"]
+    command: ["forward", "--listen", "0.0.0.0:7446", "--to", "${PUSH_RELAY_NYM:-}", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
     volumes:
+      - ./secrets/nym:/run/secrets/nym:ro
       - push-egress-data:/var/lib/enclave/public
     networks: [backend, egress]
     healthcheck:
@@ -183,8 +188,9 @@ services:
     profiles: [push]
     image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
-    command: ["oneway", "--relay", "push-relay:7445"]
+    command: ["oneway", "--relay", "push-relay:7445", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
     volumes:
+      - ./secrets/nym:/run/secrets/nym:ro
       - push-ingress-data:/var/lib/enclave/ingress
       - public:/var/lib/enclave/public
     networks: [backend, egress]

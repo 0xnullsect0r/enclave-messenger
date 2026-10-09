@@ -2020,6 +2020,7 @@ dependencies = [
  "enclave-nym",
  "enclave-nym-sdk",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -2062,6 +2063,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "webpki-roots 1.0.9",
+ "zeroize",
 ]
 
 [[package]]

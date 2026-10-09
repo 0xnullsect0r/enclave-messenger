@@ -6,6 +6,8 @@
 //! enclave-ingress forward  --to NYM_ADDRESS … [--listen ADDR] [--public DIR] [--gateway ID] [--env]
 //! enclave-ingress oneway   [--relay HOST:PORT] [--dir DIR] [--public DIR] [--gateway ID] [--env]
 //! enclave-ingress healthcheck [--public DIR] [--addr-file NAME]
+//!
+//! run, forward and oneway also take [--mnemonic-file FILE] [--keep-tickets N]
 //! ```
 //!
 //! `run` connects to the mixnet with the identity kept in `--dir` (created
@@ -22,7 +24,17 @@
 //! local mixnet, the sandbox) instead of mainnet. Defaults: `--server
 //! server:7443`, `--listen 0.0.0.0:7446`, `--relay push-relay:7445`,
 //! `--dir /var/lib/enclave/ingress`, `--public /var/lib/enclave/public`;
-//! `healthcheck` looks for `--addr-file` (default `ingress.addr`).
+//! `healthcheck` looks for `--addr-file` (default `ingress.addr`), and fails
+//! while `ADDR-FILE.unfunded` exists.
+//!
+//! On Nym's networks gateways want zk-nym tickets (`docs/09-transport.md`
+//! §7). With `--mnemonic-file` (a Docker secret: the operator's Nyx
+//! account) the client buys its own ticketbooks, at start and, checked
+//! every 10 minutes, whenever fewer than `--keep-tickets` (default 20) are
+//! left. When it runs low and can't buy (an empty account), it says so in
+//! the log and writes `ADDR-FILE.unfunded` until a purchase works again, so
+//! the container turns unhealthy. A missing or empty file means unfunded:
+//! fine on a local mixnet, refused by mainnet's gateways.
 
 use enclave_ingress::Stats;
 use enclave_nym::MixnetDriver;
@@ -52,7 +64,9 @@ fn main() -> ExitCode {
             .and_then(|rt| rt.block_on(run(mode, &args, &public))),
         Some("healthcheck") => {
             let file = flag(&args, "--addr-file").unwrap_or_else(|| "ingress.addr".into());
-            if public.join(file).exists() {
+            if public.join(format!("{file}.unfunded")).exists() {
+                Err("out of zk-nym tickets and can't buy more (fund the account)".into())
+            } else if public.join(file).exists() {
                 Ok(())
             } else {
                 Err("not connected to the mixnet yet".into())
@@ -98,14 +112,36 @@ async fn run(mode: &str, args: &[String], public: &std::path::Path) -> Result<()
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         Role::Ingress { dir }
     };
-    let driver = NymDriver::connect(Options {
-        role,
-        gateway: flag(args, "--gateway"),
-        network: Network::from_env(args.iter().any(|a| a == "--env")),
-        tickets: Vec::new(),
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let funding = match flag(args, "--mnemonic-file") {
+        Some(f) => {
+            let m = zeroize::Zeroizing::new(std::fs::read_to_string(&f).unwrap_or_default());
+            let keep = match flag(args, "--keep-tickets") {
+                Some(n) => n.parse().map_err(|_| "--keep-tickets N".to_string())?,
+                None => 20,
+            };
+            if m.trim().is_empty() {
+                eprintln!("enclave-ingress: {f} is empty: not buying zk-nym tickets");
+                None
+            } else {
+                Some(enclave_nym_sdk::funding::Funding {
+                    mnemonic: zeroize::Zeroizing::new(m.trim().to_string()),
+                    keep,
+                })
+            }
+        }
+        None => None,
+    };
+    let driver = Arc::new(
+        NymDriver::connect(Options {
+            role,
+            gateway: flag(args, "--gateway"),
+            network: Network::from_env(args.iter().any(|a| a == "--env")),
+            tickets: Vec::new(),
+            funding,
+        })
+        .await
+        .map_err(|e| e.to_string())?,
+    );
     let address = driver.address();
     let file = match mode {
         "forward" => "push-egress.addr",
@@ -115,6 +151,30 @@ async fn run(mode: &str, args: &[String], public: &std::path::Path) -> Result<()
     std::fs::create_dir_all(public).map_err(|e| format!("{}: {e}", public.display()))?;
     std::fs::write(public.join(file), format!("{address}\n"))
         .map_err(|e| format!("{}: {e}", public.display()))?;
+    // Tickets: every 10 minutes, buy when low; unhealthy while it can't.
+    {
+        let driver = Arc::clone(&driver);
+        let marker = public.join(format!("{file}.unfunded"));
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(600));
+            loop {
+                tick.tick().await;
+                match driver.top_up().await {
+                    None => return,
+                    Some(Ok(left)) => {
+                        let _ = std::fs::remove_file(&marker);
+                        eprintln!("enclave-ingress: {left} zk-nym tickets left");
+                    }
+                    Some(Err(e)) => {
+                        eprintln!(
+                            "enclave-ingress: LOW BALANCE: couldn't buy zk-nym tickets ({e}); fund the account"
+                        );
+                        let _ = std::fs::write(&marker, b"unfunded\n");
+                    }
+                }
+            }
+        });
+    }
     let stats = Arc::new(Stats::default());
     {
         let stats = Arc::clone(&stats);
@@ -131,7 +191,7 @@ async fn run(mode: &str, args: &[String], public: &std::path::Path) -> Result<()
             }
         });
     }
-    let driver: Arc<dyn MixnetDriver> = Arc::new(driver);
+    let driver: Arc<dyn MixnetDriver> = driver;
     let flusher = Arc::clone(&driver);
     let work: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> = match mode {
         "forward" => {

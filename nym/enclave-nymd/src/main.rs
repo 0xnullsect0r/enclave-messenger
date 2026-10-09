@@ -111,6 +111,7 @@ fn main() -> ExitCode {
             gateway,
             network,
             tickets,
+            funding: None,
         })
         .await
         {

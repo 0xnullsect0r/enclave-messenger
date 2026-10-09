@@ -18,6 +18,7 @@
 //! process exits.
 
 pub mod credentials;
+pub mod funding;
 
 use enclave_nym::{Incoming, MixnetDriver, NymError, Pacing, ReplyTag, Result};
 use nym_sdk::mixnet::{
@@ -25,6 +26,7 @@ use nym_sdk::mixnet::{
     MixnetMessageSender, Recipient, StoragePaths,
 };
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 
@@ -106,6 +108,9 @@ pub struct Options {
     /// runs in credentials mode on Nym's networks, importing what is left of
     /// each in order; a local mixnet doesn't check.
     pub tickets: Vec<Vec<u8>>,
+    /// An operator's own Nyx account to buy tickets from (an ingress or
+    /// push egress on Nym's networks, [`funding`]).
+    pub funding: Option<funding::Funding>,
 }
 
 /// Which mixnet to join.
@@ -167,6 +172,8 @@ pub struct NymDriver {
     bought: std::sync::Mutex<Vec<Vec<u8>>>,
     /// The running client's ticket store (a device's; empty otherwise).
     store: std::sync::Mutex<credentials::TicketStore>,
+    /// Keeps an operator's tickets topped up ([`Options::funding`]).
+    top_up: Option<Arc<dyn funding::TopUp>>,
     /// HTTP through Tor, made when first needed.
     fetcher: std::sync::OnceLock<credentials::Fetcher>,
 }
@@ -178,10 +185,45 @@ fn gateway_of(address: &str) -> Option<&str> {
     address.split_once('@').map(|(_, g)| g)
 }
 
-/// Build and connect a nym-sdk client for `opts`, and its ticket store.
-async fn build(
-    opts: &Options,
-) -> Result<(nym_sdk::mixnet::MixnetClient, credentials::TicketStore)> {
+/// What [`build`] makes: the connected client, its ticket store (a
+/// device's), and what tops up an operator's tickets.
+type Built = (
+    nym_sdk::mixnet::MixnetClient,
+    credentials::TicketStore,
+    Option<Arc<dyn funding::TopUp>>,
+);
+
+/// Buy what an operator's client needs before it connects, and keep what
+/// buys more.
+async fn fund<S>(
+    client: &nym_sdk::mixnet::DisconnectedMixnetClient<S>,
+    store: S::CredentialStore,
+    f: &funding::Funding,
+) -> Result<Arc<dyn funding::TopUp>>
+where
+    S: nym_sdk::mixnet::MixnetClientStorage + Clone + 'static,
+    S::CredentialStore: Clone + Send + Sync + 'static,
+    nym_sdk::bandwidth::BandwidthAcquireClient<S::CredentialStore>: Send + Sync,
+{
+    let buyer = client
+        .create_bandwidth_client(
+            f.mnemonic.to_string(),
+            nym_credentials_interface::TicketType::V1MixnetEntry,
+        )
+        .await
+        .map_err(client_error)?;
+    let funded: Arc<dyn funding::TopUp> = Arc::new(funding::Funded {
+        store,
+        buyer,
+        keep: f.keep,
+    });
+    let left = funded.top_up().await?;
+    eprintln!("enclave-nym-sdk: {left} zk-nym tickets on hand");
+    Ok(funded)
+}
+
+/// Build and connect a nym-sdk client for `opts`.
+async fn build(opts: &Options) -> Result<Built> {
     let mut debug = nym_sdk::DebugConfig::default();
     debug.traffic.disable_main_poisson_packet_distribution = true;
     debug.stats_reporting.enabled = false;
@@ -220,28 +262,39 @@ async fn build(
                 .initialise_persistent_storage(&debug)
                 .await
                 .map_err(client_error)?;
+            let store = {
+                use nym_sdk::mixnet::MixnetClientStorage;
+                storage.credential_store().clone()
+            };
+            let funding = opts
+                .funding
+                .as_ref()
+                .filter(|_| !matches!(opts.network, Network::Local { .. }));
             let mut b = MixnetClientBuilder::new_with_storage(storage)
                 .network_details(network)
-                .debug_config(debug);
+                .debug_config(debug)
+                .credentials_mode(funding.is_some());
             if let Some(g) = &opts.gateway {
                 b = b.request_gateway(g.clone());
             }
             if let Some(p) = topology {
                 b = b.custom_topology_provider(Box::new(p));
             }
-            let client = b
-                .build()
-                .map_err(client_error)?
-                .connect_to_mixnet()
-                .await
-                .map_err(client_error)?;
-            Ok((client, credentials::TicketStore::default()))
+            let client = b.build().map_err(client_error)?;
+            let top_up = match funding {
+                Some(f) => Some(fund(&client, store, f).await?),
+                None => None,
+            };
+            let client = client.connect_to_mixnet().await.map_err(client_error)?;
+            Ok((client, credentials::TicketStore::default(), top_up))
         }
         Role::Client => {
             // Spending is on where gateways check: Nym's networks, not a
             // local mixnet (the books are still imported, so the same path
             // runs).
-            let paid = !opts.tickets.is_empty() && !matches!(opts.network, Network::Local { .. });
+            let local = matches!(opts.network, Network::Local { .. });
+            let funding = opts.funding.as_ref().filter(|_| !local);
+            let paid = (!opts.tickets.is_empty() || funding.is_some()) && !local;
             let storage = nym_sdk::mixnet::Ephemeral::default();
             let store = {
                 use nym_sdk::mixnet::MixnetClientStorage;
@@ -260,13 +313,13 @@ async fn build(
             if let Some(p) = topology {
                 b = b.custom_topology_provider(Box::new(p));
             }
-            let client = b
-                .build()
-                .map_err(client_error)?
-                .connect_to_mixnet()
-                .await
-                .map_err(client_error)?;
-            Ok((client, store))
+            let client = b.build().map_err(client_error)?;
+            let top_up = match funding {
+                Some(f) => Some(fund(&client, store.clone(), f).await?),
+                None => None,
+            };
+            let client = client.connect_to_mixnet().await.map_err(client_error)?;
+            Ok((client, store, top_up))
         }
     }
 }
@@ -298,7 +351,7 @@ fn attach(
 impl NymDriver {
     /// Connect to the mixnet.
     pub async fn connect(opts: Options) -> Result<Self> {
-        let (client, store) = build(&opts).await?;
+        let (client, store, top_up) = build(&opts).await?;
         let (tx, rx) = mpsc::unbounded_channel();
         let (sender, address, reader) = attach(client, tx.clone());
         Ok(Self {
@@ -310,8 +363,15 @@ impl NymDriver {
             switching: Mutex::new(()),
             bought: std::sync::Mutex::new(Vec::new()),
             store: std::sync::Mutex::new(store),
+            top_up,
             fetcher: std::sync::OnceLock::new(),
         })
+    }
+
+    /// An operator's client: buy a ticketbook if few tickets are left; the
+    /// tickets left after. `None` when it isn't funded.
+    pub async fn top_up(&self) -> Option<Result<u64>> {
+        Some(self.top_up.as_ref()?.top_up().await)
     }
 
     fn fetcher(&self) -> Result<&credentials::Fetcher> {
@@ -409,7 +469,7 @@ impl MixnetDriver for NymDriver {
         // nym-sdk picks a gateway uniformly at random: with two to choose
         // from, eight tries all landing on the old one is 1 in 256.
         for _ in 0..8 {
-            let (client, store) = build(&opts).await?;
+            let (client, store, _): Built = build(&opts).await?;
             let address = client.nym_address().to_string();
             let Some(gateway) = gateway_of(&address).map(str::to_string) else {
                 continue;

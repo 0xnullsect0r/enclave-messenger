@@ -291,7 +291,7 @@ Other crates:
 
 - New `crates/enclave-credgate` (Equi-X → Privacy Pass → ticketbook via `nym-credential-proxy`; quotas, no logs; issuer key rotated monthly, published in the server list). Done (`09` §7): `enclave-tokens::privpass`, `enclave-credgate`, the front's proxy, compose profile `foundation`, image binary, and the issuer keys in the server list (`CredGateEntry`, list format 2, `enclave-admin` `[[credgate]]`, `enclave-credgate show-key --epochs N`).
 - Client: a sealed ticketbook wallet in the vault, auto-refill, `netd FetchCredential` over Tor, `ImportTickets`. Done (`09` §7): `enclave_core::TicketWallet` (sealed in the profile, never backed up; refill below 10 tickets from kept tokens or new Equi-X work; spending followed from nymd's counter), netd/nymd fetch, buy and connect (pipe frames 6–10, IPC tags 7–10), books bought while connected imported into the running client, the vault starting netd with `--await-tickets` and buying a new device's first book before it has a profile. Localnet CI buys the e2e's book through stack a's gate from `enclave-dev-proxy`. Spending against checking gateways runs in the sandbox nightly (N4, G7).
-- Ingress: mnemonic-funded auto top-up with a low-balance alert.
+- Ingress: mnemonic-funded auto top-up with a low-balance alert. Done (`09` §7): `enclave_nym_sdk::funding`, `enclave-ingress --mnemonic-file/--keep-tickets`, compose secret `secrets/nym/mnemonic`, `LOW BALANCE` log plus an unhealthy container, operator kit "Paying for the mixnet". Exercised against a funded account in the sandbox nightly (G7).
 - Compose: a `foundation` profile.
 - **Privacy Pass is also used for blob quotas (`BLOB_ALLOC`) and relay tickets** (P4, C2).
 

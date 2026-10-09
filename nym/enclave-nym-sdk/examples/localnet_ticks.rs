@@ -47,6 +47,7 @@ async fn main() {
             gateway: None,
             network: network.clone(),
             tickets: Vec::new(),
+            funding: None,
         })
         .await
         .expect("ingress connects"),
@@ -57,6 +58,7 @@ async fn main() {
             gateway: None,
             network,
             tickets: Vec::new(),
+            funding: None,
         })
         .await
         .expect("device connects"),

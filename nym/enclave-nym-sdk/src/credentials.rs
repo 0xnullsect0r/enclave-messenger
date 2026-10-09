@@ -336,5 +336,29 @@ mod tests {
         assert_eq!(back.0.ticketbook.epoch_id(), 4);
         assert!(back.0.master_verification_key.is_some());
         assert!(decode(&stored[..stored.len() / 2]).is_err());
+
+        // Imported into a client's store, partly spent: what is left counts
+        // (what an operator's top-up reads).
+        let total = u32::try_from(back.0.ticketbook.params_total_tickets()).unwrap();
+        let store = TicketStore::default();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            import(
+                &store,
+                &enclave_nym::Held {
+                    total,
+                    spent: 10,
+                    book: stored,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                crate::funding::tickets_left(&store).await.unwrap(),
+                u64::from(total - 10)
+            );
+        });
     }
 }

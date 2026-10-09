@@ -157,6 +157,27 @@ into PostgreSQL in a single transaction. The key-transparency log stays in
 existing stack: stop the server, take a `backup`, switch to
 `compose.postgres.yml`, and `restore` that snapshot.
 
+## Paying for the mixnet
+
+Nym's gateways carry traffic against zk-nym tickets. Your stack's mixnet
+clients (`ingress`, and with profile `push`, `push-egress` and
+`push-ingress`) buy their own from a Nyx account you fund with NYM: put
+its mnemonic in `secrets/nym/mnemonic`.
+
+```sh
+mkdir -p secrets/nym
+printf '%s' 'word1 word2 … word24' > secrets/nym/mnemonic
+chmod 0444 secrets/nym/mnemonic
+```
+
+Each buys a ticketbook (50 tickets of 200 MB, valid 7 days) at start and,
+checked every 10 minutes, whenever fewer than 20 tickets are left. The
+log says how many are left. When one runs low and can't buy (the account
+is empty), it logs `LOW BALANCE` and its health check fails until a
+purchase works again: watch for an unhealthy `ingress`. The account pays
+only for your stack's own traffic; devices get their tickets from the
+foundation's credential gate.
+
 ## Keys and rotation
 
 - **Request keys** rotate every day by themselves, from a forward-secure
