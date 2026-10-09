@@ -12,13 +12,26 @@
 //!            3 ‖ u32 millis                                    flush
 //!            4 ‖ pacing (13, `Pacing::encode`)                 pace
 //!            5                                                 switch gateway
+//!            6 ‖ ticketbook                                    import (before 7)
+//!            7                                                 connect (`--await-tickets`)
+//!            8 ‖ u16 len ‖ method ‖ u16 len ‖ url ‖ body       fetch (through Tor)
+//!            9 ‖ u16 len ‖ gate ‖ token                        buy a ticketbook
 //! from nymd: 1 ‖ address                                       ready (first, and
 //!                                                              after a switch)
 //!            2 ‖ u8 has_tag ‖ [tag (16)] ‖ data                a message
 //!            3 ‖ u8 done                                       flushed
 //!            5 ‖ 0 ‖ gateway | 5 ‖ 1 ‖ reason                  switched (after a
 //!                                                              ready frame) or not
+//!            8 ‖ 0 ‖ u16 status ‖ body | 8 ‖ 1 ‖ reason        fetched or not
+//!            9 ‖ 0 ‖ ticketbook | 9 ‖ 1 ‖ reason               bought or not
 //! ```
+//!
+//! Started with `--await-tickets`, nymd answers 6, 8 and 9 before it
+//! connects, and connects on 7 with the ticketbooks it was given
+//! ([`PipeDriver::start`]): a device can buy its first ones over Tor before
+//! a gateway that wants them would refuse it. Fetches and purchases also
+//! work once connected; a ticketbook bought then is used from the next
+//! connection (a gateway switch, a restart).
 //!
 //! Sends are fire and forget, as on the mixnet itself: a lost one shows as
 //! a request that gets no reply.
@@ -32,9 +45,150 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 type FlushWaiter = Arc<std::sync::Mutex<Option<oneshot::Sender<bool>>>>;
 type SwitchWaiter =
     Arc<std::sync::Mutex<Option<oneshot::Sender<std::result::Result<String, String>>>>>;
+type CallWaiter =
+    Arc<std::sync::Mutex<Option<(u8, oneshot::Sender<std::result::Result<Vec<u8>, String>>)>>>;
 
-/// Longest frame either way (a mixframe and its header, with room).
-pub const MAX_FRAME: usize = 64 * 1024;
+/// Longest frame either way (a mixframe and its header, or a ticketbook
+/// with its signatures, with room).
+pub const MAX_FRAME: usize = 1024 * 1024;
+
+fn lp16(out: &mut Vec<u8>, b: &[u8]) -> Result<()> {
+    out.extend_from_slice(
+        &u16::try_from(b.len())
+            .map_err(|_| NymError::Malformed)?
+            .to_be_bytes(),
+    );
+    out.extend_from_slice(b);
+    Ok(())
+}
+
+fn take16<'a>(b: &mut &'a [u8]) -> Option<&'a [u8]> {
+    let n = usize::from(u16::from_be_bytes([*b.first()?, *b.get(1)?]));
+    let v = b.get(2..2 + n)?;
+    *b = &b[2 + n..];
+    Some(v)
+}
+
+/// Frame 8: a fetch.
+fn fetch_frame(method: &str, url: &str, body: &[u8]) -> Result<Vec<u8>> {
+    let mut b = vec![8u8];
+    lp16(&mut b, method.as_bytes())?;
+    lp16(&mut b, url.as_bytes())?;
+    b.extend_from_slice(body);
+    Ok(b)
+}
+
+fn parse_fetch(mut rest: &[u8]) -> Option<(String, String, Vec<u8>)> {
+    let method = String::from_utf8(take16(&mut rest)?.to_vec()).ok()?;
+    let url = String::from_utf8(take16(&mut rest)?.to_vec()).ok()?;
+    Some((method, url, rest.to_vec()))
+}
+
+/// Frame 9: a purchase.
+fn buy_frame(gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+    let mut b = vec![9u8];
+    lp16(&mut b, gate.as_bytes())?;
+    b.extend_from_slice(token);
+    Ok(b)
+}
+
+fn parse_buy(mut rest: &[u8]) -> Option<(String, Vec<u8>)> {
+    let gate = String::from_utf8(take16(&mut rest)?.to_vec()).ok()?;
+    Some((gate, rest.to_vec()))
+}
+
+/// The answer to a fetch (8) or a purchase (9).
+fn answer_frame(kind: u8, r: std::result::Result<Vec<u8>, String>) -> Vec<u8> {
+    match r {
+        Ok(v) => [&[kind, 0][..], &v].concat(),
+        Err(e) => [&[kind, 1][..], e.as_bytes()].concat(),
+    }
+}
+
+fn fetched(status: u16, body: &[u8]) -> Vec<u8> {
+    [&status.to_be_bytes()[..], body].concat()
+}
+
+fn split_fetched(v: &[u8]) -> Result<(u16, Vec<u8>)> {
+    if v.len() < 2 {
+        return Err(NymError::Malformed);
+    }
+    Ok((u16::from_be_bytes([v[0], v[1]]), v[2..].to_vec()))
+}
+
+/// What nymd does for frames 8 and 9: the device's HTTP client (through
+/// Tor) and its ticketbook purchase.
+#[async_trait::async_trait]
+pub trait Purchaser: Send + Sync {
+    /// HTTP through Tor.
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)>;
+    /// One ticketbook for one token.
+    async fn buy(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>>;
+}
+
+/// Answer frame 8 or 9 with `p`.
+async fn purchase(p: &dyn Purchaser, b: &[u8]) -> Option<Vec<u8>> {
+    match b.split_first() {
+        Some((8, rest)) => {
+            let (method, url, body) = parse_fetch(rest)?;
+            Some(answer_frame(
+                8,
+                p.fetch(&method, &url, body)
+                    .await
+                    .map(|(s, b)| fetched(s, &b))
+                    .map_err(|e| e.to_string()),
+            ))
+        }
+        Some((9, rest)) => {
+            let (gate, token) = parse_buy(rest)?;
+            Some(answer_frame(
+                9,
+                p.buy(&gate, &token).await.map_err(|e| e.to_string()),
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// A connected client's own fetch and purchase.
+struct ViaDriver(Arc<dyn MixnetDriver>);
+
+#[async_trait::async_trait]
+impl Purchaser for ViaDriver {
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        self.0.fetch(method, url, body).await
+    }
+    async fn buy(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        self.0.buy_tickets(gate, token).await
+    }
+}
+
+/// The nymd side before it connects (`--await-tickets`): answer fetches
+/// and purchases, collect imported ticketbooks, and return them on the
+/// connect frame. `None` if netd went away first.
+pub async fn serve_starting<R, W>(
+    purchaser: &dyn Purchaser,
+    reader: &mut R,
+    writer: &mut W,
+) -> Option<Vec<Vec<u8>>>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut tickets = Vec::new();
+    loop {
+        let b = read_frame(reader).await?;
+        match b.split_first() {
+            Some((6, t)) => tickets.push(t.to_vec()),
+            Some((7, [])) => return Some(tickets),
+            Some((8 | 9, _)) => {
+                let answer = purchase(purchaser, &b).await?;
+                write_frame(writer, &answer).await.ok()?;
+            }
+            _ => return None,
+        }
+    }
+}
 
 async fn read_frame(r: &mut (impl AsyncRead + Unpin)) -> Option<Vec<u8>> {
     let mut len = [0u8; 4];
@@ -65,6 +219,65 @@ pub struct PipeDriver {
     flushing: Mutex<()>,
     switched: SwitchWaiter,
     switching: Mutex<()>,
+    called: CallWaiter,
+    calling: Mutex<()>,
+}
+
+/// A nymd started with `--await-tickets`, not connected yet: fetch and buy
+/// through it, then [`Starting::connect`] with the ticketbooks to spend.
+pub struct Starting<R, W> {
+    reader: R,
+    writer: W,
+}
+
+impl<R, W> Starting<R, W>
+where
+    R: AsyncRead + Send + Unpin + 'static,
+    W: AsyncWrite + Send + Unpin + 'static,
+{
+    /// Talk to the nymd at the other end.
+    pub fn new(reader: R, writer: W) -> Self {
+        Self { reader, writer }
+    }
+
+    async fn call(&mut self, frame: &[u8], kind: u8) -> Result<Vec<u8>> {
+        write_frame(&mut self.writer, frame)
+            .await
+            .map_err(|_| NymError::Closed)?;
+        let b = read_frame(&mut self.reader).await.ok_or(NymError::Closed)?;
+        match b.split_first() {
+            Some((k, [0, v @ ..])) if *k == kind => Ok(v.to_vec()),
+            Some((k, [1, why @ ..])) if *k == kind => {
+                Err(NymError::Client(String::from_utf8_lossy(why).into_owned()))
+            }
+            _ => Err(NymError::Malformed),
+        }
+    }
+
+    /// HTTP through nymd's Tor.
+    pub async fn fetch(&mut self, method: &str, url: &str, body: &[u8]) -> Result<(u16, Vec<u8>)> {
+        let f = fetch_frame(method, url, body)?;
+        split_fetched(&self.call(&f, 8).await?)
+    }
+
+    /// One ticketbook for one token.
+    pub async fn buy(&mut self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        let f = buy_frame(gate, token)?;
+        self.call(&f, 9).await
+    }
+
+    /// Connect with these ticketbooks, and drive the client.
+    pub async fn connect(mut self, tickets: &[Vec<u8>]) -> Result<PipeDriver> {
+        for t in tickets {
+            write_frame(&mut self.writer, &[&[6u8][..], t].concat())
+                .await
+                .map_err(|_| NymError::Closed)?;
+        }
+        write_frame(&mut self.writer, &[7])
+            .await
+            .map_err(|_| NymError::Closed)?;
+        PipeDriver::new(self.reader, self.writer).await
+    }
 }
 
 impl PipeDriver {
@@ -84,6 +297,8 @@ impl PipeDriver {
         let waiter = Arc::clone(&flushed);
         let switched: SwitchWaiter = Arc::default();
         let switch_waiter = Arc::clone(&switched);
+        let called: CallWaiter = Arc::default();
+        let call_waiter = Arc::clone(&called);
         let address = Arc::new(std::sync::RwLock::new(address));
         let current = Arc::clone(&address);
         let reader = tokio::spawn(async move {
@@ -113,6 +328,19 @@ impl PipeDriver {
                     Some((5, [ok, text @ ..])) => {
                         let text = String::from_utf8_lossy(text).into_owned();
                         answer(if *ok == 0 { Ok(text) } else { Err(text) });
+                        continue;
+                    }
+                    Some((kind @ (8 | 9), [ok, v @ ..])) => {
+                        let waiting = call_waiter.lock().ok().and_then(|mut w| w.take());
+                        if let Some((k, w)) = waiting
+                            && k == *kind
+                        {
+                            let _ = w.send(if *ok == 0 {
+                                Ok(v.to_vec())
+                            } else {
+                                Err(String::from_utf8_lossy(v).into_owned())
+                            });
+                        }
                         continue;
                     }
                     _ => {}
@@ -145,7 +373,25 @@ impl PipeDriver {
             flushing: Mutex::new(()),
             switched,
             switching: Mutex::new(()),
+            called,
+            calling: Mutex::new(()),
         })
+    }
+
+    /// Frame 8 or 9 and its answer, one at a time.
+    async fn call(&self, frame: &[u8], kind: u8) -> Result<Vec<u8>> {
+        let _one = self.calling.lock().await;
+        let (tx, rx) = oneshot::channel();
+        match self.called.lock() {
+            Ok(mut w) => *w = Some((kind, tx)),
+            Err(_) => return Err(NymError::Closed),
+        }
+        self.write(frame).await?;
+        match tokio::time::timeout(Duration::from_secs(300), rx).await {
+            Ok(Ok(Ok(v))) => Ok(v),
+            Ok(Ok(Err(why))) => Err(NymError::Client(why)),
+            _ => Err(NymError::Closed),
+        }
     }
 
     async fn write(&self, body: &[u8]) -> Result<()> {
@@ -217,6 +463,16 @@ impl MixnetDriver for PipeDriver {
                 let _ = write_frame(&mut *writer.lock().await, &b).await;
             });
         }
+    }
+
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        let f = fetch_frame(method, url, &body)?;
+        split_fetched(&self.call(&f, 8).await?)
+    }
+
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        let f = buy_frame(gate, token)?;
+        self.call(&f, 9).await
     }
 
     async fn flush(&self, within: Duration) -> bool {
@@ -311,6 +567,14 @@ pub async fn serve(
                 handing.push(tokio::spawn(async move {
                     let _ = driver.reply(tag, data).await;
                 }));
+            }
+            Some((8 | 9, _)) => {
+                let writer = Arc::clone(&writer);
+                tokio::spawn(async move {
+                    if let Some(answer) = purchase(&ViaDriver(driver), &b).await {
+                        let _ = write_frame(&mut *writer.lock().await, &answer).await;
+                    }
+                });
             }
             Some((5, [])) => {
                 let writer = Arc::clone(&writer);
@@ -421,5 +685,62 @@ mod tests {
         // A flush is answered (the fake mixnet has nothing in flight).
         assert!(pipe.flush(Duration::from_secs(1)).await);
         assert!(pipe.flush(Duration::from_secs(1)).await);
+
+        // Fetching through a client that can't comes back as an error.
+        assert!(pipe.fetch("GET", "https://x", vec![]).await.is_err());
+        assert!(pipe.buy_tickets("https://x", b"t").await.is_err());
+    }
+
+    struct Shop;
+
+    #[async_trait::async_trait]
+    impl Purchaser for Shop {
+        async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+            Ok((
+                201,
+                [method.as_bytes(), b" ", url.as_bytes(), b" ", &body].concat(),
+            ))
+        }
+        async fn buy(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+            if token.is_empty() {
+                return Err(NymError::Client("no token".into()));
+            }
+            Ok([gate.as_bytes(), token].concat())
+        }
+    }
+
+    /// Before connecting (`--await-tickets`): fetches and purchases are
+    /// answered, imported ticketbooks are collected, and connect hands them
+    /// over and starts the client.
+    #[tokio::test]
+    async fn tickets_before_connecting() {
+        let net = FakeMixnet::default();
+        let (a, b) = tokio::io::duplex(1 << 20);
+        let (ar, aw) = tokio::io::split(a);
+        let (mut br, mut bw) = tokio::io::split(b);
+        let far: Arc<dyn MixnetDriver> = Arc::new(net.client("phone"));
+        let nymd = tokio::spawn(async move {
+            let tickets = serve_starting(&Shop, &mut br, &mut bw).await.unwrap();
+            tokio::spawn(serve(far, br, bw));
+            tickets
+        });
+        let mut starting = Starting::new(ar, aw);
+        assert_eq!(
+            starting
+                .fetch("POST", "https://gate/x", b"body")
+                .await
+                .unwrap(),
+            (201, b"POST https://gate/x body".to_vec())
+        );
+        let book = starting.buy("https://gate", b"token").await.unwrap();
+        assert_eq!(book, b"https://gatetoken");
+        assert!(starting.buy("https://gate", b"").await.is_err());
+        let pipe = starting
+            .connect(&[book.clone(), vec![7; 300_000]])
+            .await
+            .unwrap();
+        assert_eq!(pipe.address(), "phone");
+        let tickets = nymd.await.unwrap();
+        assert_eq!(tickets, vec![book, vec![7; 300_000]]);
     }
 }

@@ -149,6 +149,18 @@ pub trait MixnetDriver: Send + Sync {
     async fn switch_gateway(&self) -> Result<String> {
         Err(NymError::Client("this client can't switch gateway".into()))
     }
+    /// HTTP through the client's proxy (Tor on a device): the status and
+    /// the body. For the credential gate (`docs/09-transport.md` §7).
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        let _ = (method, url, body);
+        Err(NymError::Client("this client can't fetch".into()))
+    }
+    /// Buy a zk-nym ticketbook from the credential gate at `gate` with one
+    /// Privacy Pass token: its stored form, for the next connection.
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        let _ = (gate, token);
+        Err(NymError::Client("this client can't buy tickets".into()))
+    }
 }
 
 #[cfg(test)]

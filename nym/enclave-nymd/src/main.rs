@@ -1,4 +1,4 @@
-//! `enclave-nymd [--env] [--gateway ID] [--report]`
+//! `enclave-nymd [--env] [--gateway ID] [--await-tickets] [--report]`
 //!
 //! A device's mixnet client. Started by `enclave-netd`, never by hand: it
 //! connects to the mixnet with a fresh identity and serves
@@ -12,8 +12,15 @@
 //! memory, so it reads only what name resolution and TLS need (resolver
 //! configuration, CA certificates) and writes nothing; IPv4 and IPv6
 //! sockets only; no programs, no debugging.
+//!
+//! With `--await-tickets` it first answers fetches and ticketbook
+//! purchases through Tor and collects the ticketbooks netd gives it, and
+//! connects when told to, spending them (`enclave_nym::pipe`,
+//! `docs/09-transport.md` §7).
 
 use enclave_nym::MixnetDriver;
+use enclave_nym::pipe::Purchaser;
+use enclave_nym_sdk::credentials::Fetcher;
 use enclave_nym_sdk::{Network, NymDriver, Options, Role};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -76,10 +83,28 @@ fn main() -> ExitCode {
         enclave_nym_sdk::dial_gateways_through(proxy, secret);
     }
     rt.block_on(async move {
+        let mut stdin = tokio::io::stdin();
+        let mut stdout = tokio::io::stdout();
+        let tickets = if args.iter().any(|a| a == "--await-tickets") {
+            let shop = match Fetcher::new() {
+                Ok(f) => Shop(f),
+                Err(e) => {
+                    eprintln!("enclave-nymd: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            match enclave_nym::pipe::serve_starting(&shop, &mut stdin, &mut stdout).await {
+                Some(t) => t,
+                None => return ExitCode::SUCCESS,
+            }
+        } else {
+            Vec::new()
+        };
         let driver = match NymDriver::connect(Options {
             role: Role::Client,
             gateway,
             network: Network::from_env(args.iter().any(|a| a == "--env")),
+            tickets,
         })
         .await
         {
@@ -90,7 +115,25 @@ fn main() -> ExitCode {
             }
         };
         let driver: Arc<dyn MixnetDriver> = Arc::new(driver);
-        enclave_nym::pipe::serve(driver, tokio::io::stdin(), tokio::io::stdout()).await;
+        enclave_nym::pipe::serve(driver, stdin, stdout).await;
         ExitCode::SUCCESS
     })
+}
+
+/// Fetches and purchases before connecting.
+struct Shop(Fetcher);
+
+#[async_trait::async_trait]
+impl Purchaser for Shop {
+    async fn fetch(
+        &self,
+        method: &str,
+        url: &str,
+        body: Vec<u8>,
+    ) -> enclave_nym::Result<(u16, Vec<u8>)> {
+        self.0.fetch(method, url, body).await
+    }
+    async fn buy(&self, gate: &str, token: &[u8]) -> enclave_nym::Result<Vec<u8>> {
+        enclave_nym_sdk::credentials::buy(&self.0, gate, token).await
+    }
 }

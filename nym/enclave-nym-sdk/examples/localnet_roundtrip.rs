@@ -44,6 +44,7 @@ async fn main() {
         role: Role::Ingress { dir: dir.clone() },
         gateway: None,
         network: network.clone(),
+        tickets: Vec::new(),
     })
     .await
     .expect("ingress connects");
@@ -51,6 +52,7 @@ async fn main() {
         role: Role::Client,
         gateway: None,
         network,
+        tickets: Vec::new(),
     })
     .await
     .expect("device connects");

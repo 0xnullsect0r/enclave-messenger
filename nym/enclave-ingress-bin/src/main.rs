@@ -102,6 +102,7 @@ async fn run(mode: &str, args: &[String], public: &std::path::Path) -> Result<()
         role,
         gateway: flag(args, "--gateway"),
         network: Network::from_env(args.iter().any(|a| a == "--env")),
+        tickets: Vec::new(),
     })
     .await
     .map_err(|e| e.to_string())?;

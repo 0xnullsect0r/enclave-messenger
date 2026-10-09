@@ -17,3 +17,4 @@ enclave-nym = { path = "../../crates/enclave-nym" }
 enclave-nym-sdk = { path = "../enclave-nym-sdk" }
 enclave-sandbox = { path = "../../crates/enclave-sandbox" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+async-trait = "0.1"

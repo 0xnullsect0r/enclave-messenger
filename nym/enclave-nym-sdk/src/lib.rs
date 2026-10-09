@@ -17,6 +17,8 @@
 //! still in flight, so [`MixnetDriver::flush`] can wait for it before the
 //! process exits.
 
+pub mod credentials;
+
 use enclave_nym::{Incoming, MixnetDriver, NymError, Pacing, ReplyTag, Result};
 use nym_sdk::mixnet::{
     AnonymousSenderTag, IncludedSurbs, MixnetClientBuilder, MixnetClientSender,
@@ -99,6 +101,10 @@ pub struct Options {
     pub gateway: Option<String>,
     /// Which mixnet ([`Network::from_env`] for `--env`).
     pub network: Network,
+    /// zk-nym ticketbooks to spend (a device's, serialized by
+    /// [`credentials::buy`]). With any, a device's client runs in
+    /// credentials mode on Nym's networks; a local mixnet doesn't check.
+    pub tickets: Vec<Vec<u8>>,
 }
 
 /// Which mixnet to join.
@@ -155,6 +161,11 @@ pub struct NymDriver {
     /// replaced by a gateway switch until its replies have had time).
     readers: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
     switching: Mutex<()>,
+    /// Ticketbooks bought while connected: spent from the next client
+    /// (a gateway switch).
+    bought: std::sync::Mutex<Vec<Vec<u8>>>,
+    /// HTTP through Tor, made when first needed.
+    fetcher: std::sync::OnceLock<credentials::Fetcher>,
 }
 
 /// How long a client replaced by a gateway switch keeps receiving.
@@ -220,20 +231,24 @@ async fn build(opts: &Options) -> Result<nym_sdk::mixnet::MixnetClient> {
                 .map_err(client_error)
         }
         Role::Client => {
+            let paid = !opts.tickets.is_empty() && !matches!(opts.network, Network::Local { .. });
             let mut b = MixnetClientBuilder::new_ephemeral()
                 .network_details(network)
-                .debug_config(debug);
+                .debug_config(debug)
+                .credentials_mode(paid);
             if let Some(g) = &opts.gateway {
                 b = b.request_gateway(g.clone());
             }
             if let Some(p) = topology {
                 b = b.custom_topology_provider(Box::new(p));
             }
-            b.build()
-                .map_err(client_error)?
-                .connect_to_mixnet()
-                .await
-                .map_err(client_error)
+            let client = b.build().map_err(client_error)?;
+            if paid {
+                for t in &opts.tickets {
+                    credentials::import(&client, &credentials::decode(t)?).await?;
+                }
+            }
+            client.connect_to_mixnet().await.map_err(client_error)
         }
     }
 }
@@ -275,7 +290,17 @@ impl NymDriver {
             rx: Mutex::new(rx),
             readers: std::sync::Mutex::new(vec![reader]),
             switching: Mutex::new(()),
+            bought: std::sync::Mutex::new(Vec::new()),
+            fetcher: std::sync::OnceLock::new(),
         })
+    }
+
+    fn fetcher(&self) -> Result<&credentials::Fetcher> {
+        if let Some(f) = self.fetcher.get() {
+            return Ok(f);
+        }
+        let f = credentials::Fetcher::new()?;
+        Ok(self.fetcher.get_or_init(|| f))
     }
 
     fn sender(&self) -> Result<MixnetClientSender> {
@@ -344,10 +369,13 @@ impl MixnetDriver for NymDriver {
         let _one = self.switching.lock().await;
         let old = self.address();
         let old_gateway = gateway_of(&old).map(str::to_string);
-        let opts = Options {
+        let mut opts = Options {
             gateway: None,
             ..self.opts.clone()
         };
+        if let Ok(b) = self.bought.lock() {
+            opts.tickets.extend(b.iter().cloned());
+        }
         // nym-sdk picks a gateway uniformly at random: with two to choose
         // from, eight tries all landing on the old one is 1 in 256.
         for _ in 0..8 {
@@ -386,6 +414,18 @@ impl MixnetDriver for NymDriver {
     fn set_pacing(&self, pacing: Pacing) {
         nym_client_core::enclave::set_packet_gap(packet_gap(&pacing));
         nym_client_core::enclave::set_loop_cover_delay(pacing.loop_cover);
+    }
+
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        self.fetcher()?.fetch(method, url, body).await
+    }
+
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        let book = credentials::buy(self.fetcher()?, gate, token).await?;
+        if let Ok(mut b) = self.bought.lock() {
+            b.push(book.clone());
+        }
+        Ok(book)
     }
 
     async fn flush(&self, within: Duration) -> bool {

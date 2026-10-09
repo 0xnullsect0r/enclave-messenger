@@ -23,7 +23,7 @@ nym-client-core-gateways-storage = "=1.21.5"
 # the proxy from the environment netd gives nymd).
 nym-gateway-client = "=1.21.5"
 enclave-tord = { path = "../../crates/enclave-tord", default-features = false }
-reqwest = { version = "0.13", default-features = false, features = ["socks"] }
+reqwest = { version = "0.13", default-features = false, features = ["socks", "rustls"] }
 # What is still in flight before exiting (our patch, third_party/PATCHES.md).
 nym-client-core = { version = "=1.21.5", default-features = false }
 # How many packets a reply takes (the same arithmetic the client uses).
@@ -31,9 +31,24 @@ nym-sphinx = "=1.21.5"
 # A fixed topology for a local mixnet (ci/nym-localnet).
 nym-topology = { version = "=1.21.5", features = ["persistence"] }
 url = "2"
+# Buying zk-nym ticketbooks through the credential gate (N3,
+# docs/09-transport.md §7): the withdrawal request, unblinding and
+# aggregation are done here, so the device's ecash keys never leave it.
+nym-credentials = { version = "=1.21.5", default-features = false }
+nym-credentials-interface = "=1.21.5"
+nym-credential-proxy-requests = { version = "=1.21.5", default-features = false }
+nym-crypto = { version = "=1.21.5", features = ["asymmetric", "rand"] }
+nym-ecash-time = "=1.21.5"
+serde_json = "1"
+rand_core_06 = { package = "rand_core", version = "0.6", features = ["getrandom"] }
+# The gate speaks the Enclave TLS profile (post-quantum key exchange only).
+enclave-tls = { path = "../../crates/enclave-tls" }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+webpki-roots = "1"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
 
 [dev-dependencies]
+nym-compact-ecash = "=1.21.5"
 enclave-wire = { path = "../../crates/enclave-wire" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
