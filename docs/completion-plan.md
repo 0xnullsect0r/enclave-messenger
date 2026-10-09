@@ -305,9 +305,9 @@ Other crates:
 - **Censorship mode:** obfs4 through `ptrs` in-process. Snowflake and WebTunnel run as declared Go-subprocess exceptions (IPtProxy on iOS), only in censorship mode, with "Try a bridge?" detection (`09` §7). obfs4 done (`09` §7): in-process in enclave-tord (the `obfs4` crate from the `ptrs` project, checked against lyrebird), the Tor Project's built-in bridges, blocked-Tor detection (`TorStatus`), the app's notice and Settings → Tor bridges. Snowflake and WebTunnel ride with the packages (D1/A1/I1), where the Go binaries ship.
 - **Measurement:** `enclave-e2e bench` (RSS, cold connect, throughput, packets per class, bytes per hour, credential cost), plus a hidden **Network diagnostics** screen on mobile that exports JSON. Bench done as `live_bench` (`nym/enclave-nym-sdk/examples`): local mixnet in CI, sandbox nightly and mainnet weekly through Tor with the cost check (`nym-live.yml`; funded accounts are G7). Packets per class and bytes per hour come from the pcap shape check. The diagnostics screen waits for A1/I1.
 - Workflow `nym-live.yml`: the sandbox nightly and mainnet weekly. Done (jobs `tor-smoke` and `nym-bench`).
-- **Post-quantum Nym:** an adapter for Nym's PQ Sphinx (Outfox/Lewes) behind a feature, switched on when nym-sdk exposes it (External Gate G13).
+- **Post-quantum Nym:** an adapter for Nym's PQ Sphinx (Outfox/Lewes) behind a feature, switched on when nym-sdk exposes it (External Gate G13). Checked 2026-10-09: nym-sdk 1.21.5's Outfox is X25519 only, so there is nothing to adapt to yet; the switch point and what to re-measure are in the M4 gate report.
 
-**Exit:** `docs/spikes/m4-network.md` is rewritten as the M4 gate report, with device numbers for the §7 gate. A failure triggers an RFC.
+**Exit:** `docs/spikes/m4-network.md` is rewritten as the M4 gate report, with device numbers for the §7 gate. A failure triggers an RFC. Rewritten (2026-10-09): a verdict per criterion; everything measured meets its threshold (desktop and local mixnet, CI's credential path); live-network rows wait on G7 and phone rows on G8.
 
 Doc updates across the track:
 - `09-transport.md` §1/§6/§7 as implemented;

@@ -1,19 +1,53 @@
-# M4 spike: Nym and Tor feasibility
+# M4 gate report: Nym and Tor
 
 Status: Report (M4) · Informative
 
-This records what the M1.5/M4 network spike could and could not establish in
-the development environment on 2026-09-30, and what remains to be measured on
-real devices and networks before the M4 gate can close.
+The M4 gate (`roadmap.md`): the `09-transport.md` §7 go/no-go numbers,
+measured data within ±20% of `math/cover-traffic.md`, and battery. This
+report says, for each criterion, what has been measured, what CI checks
+on every run or every night, and what waits on an External Gate
+(`completion-plan.md`: G7 funded Nym accounts, G8 reference devices). The
+history of the spike that preceded it follows.
 
-## Environment limits
+## Verdict per criterion
+
+| Criterion | Threshold | Measured | Checked by | Status |
+|---|---|---|---|---|
+| nym-sdk memory | ≤ 150 MB on Android and iOS | 26 MiB peak for an ingress-role client and a device client together (desktop Linux, release build, local mixnet) | `live_bench` (`peak_rss_kib_both_clients`), every CI run and nightly | Met on desktop; phones wait on G8 |
+| Cold connect | ≤ 5 s | 0.05 s (device) and 0.09 s (ingress) on the local mixnet | `live_bench` `connect_ms`; live networks through Tor nightly | Met locally; live numbers once G7 funds the nightly |
+| Raw throughput | ≥ 200 KB/s of nym-sdk raw throughput (`roadmap.md` note 1) | 726 KiB/s unpaced; the Bulk profile's paced window 55 KiB/s, at its 40 packets/s cap | `live_bench` `raw` and `bulk` | Met locally; live networks with G7 |
+| Round trips | — (informative) | p50 219 ms, p95 279 ms, none of 20 lost | `live_bench` `round_trips` | Measured |
+| Credential path | Works end to end | A device's ticketbook bought through the credential gate (Equi-X, Privacy Pass, the device's own ecash keys) over Tor, imported into its client; CI run 37870818145 ("50 zk-nym tickets in hand") | `federation-e2e-localnet` on every run; spending against checking gateways in the sandbox nightly | Met in CI; live spending waits on G7 |
+| Cost | ≤ $1 per user per month | Five books a month (expiry decides, `math/cover-traffic.md` §11): met while a book costs ≤ $0.20 | `nym-live.yml` `nym-bench`: deposit × NYM price, fails above $1 on mainnet | Waits on G7 (the deposit is read from the contract each run) |
+| Tor → gateway | Works | Gateway WebSocket dialled through `enclave-tord` (dev-direct in CI, real Tor nightly) | `federation-e2e-localnet` (through tord), `nym-bench` through real Tor | Met with dev-direct; live with G7 |
+| Data per profile | ±20% of the model | Foreground 16.2–16.6 packets a tick against 16.3; 73–76 MB/h at the WebSocket level, ≈80 MB/h with Tor | `gen.sh shape` + `pcap-check.py` on every run | Met for Foreground (and so Maximum); Background scales by 3/120 |
+| Poisson off, loop cover on | A supported configuration | Runs that way on the local mixnet and in CI | — | Confirm with Nym on live networks (G7 nightly) |
+| Battery | ≤ 5 percentage points an hour above idle, Foreground | — | — | Waits on G8 (reference phones) |
+
+Nothing measured so far fails a threshold. The rows marked G7 and G8 need
+one action each: funding the sandbox and mainnet accounts the nightly
+reads (`NYM_SANDBOX_MNEMONIC`, `NYM_MAINNET_MNEMONIC`), and running
+`live_bench` and a battery run on the reference phones once the mobile
+builds exist (A1, I1). If a live number then fails, the roadmap's rule
+applies: the fallback transport and the scheduler design are revisited in
+an RFC.
+
+**Post-quantum Nym (G13).** nym-sdk 1.21.5 offers Sphinx and Outfox; both
+use X25519 only (`nym-outfox` has no KEM), so there is no post-quantum
+packet format to adopt yet. The point to switch is the client's packet
+type in `nym/enclave-nym-sdk` (`build`), with the packet counts the pacing
+uses (`POLL_PACKETS`, `UNIT_PACKETS`) re-measured by `localnet_roundtrip`.
+
+## History: the spike (2026-09-30 to 2026-10-09)
+
+### Environment limits
 
 The build sandbox allows outbound HTTPS only, through a proxy. Raw TCP to
 arbitrary hosts is blocked, so it cannot reach Tor relays (ORPort) or Nym
 gateways (WSS on 9000/443 to gateway IPs). **No live Tor or Nym traffic was
 exchanged.** Everything below is build-level evidence plus in-process tests.
 
-## Findings
+### Findings
 
 | Item | Result | Evidence |
 |---|---|---|
@@ -26,7 +60,7 @@ exchanged.** Everything below is build-level evidence plus in-process tests.
 | Nym transport code | Written (2026-10-02): `NymTransport`, `enclave-ingress`, `enclave-nym-sdk`; tested end to end over an in-process mixnet; live gateways still untested | `crates/enclave-ingress/tests/mixnet.rs` |
 | Cover-traffic scheduler | Implemented; tick timing and poll pattern independent of real traffic (KS test, α = 0.01); real and cover units identical in size and byte distribution | `crates/enclave-net/tests/shape.rs` |
 
-## Consequences for the plan
+### Consequences for the plan
 
 1. **Pin `nym-sdk` = 1.21.5** until upstream publishes a consistent set, and
    track the regression upstream.
@@ -38,7 +72,7 @@ exchanged.** Everything below is build-level evidence plus in-process tests.
    (`set_stream_connector`) and `enclave-tord`, a separate arti process
    serving a loopback SOCKS5 port; see item d and `09-transport.md` §1.
 
-## N0 answers so far (2026-10-02)
+### N0 answers
 
 | # | Question | Answer |
 |---|---|---|
@@ -54,7 +88,7 @@ exchanged.** Everything below is build-level evidence plus in-process tests.
 
 The TLS under nym's gateway connection was on rustls 0.21; the patched copies use tungstenite 0.24 on rustls 0.23.
 
-## Still to measure (M4 gate)
+### How the numbers are taken
 
 `live_bench` (`nym/enclave-nym-sdk/examples/live_bench.rs`) measures the
 mixnet path from one process: cold connect of an ingress-role client and a
@@ -64,16 +98,6 @@ spent, and the ecash contract's ticketbook deposit. It runs on the local
 mixnet in every CI run (`gen.sh bench`, job summary and artifact), and on
 the sandbox nightly and mainnet weekly through real Tor (`nym-live.yml`),
 which also turns the deposit into dollars per user per month and fails
-above $1 on mainnet. On the local mixnet (2026-10-09, debug build, both
-clients in one process): connect 0.07–0.19 s, round trips p50 432 ms and
-p95 472 ms with none lost, bulk 43.6 KiB/s of payload (the 40 packets/s
-cap, with acknowledgements), peak memory 45 MiB.
+above $1 on mainnet. The table above is a release build on the local mixnet (2026-10-09); a
+debug build measured connect 0.07–0.19 s, p50 432 ms and 45 MiB.
 
-On a mid-range Android phone, an iPhone and a desktop, with live networks:
-
-- nym-sdk resident memory (≤ 150 MB), cold connect (≤ 5 s), raw throughput;
-- zk-nym credential acquisition through the credential proxy, and cost per GB;
-- whether disabling Nym's own Poisson stream is a supported configuration;
-- Tor exit → Nym gateway reachability on port 443;
-- measured data per profile against `docs/math/cover-traffic.md` (±20%) on live networks (Foreground on the local mixnet: inside the band, §10 there);
-- foreground battery cost (≤ 5 percentage points per hour above idle).

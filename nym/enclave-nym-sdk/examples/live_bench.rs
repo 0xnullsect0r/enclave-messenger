@@ -1,7 +1,8 @@
 //! Measure the mixnet path a device uses (`docs/spikes/m4-network.md`, N4):
 //! an ingress-role client and a device client connect, the device sends
 //! polls with reply blocks and the ingress answers each with a full unit (a
-//! server's answer), then the device sends units one way in a bulk window.
+//! server's answer), then the device sends units one way in a bulk window,
+//! then the same unpaced (nym-sdk's raw throughput).
 //! Writes one JSON object: connect times, round-trip latencies, bulk
 //! throughput, peak memory, and zk-nym tickets spent.
 //!
@@ -214,6 +215,25 @@ async fn main() -> std::process::ExitCode {
     let bulk = t.elapsed();
     let kib_per_s = (bulk_units * enclave_wire::UNIT_LEN) as f64 / 1024.0 / bulk.as_secs_f64();
 
+    // Raw: the same units unpaced, as fast as nym-sdk takes them (the M4
+    // gate's throughput is nym-sdk's own, `roadmap.md` note 1).
+    device.set_pacing(Pacing {
+        tick: Duration::ZERO,
+        bulk: false,
+        loop_cover: Duration::from_secs(10),
+        probe: Duration::from_secs(30),
+    });
+    let t = Instant::now();
+    for n in 0..bulk_units {
+        let mut id = [0xc0; 16];
+        id[8..].copy_from_slice(&(n as u64).to_be_bytes());
+        let unit = Request::oneway(id, vec![3; enclave_wire::UNIT_LEN]).unwrap();
+        device.send(&to, unit.encode(), 0).await.unwrap();
+    }
+    let raw_flushed = device.flush(Duration::from_secs(600)).await;
+    let raw = t.elapsed();
+    let raw_kib_per_s = (bulk_units * enclave_wire::UNIT_LEN) as f64 / 1024.0 / raw.as_secs_f64();
+
     let tickets_left_device = device.top_up().await.and_then(Result::ok);
     let tickets_left_ingress = ingress.top_up().await.and_then(Result::ok);
     let spent = nym_gateway_client::client::tickets_spent();
@@ -240,6 +260,12 @@ async fn main() -> std::process::ExitCode {
             "seconds": bulk.as_secs_f64(),
             "payload_kib_per_s": kib_per_s,
         },
+        "raw": {
+            "units": bulk_units,
+            "flushed": raw_flushed,
+            "seconds": raw.as_secs_f64(),
+            "payload_kib_per_s": raw_kib_per_s,
+        },
         "peak_rss_kib_both_clients": peak_rss_kib(),
         "tickets": {
             "spent_while_connected": spent.saturating_sub(spent_at_start),
@@ -256,7 +282,7 @@ async fn main() -> std::process::ExitCode {
         std::fs::write(out, &text).unwrap();
     }
     let _ = std::fs::remove_dir_all(dir);
-    if lost * 10 > rounds || !flushed {
+    if lost * 10 > rounds || !flushed || !raw_flushed {
         eprintln!("live_bench: {lost} of {rounds} round trips lost, flushed {flushed}");
         return std::process::ExitCode::FAILURE;
     }
