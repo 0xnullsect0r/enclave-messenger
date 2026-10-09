@@ -159,6 +159,8 @@ Revocation publishes a new manifest without the device (PIN required on the prim
 2. send `Content::Devices(v + 1)` (kind 13, `u64` version) to our other devices, the removed one included so it can tell its user, then drop our sessions with the removed device;
 3. send the same notice to every accepted contact.
 
+A greeting names the manifest versions its writer saw, of its own account and of ours, and both go into the transcript. One written just before a change (a second device linked before the first one's greeting was read) is still answered: if the writer's manifest is now newer than it named, the greeting counts when the current one still lists its device, with the named version in the transcript (a removed device fails here); and if ours changed since, the receiver tries again with our previous manifest (kept as `manifest-prev` when it lists this device and has the same identity key). Test `securing_an_account` links two devices back to back.
+
 A receiver records `(root, version)` and, at the end of the same `sync`, fetches the account's manifest from its server, verifies the root signature, ignores it if its version is lower than announced or not newer than the one held, then adopts it and deletes its sessions with devices it no longer lists. A device that finds itself missing from its own account's manifest reports `Event::RemovedFromAccount`. The removed device is then shut out both ways: nothing new is encrypted to it, and its new initial messages name an old manifest version, which fails the rollback check. Rotating the inbox and vault key (so the removed device no longer sees envelopes arrive at addresses it knows) is §5.2's "Secure my account", which the app offers right after a removal.
 
 **The PIN gate (`client/pin.rs`).** Root actions (removing a device, changing or replacing the recovery words, giving or taking back recovery shares, securing and deleting the account) refuse with `CoreError::PinRequired` once a PIN is set, until `Client::unlock_root(pin)` (good for 120 s). The PIN (at least 6 characters) is stretched with Argon2id under the profile passphrase's parameters, which are kept with a random salt and the check value `KMAC256(Argon2id(PIN, salt), "", "enclave/v1/store/pin-check")` (compared in constant time); the PIN itself is never stored. Three wrong PINs are free; then each try waits 30 s, doubling to at most an hour (`PinWait(until)`). Changing the PIN needs the old one. Steps a root action carries on from `sync` (a change of words reaching contacts, the new shares) don't ask again. The app: Settings → PIN (set or change), and a PIN field on each root action's confirmation. Wrapping the recovery secret itself under the PIN and a hardware key (`14-storage.md` §1.3) is P7. Test `root_actions_need_the_pin`.
@@ -174,6 +176,15 @@ A single action, PIN-gated, that:
 5. rotates the notification key chains and the request-inbox address.
 
 The security code does not change (D4). Contacts see no warning.
+
+**As implemented** (`client/secure.rs`, test `securing_an_account`): `Client::secure_account` runs on the device holding the words (PIN-gated) and is a move to the server the account is on (`12-servers.md` §4.4, `moves.rs`) with new keys:
+
+1. a new account X448 identity key and McEliece vault key, staged until the switch; the new manifest (co-signed by this device, so contacts take it at once, and logged in key transparency) names them, the vault blob goes up sealed under a new vault key at a new locator, and the old blob is deleted;
+2. a new inbox seed and request inbox: new weekly addresses, owner secrets and read credentials; contacts are told in their session (`Content::ServerMoved` with fresh write tokens, so tokens for the old addresses die with them), and the old addresses are still read for 30 days for what was on its way. No `ServerMove` record is left (there is no other server), so old cards and invite links stop working once the old request inbox goes;
+3. our other devices get `Content::HomeMoved` with the new vault key and a sealed file reference to the new shared account keys (1.4 MB with the McEliece key), adopt them, and switch; read positions are reported per address, so the new addresses are acknowledged only once every device has read them;
+4. fresh signed prekeys; a `Content::PqStep` to every contact we have a session with; and every group rekeyed: a new sending chain and MAC keys for every member device, and a new epoch in groups we administer.
+
+Each step goes on from `sync` until done (`Client::securing`). The app: Settings → Secure my account (with the PIN), and removing a device suggests it. Rotating the notification key chains (`10-push.md` §4) joins step 4 when they are built (P6).
 
 ## 6. Security code (D4)
 

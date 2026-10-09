@@ -51,6 +51,11 @@ const KEY_IN: &[u8] = b"home-moved-in";
 /// Publish this device's prekeys on the new home (a device told of a move).
 const KEY_BUNDLE: &[u8] = b"home-bundle";
 const STEP: &str = "home-move-step";
+/// Securing the account (`secure.rs`): the new shared account keys,
+/// staged until the switch.
+pub(crate) const KEY_NEW_KEYS: &[u8] = b"secure/account";
+/// Their sealed file reference, once uploaded for our other devices.
+const KEY_KEYS_REF: &[u8] = b"secure/keys-ref";
 
 const M_INBOXES: u8 = 1;
 const M_MANIFEST: u8 = 2;
@@ -76,13 +81,25 @@ impl Client {
         if to == self.profile.server {
             return Ok(());
         }
+        let vault_key = self.profile.vault_key;
+        self.start_home_move(to, vault_key).await
+    }
+
+    /// Stage a new home on `to` (perhaps the server we're on, to secure the
+    /// account) with fresh inboxes, request inbox and vault locator, and
+    /// start moving to it.
+    pub(crate) async fn start_home_move(
+        &mut self,
+        to: [u8; 16],
+        vault_key: [u8; 32],
+    ) -> Result<()> {
         let next = Profile {
             server: to,
             inbox_seed: self.rng.array("core/inbox-seed")?,
             request_inbox: self.rng.array("core/request-inbox")?,
             request_owner: self.rng.array("core/request-owner")?,
             vault_locator: self.rng.array("core/vault-locator")?,
-            vault_key: self.profile.vault_key,
+            vault_key,
             name: self.profile.name.clone(),
             weeks: Vec::new(),
             request_cursor: 0,
@@ -233,6 +250,11 @@ impl Client {
                     m.issued_at = now;
                     m.expires_at = now + MAX_VALIDITY_SECS;
                     m.request_inbox = next.request_inbox.to_vec();
+                    // Securing: the new identity and vault keys.
+                    if let Some(k) = self.staged_keys()? {
+                        m.identity = k.identity_public;
+                        m.vault_hash = k.vault_hash();
+                    }
                     let signed = m.sign(&self.account, &mut self.rng)?;
                     self.store
                         .put(NS_SECRETS, KEY_MANIFEST, &signed.to_bytes(), &mut self.rng)?;
@@ -279,9 +301,13 @@ impl Client {
                 )
                 .await?;
             let owner = enclave_rpc::api::vault_owner(&next.vault_key);
+            let vault_public = match self.staged_keys()? {
+                Some(k) => k.vault_public,
+                None => self.account.vault_public.clone(),
+            };
             let blob = persist::seal_large(
                 &SealKey::from_bytes(next.vault_key),
-                &self.account.vault_public.0[..],
+                &vault_public.0[..],
                 &mut self.rng,
             )?;
             done(
@@ -301,6 +327,31 @@ impl Client {
             save(self, step)?;
         }
         if step & M_OWN == 0 {
+            // Securing: our other devices need the new account keys too,
+            // as a sealed file (the vault key is 1.36 MB).
+            let keys = match (
+                self.store.get(NS_SECRETS, KEY_NEW_KEYS)?,
+                self.store.get(NS_SECRETS, KEY_KEYS_REF)?,
+            ) {
+                (_, Some(r)) => r,
+                (Some(k), None) => {
+                    let (att, chunks) = crate::files::seal_file(
+                        &k,
+                        "account-keys",
+                        "application/x-enclave-keys",
+                        to,
+                        &mut self.rng,
+                    )?;
+                    for (id, chunk) in &chunks {
+                        self.put_chunk(&to, *id, chunk, now).await?;
+                    }
+                    let r = att.encode();
+                    self.store
+                        .put(NS_SECRETS, KEY_KEYS_REF, &r, &mut self.rng)?;
+                    r
+                }
+                (None, None) => Vec::new(),
+            };
             // Written to the old account inbox, where they still read.
             let c = Content::HomeMoved {
                 server: next.server,
@@ -308,15 +359,44 @@ impl Client {
                 request_inbox: next.request_inbox,
                 request_owner: next.request_owner,
                 vault_locator: next.vault_locator,
+                vault_key: next.vault_key,
+                keys,
             };
             self.send_own(&c.encode()?, now).await?;
             step |= M_OWN;
             save(self, step)?;
         }
         if step & M_SWITCH == 0 {
+            let old_vault = (self.profile.vault_locator, self.profile.vault_key);
             self.switch_home(next, now)?;
             self.store.delete(NS_SECRETS, KEY_NEXT)?;
+            if self.adopt_staged_keys()? {
+                // The old vault-key blob names a key we no longer hold.
+                let _ = self
+                    .rpc
+                    .dir_put(
+                        &to,
+                        DirKind::Vault,
+                        old_vault.0,
+                        enclave_rpc::api::vault_owner(&old_vault.1),
+                        enclave_rpc::api::VAULT_DELETE,
+                        now,
+                        &mut self.rng,
+                    )
+                    .await;
+            }
             step |= M_SWITCH;
+            save(self, step)?;
+        }
+        // Securing the account "moves" to the server it is on: there is no
+        // other server to leave a record on, and old cards are meant to
+        // stop working.
+        if step & M_RECORD == 0
+            && self
+                .old_home()?
+                .is_some_and(|(old, _)| old.server == self.profile.server)
+        {
+            step |= M_RECORD;
             save(self, step)?;
         }
         if step & M_RECORD == 0 {
@@ -437,9 +517,19 @@ impl Client {
                 request_inbox,
                 request_owner,
                 vault_locator,
+                vault_key,
+                keys,
             }) = Content::decode(&b)
-                && server != self.profile.server
+                && (server, inbox_seed) != (self.profile.server, self.profile.inbox_seed)
             {
+                // Secured: take the new account keys first (a failed fetch
+                // is tried again next time).
+                if !keys.is_empty() {
+                    let att = crate::files::Attachment::decode(&keys)
+                        .map_err(|_| CoreError::NotAccepted)?;
+                    let data = zeroize::Zeroizing::new(self.fetch_file(&att).await?);
+                    self.adopt_account_keys(&data)?;
+                }
                 // The weekly addresses the moving device made are found
                 // (and given our tokens) by the next upkeep.
                 let next = Profile {
@@ -448,7 +538,7 @@ impl Client {
                     request_inbox,
                     request_owner,
                     vault_locator,
-                    vault_key: self.profile.vault_key,
+                    vault_key,
                     name: self.profile.name.clone(),
                     weeks: Vec::new(),
                     request_cursor: 0,

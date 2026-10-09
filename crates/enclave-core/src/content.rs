@@ -265,6 +265,12 @@ pub enum Content {
         request_owner: [u8; 32],
         /// The vault key's locator.
         vault_locator: [u8; 32],
+        /// The key the vault-key blob is sealed under.
+        vault_key: [u8; 32],
+        /// Empty for a move; after "Secure my account", a sealed file
+        /// reference to the account's new shared keys
+        /// (`AccountKeys::export_shared`, `client/secure.rs`).
+        keys: Vec<u8>,
     },
     /// A copy, for our other devices, of content we sent to `to`.
     SelfCopy {
@@ -683,13 +689,17 @@ impl Content {
                 request_inbox,
                 request_owner,
                 vault_locator,
+                vault_key,
+                keys,
             } => {
                 w.u8(K_HOME_MOVED)
                     .fixed(server)
                     .fixed(inbox_seed)
                     .fixed(request_inbox)
                     .fixed(request_owner)
-                    .fixed(vault_locator);
+                    .fixed(vault_locator)
+                    .fixed(vault_key)
+                    .bytes(keys);
             }
             Content::SelfCopy { to, content } => {
                 if content.len() > MAX_SPLIT_CONTENT {
@@ -820,6 +830,8 @@ impl Content {
                 request_inbox: r.array()?,
                 request_owner: r.array()?,
                 vault_locator: r.array()?,
+                vault_key: r.array()?,
+                keys: r.bytes(4096)?.to_vec(),
             },
             K_OWN_SYNC => Content::OwnSync(r.bytes(MAX_SELF_COPY)?.to_vec()),
             K_CARD_ASK => Content::CardAsk,
@@ -998,6 +1010,8 @@ mod tests {
                 request_inbox: [4; 32],
                 request_owner: [5; 32],
                 vault_locator: [6; 32],
+                vault_key: [7; 32],
+                keys: vec![8; 300],
             },
             Content::Sticker {
                 id: [6; 16],

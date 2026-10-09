@@ -248,6 +248,10 @@ pub struct HomeMoved {
     pub request_owner: Vec<u8>,
     #[prost(bytes = "vec", tag = "5")]
     pub vault_locator: Vec<u8>,
+    #[prost(bytes = "vec", tag = "6")]
+    pub vault_key: Vec<u8>,
+    #[prost(bytes = "vec", tag = "7")]
+    pub keys: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -437,12 +441,16 @@ pub fn to_pb(c: &Content) -> Pb {
             request_inbox,
             request_owner,
             vault_locator,
+            vault_key,
+            keys,
         } => Kind::HomeMoved(HomeMoved {
             server: server.to_vec(),
             inbox_seed: inbox_seed.to_vec(),
             request_inbox: request_inbox.to_vec(),
             request_owner: request_owner.to_vec(),
             vault_locator: vault_locator.to_vec(),
+            vault_key: vault_key.to_vec(),
+            keys,
         }),
         Content::SelfCopy { to, content } => Kind::SelfCopy(SelfCopy {
             to: to.to_vec(),
@@ -557,6 +565,8 @@ pub fn from_pb(p: Pb) -> Result<Content> {
             request_inbox: arr(m.request_inbox)?,
             request_owner: arr(m.request_owner)?,
             vault_locator: arr(m.vault_locator)?,
+            vault_key: arr(m.vault_key)?,
+            keys: m.keys,
         },
         Kind::SelfCopy(s) => Content::SelfCopy {
             to: arr(s.to)?,

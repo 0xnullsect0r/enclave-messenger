@@ -310,6 +310,8 @@ pub struct Snapshot {
     pub removed: bool,
     /// Root actions need the PIN.
     pub has_root_pin: bool,
+    /// "Secure my account" is still reaching contacts and groups.
+    pub securing: bool,
     /// Why the PIN wasn't taken, or empty.
     pub pin_error: String,
     /// The open conversation's contact changed their recovery words:
@@ -499,6 +501,9 @@ pub enum Cmd {
     SetRootPin(String),
     /// Enter the PIN before a root action (sent just before it).
     UnlockRoot(String),
+    /// Replace the account's keys, inboxes and prekeys
+    /// (`docs/03-identity.md` §5.2).
+    SecureAccount,
 }
 
 /// One-off UI resets after a request succeeded.
@@ -773,6 +778,7 @@ impl Snapshot {
             .bool(self.words_pending)
             .bool(self.removed)
             .bool(self.has_root_pin)
+            .bool(self.securing)
             .str(&self.pin_error)
             .u8(self.moved)
             .strs(&self.held_moves)
@@ -987,6 +993,7 @@ impl Snapshot {
             words_pending: r.bool()?,
             removed: r.bool()?,
             has_root_pin: r.bool()?,
+            securing: r.bool()?,
             pin_error: r.str()?,
             moved: r.u8()?,
             held_moves: r.strs()?,
@@ -1086,6 +1093,7 @@ impl Cmd {
             Cmd::EraseDevice => w.u8(72),
             Cmd::SetRootPin(p) => w.u8(73).str(p),
             Cmd::UnlockRoot(p) => w.u8(74).str(p),
+            Cmd::SecureAccount => w.u8(75),
         };
         w.0
     }
@@ -1172,6 +1180,7 @@ impl Cmd {
             72 => Cmd::EraseDevice,
             73 => Cmd::SetRootPin(r.str()?),
             74 => Cmd::UnlockRoot(r.str()?),
+            75 => Cmd::SecureAccount,
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

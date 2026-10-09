@@ -263,6 +263,7 @@ fn fixture() -> Snapshot {
         words_pending: false,
         removed: false,
         has_root_pin: false,
+        securing: false,
         pin_error: String::new(),
         moved: 0,
         held_moves: Vec::new(),

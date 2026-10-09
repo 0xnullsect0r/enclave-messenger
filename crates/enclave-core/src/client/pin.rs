@@ -193,10 +193,15 @@ mod tests {
             assert!(matches!(c.unlock_root("000000"), Err(CoreError::PinWrong)));
         }
         assert!(matches!(c.unlock_root("000000"), Err(CoreError::PinWrong)));
+        let before = c.now();
         let Err(CoreError::PinWait(until)) = c.unlock_root("482913") else {
             panic!("the right PIN waits too")
         };
-        assert_eq!(until, c.now() + 30);
+        // 30 s from the third wrong try (the clock may tick during Argon2id).
+        assert!(
+            (before + 28..=before + 30).contains(&until),
+            "{until} {before}"
+        );
         net.advance(31);
         c.unlock_root("482913").unwrap();
         c.require_root_unlocked().unwrap();

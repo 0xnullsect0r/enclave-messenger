@@ -222,6 +222,10 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::SetRootPin(p.to_string()));
     });
     let t = tx.clone();
+    ui.on_secure_account(move || {
+        let _ = t.send(Cmd::SecureAccount);
+    });
+    let t = tx.clone();
     ui.on_unlock_root(move |p| {
         let _ = t.send(Cmd::UnlockRoot(p.to_string()));
     });

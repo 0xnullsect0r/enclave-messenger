@@ -44,6 +44,7 @@ pub(crate) const NS_CARD_OWED: &str = "card-owed";
 /// Contacts without a card we have asked for theirs.
 const NS_CARD_ASKED: &str = "card-asked";
 pub(crate) const NS_OWN_DEVICES: &str = "own-devices";
+/// Weekly address (first 8 bytes) → how far we acknowledged it.
 const NS_ACKED: &str = "own-acked";
 
 /// A device unheard of for this long is inactive.
@@ -94,8 +95,11 @@ pub(crate) enum SyncItem {
         root: [u8; 64],
         on: bool,
     },
+    /// How far we've read the weekly address starting `addr` (its first 8
+    /// bytes: a week's number names a different address after a move or
+    /// "Secure my account").
     Position {
-        week: u32,
+        addr: [u8; 8],
         cursor: u64,
     },
     /// A group handed to our device `device` (`group_devices.rs`): a sealed
@@ -154,8 +158,8 @@ impl SyncItem {
             SyncItem::Blocked { root, on } => {
                 w.u8(T_BLOCKED).fixed(root).u8(u8::from(*on));
             }
-            SyncItem::Position { week, cursor } => {
-                w.u8(T_POSITION).u32(*week).u64(*cursor);
+            SyncItem::Position { addr, cursor } => {
+                w.u8(T_POSITION).fixed(addr).u64(*cursor);
             }
             SyncItem::Group { device, attachment } => {
                 w.u8(T_GROUP).fixed(device).bytes(attachment);
@@ -220,7 +224,7 @@ impl SyncItem {
                 on: r.u8().ok()? == 1,
             },
             T_POSITION => SyncItem::Position {
-                week: r.u32().ok()?,
+                addr: r.array().ok()?,
                 cursor: r.u64().ok()?,
             },
             T_HISTORY_ASK => SyncItem::HistoryAsk,
@@ -251,7 +255,7 @@ impl SyncItem {
             SyncItem::Setting { key, .. } => [b"s", key.as_bytes()].concat(),
             SyncItem::Contact { card, .. } => [&b"c"[..], &card[..card.len().min(64)]].concat(),
             SyncItem::Blocked { root, .. } => [&b"b"[..], root].concat(),
-            SyncItem::Position { week, .. } => [&b"w"[..], &week.to_be_bytes()].concat(),
+            SyncItem::Position { addr, .. } => [&b"w"[..], addr].concat(),
             SyncItem::Group { device, attachment } => {
                 [&b"g"[..], device, &attachment[..attachment.len().min(32)]].concat()
             }
@@ -287,15 +291,23 @@ fn decode_items(b: &[u8]) -> Vec<SyncItem> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OwnDevice {
     seen: u64,
-    positions: Vec<(u32, u64)>,
+    /// Weekly address (first 8 bytes) → how far it has read it.
+    positions: Vec<([u8; 8], u64)>,
+}
+
+/// A weekly address's first 8 bytes, which name it in positions.
+fn addr8(addr: &[u8; 32]) -> [u8; 8] {
+    let mut a = [0u8; 8];
+    a.copy_from_slice(&addr[..8]);
+    a
 }
 
 impl OwnDevice {
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
         w.u64(self.seen).u8(self.positions.len() as u8);
-        for (wk, c) in &self.positions {
-            w.u32(*wk).u64(*c);
+        for (a, c) in &self.positions {
+            w.fixed(a).u64(*c);
         }
         w.finish()
     }
@@ -305,7 +317,7 @@ impl OwnDevice {
         let seen = r.u64().ok()?;
         let n = usize::from(r.u8().ok()?);
         let positions = (0..n)
-            .map(|_| Some((r.u32().ok()?, r.u64().ok()?)))
+            .map(|_| Some((r.array().ok()?, r.u64().ok()?)))
             .collect::<Option<_>>()?;
         Some(Self { seen, positions })
     }
@@ -402,7 +414,10 @@ impl Client {
         }
         // Every flush says how far we've read.
         for (week, cursor) in self.profile.weeks.clone() {
-            let item = SyncItem::Position { week, cursor };
+            let item = SyncItem::Position {
+                addr: addr8(&self.profile.addr(week)),
+                cursor,
+            };
             let key = item.queue_key();
             if !queued.iter().any(|(k, _)| *k == key) {
                 queued.push((key, item));
@@ -553,13 +568,13 @@ impl Client {
                     let now = self.now();
                     events.append(&mut self.on_group_sent(&group, &ids, now)?);
                 }
-                SyncItem::Position { week, cursor } => {
+                SyncItem::Position { addr, cursor } => {
                     let mut d = self.own_device(dev);
-                    match d.positions.iter_mut().find(|(w, _)| *w == week) {
+                    match d.positions.iter_mut().find(|(a, _)| *a == addr) {
                         Some(p) => p.1 = p.1.max(cursor),
-                        None => d.positions.push((week, cursor)),
+                        None => d.positions.push((addr, cursor)),
                     }
-                    d.positions.sort_unstable();
+                    // The latest few addresses (newest last).
                     let drop = d.positions.len().saturating_sub(8);
                     d.positions.drain(..drop);
                     self.save_own_device(dev, &d)?;
@@ -751,15 +766,16 @@ impl Client {
             .map(|d| self.own_device(&d.id))
             .collect();
         for (week, mine) in self.profile.weeks.clone() {
+            let addr = addr8(&self.profile.addr(week));
             let w = others.iter().fold(mine, |w, d| {
                 w.min(
                     d.positions
                         .iter()
-                        .find(|(x, _)| *x == week)
+                        .find(|(a, _)| *a == addr)
                         .map_or(0, |(_, c)| *c),
                 )
             });
-            let key = week.to_be_bytes();
+            let key = addr;
             let acked = self
                 .store
                 .get(NS_ACKED, &key)?
@@ -787,10 +803,15 @@ impl Client {
             self.store
                 .put(NS_ACKED, &key, &w.to_be_bytes(), &mut self.rng)?;
         }
-        // Weeks no longer kept.
+        // Addresses no longer kept.
+        let kept: Vec<[u8; 8]> = self
+            .profile
+            .weeks
+            .iter()
+            .map(|(w, _)| addr8(&self.profile.addr(*w)))
+            .collect();
         for (k, _) in self.store.scan(NS_ACKED)? {
-            let week = k.as_slice().try_into().map(u32::from_be_bytes).unwrap_or(0);
-            if !self.profile.has_week(week) {
+            if !kept.iter().any(|a| a[..] == k[..]) {
                 self.store.delete(NS_ACKED, &k)?;
             }
         }
@@ -924,7 +945,7 @@ mod tests {
                 on: true,
             },
             SyncItem::Position {
-                week: 3000,
+                addr: [9; 8],
                 cursor: 42,
             },
             SyncItem::Group {
@@ -940,7 +961,7 @@ mod tests {
         assert_eq!(decode_items(&encode_items(&items)), items);
         let d = OwnDevice {
             seen: 5,
-            positions: vec![(1, 2), (3, 4)],
+            positions: vec![([1; 8], 2), ([3; 8], 4)],
         };
         assert_eq!(OwnDevice::decode(&d.encode()), Some(d));
     }

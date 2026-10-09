@@ -142,6 +142,7 @@ mod push;
 mod record;
 mod reports;
 mod search;
+mod secure;
 mod servers;
 mod sharing;
 mod social;
@@ -827,6 +828,12 @@ impl Client {
     /// Our root public key.
     pub fn root(&self) -> [u8; 64] {
         self.account.root_public.0
+    }
+
+    /// Our account identity key (in the manifest; "Secure my account"
+    /// replaces it).
+    pub fn identity_public(&self) -> [u8; 56] {
+        self.account.identity_public.0
     }
 
     /// Our contact card (for the QR code and invite link).
@@ -1538,6 +1545,11 @@ impl Client {
         events.append(&mut self.check_own_manifest(now).await?);
         events.append(&mut self.check_recovering(now).await?);
         events.append(&mut self.notice_held_moves(now)?);
+        if let Err(e) = self.secure_upkeep(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
         // The third KEM for someone met through a group (`braid.rs`).
         if let Err(e) = self.upgrade_braids(now).await
             && matches!(e, CoreError::Net(_))
@@ -1618,6 +1630,8 @@ impl Client {
             return Ok(None);
         }
         let mut fetched: Option<Manifest> = None;
+        // To answer with our previous manifest if this one doesn't open.
+        let prekeys_before = self.prekeys.export();
         // A greeting from someone we met in person carries the bond PSK,
         // and one through an invite link carries that link's PSK; we don't
         // know who it is before opening it, so try each.
@@ -1686,7 +1700,12 @@ impl Client {
                         .await?;
                     let sm = SignedManifest::from_bytes(&mb)?;
                     let m = sm.verify(&RootPublic(root), now)?;
-                    if m.version != version {
+                    // Older than the greeting names: the server is behind or
+                    // rolling back. Newer: they changed it (a device linked)
+                    // after writing; the greeting then counts only if the
+                    // current one still lists its device (checked when it
+                    // is opened), and its transcript has the version it named.
+                    if m.version < version {
                         return Err(ProtoError::Rollback.into());
                     }
                     if let Some(c) = self.contacts.get(&root)
@@ -1721,7 +1740,9 @@ impl Client {
                             }
                         }
                     }
-                    fetched = Some(m);
+                    let mut named = m;
+                    named.version = version;
+                    fetched = Some(named);
                 }
                 (Err(_), _) if candidate + 1 < candidates.len() => candidate += 1,
                 (Err(e), _) => return Err(e.into()),
@@ -1729,8 +1750,54 @@ impl Client {
         };
         let via = candidates[candidate].0;
         let bonded = matches!(via, Via::Bond);
-        let mut session = resp.session;
-        let content = Content::decode(&envelope::open_request(&mut session, env, &mut self.rng)?)?;
+        let mut resp = resp;
+        let content = match envelope::open_request(&mut resp.session, env, &mut self.rng) {
+            Ok(c) => c,
+            // They wrote with our manifest from before our last change (we
+            // linked a device in between): the transcript has that version.
+            Err(e) => {
+                let Some(prev) = self.previous_manifest()? else {
+                    return Err(e.into());
+                };
+                self.prekeys = PrekeyStore::import(&prekeys_before)?;
+                let psk = candidates[candidate].1.clone();
+                let retry = {
+                    let local = Local {
+                        account: &self.account,
+                        device: &self.device,
+                        manifest: &prev,
+                        locator: &self.profile.server,
+                    };
+                    let mut resolver = Resolver {
+                        contacts: &self.contacts,
+                        fetched: fetched.clone(),
+                        wanted: None,
+                    };
+                    eqxdh::respond(
+                        &local,
+                        &mut self.prekeys,
+                        &msg,
+                        psk.as_deref(),
+                        &mut resolver,
+                        &mut self.rng,
+                    )
+                };
+                let Ok(r) = retry else {
+                    self.prekeys = PrekeyStore::import(&prekeys_before)?;
+                    return Err(e.into());
+                };
+                resp = r;
+                match envelope::open_request(&mut resp.session, env, &mut self.rng) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        self.prekeys = PrekeyStore::import(&prekeys_before)?;
+                        return Err(e.into());
+                    }
+                }
+            }
+        };
+        let session = resp.session;
+        let content = Content::decode(&content)?;
         let root = resp.identity.root;
         if let Via::Invite(key) = via
             && root != self.account.root_public.0

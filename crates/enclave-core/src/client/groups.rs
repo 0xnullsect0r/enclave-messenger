@@ -743,7 +743,7 @@ impl Client {
 
     /// Rotate our chain for every reachable member device and post the
     /// three rekey units.
-    async fn rotate_group(
+    pub(crate) async fn rotate_group(
         &mut self,
         gid: &[u8; 32],
         new_epoch: Option<(u32, [u8; 32])>,

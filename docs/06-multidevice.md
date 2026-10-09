@@ -84,7 +84,7 @@ Every pair of the account's own devices has a Lockstep session, established by E
 | Setting (read receipts, typing) | one of the shared settings changes | apply it |
 | Contact (card, name, checked, timer, inbox, half of this device's write tokens) | a contact accepts us, is accepted, met in person, or checked here | store a new contact, fetch its manifest and greet it from their own device (its devices accept silently: we're in our root-signed manifest), or update a known one |
 | Blocked (root, on/off) | someone is blocked or unblocked here | the same |
-| Position (week, cursor) | at every flush, and at least once a day | record how far that device has read each weekly address |
+| Position (address, cursor) | at every flush, and at least once a day | record how far that device has read each weekly address (named by its first 8 bytes: after a move or "Secure my account" a week's number names a new address, and a position for the old one must not let the new one be acknowledged) |
 | Group (device, sealed file reference) | a group this device holds and that device lacks | the named device takes in the group (`07-groups.md` note 10) |
 | HistoryAsk | the person asks for history on a newly linked device | the device holding the root may send history before 24 h (`03-identity.md` §4.x) |
 | GroupSent (group, message ids) | this device posted group messages | show those messages from this device as our own (`07-groups.md` note 6) |

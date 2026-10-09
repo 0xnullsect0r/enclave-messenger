@@ -1303,6 +1303,18 @@ impl Engine {
                     };
                 }
             }
+            Cmd::SecureAccount => {
+                self.busy = true;
+                self.push();
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.secure_account().await {
+                        Ok(()) | Err(CoreError::Net(_)) => "Securing your account: new keys and inboxes are on their way to your contacts, groups and other devices. This finishes on its own.".into(),
+                        Err(CoreError::PinRequired) => "Enter your PIN to secure your account.".into(),
+                        Err(_) => "Only the device that holds your recovery words can secure your account, once a change already under way is done.".into(),
+                    };
+                }
+                self.busy = false;
+            }
             Cmd::EraseDevice => {
                 if self.client.is_some() {
                     self.erase_local();
@@ -2979,6 +2991,7 @@ impl Engine {
         s.can_change_words = c.holds_recovery_words();
         s.removed = self.removed;
         s.has_root_pin = c.has_root_pin();
+        s.securing = c.securing();
         s.pin_error = self.pin_error.clone();
         s.words_pending = c.migration_pending();
         s.moved = self

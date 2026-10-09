@@ -745,6 +745,8 @@ export component AppWindow inherits Window {
     callback release-share(string);
     callback delete-account();
     callback set-root-pin(string);
+    callback secure-account();
+    in property <bool> securing;
     callback unlock-root(string);
     in property <bool> has-root-pin;
     in property <string> pin-error;
@@ -2494,6 +2496,17 @@ export component AppWindow inherits Window {
             }
         }
         if root.pin-error != "": Text { text: root.pin-error; color: Tokens.danger; font-size: Tokens.type-secondary; wrap: word-wrap; }
+        Body { text: "Secure my account"; font-weight: 600; }
+        Secondary { text: root.securing ? "Securing your account. This finishes on its own." : "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."; }
+        if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
+        if root.can-change-words && !root.securing: HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: root.busy ? "Securing…" : "Secure my account";
+                outlined: true;
+                clicked => { if !root.busy { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.secure-account(); } }
+            }
+        }
         Body { text: "Delete"; font-weight: 600; }
         Secondary { text: root.can-change-words ? "Delete your account for everyone, or only erase this device." : "Erase this device. Deleting the account is done on the device that holds your recovery words."; }
         HorizontalLayout {

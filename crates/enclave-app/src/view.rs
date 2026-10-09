@@ -406,6 +406,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_can_change_words(s.can_change_words);
     ui.set_removed(s.removed);
     ui.set_has_root_pin(s.has_root_pin);
+    ui.set_securing(s.securing);
     ui.set_pin_error(s.pin_error.clone().into());
     ui.set_held_moves(s.held_moves.join(", ").into());
     ui.set_words_pending(s.words_pending);

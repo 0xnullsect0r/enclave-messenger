@@ -716,6 +716,20 @@ impl Client {
         Ok(())
     }
 
+    /// Our manifest before the current one (its version and vault hash are
+    /// what a greeting written just before our last change names), if it
+    /// lists this device and has our current identity key.
+    pub(crate) fn previous_manifest(&self) -> Result<Option<Manifest>> {
+        let Some(b) = self.store.get(NS_PROFILE, b"manifest-prev")? else {
+            return Ok(None);
+        };
+        let m = Manifest::decode(&b)?;
+        Ok((m.version < self.manifest.version
+            && m.identity == self.account.identity_public
+            && m.device(&self.device.id).is_some())
+        .then_some(m))
+    }
+
     /// Sign and publish the next manifest version with `change` applied, and
     /// make it ours. Needs the root (primary device).
     pub(crate) async fn publish_manifest(
@@ -752,6 +766,12 @@ impl Client {
 
     /// Adopt a verified manifest of our own account.
     pub(crate) fn set_manifest(&mut self, m: Manifest, signed: &SignedManifest) -> Result<()> {
+        // Kept for greetings written before they saw this one.
+        if self.manifest.version < m.version {
+            let prev = self.manifest.encode()?;
+            self.store
+                .put(NS_PROFILE, b"manifest-prev", &prev, &mut self.rng)?;
+        }
         self.manifest = m;
         self.store.put(
             NS_PROFILE,
