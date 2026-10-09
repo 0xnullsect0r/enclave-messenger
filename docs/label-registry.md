@@ -170,6 +170,9 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | Label | Kind | Output | Where | Purpose |
 |---|---|---|---|---|
 | `enclave/v1/proto/link-transcript` | TR | — | `enclave-core/src/client/link.rs` | Device-link transcript prefix (spec: 02b §11) |
+| `enclave/v1/proto/notify-key` | KMAC | 256 | `enclave-proto/src/notify.rs` `step` | Daily step of a contact's notification key chain; data `u32(day)` (spec: 10 §4) |
+| `enclave/v1/proto/grp-notify` | KMAC | 256 | `enclave-proto/src/notify.rs` `group_key` | A group's notification key for a day, from the epoch secret; data `u32(day)` (spec: 10 §4) |
+| `enclave/v1/wire/ad-capsule` | AD | — | `enclave-proto/src/notify.rs` | Notification capsule AD prefix, then `u32(day)` (spec: 10 §4, 08 §5.4) |
 | `enclave/v1/store/pin-check` | KMAC | 256 | `enclave-core/src/client/pin.rs` | Check value of the PIN for root actions, keyed by Argon2id(PIN, salt) (spec: 03 §5) |
 | `enclave/v1/net/vault-owner` | KMAC | 256 | `enclave-rpc/src/api.rs` `vault_owner` | Owner secret of the account's vault-key blob, from the key it's sealed under, so the account can replace or delete it (spec: 03 §8.5) |
 | `enclave/v1/proto/share-release` | KMAC | 256 | `enclave-core/src/client/social.rs` `release_key` | Seal key for a recovery share given back in person, from the X448 and ML-KEM-1024 secrets to the request code, combined over both codes (spec: 03 §8.3) |
@@ -237,20 +240,17 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/proto/notify-key` | KMAC | 256 | Daily notification key chain step | 10 §4 |
 
 ### 3.2 Groups
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/proto/grp-notify` | KMAC | 256 | Daily group notification key | 10 §4 |
 | `enclave/v1/proto/grp-invite-cap` | KMAC | 256 | Group invite capability | 07 §9 |
 
 ### 3.3 Transport, push, servers
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/wire/ad-capsule` | AD | — | Notification capsule AD prefix | 08 §5.4 |
 
 ### 3.4 KT, releases, storage, calls
 

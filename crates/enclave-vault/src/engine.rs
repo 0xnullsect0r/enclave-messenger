@@ -1303,6 +1303,14 @@ impl Engine {
                     };
                 }
             }
+            Cmd::SetPreviews(on) => {
+                if let Some(c) = self.client.as_mut()
+                    && let Err(CoreError::Net(_)) = c.set_previews(on).await
+                {
+                    self.status =
+                        "Couldn't tell everyone yet. It goes on when you're back online.".into();
+                }
+            }
             Cmd::SecureAccount => {
                 self.busy = true;
                 self.push();
@@ -2992,6 +3000,7 @@ impl Engine {
         s.removed = self.removed;
         s.has_root_pin = c.has_root_pin();
         s.securing = c.securing();
+        s.previews = c.previews();
         s.pin_error = self.pin_error.clone();
         s.words_pending = c.migration_pending();
         s.moved = self

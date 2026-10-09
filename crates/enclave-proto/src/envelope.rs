@@ -81,6 +81,18 @@ pub fn seal_direct(
     pq_carrier: Option<usize>,
     rng: &mut HedgedRng,
 ) -> Result<Vec<u8>> {
+    seal_direct_with(sessions, content, pq_carrier, None, rng)
+}
+
+/// [`seal_direct`] with a notification capsule (`crate::notify`) in place
+/// of the random one.
+pub fn seal_direct_with(
+    sessions: &mut [&mut Session],
+    content: &[u8],
+    pq_carrier: Option<usize>,
+    capsule: Option<&[u8; CAPSULE_LEN]>,
+    rng: &mut HedgedRng,
+) -> Result<Vec<u8>> {
     if sessions.is_empty() || sessions.len() > DEVICE_SLOTS {
         return Err(ProtoError::Limit);
     }
@@ -130,14 +142,27 @@ pub fn seal_direct(
             env.extend_from_slice(&r);
         }
     }
-    let mut capsule = vec![0u8; CAPSULE_LEN];
-    rng.fill("envelope/capsule", &mut capsule)?;
-    env.extend_from_slice(&capsule);
+    match capsule {
+        Some(c) => env.extend_from_slice(c),
+        None => {
+            let mut r = vec![0u8; CAPSULE_LEN];
+            rng.fill("envelope/capsule", &mut r)?;
+            env.extend_from_slice(&r);
+        }
+    }
     env.extend_from_slice(&body);
     if env.len() != ENVELOPE_LEN {
         return Err(ProtoError::Decode);
     }
     Ok(env)
+}
+
+/// The capsule of a direct envelope (`None` for another kind).
+pub fn capsule_of(env: &[u8]) -> Option<&[u8]> {
+    if env.len() != ENVELOPE_LEN || env.get(1) != Some(&(EnvelopeKind::Direct as u8)) {
+        return None;
+    }
+    env.get(direct::CAPSULE..direct::CAPSULE + CAPSULE_LEN)
 }
 
 /// A direct envelope nobody can open: random slots, PQ slot and capsule,

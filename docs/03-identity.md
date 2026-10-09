@@ -184,7 +184,7 @@ The security code does not change (D4). Contacts see no warning.
 3. our other devices get `Content::HomeMoved` with the new vault key and a sealed file reference to the new shared account keys (1.4 MB with the McEliece key), adopt them, and switch; read positions are reported per address, so the new addresses are acknowledged only once every device has read them;
 4. fresh signed prekeys; a `Content::PqStep` to every contact we have a session with; and every group rekeyed: a new sending chain and MAC keys for every member device, and a new epoch in groups we administer.
 
-Each step goes on from `sync` until done (`Client::securing`). The app: Settings → Secure my account (with the PIN), and removing a device suggests it. Rotating the notification key chains (`10-push.md` §4) joins step 4 when they are built (P6).
+Each step goes on from `sync` until done (`Client::securing`). The app: Settings → Secure my account (with the PIN), and removing a device suggests it. With previews on, every contact also gets a fresh notification key chain (`10-push.md` §4).
 
 ## 6. Security code (D4)
 

@@ -18,7 +18,7 @@ use prost::Message as _;
 pub struct Pb {
     #[prost(
         oneof = "Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35"
     )]
     pub kind: Option<Kind>,
 }
@@ -94,6 +94,18 @@ pub enum Kind {
     Signed(Signed),
     #[prost(bool, tag = "34")]
     Closed(bool),
+    #[prost(message, tag = "35")]
+    NotifyKey(NotifyKey),
+}
+
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct NotifyKey {
+    #[prost(bytes = "vec", tag = "1")]
+    pub key: Vec<u8>,
+    #[prost(uint32, tag = "2")]
+    pub day: u32,
+    #[prost(bool, tag = "3")]
+    pub previews: bool,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -469,6 +481,11 @@ pub fn to_pb(c: &Content) -> Pb {
             tokens: toks(&tokens),
         }),
         Content::Closed => Kind::Closed(true),
+        Content::NotifyKey { key, day, previews } => Kind::NotifyKey(NotifyKey {
+            key: key.to_vec(),
+            day,
+            previews,
+        }),
     };
     Pb { kind: Some(kind) }
 }
@@ -583,6 +600,11 @@ pub fn from_pb(p: Pb) -> Result<Content> {
             tokens: arrs(s.tokens)?,
         },
         Kind::Closed(_) => Content::Closed,
+        Kind::NotifyKey(n) => Content::NotifyKey {
+            key: arr(n.key)?,
+            day: n.day,
+            previews: n.previews,
+        },
     })
 }
 

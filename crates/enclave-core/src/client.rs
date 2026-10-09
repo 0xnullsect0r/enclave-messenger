@@ -131,6 +131,7 @@ mod messages;
 mod migrate;
 mod moves;
 mod notes;
+mod notify;
 pub mod outbox;
 mod own_sync;
 mod parts;
@@ -1550,6 +1551,11 @@ impl Client {
         {
             return Err(e);
         }
+        if let Err(e) = self.notify_upkeep(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
         // The third KEM for someone met through a group (`braid.rs`).
         if let Err(e) = self.upgrade_braids(now).await
             && matches!(e, CoreError::Net(_))
@@ -2235,6 +2241,9 @@ impl Client {
                 Content::Closed => {
                     events.extend(self.on_closed(&root)?);
                 }
+                Content::NotifyKey { key, day, previews } => {
+                    self.on_notify_key(&root, key, day, previews)?;
+                }
                 other => {
                     c.received_since_refill = c.received_since_refill.saturating_add(1);
                     rest = Some(other);
@@ -2340,6 +2349,7 @@ impl Client {
         let c = c.clone();
         // The token is spent whatever happens next.
         self.save_contact(&c)?;
+        let capsule = self.capsule_for(root, content, self.now())?;
 
         let env = {
             let (keys, mut refs): (Vec<SessionKey>, Vec<&mut Session>) = self
@@ -2358,7 +2368,13 @@ impl Client {
             } else {
                 pq_carrier(&mut self.pq_carried, &keys, &refs)
             };
-            let env = envelope::seal_direct(&mut refs, &bytes, carrier, &mut self.rng)?;
+            let env = envelope::seal_direct_with(
+                &mut refs,
+                &bytes,
+                carrier,
+                capsule.as_ref(),
+                &mut self.rng,
+            )?;
             drop(refs);
             for k in keys {
                 if let Some(s) = self.sessions.get(&k) {

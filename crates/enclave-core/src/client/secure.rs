@@ -18,9 +18,9 @@
 //! 5. every group rekeyed: a new sending chain and MAC keys for every
 //!    member device, and a new epoch in groups we administer.
 //!
-//! Each step goes on from `sync` until done ([`Client::securing`]). The
-//! notification key chains (`10-push.md` §4) are rotated with them once
-//! they exist (P6).
+//! 6. new notification key chains (`10-push.md` §4) for every contact.
+//!
+//! Each step goes on from `sync` until done ([`Client::securing`]).
 
 use super::Client;
 use super::moves::KEY_NEW_KEYS;
@@ -163,6 +163,8 @@ impl Client {
                 return Err(e);
             }
         }
+        // New notification chains for every contact (`notify.rs`).
+        self.forget_notify_keys()?;
         self.store
             .delete(crate::persist::NS_SETTINGS, SECURING.as_bytes())?;
         Ok(())

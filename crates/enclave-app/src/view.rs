@@ -407,6 +407,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_removed(s.removed);
     ui.set_has_root_pin(s.has_root_pin);
     ui.set_securing(s.securing);
+    ui.set_previews(s.previews);
     ui.set_pin_error(s.pin_error.clone().into());
     ui.set_held_moves(s.held_moves.join(", ").into());
     ui.set_words_pending(s.words_pending);

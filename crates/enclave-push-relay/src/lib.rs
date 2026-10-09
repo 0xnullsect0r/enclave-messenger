@@ -60,6 +60,11 @@ pub const SEALED_LEN: usize = 4 + X448_LEN + MLKEM_CT_LEN + PLAIN_LEN + seal::OV
 pub const WINDOW_SECS: u64 = 60;
 /// Latest offset of a wake into its window.
 pub const JITTER_SECS: u64 = 30;
+/// Length of a notification capsule.
+pub const CAPSULE_LEN: usize = 1_024;
+/// A wake from a server: the sealed token and the newest envelope's
+/// capsule.
+pub const WAKE_LEN: usize = SEALED_LEN + CAPSULE_LEN;
 
 /// Why something failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -272,6 +277,9 @@ pub struct Delivery {
     pub token: Vec<u8>,
     /// Wake class (0 message; others reserved: calls).
     pub wake_class: u8,
+    /// The notification capsule the wake carries (1,024 B; empty if it
+    /// carried none), passed on for previews (`10-push.md` §4).
+    pub capsule: Vec<u8>,
 }
 
 /// The relay's state.
@@ -342,13 +350,21 @@ impl Relay {
             platform,
             token: plain[3..3 + len].to_vec(),
             wake_class: plain[PLAIN_LEN - 1],
+            capsule: Vec::new(),
         })
     }
 
-    /// A wake for `sealed` at `now`: the delivery to make, or `None` if the
-    /// token doesn't open or was already woken in this window.
-    pub fn wake(&mut self, sealed: &[u8], now: u64) -> Option<Delivery> {
-        let d = self.open(sealed).ok()?;
+    /// A wake (a sealed token, with or without the capsule after it) at
+    /// `now`: the delivery to make, or `None` if the token doesn't open or
+    /// was already woken in this window.
+    pub fn wake(&mut self, wake: &[u8], now: u64) -> Option<Delivery> {
+        let (sealed, capsule) = match wake.len() {
+            SEALED_LEN => (wake, &[][..]),
+            WAKE_LEN => wake.split_at(SEALED_LEN),
+            _ => return None,
+        };
+        let mut d = self.open(sealed).ok()?;
+        d.capsule = capsule.to_vec();
         let id = enclave_crypto::kmac::kmac256(&d.token, &[d.platform as u8], L_SEAL);
         let window = now / WINDOW_SECS;
         if self.last.get(&id) == Some(&window) {

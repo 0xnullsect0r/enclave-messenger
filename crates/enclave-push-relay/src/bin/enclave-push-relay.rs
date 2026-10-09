@@ -15,7 +15,9 @@
 //! `public_dir/push-relay-keys.bin` for the foundation's list.
 
 use enclave_push_relay::keys::RelayKeys;
-use enclave_push_relay::{Platform, Relay, RelaySecret, SEALED_LEN, deliver_unified_push};
+use enclave_push_relay::{
+    Platform, Relay, RelaySecret, SEALED_LEN, WAKE_LEN, deliver_unified_push,
+};
 use enclave_service::config::{ConfigError, flag, hex};
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -240,10 +242,11 @@ async fn serve(listener: tokio::net::TcpListener, relay: Arc<Mutex<Relay>>) -> R
                 if sock.read_exact(&mut len).await.is_err() {
                     return;
                 }
-                if u32::from_be_bytes(len) as usize != SEALED_LEN {
+                let n = u32::from_be_bytes(len) as usize;
+                if n != SEALED_LEN && n != WAKE_LEN {
                     return;
                 }
-                let mut sealed = vec![0u8; SEALED_LEN];
+                let mut sealed = vec![0u8; n];
                 if sock.read_exact(&mut sealed).await.is_err() {
                     return;
                 }

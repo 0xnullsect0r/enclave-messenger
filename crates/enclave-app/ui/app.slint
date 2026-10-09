@@ -746,6 +746,8 @@ export component AppWindow inherits Window {
     callback delete-account();
     callback set-root-pin(string);
     callback secure-account();
+    callback set-previews(bool);
+    in property <bool> previews;
     in property <bool> securing;
     callback unlock-root(string);
     in property <bool> has-root-pin;
@@ -2496,6 +2498,12 @@ export component AppWindow inherits Window {
             }
         }
         if root.pin-error != "": Text { text: root.pin-error; color: Tokens.danger; font-size: Tokens.type-secondary; wrap: word-wrap; }
+        Body { text: "Notifications"; font-weight: 600; }
+        Secondary { text: root.previews ? "Notifications on your phone show who wrote and the start of the message. Only your devices can read them; Apple and Google see nothing." : "Notifications say \"New message\" only. Turn previews on to see who wrote and the start of the message, readable only by your devices."; }
+        HorizontalLayout {
+            alignment: start;
+            QuietButton { text: root.previews ? "Turn previews off" : "Show previews"; outlined: true; clicked => { root.set-previews(!root.previews); } }
+        }
         Body { text: "Secure my account"; font-weight: 600; }
         Secondary { text: root.securing ? "Securing your account. This finishes on its own." : "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."; }
         if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }

@@ -312,6 +312,8 @@ pub struct Snapshot {
     pub has_root_pin: bool,
     /// "Secure my account" is still reaching contacts and groups.
     pub securing: bool,
+    /// Notifications show who wrote and a preview.
+    pub previews: bool,
     /// Why the PIN wasn't taken, or empty.
     pub pin_error: String,
     /// The open conversation's contact changed their recovery words:
@@ -504,6 +506,8 @@ pub enum Cmd {
     /// Replace the account's keys, inboxes and prekeys
     /// (`docs/03-identity.md` §5.2).
     SecureAccount,
+    /// Ask contacts for previews in notification capsules (or stop).
+    SetPreviews(bool),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -779,6 +783,7 @@ impl Snapshot {
             .bool(self.removed)
             .bool(self.has_root_pin)
             .bool(self.securing)
+            .bool(self.previews)
             .str(&self.pin_error)
             .u8(self.moved)
             .strs(&self.held_moves)
@@ -994,6 +999,7 @@ impl Snapshot {
             removed: r.bool()?,
             has_root_pin: r.bool()?,
             securing: r.bool()?,
+            previews: r.bool()?,
             pin_error: r.str()?,
             moved: r.u8()?,
             held_moves: r.strs()?,
@@ -1094,6 +1100,7 @@ impl Cmd {
             Cmd::SetRootPin(p) => w.u8(73).str(p),
             Cmd::UnlockRoot(p) => w.u8(74).str(p),
             Cmd::SecureAccount => w.u8(75),
+            Cmd::SetPreviews(on) => w.u8(76).bool(*on),
         };
         w.0
     }
@@ -1181,6 +1188,7 @@ impl Cmd {
             73 => Cmd::SetRootPin(r.str()?),
             74 => Cmd::UnlockRoot(r.str()?),
             75 => Cmd::SecureAccount,
+            76 => Cmd::SetPreviews(r.bool()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

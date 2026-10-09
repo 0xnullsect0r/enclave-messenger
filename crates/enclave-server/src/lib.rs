@@ -67,6 +67,9 @@ struct Wake {
     window: u64,
     release: u64,
     sealed: Vec<u8>,
+    /// The newest written envelope's notification capsule (random when it
+    /// had none), for previews on iOS (`10-push.md` §4).
+    capsule: Vec<u8>,
     sent: bool,
 }
 
@@ -1272,15 +1275,29 @@ impl Server {
     /// A write reached `mailbox`: schedule its wake, at most one per sealed
     /// token per window. The wake goes out in the *next* 60 s window at a
     /// random 0–30 s offset, so its time says little about the write's.
-    fn schedule_wake(&mut self, mailbox: &[u8; 32], now: u64) {
+    fn schedule_wake(&mut self, mailbox: &[u8; 32], env: &[u8], now: u64) {
         let Ok(Some(sealed)) = self.db.read(|r| r.get(db::PUSH, mailbox)) else {
             return;
         };
         let id = sha3_512(&sealed);
         let mut key = [0u8; 32];
         key.copy_from_slice(&id[..32]);
+        let capsule = match enclave_proto::envelope::capsule_of(env) {
+            Some(c) => c.to_vec(),
+            None => {
+                let mut r = vec![0u8; enclave_wire::CAPSULE_LEN];
+                if self.rng.fill("server/push-capsule", &mut r).is_err() {
+                    return;
+                }
+                r
+            }
+        };
         let window = now / PUSH_WINDOW_SECS + 1;
-        if self.wakes.get(&key).is_some_and(|w| w.window >= window) {
+        if let Some(w) = self.wakes.get_mut(&key)
+            && w.window >= window
+        {
+            // One wake per window: it shows the newest message.
+            w.capsule = capsule;
             return;
         }
         let jitter = self
@@ -1294,19 +1311,20 @@ impl Server {
                 window,
                 release: window * PUSH_WINDOW_SECS + jitter,
                 sealed,
+                capsule,
                 sent: false,
             },
         );
     }
 
-    /// Sealed tokens whose wake is due, for the push relay. Each is
-    /// returned once.
+    /// Wakes due for the push relay, each `sealed token ‖ capsule`
+    /// (2,976 B), returned once.
     pub fn due_wakes(&mut self, now: u64) -> Vec<Vec<u8>> {
         let mut out = Vec::new();
         for w in self.wakes.values_mut() {
             if !w.sent && w.release <= now {
                 w.sent = true;
-                out.push(w.sealed.clone());
+                out.push([&w.sealed[..], &w.capsule].concat());
             }
         }
         self.wakes
@@ -1351,7 +1369,7 @@ impl Server {
     fn stored(&mut self, mailbox: &[u8; 32], env: &[u8], now: u64) {
         self.stats.stored += 1;
         self.stored_lengths.insert(env.len());
-        self.schedule_wake(mailbox, now);
+        self.schedule_wake(mailbox, env, now);
     }
 
     fn write(&mut self, h: &RequestHeader, env: &[u8], now: u64) -> Status {

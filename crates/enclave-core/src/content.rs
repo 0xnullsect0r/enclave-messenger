@@ -193,6 +193,16 @@ pub enum Content {
     },
     /// The sender closed their account (`03-identity.md` §8.5).
     Closed,
+    /// The sender's notification key chain for capsules sent to them, from
+    /// `day` on, and whether they want previews (`10-push.md` §4).
+    NotifyKey {
+        /// The chain's key for `day`.
+        key: [u8; 32],
+        /// Its day.
+        day: u32,
+        /// Fill capsules (else leave them random).
+        previews: bool,
+    },
     /// One continuation unit of content too large for one envelope
     /// (`client/parts.rs`).
     Part {
@@ -350,6 +360,7 @@ impl Content {
                 | Content::Card { .. }
                 | Content::ModeChange { .. }
                 | Content::Closed
+                | Content::NotifyKey { .. }
                 | Content::ServerMoved { .. }
                 | Content::HomeMoved { .. }
         )
@@ -390,6 +401,7 @@ const K_PART: u8 = 31;
 const K_MODE_CHANGE: u8 = 32;
 const K_SIGNED: u8 = 33;
 const K_CLOSED: u8 = 34;
+const K_NOTIFY_KEY: u8 = 35;
 /// Longest composite signature (ML-DSA-87 and Ed448).
 pub const MAX_SIG: usize = 4_741;
 /// Largest encoded location.
@@ -728,6 +740,12 @@ impl Content {
             Content::Closed => {
                 w.u8(K_CLOSED);
             }
+            Content::NotifyKey { key, day, previews } => {
+                w.u8(K_NOTIFY_KEY)
+                    .fixed(key)
+                    .u32(*day)
+                    .u8(u8::from(*previews));
+            }
         }
         Ok(w.finish())
     }
@@ -850,6 +868,11 @@ impl Content {
                 tokens: get_tokens(&mut r)?,
             },
             K_CLOSED => Content::Closed,
+            K_NOTIFY_KEY => Content::NotifyKey {
+                key: r.array()?,
+                day: r.u32()?,
+                previews: r.u8()? == 1,
+            },
             K_PART => Content::Part {
                 id: r.array()?,
                 index: r.u8()?,
@@ -997,6 +1020,11 @@ mod tests {
                 tokens: vec![[3; 32]; 4],
             },
             Content::Closed,
+            Content::NotifyKey {
+                key: [3; 32],
+                day: 20_000,
+                previews: true,
+            },
             Content::ServerMoved {
                 server: [1; 16],
                 inbox: [2; 32],
