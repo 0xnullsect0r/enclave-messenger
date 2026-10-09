@@ -849,7 +849,41 @@ impl Group {
 
     /// Seal `content` for the group mailbox.
     pub fn seal(&mut self, content: &[u8], flags: u8, rng: &mut HedgedRng) -> Result<Vec<u8>> {
+        self.seal_with(content, flags, None, rng)
+    }
+
+    /// The group's notification keys for `day` and the day before, from the
+    /// current epoch's secret (`crate::notify::group_key`), for the
+    /// notification extension's table.
+    pub fn notify_keys(&self, day: u32) -> Result<([u8; 32], [u8; 32])> {
         let es = self.epoch_secret()?;
+        Ok((
+            crate::notify::group_key(&es, day),
+            crate::notify::group_key(&es, day.wrapping_sub(1)),
+        ))
+    }
+
+    /// [`Group::seal`], with the capsule holding `(name, preview)` sealed
+    /// under the group's notification key for `day` instead of random
+    /// bytes (`10-push.md` §4).
+    pub fn seal_with(
+        &mut self,
+        content: &[u8],
+        flags: u8,
+        preview: Option<(&str, &str, u32)>,
+        rng: &mut HedgedRng,
+    ) -> Result<Vec<u8>> {
+        let es = self.epoch_secret()?;
+        let capsule = match preview {
+            Some((name, text, day)) => Some(crate::notify::seal_capsule(
+                &crate::notify::group_key(&es, day),
+                day,
+                name,
+                text,
+                rng,
+            )?),
+            None => None,
+        };
         let state_hash = self.state.hash();
         let members = self.state.members.len();
         let mine = self.mine.as_mut().ok_or(ProtoError::NoSession)?;
@@ -881,7 +915,10 @@ impl Group {
             .try_into()
             .map_err(|_| ProtoError::Decode)?;
         keystream(&es, &nonce, &mut unit[ENC..off::MACS]);
-        rng.fill("group/capsule", &mut unit[off::CAPSULE..off::BODY])?;
+        match &capsule {
+            Some(c) => unit[off::CAPSULE..off::BODY].copy_from_slice(c),
+            None => rng.fill("group/capsule", &mut unit[off::CAPSULE..off::BODY])?,
+        }
 
         let mut pad = |b: &mut [u8]| {
             if rng.fill("group/padding", b).is_err() {

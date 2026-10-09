@@ -78,6 +78,11 @@ pub const VAULTS: Bytes = TableDefinition::new("vaults");
 pub const BLOBS: Bytes = TableDefinition::new("blobs");
 /// Sealed push tokens: mailbox → sealed token.
 pub const PUSH: Bytes = TableDefinition::new("push");
+/// Group mailbox ‖ member device's id (8) → that device's sealed push
+/// token (`10-push.md` §3).
+pub const PUSH_GROUP: Bytes = TableDefinition::new("push-group");
+/// Inbox → empty: its owner asked for dummy wakes too.
+pub const PUSH_DUMMY: Bytes = TableDefinition::new("push-dummy");
 /// Usernames: name → `root ‖ last claim time`.
 pub const USERNAMES: Bytes = TableDefinition::new("usernames");
 /// Root → its current name.
@@ -88,7 +93,7 @@ pub const REPORTS: Bytes = TableDefinition::new("reports");
 pub const META: Bytes = TableDefinition::new("meta");
 
 /// The schema this code writes. Older files are migrated on open.
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 9;
 
 /// Storage failure. The server answers `Status::Internal` and logs it.
 #[derive(Debug, thiserror::Error)]
@@ -289,7 +294,7 @@ impl Db {
 type Rows = Vec<(Vec<u8>, Vec<u8>)>;
 
 /// Every table, for snapshots.
-const ALL: [Bytes; 27] = [
+const ALL: [Bytes; 29] = [
     INBOXES,
     READ_CREDS,
     HINTS,
@@ -313,6 +318,8 @@ const ALL: [Bytes; 27] = [
     VAULTS,
     BLOBS,
     PUSH,
+    PUSH_GROUP,
+    PUSH_DUMMY,
     USERNAMES,
     NAMES_BY_ROOT,
     REPORTS,

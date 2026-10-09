@@ -170,6 +170,7 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | Label | Kind | Output | Where | Purpose |
 |---|---|---|---|---|
 | `enclave/v1/proto/link-transcript` | TR | — | `enclave-core/src/client/link.rs` | Device-link transcript prefix (spec: 02b §11) |
+| `enclave/v1/net/push-group-id` | KMAC | 256 | `enclave-core/src/client/push.rs` `push_group_at` | A device's id (first 8 bytes) for its push registration on a group mailbox, keyed by the device id over the mailbox (spec: 10 §3) |
 | `enclave/v1/proto/notify-key` | KMAC | 256 | `enclave-proto/src/notify.rs` `step` | Daily step of a contact's notification key chain; data `u32(day)` (spec: 10 §4) |
 | `enclave/v1/proto/grp-notify` | KMAC | 256 | `enclave-proto/src/notify.rs` `group_key` | A group's notification key for a day, from the epoch secret; data `u32(day)` (spec: 10 §4) |
 | `enclave/v1/wire/ad-capsule` | AD | — | `enclave-proto/src/notify.rs` | Notification capsule AD prefix, then `u32(day)` (spec: 10 §4, 08 §5.4) |

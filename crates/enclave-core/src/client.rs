@@ -1556,6 +1556,11 @@ impl Client {
         {
             return Err(e);
         }
+        if let Err(e) = self.push_groups(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
         // The third KEM for someone met through a group (`braid.rs`).
         if let Err(e) = self.upgrade_braids(now).await
             && matches!(e, CoreError::Net(_))

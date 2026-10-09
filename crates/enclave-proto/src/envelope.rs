@@ -157,12 +157,18 @@ pub fn seal_direct_with(
     Ok(env)
 }
 
-/// The capsule of a direct envelope (`None` for another kind).
+/// The capsule of a direct envelope or a group unit (`None` for another
+/// kind).
 pub fn capsule_of(env: &[u8]) -> Option<&[u8]> {
-    if env.len() != ENVELOPE_LEN || env.get(1) != Some(&(EnvelopeKind::Direct as u8)) {
+    if env.len() != ENVELOPE_LEN {
         return None;
     }
-    env.get(direct::CAPSULE..direct::CAPSULE + CAPSULE_LEN)
+    let at = match env.get(1) {
+        Some(&k) if k == EnvelopeKind::Direct as u8 => direct::CAPSULE,
+        Some(&k) if k == EnvelopeKind::Group as u8 => enclave_wire::group::CAPSULE,
+        _ => return None,
+    };
+    env.get(at..at + CAPSULE_LEN)
 }
 
 /// A direct envelope nobody can open: random slots, PQ slot and capsule,

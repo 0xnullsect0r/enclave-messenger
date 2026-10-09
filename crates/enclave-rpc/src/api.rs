@@ -56,6 +56,15 @@ pub const FLAG_MORE: u8 = 0x20;
 pub const FLAG_CREATE: u8 = 0x01;
 /// Request flag on `RegisterTokens` with create: make it a request inbox.
 pub const FLAG_REQUEST_INBOX: u8 = 0x02;
+/// Request flag on `PushRegister` for the account inbox: also send dummy
+/// wakes (Poisson, mean [`DUMMY_WAKE_MEAN_SECS`]), indistinguishable from
+/// real ones (`docs/10-push.md` §5).
+pub const FLAG_PUSH_DUMMIES: u8 = 0x01;
+/// Mean time between dummy wakes.
+pub const DUMMY_WAKE_MEAN_SECS: u64 = 3600;
+/// Most member devices with a push registration on one group mailbox.
+pub const MAX_GROUP_PUSH: usize = 256;
+
 /// Request flag on `RegisterTokens`: delete the inbox (its owner closing
 /// the account, `docs/03-identity.md` §8.5), with its envelopes, tokens,
 /// read credentials, hints and push registration.

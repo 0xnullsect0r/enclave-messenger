@@ -109,3 +109,81 @@ async fn previews_in_capsules() {
     assert_eq!(table.open(&capsule), None);
     assert!(bob.notify_table(net.now()).entries.is_empty());
 }
+
+/// A group's mailbox wakes every member device registered there, and the
+/// capsule opens with the group's key for the day; an account that asked
+/// for dummy wakes gets about one an hour with nothing behind them.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_wakes_and_dummies() {
+    let net = network();
+    let new = |s, n| Client::create(memory(), Arc::new(net.clone()), s, n);
+    let (mut alice, _) = new(S1, "Alice").await.unwrap();
+    let (mut bob, _) = new(S2, "Bob").await.unwrap();
+    let (mut cy, _) = new(S2, "Cy").await.unwrap();
+    for other in [&mut bob, &mut cy] {
+        alice.add_contact(&other.card(), "hi").await.unwrap();
+        other.sync().await.unwrap();
+        other.accept(&alice.root()).await.unwrap();
+        alice.sync().await.unwrap();
+    }
+    let gid = alice
+        .create_group("Trip", &[bob.root(), cy.root()])
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        for c in [&mut alice, &mut bob, &mut cy] {
+            c.sync().await.unwrap();
+        }
+    }
+    let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+    let key = RelaySecret::generate(1, &mut rng).unwrap();
+    let public = key.public().clone();
+    let mut relay = Relay::new(vec![key]);
+    bob.set_previews(true).await.unwrap();
+    bob.register_push(&public, Platform::Apns, b"bob-phone")
+        .await
+        .unwrap();
+    bob.sync().await.unwrap(); // registers on today's group mailbox
+    cy.register_push_with(&public, Platform::Fcm, b"cy-phone", true)
+        .await
+        .unwrap();
+
+    alice.send_group_text(&gid, "group hello").await.unwrap();
+    net.advance(enclave_server::PUSH_WINDOW_SECS + enclave_server::PUSH_JITTER_SECS + 1);
+    let now = net.now();
+    // The group is hosted on Alice's server.
+    let wakes = net.with_server(&S1, |s| s.due_wakes(now)).unwrap();
+    let to_bob: Vec<_> = wakes
+        .iter()
+        .filter_map(|w| relay.wake(w, now))
+        .filter(|d| d.token == b"bob-phone")
+        .collect();
+    assert_eq!(to_bob.len(), 1, "one wake for Bob's device");
+    assert_eq!(
+        bob.notify_table(now).open(&to_bob[0].capsule),
+        Some(("Alice".into(), "group hello".into()))
+    );
+
+    // Cy asked for dummy wakes: over twelve quiet hours, some come (about
+    // twelve; none at all has odds of e^-12).
+    let mut dummies = 0;
+    for _ in 0..72 {
+        net.advance(600);
+        let now = net.now();
+        for w in net.with_server(&S2, |s| s.due_wakes(now)).unwrap() {
+            if relay.wake(&w, now).is_some_and(|d| d.token == b"cy-phone") {
+                dummies += 1;
+            }
+        }
+    }
+    assert!((1..=40).contains(&dummies), "{dummies} dummy wakes");
+    // Unregistering stops them.
+    cy.unregister_push().await.unwrap();
+    net.advance(6 * 3600);
+    let now = net.now();
+    assert!(
+        net.with_server(&S2, |s| s.due_wakes(now))
+            .unwrap()
+            .is_empty()
+    );
+}

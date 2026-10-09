@@ -715,11 +715,21 @@ impl Client {
         if flags & FLAG_STATE_UPDATE == 0 {
             self.require_not_held()?;
         }
+        // What members' notifications show (under the group's key for the
+        // day; `notify.rs`).
+        let preview = super::notify::group_preview(content, flags);
+        let name = self.profile.name.clone();
+        let today = day(now);
         // On the record, signed (`group_record.rs`).
         let (content, flags) = self.sign_group(gid, content, flags)?;
         let (unit, host, addr, secret) = {
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
-            let unit = e.group.seal(&content, flags, &mut self.rng)?;
+            let unit = e.group.seal_with(
+                &content,
+                flags,
+                preview.as_deref().map(|p| (name.as_str(), p, today)),
+                &mut self.rng,
+            )?;
             let epoch = e.group.epoch();
             let addr = e.group.mailbox(day(now))?;
             let secret = e.group.mailbox_secret(epoch, &addr)?;

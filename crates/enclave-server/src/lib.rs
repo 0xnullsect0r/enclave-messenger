@@ -315,6 +315,9 @@ pub struct Server {
     kt_accounts: (BTreeSet<[u8; 32]>, bool),
     /// Scheduled wakes by sealed-token hash.
     wakes: HashMap<[u8; 32], Wake>,
+    /// When each inbox that asked for dummy wakes gets its next one
+    /// (loaded from `push-dummy` on first use).
+    dummies: Option<HashMap<[u8; 32], u64>>,
     /// A second log shown instead of `kt` (test hook, RT-04).
     #[cfg(feature = "test-hooks")]
     kt_fork: Option<KtService>,
@@ -438,6 +441,7 @@ impl Server {
             kt: None,
             kt_accounts: (BTreeSet::new(), false),
             wakes: HashMap::new(),
+            dummies: None,
             #[cfg(feature = "test-hooks")]
             kt_fork: None,
             #[cfg(feature = "test-hooks")]
@@ -723,9 +727,20 @@ impl Server {
             for mb in &gone {
                 t.del(db::INBOXES, mb)?;
                 t.del(db::PUSH, mb)?;
+                t.del(db::PUSH_DUMMY, mb)?;
                 for table in [db::ENVELOPES, db::HINTS, db::TOKENS, db::READ_CREDS] {
                     t.remove_where(table, mb, |_, _| true)?;
                 }
+            }
+            // Group push registrations from before yesterday: their
+            // mailboxes are past.
+            if sweep {
+                t.remove_where(db::PUSH_GROUP, b"", |_, v| {
+                    v.get(..4)
+                        .and_then(|b| b.try_into().ok())
+                        .map(u32::from_be_bytes)
+                        .is_none_or(|d| d + 1 < today)
+                })?;
             }
             // Read credentials for days that are over.
             if sweep {
@@ -1092,7 +1107,7 @@ impl Server {
                 Err(_) => (Status::Malformed, 0, none, Reply::Empty),
             },
             Op::KeyTransparency => (Status::NotFound, 0, none, Reply::Empty),
-            Op::PushRegister => (self.push_register(h, env), 0, none, Reply::Empty),
+            Op::PushRegister => (self.push_register(h, env, now), 0, none, Reply::Empty),
             Op::Report => (self.report(h, env, now), 0, none, Reply::Empty),
             // Answered in `handle`.
             Op::Status => (Status::NotFound, 0, none, Reply::Empty),
@@ -1171,6 +1186,7 @@ impl Server {
                     }
                     t.del(db::INBOXES, &mb)?;
                     t.del(db::PUSH, &mb)?;
+                    t.del(db::PUSH_DUMMY, &mb)?;
                     for table in [db::ENVELOPES, db::HINTS, db::TOKENS, db::READ_CREDS] {
                         t.remove_where(table, &mb, |_, _| true)?;
                     }
@@ -1246,16 +1262,33 @@ impl Server {
 
     /// Set or clear the sealed push token of an inbox (its owner only).
     /// The server can't open it: only the push relay can.
-    fn push_register(&mut self, h: &RequestHeader, env: &[u8]) -> Status {
+    fn push_register(&mut self, h: &RequestHeader, env: &[u8], now: u64) -> Status {
         let Ok(sealed) = api::unframe(env) else {
             return Status::Malformed;
         };
+        if h.flags & FLAG_GROUP != 0 {
+            return self.push_register_group(h, sealed, now);
+        }
         if sealed.len() > MAX_PUSH_TOKEN {
             return Status::Malformed;
         }
         let owner = api::credential_hash(&h.token);
         let mb = h.mailbox;
+        let dummies = h.flags & api::FLAG_PUSH_DUMMIES != 0 && !sealed.is_empty();
+        let gap = self.dummy_gap();
+        if let Some(d) = self.dummies.as_mut() {
+            if dummies {
+                d.entry(mb).or_insert(now + gap);
+            } else {
+                d.remove(&mb);
+            }
+        }
         self.tx(|t| {
+            if dummies {
+                t.put(db::PUSH_DUMMY, &mb, &[])?;
+            } else {
+                t.del(db::PUSH_DUMMY, &mb)?;
+            }
             let Some(ib) = get_inbox(t, &mb)? else {
                 return Ok(Status::NotFound);
             };
@@ -1272,13 +1305,84 @@ impl Server {
         .unwrap_or_else(|s| s)
     }
 
-    /// A write reached `mailbox`: schedule its wake, at most one per sealed
-    /// token per window. The wake goes out in the *next* 60 s window at a
-    /// random 0–30 s offset, so its time says little about the write's.
-    fn schedule_wake(&mut self, mailbox: &[u8; 32], env: &[u8], now: u64) {
-        let Ok(Some(sealed)) = self.db.read(|r| r.get(db::PUSH, mailbox)) else {
-            return;
+    /// A member device asks for wakes on a group mailbox: `id (8) ‖ sealed
+    /// token` under its own id (an empty token removes it), authenticated
+    /// by the mailbox's write token, which creates the mailbox like a
+    /// first write.
+    fn push_register_group(&mut self, h: &RequestHeader, payload: &[u8], now: u64) -> Status {
+        let (Some(id), Some(sealed)) = (payload.get(..8), payload.get(8..)) else {
+            return Status::Malformed;
         };
+        if sealed.len() > MAX_PUSH_TOKEN {
+            return Status::Malformed;
+        }
+        let owner = api::credential_hash(&h.token);
+        let read = api::credential_hash(&api::read_credential(&h.token));
+        let mb = h.mailbox;
+        let key = cat(&mb, id);
+        self.tx(|t| {
+            match get_inbox(t, &mb)? {
+                None => put_inbox(
+                    t,
+                    &mb,
+                    &Inbox {
+                        owner,
+                        read,
+                        request: false,
+                        group: true,
+                        next_seq: 1,
+                        effort: 0,
+                        until: 0,
+                    },
+                )?,
+                Some(ib) if ib.group && ib.owner == owner => {}
+                Some(_) => return Ok(Status::Denied),
+            }
+            if sealed.is_empty() {
+                t.del(db::PUSH_GROUP, &key)?;
+            } else {
+                if !t.has(db::PUSH_GROUP, &key)?
+                    && t.count(db::PUSH_GROUP, &mb)? >= api::MAX_GROUP_PUSH
+                {
+                    return Ok(Status::Quota);
+                }
+                // With its day: a group's mailboxes are daily, and the
+                // registration goes with its day (`expire`).
+                t.put(
+                    db::PUSH_GROUP,
+                    &key,
+                    &cat(&api::day_of(now).to_be_bytes(), sealed),
+                )?;
+            }
+            Ok(Status::Ok)
+        })
+        .unwrap_or_else(|s| s)
+    }
+
+    /// A write reached `mailbox`: schedule a wake for each sealed token
+    /// registered there (the account's, or every member device's on a
+    /// group mailbox), at most one per sealed token per window. The wake
+    /// goes out in the *next* 60 s window at a random 0–30 s offset, so its
+    /// time says little about the write's.
+    fn schedule_wake(&mut self, mailbox: &[u8; 32], env: &[u8], now: u64) {
+        let sealed: Vec<Vec<u8>> = self
+            .db
+            .read(|r| {
+                let mut v: Vec<Vec<u8>> = r.get(db::PUSH, mailbox)?.into_iter().collect();
+                v.extend(
+                    r.scan(db::PUSH_GROUP, mailbox)?
+                        .into_iter()
+                        .filter_map(|(_, s)| s.get(4..).map(<[u8]>::to_vec)),
+                );
+                Ok(v)
+            })
+            .unwrap_or_default();
+        for s in sealed {
+            self.schedule_one(s, env, now);
+        }
+    }
+
+    fn schedule_one(&mut self, sealed: Vec<u8>, env: &[u8], now: u64) {
         let id = sha3_512(&sealed);
         let mut key = [0u8; 32];
         key.copy_from_slice(&id[..32]);
@@ -1317,9 +1421,53 @@ impl Server {
         );
     }
 
+    /// Dummy wakes now due (`FLAG_PUSH_DUMMIES`): scheduled like a real
+    /// write's, with a random capsule, then the next one drawn.
+    fn schedule_dummies(&mut self, now: u64) {
+        if self.dummies.is_none() {
+            let inboxes = self
+                .db
+                .read(|r| r.scan(db::PUSH_DUMMY, b""))
+                .unwrap_or_default();
+            let mut m = HashMap::new();
+            for (k, _) in inboxes {
+                if let Ok(mb) = <[u8; 32]>::try_from(k.as_slice()) {
+                    m.insert(mb, now + self.dummy_gap());
+                }
+            }
+            self.dummies = Some(m);
+        }
+        let mut due = Vec::new();
+        if let Some(d) = self.dummies.as_ref() {
+            due = d
+                .iter()
+                .filter(|(_, t)| **t <= now)
+                .map(|(mb, _)| *mb)
+                .collect();
+        }
+        for mb in due {
+            let gap = self.dummy_gap();
+            if let Some(d) = self.dummies.as_mut() {
+                d.insert(mb, now + gap);
+            }
+            if let Ok(Some(sealed)) = self.db.read(|r| r.get(db::PUSH, &mb)) {
+                self.schedule_one(sealed, &[], now);
+            }
+        }
+    }
+
+    /// An exponential gap with mean [`api::DUMMY_WAKE_MEAN_SECS`].
+    fn dummy_gap(&mut self) -> u64 {
+        let r = self.rng.array::<8>("server/dummy-wake").unwrap_or([1; 8]);
+        let u = (u64::from_be_bytes(r) >> 11) as f64 / (1u64 << 53) as f64;
+        let u = u.max(1e-12);
+        (-u.ln() * api::DUMMY_WAKE_MEAN_SECS as f64) as u64
+    }
+
     /// Wakes due for the push relay, each `sealed token ‖ capsule`
     /// (2,976 B), returned once.
     pub fn due_wakes(&mut self, now: u64) -> Vec<Vec<u8>> {
+        self.schedule_dummies(now);
         let mut out = Vec::new();
         for w in self.wakes.values_mut() {
             if !w.sent && w.release <= now {

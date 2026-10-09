@@ -38,6 +38,29 @@ fn preview_of(content: &Content) -> Option<String> {
     })
 }
 
+/// What a group unit's capsule shows, for a member's notification (`None`
+/// for a state update, a vote, a reaction…).
+pub(crate) fn group_preview(content: &[u8], flags: u8) -> Option<String> {
+    use enclave_proto::group::{FLAG_RICH, FLAG_STATE_UPDATE};
+    if flags & FLAG_STATE_UPDATE != 0 {
+        return None;
+    }
+    if flags & FLAG_RICH != 0 {
+        return match super::polls::Rich::decode(content).ok()? {
+            super::polls::Rich::Poll { question, .. } => Some(format!("Poll: {question}")),
+            super::polls::Rich::Attachment { caption, .. } if !caption.is_empty() => Some(caption),
+            super::polls::Rich::Attachment { .. } => Some("Sent a file".into()),
+            super::polls::Rich::Sticker { .. } => Some("Sent a sticker".into()),
+            _ => None,
+        };
+    }
+    // A text: its id, then the text.
+    content
+        .get(16..)
+        .and_then(|t| std::str::from_utf8(t).ok())
+        .map(str::to_string)
+}
+
 impl Client {
     /// Whether contacts fill our notification capsules with previews.
     pub fn previews(&self) -> bool {
@@ -190,7 +213,7 @@ impl Client {
     /// chain, with today's and yesterday's keys.
     pub fn notify_table(&self, now: u64) -> KeyTable {
         let d = today(now);
-        let entries = self
+        let mut entries: Vec<_> = self
             .store
             .scan(NS_MINE)
             .unwrap_or_default()
@@ -202,6 +225,14 @@ impl Client {
                 Some((label, chain.key_for(d)?, chain.key_for(d.wrapping_sub(1))))
             })
             .collect();
+        // Groups: every member seals under the group's key for the day.
+        if self.previews() {
+            for e in self.groups.values().filter(|e| !e.left) {
+                if let Ok((today, yesterday)) = e.group.notify_keys(d) {
+                    entries.push((e.group.state.name.clone(), today, Some(yesterday)));
+                }
+            }
+        }
         KeyTable { day: d, entries }
     }
 }
