@@ -14,6 +14,13 @@ pub const MAX_TOKENS: usize = 32;
 /// Maximum text in one message (bytes of UTF-8). Longer text is refused
 /// until continuation units land.
 pub const MAX_TEXT: usize = 4096;
+/// Longest text of a 1:1 message, which goes in continuation units when it
+/// doesn't fit one envelope (`client/parts.rs`).
+pub const MAX_LONG_TEXT: usize = 60_000;
+/// Largest content split into continuation units.
+pub const MAX_SPLIT_CONTENT: usize = 65_536;
+/// Bytes of encoded content one continuation unit carries.
+pub const MAX_PART: usize = 8_192;
 /// Largest encoded card accepted.
 pub const MAX_CARD: usize = 512;
 /// Most cards in one `GroupCards` message.
@@ -159,6 +166,18 @@ pub enum Content {
     CardAsk,
     /// The sender's current contact card (encoded), answering a `CardAsk`.
     Card(Vec<u8>),
+    /// One continuation unit of content too large for one envelope
+    /// (`client/parts.rs`).
+    Part {
+        /// The same random id for every part of one content.
+        id: MsgId,
+        /// This part's place.
+        index: u8,
+        /// How many parts.
+        total: u8,
+        /// Its slice of the encoded content.
+        data: Vec<u8>,
+    },
     /// The sender started (`on`) or stopped typing in this conversation.
     /// Sent only in cover slots, so it may never arrive (`docs/16-features.md`).
     Typing {
@@ -285,6 +304,7 @@ const K_DELIVERED: u8 = 27;
 const K_OWN_SYNC: u8 = 28;
 const K_CARD_ASK: u8 = 29;
 const K_CARD: u8 = 30;
+const K_PART: u8 = 31;
 /// Largest encoded location.
 const MAX_LOCATION: usize = 512;
 /// Longest recovery share (33 words of at most 8 letters).
@@ -357,7 +377,7 @@ impl Content {
                 id,
                 expires,
             } => {
-                if tokens.len() > MAX_TOKENS || text.len() > MAX_TEXT || *expires > MAX_TIMER {
+                if tokens.len() > MAX_TOKENS || text.len() > MAX_LONG_TEXT || *expires > MAX_TIMER {
                     return too_large;
                 }
                 w.u8(K_TEXT);
@@ -490,6 +510,17 @@ impl Content {
             Content::CardAsk => {
                 w.u8(K_CARD_ASK);
             }
+            Content::Part {
+                id,
+                index,
+                total,
+                data,
+            } => {
+                if data.len() > MAX_PART {
+                    return too_large;
+                }
+                w.u8(K_PART).fixed(id).u8(*index).u8(*total).bytes(data);
+            }
             Content::Card(card) => {
                 if card.len() > MAX_CARD {
                     return too_large;
@@ -559,7 +590,7 @@ impl Content {
                     .fixed(vault_locator);
             }
             Content::SelfCopy { to, content } => {
-                if content.len() > MAX_SELF_COPY || content.first() == Some(&K_SELF_COPY) {
+                if content.len() > MAX_SPLIT_CONTENT || content.first() == Some(&K_SELF_COPY) {
                     return too_large;
                 }
                 w.u8(K_SELF_COPY).fixed(to).bytes(content);
@@ -588,7 +619,7 @@ impl Content {
             },
             K_TEXT => Content::Text {
                 tokens: get_tokens(&mut r)?,
-                text: get_str(&mut r, MAX_TEXT)?,
+                text: get_str(&mut r, MAX_LONG_TEXT)?,
                 id: r.array()?,
                 expires: timer(r.u32()?)?,
             },
@@ -670,6 +701,12 @@ impl Content {
             },
             K_OWN_SYNC => Content::OwnSync(r.bytes(MAX_SELF_COPY)?.to_vec()),
             K_CARD_ASK => Content::CardAsk,
+            K_PART => Content::Part {
+                id: r.array()?,
+                index: r.u8()?,
+                total: r.u8()?,
+                data: r.bytes(MAX_PART)?.to_vec(),
+            },
             K_CARD => Content::Card(r.bytes(MAX_CARD)?.to_vec()),
             K_TYPING => Content::Typing {
                 on: match r.u8()? {
@@ -697,7 +734,7 @@ impl Content {
             },
             K_SELF_COPY => {
                 let to = r.array()?;
-                let content = r.bytes(MAX_SELF_COPY)?.to_vec();
+                let content = r.bytes(MAX_SPLIT_CONTENT)?.to_vec();
                 if content.first() == Some(&K_SELF_COPY) {
                     return Err(ProtoError::Decode);
                 }
@@ -778,6 +815,12 @@ mod tests {
             Content::OwnSync(vec![9; 4000]),
             Content::CardAsk,
             Content::Card(vec![4; 300]),
+            Content::Part {
+                id: [5; 16],
+                index: 1,
+                total: 3,
+                data: vec![6; 8192],
+            },
             Content::ServerMoved {
                 server: [1; 16],
                 inbox: [2; 32],
@@ -814,7 +857,7 @@ mod tests {
             longer.push(0);
             assert!(Content::decode(&longer).is_err());
         }
-        let long = "x".repeat(MAX_TEXT + 1);
+        let long = "x".repeat(MAX_LONG_TEXT + 1);
         assert!(
             Content::Text {
                 tokens: vec![],

@@ -332,6 +332,9 @@ pub struct Opened {
     pub body_key: Key,
     /// Session state to commit if the body authenticates.
     pub next: Box<Session>,
+    /// When the message's key was first seen skipped (it arrived after
+    /// later ones; 0 if not stamped yet), or `None` if it came in order.
+    pub skipped_at: Option<u64>,
 }
 
 impl Session {
@@ -652,9 +655,11 @@ impl Session {
         s.tag_cache = None;
         let nonce_material = [&tag[..], &body_hash[..]].concat();
 
+        let mut skipped_at = None;
         let (header, mk_dr) = match hit {
             TagHit::Skipped => {
                 let sk = s.skipped.remove(tag).ok_or(ProtoError::NoSession)?;
+                skipped_at = Some(sk.at);
                 let pt = seal::open_compact(
                     &SealKey::from_bytes(sk.hk),
                     &nonce_material,
@@ -731,6 +736,7 @@ impl Session {
         Ok(Opened {
             body_key,
             next: Box::new(s),
+            skipped_at,
         })
     }
 
@@ -990,6 +996,13 @@ impl Session {
     /// Number of skipped message keys held.
     pub fn skipped_len(&self) -> usize {
         self.skipped.len()
+    }
+
+    /// When the oldest skipped key still held was first seen (stamped by
+    /// [`Session::expire_skipped`]): a message the peer sent before later
+    /// ones that has not arrived since (`05-ratchet.md` §11).
+    pub fn oldest_skipped(&self) -> Option<u64> {
+        self.skipped.values().map(|s| s.at).filter(|a| *a > 0).min()
     }
 
     /// Serialize the full session state for sealed local storage. The output

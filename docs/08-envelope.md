@@ -208,7 +208,11 @@ body     = seal(body_key, hdr16, framed)                      # 9,168 + 64 = 9,2
 
 `pad_content` rejects content over the capacity; `unpad_content` rejects a length field larger than the region. The body key reaches each recipient device wrapped in its device slot (`05-ratchet.md` §5).
 
-Content is opaque bytes at this layer. Not implemented yet: the Protobuf content schema, continuation units for content over one envelope, receipts and KT gossip riding in the content, and On-the-record signatures (which would take 4,741 B of the 9,160, leaving 4,419).
+Content is opaque bytes at this layer (its encoding is `enclave-core`'s, §5.6). Receipts and key-transparency gossip ride in the content region's free space (`outbox::wrap_receipts`, `gossip::wrap`). Not implemented yet: the Protobuf content schema and On-the-record signatures (which would take 4,741 B of the 9,160, leaving 4,419).
+
+### 5.6 Continuation units
+
+**As implemented** (`enclave-core/src/client/parts.rs`): content whose encoding doesn't fit one direct envelope, with 360 B left for receipts and gossip, travels as up to 8 `Part` contents (content kind 31): `id (16) ‖ u8 index ‖ u8 total ‖ bytes(slice)`, each slice at most 8,192 B of the encoded content, each part an ordinary envelope with its own write token, so the largest content is 64 KiB. The receiver keeps parts in its sealed store until all have arrived, then handles the whole as if it had come in one envelope; parts of content that never completes are dropped after 7 days. Self-copies split the same way. A 1:1 text may be up to 60,000 B (`MAX_LONG_TEXT`); group texts stay within one unit (4,096 B). In Maximum privacy every part waits for all three KEMs, like the content it carries. Test `long_text_in_parts`.
 
 ## 6. Request envelope: 14,336 B
 

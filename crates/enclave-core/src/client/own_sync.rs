@@ -63,6 +63,7 @@ const T_BLOCKED: u8 = 5;
 const T_POSITION: u8 = 6;
 const T_GROUP: u8 = 7;
 const T_HISTORY_ASK: u8 = 8;
+const T_GROUP_SENT: u8 = 9;
 
 /// One thing our other devices should know.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,6 +106,12 @@ pub(crate) enum SyncItem {
     },
     /// The sending device asks for message history now (`history.rs`).
     HistoryAsk,
+    /// Ids of group messages the sending device sent: it vouches for them
+    /// (`07-groups.md` §3, `group_devices.rs`).
+    GroupSent {
+        group: [u8; 32],
+        ids: Vec<[u8; 8]>,
+    },
 }
 
 impl SyncItem {
@@ -155,6 +162,12 @@ impl SyncItem {
             }
             SyncItem::HistoryAsk => {
                 w.u8(T_HISTORY_ASK);
+            }
+            SyncItem::GroupSent { group, ids } => {
+                w.u8(T_GROUP_SENT).fixed(group).u8(ids.len() as u8);
+                for id in ids {
+                    w.fixed(id);
+                }
             }
         }
         w.finish()
@@ -211,6 +224,15 @@ impl SyncItem {
                 cursor: r.u64().ok()?,
             },
             T_HISTORY_ASK => SyncItem::HistoryAsk,
+            T_GROUP_SENT => {
+                let group = r.array().ok()?;
+                let n = usize::from(r.u8().ok()?);
+                let ids = (0..n)
+                    .map(|_| r.array())
+                    .collect::<enclave_proto::Result<_>>()
+                    .ok()?;
+                SyncItem::GroupSent { group, ids }
+            }
             T_GROUP => SyncItem::Group {
                 device: r.array().ok()?,
                 attachment: r.bytes(crate::content::MAX_ATTACHMENT_REF).ok()?.to_vec(),
@@ -234,6 +256,7 @@ impl SyncItem {
                 [&b"g"[..], device, &attachment[..attachment.len().min(32)]].concat()
             }
             SyncItem::HistoryAsk => b"h".to_vec(),
+            SyncItem::GroupSent { group, .. } => [&b"m"[..], group].concat(),
         }
     }
 }
@@ -321,6 +344,14 @@ impl Client {
             &mut self.rng,
         )?;
         Ok(())
+    }
+
+    /// The item queued under `probe`'s key, if any.
+    pub(crate) fn queued_own(&self, probe: &SyncItem) -> Result<Option<SyncItem>> {
+        Ok(self
+            .store
+            .get(NS_OWN_QUEUE, &probe.queue_key())?
+            .and_then(|b| SyncItem::decode(&b)))
     }
 
     /// Queue `ids` of `to` as read for our other devices, with what is
@@ -517,6 +548,10 @@ impl Client {
                         self.on_history_ask(dev)?;
                         events.push(Event::Synced);
                     }
+                }
+                SyncItem::GroupSent { group, ids } => {
+                    let now = self.now();
+                    events.append(&mut self.on_group_sent(&group, &ids, now)?);
                 }
                 SyncItem::Position { week, cursor } => {
                     let mut d = self.own_device(dev);
@@ -897,6 +932,10 @@ mod tests {
                 attachment: vec![1; 200],
             },
             SyncItem::HistoryAsk,
+            SyncItem::GroupSent {
+                group: [3; 32],
+                ids: vec![[1; 8], [2; 8]],
+            },
         ];
         assert_eq!(decode_items(&encode_items(&items)), items);
         let d = OwnDevice {

@@ -580,3 +580,46 @@ fn skipped_keys_expire_after_seven_days() {
         "expired key is gone"
     );
 }
+
+/// A message delivered twice opens once (RT-24), whether it came in order
+/// or after later ones; a skipped key says when it was first missed, and
+/// is gone once used.
+#[test]
+fn rt24_replayed_message_rejected() {
+    let mut rng = HedgedRng::new().unwrap();
+    let alice = Party::new(1, &mut rng);
+    let mut bob = Party::new(1, &mut rng);
+    let (mut a, mut b) = handshake(
+        &alice,
+        &mut bob,
+        0,
+        None,
+        Mode::OffTheRecord,
+        None,
+        &mut rng,
+    );
+    let e = send(&mut b, b"reply", &mut rng);
+    recv(&mut a, &e, None, &mut rng).unwrap();
+    let m0 = send(&mut a, b"zero", &mut rng);
+    let m1 = send(&mut a, b"one", &mut rng);
+    // In order: once only.
+    recv(&mut b, &m0, None, &mut rng).unwrap();
+    assert!(
+        recv(&mut b, &m0, None, &mut rng).is_err(),
+        "replay in order"
+    );
+    // Out of order: m2 first skips m1's key, stamped by the expiry pass.
+    let m2 = send(&mut a, b"two", &mut rng);
+    recv(&mut b, &m2, None, &mut rng).unwrap();
+    assert_eq!(b.oldest_skipped(), None, "not stamped yet");
+    b.expire_skipped(1_000, 7 * 86_400);
+    assert_eq!(b.oldest_skipped(), Some(1_000));
+    let opened = open_direct(&mut [&mut b], &m1, None, &mut rng).unwrap();
+    assert_eq!(opened.content, b"one");
+    assert_eq!(opened.skipped_at, Some(1_000), "arrived late");
+    assert_eq!(b.oldest_skipped(), None, "nothing missing any more");
+    assert!(
+        recv(&mut b, &m1, None, &mut rng).is_err(),
+        "replay out of order"
+    );
+}

@@ -275,6 +275,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_recovery_saved(s.recovery_saved);
     ui.set_privacy(s.privacy);
     ui.set_finishing(s.finishing);
+    ui.set_gap(s.gap);
     ui.set_add_error(s.add_error.clone().into());
     ui.set_my_username(s.my_username.clone().into());
     ui.set_usernames(s.usernames);

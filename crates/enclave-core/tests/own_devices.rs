@@ -220,10 +220,20 @@ async fn groups_on_every_device() {
         );
     }
 
-    // The second device writes: the member reads it, and the first device
-    // shows it as ours.
+    // The second device writes: the member reads it. The first device holds
+    // it (no MAC vouches for our own account) until the second one, at its
+    // next sync, confirms it sent it; then it shows as ours.
     ada2.send_group_text(&gid, "from my phone").await.unwrap();
     ben.sync().await.unwrap();
+    ada.sync().await.unwrap();
+    assert!(
+        !ada.group_messages(&gid)
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "from my phone"),
+        "not shown on the mailbox's word alone"
+    );
+    ada2.sync().await.unwrap();
     ada.sync().await.unwrap();
     assert!(
         ben.group_messages(&gid)
@@ -237,5 +247,42 @@ async fn groups_on_every_device() {
             .iter()
             .any(|m| m.text == "from my phone" && m.from.is_none()),
         "our own, from another device"
+    );
+}
+
+/// A text too long for one envelope goes in continuation units, to the
+/// contact and as the self-copy to our other device, and arrives whole.
+#[tokio::test(flavor = "multi_thread")]
+async fn long_text_in_parts() {
+    let net = network();
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut ben, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Ben")
+        .await
+        .unwrap();
+    connect(&mut ada, &mut ben).await;
+    let mut ada2 = link(&net, &mut ada).await;
+    ben.sync().await.unwrap();
+    ada.sync().await.unwrap();
+    ada2.sync().await.unwrap();
+    let long: String = "Lorem ipsum dolor sit amet. ".repeat(1_000);
+    assert!(long.len() > 20_000);
+    let before = stored(&net, S2);
+    ada.send_text(&ben.root(), &long).await.unwrap();
+    assert!(stored(&net, S2) - before >= 3, "several units");
+    let got = ben.sync().await.unwrap();
+    assert!(
+        got.iter()
+            .any(|e| matches!(e, Event::Message { message, .. } if message.text == long)),
+        "arrives whole"
+    );
+    ada2.sync().await.unwrap();
+    assert!(
+        ada2.messages(&ben.root())
+            .unwrap()
+            .iter()
+            .any(|m| m.outgoing && m.text == long),
+        "the self-copy too"
     );
 }

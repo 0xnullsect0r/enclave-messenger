@@ -254,15 +254,25 @@ impl Client {
                     None => None,
                 }
             };
-            if let Ok(mut e) = self.handle_direct_from(&envelope, from_root, now) {
-                // A contact who accepted us here: our other devices learn of
-                // them too.
-                for ev in &e {
-                    if let Event::Accepted { root } = ev {
-                        self.sync_contact_to_own(root, true)?;
+            match self.handle_direct_from(&envelope, from_root, now) {
+                Ok(mut e) => {
+                    // A contact who accepted us here: our other devices learn
+                    // of them too.
+                    for ev in &e {
+                        if let Event::Accepted { root } = ev {
+                            self.sync_contact_to_own(root, true)?;
+                        }
                     }
+                    events.append(&mut e);
                 }
-                events.append(&mut e);
+                // No session opens it yet: held and tried again
+                // (`gaps.rs`). Our own cover self-copies never open.
+                Err(CoreError::Proto(enclave_proto::ProtoError::NoSession))
+                    if from_root != Some(self.account.root_public.0) =>
+                {
+                    self.hold_unit(&envelope, now)?;
+                }
+                Err(_) => {}
             }
             p.set_cursor(week, seq);
             save(self, p)?;

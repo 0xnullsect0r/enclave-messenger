@@ -151,6 +151,7 @@ fn fixture() -> Snapshot {
         recovery_saved: false,
         privacy: 0,
         finishing: false,
+        gap: false,
         add_error: String::new(),
         busy: false,
         pick: vec![

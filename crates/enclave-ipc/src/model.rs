@@ -177,6 +177,9 @@ pub struct Snapshot {
     /// conversation until all three KEMs protect it ("Extra protection:
     /// finishing…").
     pub finishing: bool,
+    /// A message in the current conversation may not have arrived: later
+    /// ones did, over a minute ago (RT-24).
+    pub gap: bool,
     /// Error for the add sheet.
     pub add_error: String,
     /// A request is in flight.
@@ -613,6 +616,7 @@ impl Snapshot {
             .bool(self.recovery_saved)
             .u8(u8::from(self.privacy == 1))
             .bool(self.finishing)
+            .bool(self.gap)
             .str(&self.add_error)
             .bool(self.busy);
         w.len(self.pick.len());
@@ -760,6 +764,7 @@ impl Snapshot {
             _ => return Err(IpcError::Malformed),
         };
         let finishing = r.bool()?;
+        let gap = r.bool()?;
         let add_error = r.str()?;
         let busy = r.bool()?;
         let n = r.len()?;
@@ -799,6 +804,7 @@ impl Snapshot {
             recovery_saved,
             privacy,
             finishing,
+            gap,
             add_error,
             busy,
             pick,

@@ -481,6 +481,9 @@ fn display(m: &enclave_core::Message, now: u64) -> Msg {
         0
     };
     let mut time = clock(m.at);
+    if m.late {
+        time.push_str(" · delivered late");
+    }
     if m.expires_secs > 0 {
         time.push_str(" · disappears");
     }
@@ -2830,6 +2833,7 @@ impl Engine {
             if self.selected == Some(ct.root) {
                 s.current = Some(row.clone());
                 s.finishing = c.protection_finishing(&ct.root);
+                s.gap = c.gap(&ct.root);
                 s.timer = ct.timer;
                 let pinned = c.pinned_ids(&Place::Contact(ct.root));
                 let shared = c.shared_contacts(&ct.root);

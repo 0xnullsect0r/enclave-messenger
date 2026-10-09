@@ -341,7 +341,14 @@ and a signature would occupy 4,741 B of the 9,160 B content region. Mode switche
 
 ## 11. Gaps and control messages (not yet implemented)
 
-Gap notices ("A message from Sam may not have arrived."), "Delivered late" marks, held units, and the v1 control messages (`SessionSetup`, `TokenRefill`, `DeviceListChanged`, `ForcePQStep`, `ModeChange`, `Reroot`, `Receipt`, `Typing` (since built as content kind 23, `16-features.md` §7), `KTGossip`, `Moved` (since built as content kinds 25 and 26, `12-servers.md` §4.4), `Closed`) are specified for M5–M6 and are not in the code. Content is opaque bytes to `enclave-proto`.
+**Gaps, as implemented** (`enclave-core/src/client/gaps.rs`, RT-24):
+
+- `Session::oldest_skipped` says when the oldest key still held for a message that was skipped (later ones arrived first) was first seen; `expire_skipped` stamps them on every sync. When it is more than 60 s old (and less than a day), the conversation shows "A message may not have arrived" (`Client::gap`, `Event::Gap` once per gap). It goes when the message arrives.
+- `Opened::skipped_at` says when a message's key was first seen skipped. A message that arrives more than 60 s after that is marked "delivered late" (`Message::late`).
+- An envelope from the account inbox that no session opens yet is held (at most 64, for 7 days) and tried again after each sync's inboxes; our own cover self-copies never are.
+- Tests: `rt24_gap_notice_after_60s` (a held-back message: the notice after a minute, then "delivered late"), `rt24_replayed_message_rejected` (in order and out of order).
+
+The v1 control messages (`SessionSetup`, `TokenRefill`, `DeviceListChanged`, `ForcePQStep`, `ModeChange`, `Reroot`, `Receipt`, `Typing` (since built as content kind 23, `16-features.md` §7), `KTGossip`, `Moved` (since built as content kinds 25 and 26, `12-servers.md` §4.4), `Closed`) are specified for M5–M6 and are not in the code. Content is opaque bytes to `enclave-proto`.
 
 ## 12. Errors
 

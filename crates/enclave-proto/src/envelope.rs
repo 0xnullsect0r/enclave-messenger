@@ -172,6 +172,9 @@ pub struct OpenedEnvelope {
     pub session_index: usize,
     /// Decrypted content.
     pub content: Vec<u8>,
+    /// When its key was first seen skipped, if it arrived after later
+    /// messages ([`crate::ratchet::Opened::skipped_at`]).
+    pub skipped_at: Option<u64>,
 }
 
 /// Open a direct envelope with the first of `sessions` that owns one of its
@@ -208,10 +211,12 @@ pub fn open_direct(
                 rng,
             )?;
             let content = open_body(&opened.body_key, hdr, body)?;
+            let skipped_at = opened.skipped_at;
             s.commit(opened.next);
             return Ok(OpenedEnvelope {
                 session_index: si,
                 content,
+                skipped_at,
             });
         }
     }

@@ -22,6 +22,15 @@ use enclave_proto::group::Group;
 use std::collections::BTreeSet;
 use zeroize::Zeroizing;
 
+/// Ids of group messages our other devices sent, as they vouched for them:
+/// `group id ‖ message id`.
+const NS_OWN_OK: &str = "group-own-ok";
+/// Group messages from our other devices waiting for that: `group id ‖
+/// message id` → `member ‖ device ‖ flags ‖ state hash ‖ content`.
+const NS_OWN_HELD: &str = "group-own-held";
+/// Confirmed ids kept per group.
+const OWN_OK_KEPT: usize = 2_000;
+
 /// Groups handed to one of our devices: `group id ‖ device id`.
 const NS_HANDED: &str = "group-handed";
 /// Group files handed to this device, still to fetch: attachment → sender
@@ -32,7 +41,103 @@ fn handed_key(gid: &[u8; 32], dev: &[u8; 16]) -> Vec<u8> {
     [&gid[..], &dev[..]].concat()
 }
 
+fn own_key(gid: &[u8; 32], id: &[u8; 8]) -> Vec<u8> {
+    [&gid[..], &id[..]].concat()
+}
+
 impl Client {
+    /// Vouch to our other devices for a group message this one sent.
+    pub(crate) fn queue_group_sent(&mut self, gid: &[u8; 32], id: [u8; 8]) -> Result<()> {
+        let probe = SyncItem::GroupSent {
+            group: *gid,
+            ids: Vec::new(),
+        };
+        let mut ids = match self.queued_own(&probe)? {
+            Some(SyncItem::GroupSent { ids, .. }) => ids,
+            _ => Vec::new(),
+        };
+        ids.push(id);
+        let drop = ids.len().saturating_sub(200);
+        ids.drain(..drop);
+        self.queue_own(SyncItem::GroupSent { group: *gid, ids })
+    }
+
+    /// Whether another device of ours vouched for `id` in `gid`.
+    pub(crate) fn own_group_confirmed(&self, gid: &[u8; 32], id: &[u8; 8]) -> bool {
+        matches!(self.store.get(NS_OWN_OK, &own_key(gid, id)), Ok(Some(_)))
+    }
+
+    /// Keep an unconfirmed message from another device of ours.
+    pub(crate) fn hold_own_group_message(
+        &mut self,
+        gid: &[u8; 32],
+        msg: &enclave_proto::group::GroupMessage,
+    ) -> Result<()> {
+        let v = [
+            &[msg.member, msg.device, msg.flags][..],
+            &msg.state_hash,
+            &msg.content,
+        ]
+        .concat();
+        self.store
+            .put(NS_OWN_HELD, &own_key(gid, &msg.id), &v, &mut self.rng)?;
+        Ok(())
+    }
+
+    /// Another device of ours vouched for messages it sent in `gid`: show
+    /// the ones held, and remember the rest for when they arrive.
+    pub(crate) fn on_group_sent(
+        &mut self,
+        gid: &[u8; 32],
+        ids: &[[u8; 8]],
+        now: u64,
+    ) -> Result<Vec<Event>> {
+        let mut events = Vec::new();
+        for id in ids {
+            let key = own_key(gid, id);
+            self.store
+                .put(NS_OWN_OK, &key, &now.to_be_bytes(), &mut self.rng)?;
+            let Some(v) = self.store.get(NS_OWN_HELD, &key)? else {
+                continue;
+            };
+            self.store.delete(NS_OWN_HELD, &key)?;
+            if v.len() < 35 || !self.groups.contains_key(gid) {
+                continue;
+            }
+            let msg = enclave_proto::group::GroupMessage {
+                member: v[0],
+                device: v[1],
+                id: *id,
+                state_hash: v[3..35].try_into().map_err(|_| CoreError::NotFound)?,
+                frontier: Vec::new(),
+                flags: v[2],
+                own_account: true,
+                content: v[35..].to_vec(),
+            };
+            if let Some(e) = self.on_group_message(gid, msg, now)? {
+                events.push(e);
+            }
+        }
+        // Keep the newest confirmations per group.
+        let mut ok: Vec<(Vec<u8>, u64)> = self
+            .store
+            .scan(NS_OWN_OK)?
+            .into_iter()
+            .filter(|(k, _)| k.starts_with(gid))
+            .map(|(k, v)| {
+                let at = v.as_slice().try_into().map_or(0, u64::from_be_bytes);
+                (k, at)
+            })
+            .collect();
+        if ok.len() > OWN_OK_KEPT {
+            ok.sort_by_key(|(_, at)| *at);
+            for (k, _) in &ok[..ok.len() - OWN_OK_KEPT] {
+                self.store.delete(NS_OWN_OK, k)?;
+            }
+        }
+        Ok(events)
+    }
+
     /// This device's index in our manifest (how group members address it).
     pub(crate) fn my_device_index(&self) -> u8 {
         self.manifest

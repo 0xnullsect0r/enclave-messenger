@@ -66,6 +66,7 @@ fn snapshot() -> Snapshot {
         recovery_saved: true,
         privacy: 1,
         finishing: true,
+        gap: true,
         add_error: String::new(),
         busy: true,
         pick: vec![Pick {

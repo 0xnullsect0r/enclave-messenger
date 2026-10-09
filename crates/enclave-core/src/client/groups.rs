@@ -688,6 +688,11 @@ impl Client {
         };
         // The chain advanced: persist before the unit leaves.
         self.save_group(gid)?;
+        // Our other devices show it once we vouch for its id.
+        if let Some(e) = self.groups.get(gid) {
+            let id = e.group.frontier()[e.group.me as usize];
+            self.queue_group_sent(gid, id)?;
+        }
         let h = RequestHeader {
             op: Op::Write,
             flags: FLAG_GROUP,
@@ -1077,7 +1082,24 @@ impl Client {
                 Err(err) => return Err(err.into()),
             }
         };
-        // From another device of ours: shown as our own (`store_group_message`).
+        // From another device of ours: no MAC vouches for it (any member
+        // holds our chain key), so it waits for own-device sync to confirm
+        // its id (`07-groups.md` §3), then shows as our own.
+        if msg.own_account && !self.own_group_confirmed(gid, &msg.id) {
+            self.hold_own_group_message(gid, &msg)?;
+            return Ok(None);
+        }
+        self.on_group_message(gid, msg, now)
+    }
+
+    /// A group message that opened (and, from another device of ours, was
+    /// confirmed by it).
+    pub(crate) fn on_group_message(
+        &mut self,
+        gid: &[u8; 32],
+        msg: enclave_proto::group::GroupMessage,
+        now: u64,
+    ) -> Result<Option<Event>> {
         let (sender_root, prev_state) = {
             let e = self.groups.get(gid).ok_or(CoreError::NotFound)?;
             let root = e

@@ -100,6 +100,7 @@ mod backup;
 mod blocks;
 pub mod clock;
 mod devices;
+mod gaps;
 mod gossip;
 mod group_devices;
 mod group_edits;
@@ -121,6 +122,7 @@ mod moves;
 mod notes;
 pub mod outbox;
 mod own_sync;
+mod parts;
 mod pins;
 mod polls;
 mod prefs;
@@ -308,6 +310,12 @@ pub enum Event {
         /// The conversation.
         place: Place,
     },
+    /// A message from `root` may not have arrived: later ones did, over a
+    /// minute ago ([`Client::gap`]).
+    Gap {
+        /// The contact.
+        root: [u8; 64],
+    },
     /// Another device of ours changed something here: a conversation read,
     /// archived, pinned or muted, a setting, a contact added or blocked
     /// (`own_sync.rs`).
@@ -377,6 +385,8 @@ pub struct Client {
     /// When each session last carried an envelope's PQ slot (a counter),
     /// for the carrier choice (`docs/06-multidevice.md` §3).
     pq_carried: HashMap<SessionKey, u64>,
+    /// The envelope being handled arrived late (`Message::late`).
+    late_unit: bool,
     /// When each group was last read and how busy it has been, for the
     /// group rounds of [`Client::sync_round`].
     group_polls: HashMap<[u8; 32], GroupPoll>,
@@ -396,6 +406,11 @@ struct GroupPoll {
     /// What its recent reads brought, halved at each read.
     activity: u32,
 }
+
+/// A message missing for this long, while later ones arrived, is pointed
+/// out ("may not have arrived"), and one that then arrives is marked late
+/// (`docs/05-ratchet.md` §11, RT-24).
+pub const GAP_SECS: u64 = 60;
 
 /// A group not read for this long goes first in the next group round.
 pub const GROUP_FLOOR_SECS: u64 = 60;
@@ -620,6 +635,7 @@ impl Client {
             inbox_rounds: 0,
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
+            late_unit: false,
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -702,6 +718,7 @@ impl Client {
             inbox_rounds: 0,
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
+            late_unit: false,
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -1118,7 +1135,7 @@ impl Client {
 
     /// Send a text message.
     pub async fn send_text(&mut self, root: &[u8; 64], text: &str) -> Result<Message> {
-        if text.len() > MAX_TEXT {
+        if text.len() > crate::content::MAX_LONG_TEXT {
             return Err(CoreError::TooLong);
         }
         let c = self.contacts.get(root).ok_or(CoreError::NotFound)?;
@@ -1316,6 +1333,8 @@ impl Client {
                 .await;
             events.append(&mut read?);
         }
+        // Envelopes held for want of a session, which this sync may have brought.
+        events.append(&mut self.retry_held(now)?);
         events.append(&mut self.process_migrations(now).await?);
         events.append(&mut self.home_upkeep(now).await?);
         // What arrived is acknowledged before the next round.
@@ -1393,6 +1412,9 @@ impl Client {
             }
         }
 
+        // Parts of content that never completed.
+        self.expire_parts(now)?;
+
         // Forget message keys for messages that never arrived.
         let mut expired = Vec::new();
         for (k, s) in self.sessions.iter_mut() {
@@ -1403,6 +1425,8 @@ impl Client {
         for ((root, dev), s) in expired {
             self.save_session(&root, &dev, &s)?;
         }
+        // Messages that seem missing (keys skipped, now stamped).
+        events.append(&mut self.check_gaps()?);
 
         self.purge_expired(now)?;
         self.expire_invites(now).await?;
@@ -1718,7 +1742,7 @@ impl Client {
         from: Option<[u8; 64]>,
         now: u64,
     ) -> Result<Vec<Event>> {
-        let (key, content) = {
+        let (key, content, skipped_at) = {
             let mut all: Vec<(SessionKey, &mut Session)> =
                 self.sessions.iter_mut().map(|(k, s)| (*k, s)).collect();
             if let Some(r) = from {
@@ -1727,13 +1751,32 @@ impl Client {
             let (keys, mut refs): (Vec<SessionKey>, Vec<&mut Session>) = all.into_iter().unzip();
             let opened =
                 envelope::open_direct(&mut refs, env, Some(&self.account.vault), &mut self.rng)?;
-            (keys[opened.session_index], opened.content)
+            (
+                keys[opened.session_index],
+                opened.content,
+                opened.skipped_at,
+            )
         };
         let (root, dev) = key;
         if let Some(s) = self.sessions.get(&key) {
             let s = s.clone();
             self.save_session(&root, &dev, &s)?;
         }
+        // Its key was skipped over a minute ago: messages sent after it
+        // came first ("Delivered late", RT-24).
+        self.late_unit = skipped_at.is_some_and(|at| at > 0 && now.saturating_sub(at) > GAP_SECS);
+        let r = self.handle_opened(root, dev, content, now);
+        self.late_unit = false;
+        r
+    }
+
+    fn handle_opened(
+        &mut self,
+        root: [u8; 64],
+        dev: [u8; 16],
+        content: Vec<u8>,
+        now: u64,
+    ) -> Result<Vec<Event>> {
         if self.is_blocked(&root) {
             return Ok(Vec::new()); // dropped without a trace
         }
@@ -1749,6 +1792,20 @@ impl Client {
             if root != self.account.root_public.0 {
                 self.on_gossip(&root, &gossip)?;
             }
+            // A continuation unit: kept until its content is whole
+            // (`parts.rs`), which is then handled as if it came at once.
+            let content = match Content::decode(&content) {
+                Ok(Content::Part {
+                    id,
+                    index,
+                    total,
+                    data,
+                }) => match self.take_part(&root, id, index, total, &data, now)? {
+                    Some(whole) => whole,
+                    None => return Ok(Vec::new()),
+                },
+                _ => content,
+            };
             if root == self.account.root_public.0 {
                 // From another device of ours: it's in use.
                 self.seen_own(&dev, now)?;
@@ -1922,8 +1979,27 @@ impl Client {
     }
 
     async fn send_content(&mut self, root: &[u8; 64], content: &Content, now: u64) -> Result<()> {
-        let (server, h, env) = self.seal_content(root, content, false)?;
-        self.rpc.write(&server, h, &env, now, &mut self.rng).await
+        // Too large for one envelope: continuation units (`parts.rs`).
+        let bytes = content.encode()?;
+        let id = self.rng.array("core/part-id")?;
+        let units = match parts::split(&bytes, self.unit_room(root), id) {
+            Some(p) => p,
+            None => vec![content.clone()],
+        };
+        for c in &units {
+            let (server, h, env) = self.seal_content(root, c, false)?;
+            self.rpc.write(&server, h, &env, now, &mut self.rng).await?;
+        }
+        Ok(())
+    }
+
+    /// Encoded content that fits one envelope to `root`, with room for
+    /// receipts and gossip.
+    fn unit_room(&self, _root: &[u8; 64]) -> usize {
+        enclave_wire::direct::BODY_LEN
+            - enclave_crypto::seal::OVERHEAD
+            - enclave_wire::CONTENT_FRAMING
+            - 360
     }
 
     /// Seal `content` for `root`'s devices, spending a write token. A

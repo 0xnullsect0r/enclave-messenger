@@ -56,6 +56,9 @@ pub struct Message {
     pub delivered: bool,
     /// No receipt after every re-send: "Not delivered yet" (outgoing only).
     pub stalled: bool,
+    /// Arrived more than a minute after messages they sent later: "Delivered
+    /// late" (incoming only; `05-ratchet.md` §11, RT-24).
+    pub late: bool,
     /// Ours: they read it. Theirs: we read it.
     pub read: bool,
     /// Unix time (local clock) when sent or received.
@@ -90,6 +93,7 @@ impl Message {
             sent: false,
             delivered: false,
             stalled: false,
+            late: false,
             read: false,
             at,
             text,
@@ -138,7 +142,7 @@ impl Message {
             Some(i) => w.u8(1).u8(i),
             None => w.u8(0),
         };
-        w.u8(u8::from(self.sent) | (u8::from(self.stalled) << 1));
+        w.u8(u8::from(self.sent) | (u8::from(self.stalled) << 1) | (u8::from(self.late) << 2));
         w.finish()
     }
 
@@ -187,11 +191,11 @@ impl Message {
             None
         };
         // Before receipts, "delivered" meant accepted by the server.
-        let (sent, stalled) = if version >= 5 {
+        let (sent, stalled, late) = if version >= 5 {
             let f = r.u8()?;
-            (f & 1 != 0, f & 2 != 0)
+            (f & 1 != 0, f & 2 != 0, f & 4 != 0)
         } else {
-            (delivered, false)
+            (delivered, false, false)
         };
         r.end()?;
         Ok(Self {
@@ -201,6 +205,7 @@ impl Message {
             sent,
             delivered,
             stalled,
+            late,
             read,
             at,
             text,
@@ -321,6 +326,7 @@ impl Client {
         let c = c.clone();
         self.save_contact(&c)?;
         let mut m = Message::new(seq, id, outgoing, now, text.to_string());
+        m.late = !outgoing && self.late_unit;
         m.expires_secs = expires_secs;
         if outgoing && expires_secs > 0 {
             m.expires_at = Some(now + u64::from(expires_secs));

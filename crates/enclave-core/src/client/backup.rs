@@ -216,6 +216,7 @@ impl Client {
             inbox_rounds: 0,
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
+            late_unit: false,
             group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,

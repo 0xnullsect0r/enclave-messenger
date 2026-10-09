@@ -460,6 +460,7 @@ impl LinkingDevice {
             inbox_rounds: 0,
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
+            late_unit: false,
             group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -813,6 +814,21 @@ impl Client {
     /// yet), a cover envelope goes instead: every message costs the same
     /// two writes whatever the number of devices (`06-multidevice.md` §4).
     pub(crate) async fn send_own(&mut self, copy: &[u8], now: u64) -> Result<()> {
+        // Too large for one envelope: continuation units (`parts.rs`).
+        let id = self.rng.array("core/part-id")?;
+        let room = super::parts::PART_LEN;
+        match super::parts::split(copy, room, id) {
+            Some(parts) => {
+                for p in parts {
+                    self.send_own_unit(&p.encode()?, now).await?;
+                }
+                Ok(())
+            }
+            None => self.send_own_unit(copy, now).await,
+        }
+    }
+
+    async fn send_own_unit(&mut self, copy: &[u8], now: u64) -> Result<()> {
         let own = self.account.root_public.0;
         let inactive: Vec<[u8; 16]> = self
             .own_devices()

@@ -658,6 +658,7 @@ export component AppWindow inherits Window {
     // Maximum privacy is holding what was written here until all three
     // KEMs protect the conversation.
     in property <bool> finishing;
+    in property <bool> gap;
     in-out property <string> draft;
     in-out property <string> add-link;
     in-out property <string> add-text;
@@ -1376,6 +1377,19 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // A message held back somewhere (RT-24).
+                if root.gap && root.current.state == 2: Rectangle {
+                    VerticalLayout {
+                        padding-left: Tokens.space-m;
+                        padding-right: Tokens.space-m;
+                        padding-top: Tokens.space-s;
+                        Notice {
+                            title: "A message may not have arrived";
+                            text: "Later messages from " + root.current.name + " came over a minute ago, but an earlier one hasn't. If it comes, it's marked “delivered late”. Their app sends it again if it was lost.";
+                            kind: 1;
+                        }
+                    }
+                }
                 // Request, pending or composer.
                 if root.current.state == 1: Rectangle {
                     VerticalLayout {

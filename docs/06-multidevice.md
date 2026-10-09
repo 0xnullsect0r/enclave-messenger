@@ -87,6 +87,7 @@ Every pair of the account's own devices has a Lockstep session, established by E
 | Position (week, cursor) | at every flush, and at least once a day | record how far that device has read each weekly address |
 | Group (device, sealed file reference) | a group this device holds and that device lacks | the named device takes in the group (`07-groups.md` note 10) |
 | HistoryAsk | the person asks for history on a newly linked device | the device holding the root may send history before 24 h (`03-identity.md` §4.x) |
+| GroupSent (group, message ids) | this device posted group messages | show those messages from this device as our own (`07-groups.md` note 6) |
 
 Items are queued in the sealed store as they happen and leave together at the next sync, as few `OwnSync` contents as fit; an account with one device queues nothing. Ratchet state never travels. A contact we hold no card for (from a store before cards were exchanged) can't be handed over: the device asks them once for it (`Content::CardAsk`, kind 29) and they answer with their card (`Content::Card`, kind 30), after which it is shared like any other. Test `own_devices_stay_in_step`.
 
