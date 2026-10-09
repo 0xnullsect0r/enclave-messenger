@@ -283,7 +283,9 @@ impl Store {
 
     /// Crypto-erase this profile: destroy the device secret. The database file
     /// becomes unreadable noise. (The emergency PIN and panic wipe call this.)
+    /// The hedge secret goes too.
     pub fn crypto_erase(self) -> Result<()> {
+        let _ = self.keystore.destroy(crate::keystore::HEDGE_SECRET);
         self.keystore.destroy(DEVICE_SECRET)
     }
 

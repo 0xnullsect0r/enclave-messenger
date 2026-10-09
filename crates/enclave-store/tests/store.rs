@@ -180,3 +180,22 @@ fn passphrase_can_be_set_changed_and_removed() {
     assert_eq!(s.get("n", b"k2").unwrap().unwrap(), b"written after");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The hedge secret (`02-cryptography.md` §6.1) lives in the keystore, is
+/// refreshed each time it is taken, and goes with a crypto-erase.
+#[test]
+fn hedge_secret_is_kept_refreshed_and_erased() {
+    use enclave_store::keystore::HEDGE_SECRET;
+    let ks: Arc<dyn Keystore> = Arc::new(MemoryKeystore::default());
+    assert!(ks.load(HEDGE_SECRET).is_err());
+    let mut a = enclave_store::device_rng(ks.as_ref()).unwrap();
+    let first = ks.load(HEDGE_SECRET).unwrap();
+    let _b = enclave_store::device_rng(ks.as_ref()).unwrap();
+    let second = ks.load(HEDGE_SECRET).unwrap();
+    assert_ne!(*first, *second, "refreshed");
+    let _: [u8; 32] = a.array("test").unwrap();
+    let mut rng = HedgedRng::new().unwrap();
+    let store = Store::create(None, Arc::clone(&ks), None, &mut rng).unwrap();
+    store.crypto_erase().unwrap();
+    assert!(ks.load(HEDGE_SECRET).is_err(), "erased");
+}

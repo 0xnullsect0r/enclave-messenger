@@ -11,7 +11,6 @@ use super::{Client, Options};
 use crate::persist::{self, NS_CONTACTS, NS_ISSUERS, NS_PROFILE, NS_SECRETS, Profile};
 use crate::rpc::Rpc;
 use crate::{CoreError, Result};
-use enclave_crypto::rng::HedgedRng;
 use enclave_crypto::sig::RootPublic;
 use enclave_net::transport::Transport;
 use enclave_proto::bundle::PrekeyStore;
@@ -72,7 +71,7 @@ impl Client {
         transport: Arc<dyn Transport>,
     ) -> Result<Self> {
         let now = transport.now();
-        let mut rng = HedgedRng::new()?;
+        let mut rng = enclave_store::device_rng(opts.keystore.as_ref())?;
         let rs = RecoverySecret::from_words(words)?;
         let pw = opts
             .passphrase

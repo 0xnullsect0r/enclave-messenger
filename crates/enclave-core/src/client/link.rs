@@ -265,7 +265,7 @@ impl LinkingDevice {
         transport: Arc<dyn Transport>,
         server: ServerId,
     ) -> Result<Self> {
-        let mut rng = HedgedRng::new()?;
+        let mut rng = enclave_store::device_rng(opts.keystore.as_ref())?;
         let now = transport.now();
         let device = DeviceKeys::generate(&mut rng)?;
         let (x, xp) = X448Secret::generate(&mut rng)?;

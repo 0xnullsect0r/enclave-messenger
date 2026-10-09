@@ -25,6 +25,7 @@ use crate::rng::HedgedRng;
 use ed448_goldilocks::{
     Signature as EdSignature, SigningKey as EdSigningKey, VerifyingKey as EdVerifyingKey,
 };
+use enclave_platform::mem::{Locked, Secret};
 use slh_dsa::{
     Shake256s, Signature as SlhSignature, SigningKey as SlhSigningKey,
     VerifyingKey as SlhVerifyingKey,
@@ -136,10 +137,11 @@ impl CompositePublic {
 }
 
 /// Composite (Ed448 + ML-DSA-87) signing key, stored as its 89-byte seed.
+/// The seed and both expanded keys are in locked memory.
 pub struct CompositeSigningKey {
-    seed: Zeroizing<[u8; COMPOSITE_SEED_LEN]>,
-    ed: EdSigningKey,
-    ml: libcrux_ml_dsa::ml_dsa_87::MLDSA87SigningKey,
+    seed: Secret<COMPOSITE_SEED_LEN>,
+    ed: Locked<EdSigningKey>,
+    ml: Locked<libcrux_ml_dsa::ml_dsa_87::MLDSA87SigningKey>,
     public: CompositePublic,
 }
 
@@ -153,6 +155,7 @@ impl CompositeSigningKey {
 
     /// Rebuild from the stored seed.
     pub fn from_seed(seed: &[u8; COMPOSITE_SEED_LEN]) -> Result<Self> {
+        let _dit = enclave_platform::dit::Guard::new();
         let ed = EdSigningKey::try_from(&seed[..57]).map_err(|_| Error::Malformed)?;
         let mut ml_seed = Zeroizing::new([0u8; 32]);
         ml_seed.copy_from_slice(&seed[57..]);
@@ -160,9 +163,9 @@ impl CompositeSigningKey {
         let ed_pk: [u8; ED448_PK_LEN] = ed.verifying_key().to_bytes();
         let ml_pk: [u8; MLDSA_PK_LEN] = *kp.verification_key.as_ref();
         Ok(Self {
-            seed: Zeroizing::new(*seed),
-            ed,
-            ml: kp.signing_key,
+            seed: Secret::from_ref(seed),
+            ed: Locked::new(ed),
+            ml: Locked::new(kp.signing_key),
             public: CompositePublic {
                 ed: ed_pk,
                 ml: Box::new(ml_pk),
@@ -182,6 +185,7 @@ impl CompositeSigningKey {
 
     /// Sign `msg` in context `ctx` (hedged ML-DSA randomness).
     pub fn sign(&self, ctx: &[u8], msg: &[u8], rng: &mut HedgedRng) -> Result<Vec<u8>> {
+        let _dit = enclave_platform::dit::Guard::new();
         let m = composite_representative(ctx, msg)?;
         let ed_sig = self.ed.sign_raw(&m);
         let r: [u8; 32] = rng.array("sig/composite/sign")?;
@@ -204,17 +208,18 @@ pub const MLDSA44_SIG_LEN: usize = 2420;
 /// for other transparency tools (`enclave_kt::c2sp`). Nothing in Enclave
 /// relies on it; Enclave's own signatures are composite (ML-DSA-87 + Ed448).
 pub struct MlDsa44SigningKey {
-    sk: libcrux_ml_dsa::ml_dsa_44::MLDSA44SigningKey,
+    sk: Locked<libcrux_ml_dsa::ml_dsa_44::MLDSA44SigningKey>,
     pk: [u8; MLDSA44_PK_LEN],
 }
 
 impl MlDsa44SigningKey {
     /// The key from a 32-byte seed (FIPS 204 key generation randomness).
     pub fn from_seed(seed: &[u8; 32]) -> Self {
+        let _dit = enclave_platform::dit::Guard::new();
         let kp = libcrux_ml_dsa::ml_dsa_44::generate_key_pair(*seed);
         Self {
             pk: *kp.verification_key.as_ref(),
-            sk: kp.signing_key,
+            sk: Locked::new(kp.signing_key),
         }
     }
 
@@ -225,6 +230,7 @@ impl MlDsa44SigningKey {
 
     /// Sign `msg` with an empty context (hedged randomness).
     pub fn sign(&self, msg: &[u8], rng: &mut HedgedRng) -> Result<[u8; MLDSA44_SIG_LEN]> {
+        let _dit = enclave_platform::dit::Guard::new();
         let r: [u8; 32] = rng.array("sig/mldsa44/sign")?;
         let s =
             libcrux_ml_dsa::ml_dsa_44::sign(&self.sk, msg, b"", r).map_err(|_| Error::Malformed)?;
@@ -266,9 +272,10 @@ impl RootPublic {
     }
 }
 
-/// SLH-DSA-SHAKE-256s root signing key, derived from the recovery secret.
+/// SLH-DSA-SHAKE-256s root signing key, derived from the recovery secret,
+/// in locked memory.
 pub struct RootSigningKey {
-    sk: SlhSigningKey<Shake256s>,
+    sk: Locked<SlhSigningKey<Shake256s>>,
     public: RootPublic,
 }
 
@@ -284,6 +291,7 @@ impl RootSigningKey {
     /// label)`). Account roots use `enclave/v1/root/keygen`; the
     /// foundation's list key uses its own label.
     pub fn derive(secret: &[u8; 32], label: &str) -> Self {
+        let _dit = enclave_platform::dit::Guard::new();
         let mut seeds = Zeroizing::new([0u8; 96]);
         Kmac256::new(secret, label.as_bytes()).finalize_into(&mut seeds[..]);
         let sk = SlhSigningKey::<Shake256s>::slh_keygen_internal(
@@ -295,7 +303,7 @@ impl RootSigningKey {
         let mut pk = [0u8; ROOT_PK_LEN];
         pk.copy_from_slice(&vk.to_bytes());
         Self {
-            sk,
+            sk: Locked::new(sk),
             public: RootPublic(pk),
         }
     }
@@ -308,6 +316,7 @@ impl RootSigningKey {
     /// Sign (hedged: fresh randomness per FIPS 205 §10.2). Slow: expect about a
     /// second on a desktop and several on a phone. Call from a background task.
     pub fn sign(&self, ctx: &[u8], msg: &[u8], rng: &mut HedgedRng) -> Result<Vec<u8>> {
+        let _dit = enclave_platform::dit::Guard::new();
         if ctx.len() > MAX_CTX_LEN {
             return Err(Error::TooLarge);
         }

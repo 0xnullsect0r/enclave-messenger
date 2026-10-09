@@ -29,6 +29,7 @@ use crate::rng::HedgedRng;
 use aes::Aes256;
 use chacha20::XChaCha20;
 use chacha20::cipher::{KeyIvInit, StreamCipher};
+use enclave_platform::mem::Secret;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
@@ -47,14 +48,14 @@ pub const MAX_PLAINTEXT: usize = 64 * 1024;
 
 const SUBKEY_LEN: usize = 32 + 32 + 32 + 24 + 16;
 
-/// A 256-bit EnclaveSeal key. Zeroized on drop.
+/// A 256-bit EnclaveSeal key, in locked memory and zeroized on drop.
 #[derive(Clone)]
-pub struct SealKey(Zeroizing<[u8; KEY_LEN]>);
+pub struct SealKey(Secret<KEY_LEN>);
 
 impl SealKey {
     /// Wrap raw key bytes.
     pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
-        Self(Zeroizing::new(bytes))
+        Self(Secret::new(bytes))
     }
 
     /// Generate a fresh random key.
@@ -152,6 +153,7 @@ pub fn seal_with_randomness(
     if pt.len() > MAX_PLAINTEXT {
         return Err(Error::TooLarge);
     }
+    let _dit = enclave_platform::dit::Guard::new();
     let nonce = hedged_nonce(key, rand, ad, pt);
     let s = subkeys(key, &nonce);
     let mut out = Vec::with_capacity(pt.len() + OVERHEAD);
@@ -171,6 +173,7 @@ pub fn open(key: &SealKey, ad: &[u8], sealed: &[u8]) -> Result<Vec<u8>> {
     if sealed.len() - OVERHEAD > MAX_PLAINTEXT {
         return Err(Error::TooLarge);
     }
+    let _dit = enclave_platform::dit::Guard::new();
     let (nonce_bytes, rest) = sealed.split_at(NONCE_LEN);
     let (ct, t) = rest.split_at(rest.len() - TAG_LEN);
     let mut nonce = [0u8; NONCE_LEN];
@@ -195,6 +198,7 @@ pub fn open(key: &SealKey, ad: &[u8], sealed: &[u8]) -> Result<Vec<u8>> {
 /// content gets a different keystream. Used for device slots and PQ slots, where
 /// every byte counts.
 pub fn seal_compact(key: &SealKey, nonce_material: &[u8], ad: &[u8], pt: &[u8]) -> Result<Vec<u8>> {
+    let _dit = enclave_platform::dit::Guard::new();
     if pt.len() > MAX_PLAINTEXT {
         return Err(Error::TooLarge);
     }
@@ -215,6 +219,7 @@ pub fn open_compact(
     ad: &[u8],
     sealed: &[u8],
 ) -> Result<Vec<u8>> {
+    let _dit = enclave_platform::dit::Guard::new();
     if sealed.len() < TAG_LEN || sealed.len() - TAG_LEN > MAX_PLAINTEXT {
         return Err(Error::Auth);
     }

@@ -20,6 +20,7 @@ use crate::hash::sha3_512_parts;
 use crate::kmac::Kmac256;
 use crate::labels;
 use crate::rng::HedgedRng;
+use enclave_platform::mem::{Locked, Secret, SecretBytes};
 use zeroize::Zeroizing;
 
 /// X448 key and shared-secret length.
@@ -45,9 +46,9 @@ pub const COMBINED_LEN: usize = 64;
 // X448
 // ---------------------------------------------------------------------------
 
-/// X448 secret scalar. Zeroized on drop.
+/// X448 secret scalar, in locked memory and zeroized on drop.
 #[derive(Clone)]
-pub struct X448Secret(Zeroizing<[u8; X448_LEN]>);
+pub struct X448Secret(Secret<X448_LEN>);
 
 /// X448 public key.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -56,23 +57,24 @@ pub struct X448Public(pub [u8; X448_LEN]);
 impl X448Secret {
     /// Generate a key pair.
     pub fn generate(rng: &mut HedgedRng) -> Result<(Self, X448Public)> {
-        let sk = Self(Zeroizing::new(rng.array("x448/keygen")?));
+        let sk = Self(Secret::new(rng.array("x448/keygen")?));
         let pk = sk.public();
         Ok((sk, pk))
     }
 
     /// Rebuild from stored bytes.
     pub fn from_bytes(bytes: [u8; X448_LEN]) -> Self {
-        Self(Zeroizing::new(bytes))
+        Self(Secret::new(bytes))
     }
 
     /// Stored form.
     pub fn to_bytes(&self) -> Zeroizing<[u8; X448_LEN]> {
-        self.0.clone()
+        Zeroizing::new(*self.0)
     }
 
     /// Public key for this secret.
     pub fn public(&self) -> X448Public {
+        let _dit = enclave_platform::dit::Guard::new();
         X448Public(crate::x448_ladder::x448(
             &self.0,
             &crate::x448_ladder::BASEPOINT,
@@ -81,6 +83,7 @@ impl X448Secret {
 
     /// Diffie-Hellman. Fails on low-order or all-zero results.
     pub fn diffie_hellman(&self, peer: &X448Public) -> Result<Zeroizing<[u8; X448_LEN]>> {
+        let _dit = enclave_platform::dit::Guard::new();
         let ss = Zeroizing::new(crate::x448_ladder::x448(&self.0, &peer.0));
         // Constant-time all-zero check (a low-order point gives zero).
         let zero = ss.iter().fold(0u8, |acc, b| acc | b);
@@ -99,8 +102,8 @@ impl X448Secret {
 #[derive(Clone, PartialEq, Eq)]
 pub struct MlKemPublic(pub Box<[u8; MLKEM_PK_LEN]>);
 
-/// ML-KEM-1024 decapsulation key. Zeroized on drop.
-pub struct MlKemSecret(Zeroizing<Vec<u8>>);
+/// ML-KEM-1024 decapsulation key, in locked memory and zeroized on drop.
+pub struct MlKemSecret(SecretBytes);
 
 /// ML-KEM-1024 ciphertext.
 #[derive(Clone, PartialEq, Eq)]
@@ -135,11 +138,12 @@ impl MlKemSecret {
 
     /// Deterministic key generation from the 64-byte FIPS 203 seed `(d, z)`.
     pub fn from_seed(seed: &[u8; 64]) -> (Self, MlKemPublic) {
+        let _dit = enclave_platform::dit::Guard::new();
         let kp = libcrux_ml_kem::mlkem1024::generate_key_pair(*seed);
         let (sk, pk) = kp.into_parts();
         let mut sk_arr: [u8; MLKEM_SK_LEN] = sk.into();
         let pk_arr: [u8; MLKEM_PK_LEN] = pk.into();
-        let sk_vec = Zeroizing::new(sk_arr.to_vec());
+        let sk_vec = SecretBytes::from_slice(&sk_arr);
         zeroize::Zeroize::zeroize(&mut sk_arr);
         (Self(sk_vec), MlKemPublic(Box::new(pk_arr)))
     }
@@ -149,7 +153,7 @@ impl MlKemSecret {
         if b.len() != MLKEM_SK_LEN {
             return Err(Error::Malformed);
         }
-        Ok(Self(Zeroizing::new(b.to_vec())))
+        Ok(Self(SecretBytes::from_slice(b)))
     }
 
     /// Stored form.
@@ -160,7 +164,8 @@ impl MlKemSecret {
     /// Decapsulate. ML-KEM uses implicit rejection, so a bad ciphertext yields a
     /// pseudorandom secret rather than an error.
     pub fn decapsulate(&self, ct: &MlKemCiphertext) -> Zeroizing<[u8; SS_LEN]> {
-        let arr: &[u8; MLKEM_SK_LEN] = match self.0.as_slice().try_into() {
+        let _dit = enclave_platform::dit::Guard::new();
+        let arr: &[u8; MLKEM_SK_LEN] = match self.0[..].try_into() {
             Ok(a) => a,
             Err(_) => unreachable!("length checked at construction"),
         };
@@ -185,6 +190,7 @@ impl MlKemPublic {
         &self,
         r: &[u8; 32],
     ) -> (MlKemCiphertext, Zeroizing<[u8; SS_LEN]>) {
+        let _dit = enclave_platform::dit::Guard::new();
         let pk = libcrux_ml_kem::mlkem1024::MlKem1024PublicKey::from(&*self.0);
         let (ct, ss) = libcrux_ml_kem::mlkem1024::encapsulate(&pk, *r);
         let ct_arr: [u8; MLKEM_CT_LEN] = ct.into();
@@ -205,7 +211,10 @@ fn on_large_stack<T: Send>(f: impl FnOnce() -> T + Send) -> Result<T> {
         std::thread::Builder::new()
             .name("enclave-mceliece".into())
             .stack_size(MCELIECE_STACK)
-            .spawn_scoped(s, f)
+            .spawn_scoped(s, || {
+                let _dit = enclave_platform::dit::Guard::new();
+                f()
+            })
             .map_err(|_| Error::Rng)?
             .join()
             .map_err(|_| Error::Malformed)
@@ -216,8 +225,8 @@ fn on_large_stack<T: Send>(f: impl FnOnce() -> T + Send) -> Result<T> {
 #[derive(Clone, PartialEq, Eq)]
 pub struct McEliecePublic(pub Box<[u8; MCELIECE_PK_LEN]>);
 
-/// McEliece secret key. Zeroized on drop.
-pub struct McElieceSecret(Zeroizing<Vec<u8>>);
+/// McEliece secret key, in locked memory and zeroized on drop.
+pub struct McElieceSecret(SecretBytes);
 
 /// McEliece ciphertext (208 bytes).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -258,7 +267,7 @@ impl McElieceSecret {
         on_large_stack(|| {
             let (pk, sk) = classic_mceliece_rust::keypair_boxed(rng);
             let pk_box: Box<[u8; MCELIECE_PK_LEN]> = Box::new(*pk.as_array());
-            let sk_vec = Zeroizing::new(sk.as_array().to_vec());
+            let sk_vec = SecretBytes::from_slice(sk.as_array());
             (Self(sk_vec), McEliecePublic(pk_box))
         })
     }
@@ -268,7 +277,7 @@ impl McElieceSecret {
         if b.len() != MCELIECE_SK_LEN {
             return Err(Error::Malformed);
         }
-        Ok(Self(Zeroizing::new(b.to_vec())))
+        Ok(Self(SecretBytes::from_slice(b)))
     }
 
     /// Stored form.
@@ -279,11 +288,10 @@ impl McElieceSecret {
     /// Decapsulate (implicit rejection).
     pub fn decapsulate(&self, ct: &McElieceCiphertext) -> Result<Zeroizing<[u8; SS_LEN]>> {
         on_large_stack(|| {
-            let mut buf: Box<[u8; MCELIECE_SK_LEN]> =
-                match self.0.as_slice().to_vec().into_boxed_slice().try_into() {
-                    Ok(b) => b,
-                    Err(_) => unreachable!("length checked at construction"),
-                };
+            // The library wants the key as a mutable array: a locked copy,
+            // zeroized when it goes.
+            let mut buf = Locked::new([0u8; MCELIECE_SK_LEN]);
+            buf.copy_from_slice(&self.0);
             let sk = classic_mceliece_rust::SecretKey::from(&mut *buf);
             let c = classic_mceliece_rust::Ciphertext::from(ct.0);
             let ss = classic_mceliece_rust::decapsulate_boxed(&c, &sk);

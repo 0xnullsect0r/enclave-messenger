@@ -582,7 +582,7 @@ impl Client {
         if name.len() > MAX_NAME {
             return Err(CoreError::TooLong);
         }
-        let mut rng = HedgedRng::new()?;
+        let mut rng = enclave_store::device_rng(opts.keystore.as_ref())?;
         let now = transport.now();
         let recovery = RecoverySecret::generate(&mut rng)?;
         let words = recovery.to_words()?;
@@ -732,8 +732,9 @@ impl Client {
             opts.keystore,
             opts.passphrase.as_ref().map(|p| p.as_slice()),
         )?;
+        let mut rng = enclave_store::device_rng(store.keystore().as_ref())?;
         // A change of recovery words interrupted after its commit point.
-        migrate::finish_staged(&store, &mut HedgedRng::new()?)?;
+        migrate::finish_staged(&store, &mut rng)?;
         let get = |ns: &str, k: &[u8]| -> Result<Vec<u8>> {
             store.get(ns, k)?.ok_or(CoreError::NotFound)
         };
@@ -772,7 +773,7 @@ impl Client {
         let groups = groups::load(&store)?;
         let mut client = Self {
             store,
-            rng: HedgedRng::new()?,
+            rng,
             rpc: Rpc::new(transport),
             account,
             device,

@@ -67,6 +67,7 @@ fn derive_unchecked(
     salt: &[u8; 32],
     params: PwParams,
 ) -> Result<Zeroizing<[u8; 32]>> {
+    let _dit = enclave_platform::dit::Guard::new();
     let p = Params::new(
         params.memory_kib,
         params.iterations,

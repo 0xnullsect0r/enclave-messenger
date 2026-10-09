@@ -289,7 +289,7 @@ Every key generation, encapsulation, signature randomizer, seal nonce, and rando
 
 | Item | Size | Lifetime |
 |---|---|---|
-| `hedge` | 32 B | Supplied by the caller (`HedgedRng::with_hedge`), or drawn from the OS RNG (`HedgedRng::new`, used before a device secret exists and in tests). Zeroized on drop. |
+| `hedge` | 32 B | The device's hedge secret (`enclave_store::device_rng`), or drawn from the OS RNG (`HedgedRng::new`, for short-lived generators and tests). In locked memory, zeroized on drop. |
 | `counter` | `u64` | Per generator, in memory. Starts at 0 and increments (wrapping) after every draw. |
 
 ### 6.2 Algorithm
@@ -310,7 +310,7 @@ Requirements:
 - Libraries that take seeds receive them from `fill`: ML-KEM `d ‖ z` (64 B), X448 scalar (56 B), composite seed (89 B), ML-DSA signing randomness (32 B), SLH-DSA `opt_rand` (32 B).
 - Classic McEliece takes a `rand_core` 0.6 RNG. `HedgedRng` implements `RngCore + CryptoRng` with purpose `"rand_core"`; `try_fill_bytes` reports an OS failure as an error and `fill_bytes` panics, because the 0.6 trait method cannot return one.
 - The SLH-DSA root key is not generated from the hedged RNG; it is derived from the recovery secret (§8).
-- **Not implemented yet:** persisting and refreshing the hedge secret per device (PLAN: "device hedge secret"). Callers that do not supply one get an OS-drawn hedge per generator.
+- **Device hedge secret** (PLAN: "device hedge secret"): a profile's generator (`Client::create`, `open`, restoring and linking) takes its hedge from the platform keystore entry `enclave-hedge-secret`, never from the database, so a copied profile can't predict it, and in hardware where the keystore is. Every time it is taken it is refreshed: the next hedge is 32 bytes from a generator keyed with the old one (fresh OS entropy, purpose `store/hedge`) and replaces it, so the stored value is never the one that produced earlier output. With no entry, or an unreadable one, a new hedge comes from the OS. A crypto-erase destroys it with the device secret. Test: `hedge_secret_is_kept_refreshed_and_erased` (`enclave-store`).
 
 `XofRng::new(seed, label)` is a deterministic KMACXOF256 stream `KMACXOF256(seed, "", label)` for expanding a seed and for reproducible tests. It is never a source of fresh randomness.
 
@@ -424,9 +424,12 @@ Implemented:
 - Composite verification evaluates both components before deciding and does not report which failed.
 - ML-KEM and McEliece use implicit rejection: a bad ciphertext yields a pseudorandom secret, never an error.
 - McEliece key generation, encapsulation and decapsulation run on a dedicated thread with a 32 MiB stack (`MCELIECE_STACK`), because the implementation keeps large matrices on the stack.
-- `#![forbid(unsafe_code)]` in every crate.
+- **Data-independent timing**: on AArch64 CPUs with FEAT_DIT, sealing and opening, X448, ML-KEM and McEliece (on their own thread), signing and key expansion, and Argon2id run under `enclave_platform::dit::Guard`, which sets PSTATE.DIT and restores it after (`rt15_dit_bit_set_during_crypto`). x86's equivalent (DOITM) is the kernel's to set.
+- **Locked memory**: secret key bytes (`SealKey`, `X448Secret`, `MlKemSecret`, `McElieceSecret`, the composite seed and expanded keys, the root key, the recovery secret, the hedge) live in `enclave_platform::mem` slots in `mlock`ed (`VirtualLock`) pages, kept out of Linux core dumps and zeroized when freed; small secrets share pages. Locking is best effort and counted (`mem::stats`). McEliece decapsulation's working copy of the key is locked and zeroized too (it was a plain heap copy).
+- **No `Debug` on secrets**: a compile-time probe asserts that the secret types above, `HedgedRng`, `AccountKeys`, `DeviceKeys`, `RecoverySecret`, ratchet sessions and group state don't implement `Debug` (`tests/hygiene.rs` in `enclave-crypto` and `enclave-proto`).
+- `#![forbid(unsafe_code)]` in every crate except `enclave-platform` (DIT and locked memory; every block has a SAFETY comment), `enclave-sandbox`, `enclave-nse` and the declared `enclave-av1` exception.
 
-Required but not yet implemented: dudect/ctgrind constant-time testing (`20-assurance.md` §1); setting the AArch64 DIT bit during crypto operations; `mlock` of long-term key pages; forbidding `Debug` on secret types by test.
+Required but not yet implemented: ctgrind constant-time testing (`20-assurance.md` §1, Q2); dudect runs today (`tests/dudect.rs`).
 
 ## 13. Libraries and backends
 
@@ -468,5 +471,5 @@ Rules:
 2. PLAN §2.1 gives EnclaveSeal an overhead of 72 B (32 nonce + 32 tag + 8 framing). The implementation has no framing header and an overhead of 64 B; the 8 B moved into the request header and the content length field (`08-envelope.md`). This intentionally differs from PLAN.md.
 3. PLAN §2.3 fixes the XChaCha20 nonce and the AES IV at zero. The implementation derives both from `(K, N)` with the subkeys (1,088-bit output). This intentionally differs from PLAN.md; the security argument is unchanged.
 4. Representing the McEliece public key by `SHA3-512(McE_pk)` in the EnclaveCombine binding instead of the full 1,357,824 B. The binding is equivalent under SHA3-512 collision resistance, and the hash is already committed in the manifest. Confirm with the crypto working group.
-5. The hedge secret is not yet persisted per device (§6). Whether it should also be wrapped by the hardware keystore, so that a cloned database cannot predict the hedge, is open.
+5. ~~Whether the hedge secret should be kept by the hardware keystore.~~ Decided: it lives in the keystore, not the database, and is refreshed at every open (§6.1).
 6. Whether the compact seal (§4.5) should be replaced by a transmitted nonce where a future layout has room.

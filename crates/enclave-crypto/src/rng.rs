@@ -9,6 +9,7 @@
 use crate::error::{Error, Result};
 use crate::kmac::Kmac256;
 use crate::labels;
+use enclave_platform::mem::Secret;
 use zeroize::{Zeroize, Zeroizing};
 
 /// Fill `out` from the operating system RNG.
@@ -18,7 +19,8 @@ pub fn os_random(out: &mut [u8]) -> Result<()> {
 
 /// Hedged random number generator.
 pub struct HedgedRng {
-    hedge: Zeroizing<[u8; 32]>,
+    /// In locked memory, zeroized on drop.
+    hedge: Secret<32>,
     counter: u64,
 }
 
@@ -26,7 +28,7 @@ impl HedgedRng {
     /// Create a generator with a device hedge secret (stored in the keystore).
     pub fn with_hedge(hedge: [u8; 32]) -> Self {
         Self {
-            hedge: Zeroizing::new(hedge),
+            hedge: Secret::new(hedge),
             counter: 0,
         }
     }

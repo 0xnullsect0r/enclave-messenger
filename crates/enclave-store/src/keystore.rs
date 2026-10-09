@@ -8,6 +8,7 @@
 //! in a file and is only acceptable on desktops with full-disk encryption.
 
 use crate::{Result, StoreError};
+use enclave_crypto::rng::HedgedRng;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -21,6 +22,25 @@ pub trait Keystore: Send + Sync {
     fn load(&self, name: &str) -> Result<Zeroizing<[u8; 32]>>;
     /// Destroy the secret under `name` (crypto-erase).
     fn destroy(&self, name: &str) -> Result<()>;
+}
+
+/// Keystore name of the device's hedge secret (`docs/02-cryptography.md`
+/// §6.1).
+pub const HEDGE_SECRET: &str = "enclave-hedge-secret";
+
+/// The device's hedged RNG. Its hedge secret lives in the keystore (so in
+/// hardware where the keystore is, and never in the database: a copied
+/// profile can't predict it) and is refreshed every time it is taken: the
+/// new one is drawn from fresh OS entropy hedged with the old one, purpose
+/// `store/hedge`, and replaces it. If the keystore has none, or can't be
+/// read, a new one is made from the OS.
+pub fn device_rng(keystore: &dyn Keystore) -> Result<HedgedRng> {
+    let next: Zeroizing<[u8; 32]> = Zeroizing::new(match keystore.load(HEDGE_SECRET) {
+        Ok(old) => HedgedRng::with_hedge(*old).array("store/hedge")?,
+        Err(_) => HedgedRng::new()?.array("store/hedge")?,
+    });
+    keystore.create(HEDGE_SECRET, &next)?;
+    Ok(HedgedRng::with_hedge(*next))
 }
 
 /// In-memory keystore (tests).

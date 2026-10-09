@@ -82,6 +82,7 @@ If the gate is still blocked **8 weeks after M6**, mobile gets thin SwiftUI and 
 ## 4. Platform shims
 
 - `enclave-platform` is the only crate (with `enclave-sandbox` and `enclave-nse`) allowed `unsafe`; every `unsafe` block gets two reviews and a tracking comment.
+- **As implemented so far**, `enclave-platform` holds the AArch64 DIT guard and the locked-memory slab for secret key bytes (`dit`, `mem`; `02-cryptography.md` §12), with only `libc`/`windows-sys` beneath it so `enclave-crypto` can depend on it; the keystores and capture, audio and camera shims join it with the desktop and mobile milestones, behind features. Its unsafe blocks carry SAFETY comments and `undocumented_unsafe_blocks` is denied; their two reviews are owed.
 - **Exception, `enclave-av1`**: rav1d exposes only dav1d's C interface, so the AV1 decoder wrapper needs `unsafe` (§5.3). It is ~150 lines, every block has a SAFETY comment and clippy's `undocumented_unsafe_blocks` is denied; only `mediad` (through `enclave-media`'s `av1` feature) and the fuzz harness call it. A whole-workspace build unifies features, so the code can end up in the vault binary too, but nothing there reaches it: the vault's own media fallback refuses `ClipFrames`. Its two reviews are still owed.
 - Android: `jni` and `ndk`, with Kotlin shims of at most 300 lines total and Slint's Java helper.
 - Apple: `objc2` for APNs, PushKit, CallKit, Keychain, Secure Enclave, VoiceProcessingIO, and `define_class!` for the NSE principal class.

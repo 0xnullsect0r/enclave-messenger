@@ -25,7 +25,7 @@ pub mod keystore;
 pub mod shred;
 pub mod store;
 
-pub use keystore::{FileKeystore, Keystore, MemoryKeystore};
+pub use keystore::{FileKeystore, Keystore, MemoryKeystore, device_rng};
 pub use store::Store;
 
 /// Errors from storage.

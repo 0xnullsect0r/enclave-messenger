@@ -8,20 +8,21 @@
 use crate::error::{ProtoError, Result};
 pub use bip39::Language;
 use enclave_crypto::rng::HedgedRng;
+use enclave_platform::mem::Secret;
 use zeroize::Zeroizing;
 
-/// A 256-bit recovery secret. Zeroized on drop.
-pub struct RecoverySecret(Zeroizing<[u8; 32]>);
+/// A 256-bit recovery secret, in locked memory and zeroized on drop.
+pub struct RecoverySecret(Secret<32>);
 
 impl RecoverySecret {
     /// Generate a fresh secret.
     pub fn generate(rng: &mut HedgedRng) -> Result<Self> {
-        Ok(Self(Zeroizing::new(rng.array("recovery/secret")?)))
+        Ok(Self(Secret::new(rng.array("recovery/secret")?)))
     }
 
     /// Wrap existing bytes.
     pub fn from_bytes(b: [u8; 32]) -> Self {
-        Self(Zeroizing::new(b))
+        Self(Secret::new(b))
     }
 
     /// Raw bytes.
