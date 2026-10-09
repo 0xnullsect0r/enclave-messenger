@@ -300,6 +300,9 @@ pub struct Snapshot {
     /// The open conversation's contact changed their recovery words:
     /// 0 no, 1 confirmed by their old key, 2 not confirmed.
     pub moved: u8,
+    /// Members of the open group whose change of recovery words is on
+    /// hold here: we never got it from them (names).
+    pub held_moves: Vec<String>,
     /// The route to the home server (`docs/09-transport.md` §7): 0 the
     /// mixnet, 1 the mixnet is unreachable and the backup route (Tor to the
     /// server's onion service) can be offered, 2 on the backup route.
@@ -732,6 +735,7 @@ impl Snapshot {
             .bool(self.can_change_words)
             .bool(self.words_pending)
             .u8(self.moved)
+            .strs(&self.held_moves)
             .u8(self.route)
             .bool(self.tor_blocked)
             .str(&self.bridges)
@@ -939,6 +943,7 @@ impl Snapshot {
             can_change_words: r.bool()?,
             words_pending: r.bool()?,
             moved: r.u8()?,
+            held_moves: r.strs()?,
             route: r.u8()?,
             tor_blocked: r.bool()?,
             bridges: r.str()?,

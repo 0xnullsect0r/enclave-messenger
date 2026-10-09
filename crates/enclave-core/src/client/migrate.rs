@@ -33,9 +33,11 @@ use crate::files::{self, Attachment};
 use crate::persist::{NS_CONTACTS, NS_ISSUERS, NS_PROFILE, NS_SECRETS, NS_SESSIONS, msg_ns};
 use crate::{CoreError, Result};
 use enclave_crypto::rng::HedgedRng;
+use enclave_crypto::sig::RootSigningKey;
+use enclave_federation::FedError;
 use enclave_proto::codec::{Reader, Writer};
 use enclave_proto::group::{FLAG_STATE_UPDATE, GroupState};
-use enclave_proto::manifest::{MAX_VALIDITY_SECS, Manifest, SignedManifest};
+use enclave_proto::manifest::{MAX_VALIDITY_SECS, Manifest, Role, SignedManifest};
 use enclave_proto::migration::{MIGRATION_LEN, Migration};
 use enclave_proto::recovery::RecoverySecret;
 use enclave_rpc::api::{DirKind, Status, manifest_key};
@@ -57,6 +59,12 @@ const NS_MIG_GROUPS: &str = "migrations-groups";
 /// Group updates that change a member's root, waiting for the migration:
 /// group id ‖ state hash → author ‖ state.
 const NS_HELD_STATES: &str = "held-states";
+/// When each held root update was first held: same key → u64 time ‖
+/// u8 noticed.
+const NS_HELD_SINCE: &str = "held-states-since";
+/// How long a root update waits for its migration before the group shows
+/// it is on hold (03 §8.2.6).
+pub const HELD_MOVE_NOTICE_SECS: u64 = 3600;
 
 /// Progress of our own migration (a bit per step; all set when done).
 const STEP: &str = "migration-step";
@@ -153,7 +161,29 @@ impl Client {
     /// secret. Contacts, groups and our other devices are told as the
     /// network allows; [`Client::migration_pending`] says when that's done.
     pub async fn change_recovery_words(&mut self) -> Result<Vec<String>> {
-        if self.account.root.is_none() || self.migration_pending() {
+        if self.account.root.is_none() {
+            return Err(CoreError::NotAccepted);
+        }
+        self.migrate_root().await
+    }
+
+    /// The recovery words are lost, and the device that held them too, but
+    /// this device is still in the account ("root lost, devices kept", 03
+    /// §8.2): make new words and move the account to them, signed by the
+    /// new root only. Contacts are told it can't be confirmed by the old
+    /// key and asked to check the security code in person; the directory
+    /// keeps the old key's manifest (only the old root could retire it) and
+    /// the username stays with the old root. This device becomes the
+    /// primary. Only on a device that doesn't hold the words.
+    pub async fn replace_lost_root(&mut self) -> Result<Vec<String>> {
+        if self.account.root.is_some() {
+            return Err(CoreError::NotAccepted);
+        }
+        self.migrate_root().await
+    }
+
+    async fn migrate_root(&mut self) -> Result<Vec<String>> {
+        if self.migration_pending() {
             return Err(CoreError::NotAccepted);
         }
         let now = self.now();
@@ -161,7 +191,11 @@ impl Client {
         let old_public = self.account.root_public;
         let rs = RecoverySecret::generate(&mut self.rng)?;
         let words = rs.to_words()?;
-        let old_key = self.account.reroot(&rs)?;
+        let old_key = self.account.root.take();
+        let new_key = RootSigningKey::from_recovery_secret(rs.as_bytes());
+        self.account.root_public = new_key.public();
+        self.account.root = Some(new_key);
+        let me = self.device.id;
         let built = (|| -> Result<(Manifest, SignedManifest, Migration)> {
             let mut m = self.manifest.clone();
             m.version += 1;
@@ -169,10 +203,20 @@ impl Client {
             m.issued_at = now;
             m.expires_at = now + MAX_VALIDITY_SECS;
             m.root = self.account.root_public;
+            if old_key.is_none() {
+                // The words live here now.
+                for d in &mut m.devices {
+                    if d.id == me {
+                        d.role = Role::Primary;
+                    } else if d.role == Role::Primary {
+                        d.role = Role::Linked;
+                    }
+                }
+            }
             let signed = m.sign(&self.account, &mut self.rng)?;
             let new_key = self.account.root.as_ref().ok_or(CoreError::NotAccepted)?;
             let mig = Migration::sign(
-                Some(&old_key),
+                old_key.as_ref(),
                 old_public,
                 new_key,
                 &signed,
@@ -184,7 +228,7 @@ impl Client {
         let (m, signed, mig) = match built {
             Ok(b) => b,
             Err(e) => {
-                self.account.root = Some(old_key);
+                self.account.root = old_key;
                 self.account.root_public = old_public;
                 return Err(e);
             }
@@ -280,6 +324,12 @@ impl Client {
             step |= S_COSIGN;
             save(self, step)?;
         }
+        // Without the old root's signature the server won't retire the old
+        // key (anyone could otherwise), so there is nothing to publish.
+        if step & S_DIRECTORY == 0 && !mig.cross_signed() {
+            step |= S_DIRECTORY;
+            save(self, step)?;
+        }
         if step & S_DIRECTORY == 0 {
             done(
                 self.rpc
@@ -322,7 +372,14 @@ impl Client {
                 && let Ok(name) = String::from_utf8(name)
                 && self.kt.is_some()
             {
-                self.claim_username(&name).await?;
+                match self.claim_username(&name).await {
+                    Ok(_) => {}
+                    // The name stays with the old root when the server
+                    // holds no migration for it (a lost root).
+                    Err(CoreError::Net(e)) => return Err(CoreError::Net(e)),
+                    Err(_) if !mig.cross_signed() => {}
+                    Err(e) => return Err(e),
+                }
             }
             step |= S_USERNAME;
             save(self, step)?;
@@ -403,6 +460,15 @@ impl Client {
                     next
                 }
             };
+            // A device that hasn't sent here yet (a linked one, after a
+            // lost root) needs its sending chain first, under the old root.
+            if self
+                .groups
+                .get(&gid)
+                .is_some_and(|e| e.group.state.index_of(old).is_some())
+            {
+                self.prepare_group_send(&gid, now).await?;
+            }
             self.apply_root_change(&gid, &next, old, new)?;
             self.post_group(&gid, &next.encode(), FLAG_STATE_UPDATE, now)
                 .await?;
@@ -500,6 +566,8 @@ impl Client {
                         self.store.delete(NS_MIG_IN, &k)?;
                     }
                     Err(e @ CoreError::Net(_)) => return Err(e),
+                    // Not in their server's log yet: asked again next sync.
+                    Err(CoreError::Federation(FedError::NotLogged)) => {}
                     Err(_) => left.push((k, v)),
                 }
             }
@@ -559,6 +627,24 @@ impl Client {
         {
             return Err(CoreError::NotAccepted);
         }
+        // Our own: only a device without the words adopts it (one holding
+        // them made it, or keeps the account under the old words).
+        if own && self.account.root.is_some() {
+            return Err(CoreError::NotAccepted);
+        }
+        // A migration the old root signed is in the directory and the old
+        // server's log: take it only once the log shows it, so the same
+        // move is shown to everyone (one without that signature is never
+        // in either, and is shown as unconfirmed).
+        if !own && mig.cross_signed() {
+            let server = self.contacts.get(root).map(|c| c.server);
+            if let Some(server) = server
+                && let Some(v) = self.logged_record(&server, root, now).await?
+                && v != enclave_kt::migration_record(&mig.encode())
+            {
+                return Err(CoreError::Federation(FedError::NotLogged));
+            }
+        }
         let new = mig.new.0;
         let mut w = Writer::new();
         w.fixed(&new).u8(u8::from(mig.cross_signed())).u64(mig.time);
@@ -572,9 +658,6 @@ impl Client {
         )?;
         if own {
             // A linked device: our primary changed the words.
-            if self.account.root.is_some() {
-                return Err(CoreError::NotAccepted);
-            }
             self.account.adopt_root(mig.new);
             self.store.put(
                 NS_SECRETS,
@@ -667,7 +750,75 @@ impl Client {
         let key = [&gid[..], &next.hash()[..]].concat();
         let v = [&[author][..], &next.encode()].concat();
         self.store.put(NS_HELD_STATES, &key, &v, &mut self.rng)?;
+        if self.store.get(NS_HELD_SINCE, &key)?.is_none() {
+            let since = [&self.now().to_be_bytes()[..], &[0]].concat();
+            self.store.put(NS_HELD_SINCE, &key, &since, &mut self.rng)?;
+        }
         Ok(false)
+    }
+
+    fn drop_held_state(&mut self, key: &[u8]) -> Result<()> {
+        self.store.delete(NS_HELD_STATES, key)?;
+        self.store.delete(NS_HELD_SINCE, key)?;
+        Ok(())
+    }
+
+    /// The members of group `gid` whose change of recovery words reached
+    /// the group but not us, for an hour or more (their old roots): their
+    /// key change is on hold here until we get it from them (03 §8.2.6).
+    pub fn held_moves(&self, gid: &[u8; 32]) -> Vec<[u8; 64]> {
+        self.held_moves_at(self.now())
+            .into_iter()
+            .filter(|(g, _, _)| g == gid)
+            .map(|(_, old, _)| old)
+            .collect()
+    }
+
+    /// Held root updates past the notice time: group, old root, key.
+    fn held_moves_at(&self, now: u64) -> Vec<([u8; 32], [u8; 64], Vec<u8>)> {
+        let Ok(held) = self.store.scan(NS_HELD_STATES) else {
+            return Vec::new();
+        };
+        held.into_iter()
+            .filter_map(|(k, v)| {
+                let gid: [u8; 32] = k.get(..32)?.try_into().ok()?;
+                let since = self.store.get(NS_HELD_SINCE, &k).ok()??;
+                let since = u64::from_be_bytes(since.get(..8)?.try_into().ok()?);
+                if since + HELD_MOVE_NOTICE_SECS > now {
+                    return None;
+                }
+                let next = GroupState::decode(v.get(1..)?).ok()?;
+                let current = &self.groups.get(&gid)?.group.state;
+                // The group moved past it: nothing is on hold.
+                if next.parent != current.hash() {
+                    return None;
+                }
+                let (_, old, _) = current.root_change(&next)?;
+                Some((gid, old, k))
+            })
+            .collect()
+    }
+
+    /// Tell the app, once each, about root updates held past the notice
+    /// time (from `sync`).
+    pub(crate) fn notice_held_moves(&mut self, now: u64) -> Result<Vec<Event>> {
+        let mut events = Vec::new();
+        for (gid, old, k) in self.held_moves_at(now) {
+            let Some(mut since) = self.store.get(NS_HELD_SINCE, &k)? else {
+                continue;
+            };
+            if since.get(8) == Some(&1) {
+                continue;
+            }
+            since.truncate(8);
+            since.push(1);
+            self.store.put(NS_HELD_SINCE, &k, &since, &mut self.rng)?;
+            events.push(Event::GroupMoveHeld {
+                group_id: gid,
+                root: old,
+            });
+        }
+        Ok(events)
     }
 
     /// Apply held root updates whose migration has arrived since; drop the
@@ -679,31 +830,31 @@ impl Client {
                 k.get(..32).and_then(|g| <[u8; 32]>::try_from(g).ok()),
                 v.split_first(),
             ) else {
-                self.store.delete(NS_HELD_STATES, &k)?;
+                self.drop_held_state(&k)?;
                 continue;
             };
             let Ok(next) = GroupState::decode(state) else {
-                self.store.delete(NS_HELD_STATES, &k)?;
+                self.drop_held_state(&k)?;
                 continue;
             };
             let Some(e) = self.groups.get(&gid) else {
-                self.store.delete(NS_HELD_STATES, &k)?;
+                self.drop_held_state(&k)?;
                 continue;
             };
             let current = e.group.state.clone();
             if next.parent != current.hash() || !current.accepts(&next, author) {
-                self.store.delete(NS_HELD_STATES, &k)?;
+                self.drop_held_state(&k)?;
                 continue;
             }
             let Some((_, old, new)) = current.root_change(&next) else {
-                self.store.delete(NS_HELD_STATES, &k)?;
+                self.drop_held_state(&k)?;
                 continue;
             };
             if !self.migrated(&old, &new) {
                 continue; // still waiting
             }
             self.apply_root_change(&gid, &next, &old, &new)?;
-            self.store.delete(NS_HELD_STATES, &k)?;
+            self.drop_held_state(&k)?;
             events.push(Event::GroupChanged { group_id: gid });
         }
         Ok(events)

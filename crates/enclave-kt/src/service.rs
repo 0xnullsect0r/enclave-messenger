@@ -259,15 +259,11 @@ impl KtService {
 
     /// Commit account records (`03-identity.md` §8.1) in one new epoch:
     /// `(last 31 bytes of the manifest directory key, record)` pairs.
-    pub fn commit_accounts(
-        &self,
-        records: Vec<([u8; 31], [u8; crate::log::ACCOUNT_RECORD_LEN])>,
-        now: u64,
-    ) -> Result<u64> {
+    pub fn commit_accounts(&self, records: Vec<([u8; 31], Vec<u8>)>, now: u64) -> Result<u64> {
         self.commit(
             records
                 .into_iter()
-                .map(|(t, r)| (crate::log::account_label(&t), r.to_vec()))
+                .map(|(t, r)| (crate::log::account_label(&t), r))
                 .collect(),
             now,
         )

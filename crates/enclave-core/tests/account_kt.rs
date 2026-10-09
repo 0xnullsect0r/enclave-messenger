@@ -109,3 +109,44 @@ async fn manifest_changes_wait_for_the_log() {
     let ev = b.sync().await.unwrap();
     assert_eq!(texts(&ev), ["new phone, same me"]);
 }
+
+/// Ada changes her recovery words, but her server keeps the migration out
+/// of its log: Ben keeps it until the log shows it, then follows it.
+#[tokio::test(flavor = "multi_thread")]
+async fn migrations_wait_for_the_log() {
+    let net = network();
+    let mut policy = net.enable_usernames(&S1, "one.test").unwrap();
+    policy.merge(net.enable_usernames(&S2, "two.test").unwrap());
+    let (mut a, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut b, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Ben")
+        .await
+        .unwrap();
+    a.set_kt_policy(policy.clone());
+    b.set_kt_policy(policy.clone());
+    a.add_contact(&b.card(), "hi").await.unwrap();
+    b.sync().await.unwrap();
+    b.accept(&a.root()).await.unwrap();
+    a.sync().await.unwrap();
+    let old = a.root();
+
+    net.with_server(&S1, |s| s.kt_withhold(true)).unwrap();
+    a.change_recovery_words().await.unwrap();
+    let new = a.root();
+    let moved = |ev: &[Event]| {
+        ev.iter().any(
+            |e| matches!(e, Event::ContactMoved { old: o, root: r, .. } if *o == old && *r == new),
+        )
+    };
+    for _ in 0..2 {
+        let ev = b.sync().await.unwrap();
+        assert!(!moved(&ev), "{ev:?}");
+    }
+    assert!(b.contact(&old).is_some(), "not followed while unlogged");
+
+    net.with_server(&S1, |s| s.kt_withhold(false)).unwrap();
+    let ev = b.sync().await.unwrap();
+    assert!(moved(&ev), "{ev:?}");
+    assert!(b.contact(&new).is_some() && b.contact(&old).is_none());
+}

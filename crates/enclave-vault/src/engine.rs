@@ -2215,7 +2215,14 @@ impl Engine {
                 self.busy = true;
                 self.push();
                 if let Some(c) = self.client.as_mut() {
-                    match c.change_recovery_words().await {
+                    // A device without the words makes new ones for an
+                    // account whose words and first device are lost.
+                    let r = if c.holds_recovery_words() {
+                        c.change_recovery_words().await
+                    } else {
+                        c.replace_lost_root().await
+                    };
+                    match r {
                         Ok(_) => {
                             self.reveal_words = true;
                             self.status.clear();
@@ -3082,6 +3089,12 @@ impl Engine {
                 s.current = Some(row.clone());
                 s.group_admin = g.admin;
                 s.on_record = g.on_record;
+                s.held_moves = g
+                    .held_moves
+                    .iter()
+                    .filter_map(|old| g.members.iter().find(|(r, _)| r == old))
+                    .map(|(_, name)| name.clone())
+                    .collect();
                 s.members = g
                     .members
                     .iter()

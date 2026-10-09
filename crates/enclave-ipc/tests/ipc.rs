@@ -142,6 +142,7 @@ fn snapshot() -> Snapshot {
         can_change_words: true,
         words_pending: true,
         moved: 2,
+        held_moves: vec!["Cy".into()],
         route: 1,
         tor_blocked: true,
         bridges: "builtin".into(),

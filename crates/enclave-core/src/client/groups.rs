@@ -61,6 +61,9 @@ pub struct GroupInfo {
     pub host: [u8; 16],
     /// Its admins.
     pub admins: Vec<[u8; 64]>,
+    /// Members whose change of recovery words is on hold here (their old
+    /// roots; `Client::held_moves`).
+    pub held_moves: Vec<[u8; 64]>,
 }
 
 /// A reaction to a group message.
@@ -364,6 +367,7 @@ impl Client {
                         .filter(|(_, m)| m.admin)
                         .map(|(_, m)| m.root)
                         .collect(),
+                    held_moves: self.held_moves(&st.group_id),
                 }
             })
             .collect()

@@ -614,6 +614,7 @@ export component AppWindow inherits Window {
     in property <bool> typing;
     callback set-typing-setting(bool);
     in property <bool> can-change-words;
+    in property <string> held-moves;
     in property <bool> words-pending;
     in property <int> moved;
     callback change-words();
@@ -1546,6 +1547,15 @@ export component AppWindow inherits Window {
                             alignment: start;
                             QuietButton { text: "Check now"; clicked => { root.open-sheet(Sheet.check-code); } }
                         }
+                    }
+                }
+                if root.held-moves != "" && root.current.kind == 1: HorizontalLayout {
+                    padding-left: Tokens.space-m;
+                    padding-right: Tokens.space-m;
+                    Notice {
+                        title: root.held-moves + " changed their recovery words, but this device didn't hear it from them";
+                        text: "Their new key is on hold in this group until it does. Ask them to open Enclave, and check with them another way before sharing anything private.";
+                        kind: 1;
                     }
                 }
                 if root.holds-share && root.current.kind == 0 && root.current.state == 2: HorizontalLayout {
@@ -2797,6 +2807,18 @@ export component AppWindow inherits Window {
                 clicked => { root.open-sheet(Sheet.change-words); }
             }
         }
+        // A linked device: the words live on the first device.
+        if !root.can-change-words && root.recovery-words.length == 0 && !root.busy && !root.words-pending: Secondary {
+            text: "Your recovery words are on the device you set Enclave up on first, not this one. Lost the words and that device too? You can make new words here.";
+        }
+        if !root.can-change-words && root.recovery-words.length == 0 && !root.busy && !root.words-pending: HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: "Make new words";
+                outlined: true;
+                clicked => { root.open-sheet(Sheet.change-words); }
+            }
+        }
     }
 
     if root.sheet == Sheet.player: SheetFrame {
@@ -2826,23 +2848,29 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.change-words: SheetFrame {
-        title: "Change your recovery words";
+        title: root.can-change-words ? "Change your recovery words" : "Make new recovery words";
         close => { root.sheet = Sheet.none; }
         Body {
-            text: "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working.";
+            text: root.can-change-words
+                ? "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working."
+                : "Do this only if your words are lost and so is the device that had them. This device gets 24 new words and becomes the one that holds them.";
             wrap: word-wrap;
         }
         Secondary {
-            text: "Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are.";
+            text: root.can-change-words
+                ? "Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are."
+                : "Without the old words Enclave can't prove to your contacts that this was you, so each of them is asked to check your security code in person. Your conversations, groups and devices stay as they are, and your username stays with the old words.";
         }
         Secondary {
-            text: "Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards.";
+            text: root.can-change-words
+                ? "Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards."
+                : "Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards.";
         }
         HorizontalLayout {
             spacing: Tokens.space-s;
             alignment: start;
             PrimaryButton {
-                text: "Change my words";
+                text: root.can-change-words ? "Change my words" : "Make new words";
                 clicked => { root.change-words(); root.open-sheet(Sheet.recovery); }
             }
             QuietButton { text: "Not now"; clicked => { root.sheet = Sheet.recovery; } }

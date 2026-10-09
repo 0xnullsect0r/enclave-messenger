@@ -387,6 +387,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_typing_setting(s.typing_setting);
     ui.set_typing(s.typing);
     ui.set_can_change_words(s.can_change_words);
+    ui.set_held_moves(s.held_moves.join(", ").into());
     ui.set_words_pending(s.words_pending);
     ui.set_moved(i32::from(s.moved));
     ui.set_members(ModelRc::from(Rc::new(VecModel::from(

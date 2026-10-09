@@ -149,8 +149,23 @@ impl Client {
         atts: &[u8],
         now: u64,
     ) -> Result<bool> {
+        Ok(match self.logged_record(server, root, now).await? {
+            None => true,
+            Some(v) => v == enclave_kt::account_record(&signed.to_bytes(), atts),
+        })
+    }
+
+    /// The record `server`'s pinned log holds for the account `root`,
+    /// verified (empty if it holds none, or the proof doesn't check out);
+    /// `None` when no log is pinned for the server.
+    pub(crate) async fn logged_record(
+        &mut self,
+        server: &ServerId,
+        root: &[u8; 64],
+        now: u64,
+    ) -> Result<Option<Vec<u8>>> {
         let Some(info) = self.kt.as_ref().and_then(|p| p.by_server(server)).cloned() else {
-            return Ok(true);
+            return Ok(None);
         };
         let witnesses = self
             .kt
@@ -173,10 +188,10 @@ impl Client {
         {
             Ok(b) => b,
             Err(e @ CoreError::Net(_)) => return Err(e),
-            Err(_) => return Ok(false),
+            Err(_) => return Ok(Some(Vec::new())),
         };
         let Ok(reply) = enclave_kt::LookupReply::decode(&reply) else {
-            return Ok(false);
+            return Ok(Some(Vec::new()));
         };
         let mut tail = [0u8; 31];
         tail.copy_from_slice(&key[1..]);
@@ -190,11 +205,11 @@ impl Client {
             reply.proof,
             now,
         ) else {
-            return Ok(false);
+            return Ok(Some(Vec::new()));
         };
         self.record_head(&reply.head)?;
         self.observe_trusted_time(trusted, now)?;
-        Ok(value == enclave_kt::account_record(&signed.to_bytes(), atts))
+        Ok(Some(value))
     }
 
     /// The attestations about `root`'s manifest changes on `server`, and

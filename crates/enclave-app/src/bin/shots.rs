@@ -259,6 +259,7 @@ fn fixture() -> Snapshot {
         can_change_words: true,
         words_pending: false,
         moved: 0,
+        held_moves: Vec::new(),
         route: 0,
         tor_blocked: false,
         bridges: String::new(),

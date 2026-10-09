@@ -161,7 +161,7 @@ pub use link::{DeviceInfo, LinkCode, LinkOffer, LinkProgress, LinkingDevice};
 pub use location::{Location, MAX_LOCATION_LABEL};
 pub use meet::{MEET_PREFIX, MeetMatch};
 pub use messages::{EDIT_WINDOW, Message, Reaction};
-pub use migrate::Moved;
+pub use migrate::{HELD_MOVE_NOTICE_SECS, Moved};
 use own_sync::NS_CARD_OWED;
 pub use own_sync::{INACTIVE_SECS, NEW_DEVICE_SECS, OwnDeviceState};
 pub use pins::MAX_PINS;
@@ -292,6 +292,15 @@ pub enum Event {
     /// This device was removed from the account by another device. It can
     /// no longer read new messages; the app should say so and offer to erase.
     RemovedFromAccount,
+    /// A member of the group changed their recovery words: the group was
+    /// told, but we never got the change from them, so their new key is
+    /// on hold here (an hour on; `Client::held_moves`).
+    GroupMoveHeld {
+        /// The group.
+        group_id: [u8; 32],
+        /// Their old root.
+        root: [u8; 64],
+    },
     /// This device restored the account, and one of the account's other
     /// devices stopped the change: contacts will never accept it ("One of
     /// your other devices stopped this change").
@@ -1504,6 +1513,7 @@ impl Client {
         events.append(&mut self.release_held(now).await?);
         events.append(&mut self.check_own_manifest(now).await?);
         events.append(&mut self.check_recovering(now).await?);
+        events.append(&mut self.notice_held_moves(now)?);
         // The third KEM for someone met through a group (`braid.rs`).
         if let Err(e) = self.upgrade_braids(now).await
             && matches!(e, CoreError::Net(_))

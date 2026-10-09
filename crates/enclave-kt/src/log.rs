@@ -45,6 +45,13 @@ pub fn account_record(manifest: &[u8], attestations: &[u8]) -> [u8; ACCOUNT_RECO
     r
 }
 
+/// An account's record once it moved to a new root (`03-identity.md`
+/// §8.2): `"M" ‖ SHA3-512(migration record)`. Its length (65) tells it
+/// from an [`account_record`] (128).
+pub fn migration_record(migration: &[u8]) -> Vec<u8> {
+    [&b"M"[..], &enclave_crypto::hash::sha3_512(migration)].concat()
+}
+
 /// VRF key held in memory for the life of the process.
 #[derive(Clone)]
 pub struct VrfKey(Arc<[u8; 32]>);

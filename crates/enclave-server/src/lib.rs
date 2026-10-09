@@ -321,6 +321,10 @@ pub struct Server {
     /// manifest change from the log.
     #[cfg(feature = "test-hooks")]
     kt_withhold: bool,
+    /// Answer every blob fetch "not found" (test hook): a file that can't
+    /// be fetched.
+    #[cfg(feature = "test-hooks")]
+    blob_withhold: bool,
     /// What a curious server could log about tokens (test hook): each
     /// registration batch, and each burned hash in order.
     #[cfg(feature = "test-hooks")]
@@ -437,6 +441,8 @@ impl Server {
             kt_serve_fork: false,
             #[cfg(feature = "test-hooks")]
             kt_withhold: false,
+            #[cfg(feature = "test-hooks")]
+            blob_withhold: false,
             #[cfg(feature = "test-hooks")]
             token_log: (Vec::new(), Vec::new()),
             #[cfg(feature = "test-hooks")]
@@ -776,10 +782,13 @@ impl Server {
     }
 
     /// An account's record for the log: its manifest and attestation list
-    /// as served here.
-    fn account_record(&self, key: &[u8; 32]) -> Option<[u8; enclave_kt::ACCOUNT_RECORD_LEN]> {
+    /// as served here, or its migration once it moved to a new root.
+    fn account_record(&self, key: &[u8; 32]) -> Option<Vec<u8>> {
         self.db
             .read(|r| {
+                if let Some(mig) = r.get(db::MIGRATIONS, key)? {
+                    return Ok(Some(enclave_kt::migration_record(&mig)));
+                }
                 let Some(m) = r.get(db::MANIFESTS, key)? else {
                     return Ok(None);
                 };
@@ -787,7 +796,7 @@ impl Server {
                     .get(db::ATTESTATIONS, key)?
                     .map(|v| enclave_proto::attest::encode_list(&decode_blobs(&v)))
                     .unwrap_or_default();
-                Ok(Some(enclave_kt::account_record(tail(&m), &atts)))
+                Ok(Some(enclave_kt::account_record(tail(&m), &atts).to_vec()))
             })
             .ok()
             .flatten()
@@ -833,7 +842,7 @@ impl Server {
                 );
             }
         }
-        let records: Vec<([u8; 31], [u8; enclave_kt::ACCOUNT_RECORD_LEN])> = keys
+        let records: Vec<([u8; 31], Vec<u8>)> = keys
             .iter()
             .filter_map(|k| {
                 let rec = self.account_record(k)?;
@@ -887,6 +896,13 @@ impl Server {
     #[cfg(feature = "test-hooks")]
     pub fn kt_withhold(&mut self, on: bool) {
         self.kt_withhold = on;
+    }
+
+    /// **Test hook**: answer every blob fetch "not found" (true), or
+    /// serve blobs again (false).
+    #[cfg(feature = "test-hooks")]
+    pub fn blob_withhold(&mut self, on: bool) {
+        self.blob_withhold = on;
     }
 
     /// The log lookups are answered from.
@@ -1038,7 +1054,10 @@ impl Server {
             Op::BlobGet => {
                 #[cfg(feature = "test-hooks")]
                 self.blob_gets.push(h.mailbox);
-                match self.db.read(|r| r.get(db::BLOBS, &h.mailbox)) {
+                let got = self.db.read(|r| r.get(db::BLOBS, &h.mailbox));
+                #[cfg(feature = "test-hooks")]
+                let got = if self.blob_withhold { Ok(None) } else { got };
+                match got {
                     Ok(Some(v)) => (Status::Ok, 0, none, Reply::Envelope(tail(&v).to_vec())),
                     Ok(None) => (Status::NotFound, 0, none, Reply::Empty),
                     Err(e) => {
@@ -1982,7 +2001,12 @@ impl Server {
             DirKind::Equivocation => self.accept_equivocation(&req.key, &object),
             DirKind::Descriptor | DirKind::ServerList => Status::Denied,
         };
-        if status == Status::Ok && matches!(req.kind, DirKind::Manifest | DirKind::Attest) {
+        if status == Status::Ok
+            && matches!(
+                req.kind,
+                DirKind::Manifest | DirKind::Attest | DirKind::Migration
+            )
+        {
             self.commit_account(Some(req.key), now);
         }
         (status, Reply::Empty)
