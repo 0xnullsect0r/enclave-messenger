@@ -7,7 +7,9 @@
 #
 # `server` holds every service an operator's stack runs except the Nym
 # sidecar: enclave-server, enclave-witness, enclave-front, enclave-relay,
-# enclave-push-relay and enclave-admin. The compose file picks the binary
+# enclave-push-relay, enclave-admin and enclave-credgate (the foundation's
+# credential gate, compose profile `foundation`; built without its
+# dev-tickets feature). The compose file picks the binary
 # per service. The runtime is distroless (no shell, no package manager) and
 # runs as the unprivileged `nonroot` user.
 #
@@ -35,17 +37,18 @@ RUN --mount=type=cache,target=/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked \
       -p enclave-server -p enclave-witness -p enclave-front \
-      -p enclave-relay -p enclave-push-relay -p enclave-admin \
+      -p enclave-relay -p enclave-push-relay -p enclave-admin -p enclave-credgate \
  && mkdir -p /out \
  && cp target/release/enclave-server target/release/enclave-witness \
        target/release/enclave-front target/release/enclave-relay \
-       target/release/enclave-push-relay target/release/enclave-admin /out/
+       target/release/enclave-push-relay target/release/enclave-admin \
+       target/release/enclave-credgate /out/
 # State directories, owned by `nonroot` (65532), so the named volumes
 # mounted on them start out writable; key directories owner-only.
 RUN cd /var/lib && mkdir -p enclave \
- && cd enclave && mkdir server public backups witness front relay \
-      keys witness-keys relay-keys push-keys \
- && chmod 0700 keys witness-keys relay-keys push-keys \
+ && cd enclave && mkdir server public backups witness front relay credgate \
+      keys witness-keys relay-keys push-keys credgate-keys \
+ && chmod 0700 keys witness-keys relay-keys push-keys credgate-keys \
  && chown -R 65532:65532 /var/lib/enclave
 
 FROM ${RUNTIME_IMAGE} AS server

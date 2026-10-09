@@ -89,7 +89,7 @@ Enclave's protocol, client engine, desktop app and dev server work and are teste
 |---|---|
 | X16 | **Nym tests in three tiers:** (1) `FakeMixnet` + `enclave-sim`, deterministic, on every PR; (2) a local `nym-node` mixnet in Docker (`ghcr.io/enclavechat/nym-localnet`), blocking on `main` and nightly; (3) the Nym sandbox nightly and a mainnet benchmark weekly, both non-blocking. |
 | X17 | **Dev features:** `dev-transport` (TCP) and `dev-networks` (custom topology) are cargo features that are off in every release build. CI checks this with `strings`. |
-| X18 | **New service `enclave-credgate`** (Equi-X + Privacy Pass RFC 9578 type 0x0002) in front of a pinned upstream `nym-credential-proxy`. Clients reach it over Tor. Ticketbooks are stored in the vault and imported into netd. Operator ingresses buy their own tickets from a mnemonic held as a Docker secret. |
+| X18 | **New service `enclave-credgate`** (Equi-X + Privacy Pass RFC 9578 type 0x0001, VOPRF over P-384: RFC 0001, chosen over 0x0002 for the RSA timing advisory) in front of a pinned upstream `nym-credential-proxy`. Clients reach it over Tor. Ticketbooks are stored in the vault and imported into netd. Operator ingresses buy their own tickets from a mnemonic held as a Docker secret. |
 
 ### Clients, packaging and licensing
 
@@ -289,7 +289,7 @@ Other crates:
 
 #### N3: credentials
 
-- New `crates/enclave-credgate` (Equi-X → Privacy Pass → ticketbook via `nym-credential-proxy`; quotas, no logs; issuer key rotated monthly, published in the server list).
+- New `crates/enclave-credgate` (Equi-X → Privacy Pass → ticketbook via `nym-credential-proxy`; quotas, no logs; issuer key rotated monthly, published in the server list). Done for the gate (`09` §7): `enclave-tokens::privpass`, `enclave-credgate`, the front's proxy, compose profile `foundation`, image binary. Server-list publication of the issuer key still to do.
 - Client: a sealed ticketbook wallet in the vault, auto-refill, `netd FetchCredential` over Tor, `ImportTickets`.
 - Ingress: mnemonic-funded auto top-up with a low-balance alert.
 - Compose: a `foundation` profile.

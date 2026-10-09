@@ -31,6 +31,7 @@ members = [
     "crates/enclave-admin",
     "crates/enclave-tls",
     "crates/enclave-witness",
+    "crates/enclave-credgate",
     "crates/enclave-front",
     "crates/enclave-e2e",
     "crates/enclave-fuzz",

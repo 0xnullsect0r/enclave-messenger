@@ -248,6 +248,13 @@ Residuals: the sequence of real requests in a bulk window is visible as a burst 
 ## 7. Nym access, fallback, censorship (not yet implemented)
 
 - zk-nym credentials through a credential proxy gated by Equi-X plus Privacy Pass.
+  **As implemented, the gate side** (`crates/enclave-credgate`, RFC 0001):
+  - **Getting tokens.** A device fetches a single-use challenge (`POST /credgate/v1/challenge`, 32 B nonce and Equi-X effort), solves it with context `credgate ‖ nonce`, and gets up to 8 Privacy Pass tokens (VOPRF over P-384, RFC 9578 type `0x0001`) issued blind (`POST /credgate/v1/tokens`).
+  - **Spending a token.** One token buys one ticketbook (`POST /credgate/v1/ticketbook`, `Token ‖ request`). The gate checks the token against this 30-day epoch's key or the previous one (`IssuerKey::derive(seed, epoch)`), records it as spent (redb, two epochs), and passes the request to the foundation's `nym-credential-proxy` (`/api/v1/ticketbook/obtain`, with every global signature included).
+  - **What the gate sees.** The request is the device's own withdrawal request, so its ecash keys never leave it, and the answer is the wallet shares it aggregates itself. Reached over Tor, the gate learns neither the device's address nor which tokens came from which proof of work, and it logs nothing about requests.
+  - **Where it runs.** The front proxies `/credgate/v1/*` to it when `credgate` is set. Compose runs it in the foundation's stack (profile `foundation`).
+  - **Tests.** `work_buys_tokens_and_a_token_buys_one_ticketbook`, `bad_work_and_too_many_tokens_are_refused`, `a_device_gets_a_ticketbook_over_http`.
+  - **Not implemented yet:** the device side (fetching through tord, the vault's wallet, importing into nymd), the issuer key in the server list, and the ingress's own top-up.
 - M4 go/no-go (`roadmap.md`): nym-sdk ≤150 MB RAM on Android and iOS; cold connect ≤5 s; bulk ≥200 KB/s of nym-sdk raw throughput (the Bulk profile itself is capped at 40 packets/s, at most ≈82 KB/s of payload; `00-overview.md` §9, I-12); the credential path works; cost ≤ $1 per user per month; the Tor → gateway path works. The spike report is `spikes/m4-network.md`.
 - Fallback transport: Tor onion services (`TorTransport`) with the same scheduler and objects, only with user consent and never in Maximum mode.
 - Censorship: obfs4 bridges in process; Snowflake and WebTunnel as declared exceptions, only in censorship mode.

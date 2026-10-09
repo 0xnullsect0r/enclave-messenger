@@ -409,7 +409,7 @@ Certificates (`front.tls`):
 
 Configuration is `[front]` in the TOML file given by `--config`, or `ENCLAVE_FRONT__<KEY>`: `listen_https` (default `0.0.0.0:443`), `listen_http`, `domain` (required), `public_dir`, `witness`, `tls`, `acme_email`, `acme_directory`, `acme_ca_root`, `cert`, `key`, `data_dir`. `enclave-front run` serves; `enclave-front healthcheck` checks that both ports accept connections. Tests (`crates/enclave-front/tests/front.rs`): the descriptor and a real witness reached through the front by `HttpWitness` over the Enclave profile, a classical-only client refused, a certificate replaced while serving, the proxy dropping client headers, the HTTP side's challenge answers and redirect, and the whole ACME flow against pebble (CI job `tls-interop`): an account, the HTTP-01 answer, a certificate trusted under pebble's root and served over the Enclave profile, and a second check that keeps it.
 
-Not implemented yet: `/credgate/v1/*` for credentials (N3).
+`/credgate/v1/*` is the foundation's credential gate (`enclave-credgate`, `09-transport.md` §7), proxied by the front of the stack that runs it (`[front] credgate`, compose profile `foundation`); other stacks answer 404.
 
 ## 5. Relays
 

@@ -1,0 +1,15 @@
+# enclave-credgate (docs/09-transport.md §7): the foundation's credential
+# gate, compose profile `foundation`. Plain HTTP on the internal network:
+# the front serves it at https://DOMAIN/credgate/v1/ (CREDGATE_UPSTREAM).
+# issuer_name and proxy_url come from .env (ENCLAVE_CREDGATE__* in
+# compose.yml).
+
+[credgate]
+listen = "0.0.0.0:7448"
+keys_dir = "/var/lib/enclave/credgate-keys"
+data_dir = "/var/lib/enclave/credgate"
+# Equi-X effort per challenge, and tokens one solved challenge buys.
+effort = 2000
+tokens_per_proof = 8
+# The nym-credential-proxy's API bearer token (a file, not the value).
+proxy_token_file = "/run/secrets/credgate-proxy-token"

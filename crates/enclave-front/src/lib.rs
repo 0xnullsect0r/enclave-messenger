@@ -90,6 +90,9 @@ pub struct Site {
     pub public_dir: PathBuf,
     /// The stack's witness on the internal network (`http://witness:7446`).
     pub witness: Option<String>,
+    /// The foundation's credential gate on the internal network
+    /// (`http://credgate:7448`), on the stack that runs one.
+    pub credgate: Option<String>,
     http: hyper_util::client::legacy::Client<
         hyper_util::client::legacy::connect::HttpConnector,
         http_body_util::Full<bytes::Bytes>,
@@ -105,8 +108,15 @@ impl Site {
         Self {
             public_dir,
             witness: witness.map(|w| w.trim_end_matches('/').to_string()),
+            credgate: None,
             http,
         }
+    }
+
+    /// Also proxy the credential gate's API (`/credgate/v1/*`) to `url`.
+    pub fn with_credgate(mut self, url: Option<String>) -> Self {
+        self.credgate = url.map(|u| u.trim_end_matches('/').to_string());
+        self
     }
 
     /// The HTTPS routes.
@@ -115,6 +125,7 @@ impl Site {
             .route("/.well-known/enclave", get(descriptor))
             .route("/healthz", get(|| async { "ok" }))
             .route("/witness/v1/{*rest}", any(witness))
+            .route("/credgate/v1/{*rest}", any(credgate))
             .with_state(Arc::new(self))
     }
 }
@@ -139,16 +150,33 @@ async fn descriptor(State(site): State<Arc<Site>>) -> Response {
     }
 }
 
-/// Pass a witness API request through to the stack's witness. Only the
-/// method, path and body go; no client address or other header does.
+/// Pass a witness API request through to the stack's witness.
 async fn witness(
     State(site): State<Arc<Site>>,
     Path(rest): Path<String>,
     req: Request<Body>,
 ) -> Response {
-    let Some(base) = &site.witness else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    match &site.witness {
+        Some(base) => proxy(&site, &format!("{base}/witness/v1/{rest}"), req).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Pass a credential gate request through to the gate.
+async fn credgate(
+    State(site): State<Arc<Site>>,
+    Path(rest): Path<String>,
+    req: Request<Body>,
+) -> Response {
+    match &site.credgate {
+        Some(base) => proxy(&site, &format!("{base}/credgate/v1/{rest}"), req).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Only the method, path and body go upstream; no client address or other
+/// header does.
+async fn proxy(site: &Site, uri: &str, req: Request<Body>) -> Response {
     let method = req.method().clone();
     let Ok(body) = http_body_util::Limited::new(req.into_body(), MAX_PROXY_BODY)
         .collect()
@@ -159,7 +187,7 @@ async fn witness(
     };
     let Ok(upstream) = hyper::Request::builder()
         .method(method)
-        .uri(format!("{base}/witness/v1/{rest}"))
+        .uri(uri)
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .body(http_body_util::Full::new(body))
     else {

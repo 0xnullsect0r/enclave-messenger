@@ -43,6 +43,9 @@ struct FrontSection {
     /// The stack's witness on the internal network, such as
     /// `http://witness:7446`; empty for none.
     witness: Option<String>,
+    /// `http://credgate:7448` on the stack that runs the foundation's
+    /// credential gate; empty for none.
+    credgate: Option<String>,
     tls: TlsMode,
     acme_email: Option<String>,
     acme_directory: Option<String>,
@@ -71,6 +74,7 @@ impl Default for FrontSection {
             domain: String::new(),
             public_dir: PathBuf::from("/var/lib/enclave/public"),
             witness: None,
+            credgate: None,
             tls: TlsMode::Acme,
             acme_email: None,
             acme_directory: None,
@@ -147,7 +151,9 @@ async fn run(args: &[String]) -> Result<(), String> {
     let https = tokio::net::TcpListener::bind(cfg.listen_https)
         .await
         .map_err(|e| format!("{}: {e}", cfg.listen_https))?;
-    let site = Site::new(cfg.public_dir.clone(), cfg.witness.clone()).router();
+    let site = Site::new(cfg.public_dir.clone(), cfg.witness.clone())
+        .with_credgate(cfg.credgate.clone())
+        .router();
     let mut tasks = tokio::task::JoinSet::new();
     tasks.spawn(enclave_front::serve_https(https, site, Arc::clone(&certs)));
     if let Some(addr) = cfg.listen_http {
