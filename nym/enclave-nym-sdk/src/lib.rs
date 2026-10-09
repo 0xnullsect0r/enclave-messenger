@@ -168,15 +168,24 @@ pub enum Network {
     },
 }
 
+/// In a build that can join local mixnets (feature `dev-networks`), this
+/// string is in the binary; release builds must not contain it (CI checks
+/// with `strings`).
+#[cfg(feature = "dev-networks")]
+pub const DEV_NETWORKS_MARKER: &str = "ENCLAVE-DEV-NETWORKS-ENABLED";
+
 impl Network {
     /// For `--env`: a local mixnet if `ENCLAVE_NYM_TOPOLOGY` names a
     /// topology file (with `ENCLAVE_NYM_API`, default
-    /// `http://nym-api:8000/`), else the `NYM_*` variables. Without
-    /// `--env`, mainnet.
+    /// `http://nym-api:8000/`; a `dev-networks` build only), else the
+    /// `NYM_*` variables. Without `--env`, mainnet.
     pub fn from_env(env: bool) -> Self {
         if !env {
             return Network::Mainnet;
         }
+        #[cfg(not(feature = "dev-networks"))]
+        return Network::Env;
+        #[cfg(feature = "dev-networks")]
         match std::env::var_os("ENCLAVE_NYM_TOPOLOGY") {
             Some(t) => Network::Local {
                 topology: t.into(),
@@ -279,6 +288,11 @@ async fn build(opts: &Options) -> Result<Built> {
         Network::Mainnet => (nym_sdk::NymNetworkDetails::default(), None),
         Network::Env => (nym_sdk::NymNetworkDetails::new_from_env(), None),
         Network::Local { topology, nym_api } => {
+            if !cfg!(feature = "dev-networks") {
+                return Err(client_error("a local mixnet needs a dev-networks build"));
+            }
+            #[cfg(feature = "dev-networks")]
+            std::hint::black_box(DEV_NETWORKS_MARKER);
             let api = url::Url::parse(nym_api).map_err(client_error)?;
             let provider =
                 nym_topology::provider_trait::HardcodedTopologyProvider::new_from_file(topology)

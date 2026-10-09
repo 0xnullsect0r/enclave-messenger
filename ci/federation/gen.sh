@@ -71,14 +71,18 @@ profiles() {
   echo "${p[@]}"
 }
 
+# Over the mixnet the stacks run the production compose (no server port on
+# the host: only the ingress reaches it, milestone S4); the dev transport
+# adds compose.dev.yml.
 dc() {
   local s=$1 extra=()
   shift
-  [ -f "$WORK/$s/compose.postgres.yml" ] && extra=(-f "$WORK/$s/compose.postgres.yml")
+  [ -f "$WORK/$s/compose.dev.yml" ] && extra=(-f "$WORK/$s/compose.dev.yml")
+  extra+=(-f "$WORK/$s/compose.e2e.yml")
+  [ -f "$WORK/$s/compose.postgres.yml" ] && extra+=(-f "$WORK/$s/compose.postgres.yml")
   [ -f "$WORK/$s/compose.localnet-stack.yml" ] && extra+=(-f "$WORK/$s/compose.localnet-stack.yml")
   docker compose -p "e2e-$s" --project-directory "$WORK/$s" \
-    -f "$WORK/$s/compose.yml" -f "$WORK/$s/compose.dev.yml" -f "$WORK/$s/compose.e2e.yml" \
-    "${extra[@]}" "$@"
+    -f "$WORK/$s/compose.yml" "${extra[@]}" "$@"
 }
 
 n_of() { case $1 in a) echo 1 ;; b) echo 2 ;; c) echo 3 ;; esac; }
@@ -146,8 +150,8 @@ up() {
     d=$WORK/$s
     mkdir -p "$d/config" "$d/foundation" "$d/tls" "$d/out"
     chmod 0777 "$d/out"
-    cp "$ROOT"/ops/compose/compose.yml "$ROOT"/ops/compose/compose.dev.yml \
-       "$ROOT"/ops/compose/compose.e2e.yml "$d/"
+    cp "$ROOT"/ops/compose/compose.yml "$ROOT"/ops/compose/compose.e2e.yml "$d/"
+    [ "$TRANSPORT" = nym ] || cp "$ROOT"/ops/compose/compose.dev.yml "$d/"
     [ "$TRANSPORT" = nym ] && cp "$ROOT"/ops/compose/compose.localnet-stack.yml "$d/"
     for f in "$ROOT"/ops/compose/config/*.toml.example; do
       cp "$f" "$d/config/$(basename "${f%.example}")"

@@ -154,7 +154,7 @@ jobs:
         working-directory: nym
         run: |
           cargo fmt --all -- --check
-          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
           cargo test --workspace --locked
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
@@ -259,6 +259,9 @@ jobs:
           file: ops/docker/Dockerfile
           target: nym
           tags: enclave-nym:ci
+          # A local mixnet needs the development networks (never in a
+          # release image).
+          build-args: NYM_FEATURES=dev-networks
           load: true
           cache-from: type=gha,scope=nym
           cache-to: type=gha,mode=max,scope=nym
@@ -277,8 +280,8 @@ jobs:
           # The SOCKS5 front a device puts Tor behind, dialling directly
           # here (no Tor network in CI).
           cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
-          (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-dev-proxy \
-            && cargo build --release --locked -p enclave-nym-sdk --example live_bench)
+          (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-dev-proxy --features enclave-nymd/dev-networks \
+            && cargo build --release --locked -p enclave-nym-sdk --example live_bench --features dev-networks)
       - name: Three stacks and a mixnet, one foundation
         run: TRANSPORT=nym ci/federation/gen.sh up
       - name: End to end over the mixnet through tord, with a restart of one stack
@@ -303,6 +306,45 @@ jobs:
         run: TRANSPORT=nym ci/federation/gen.sh logs
       - if: always()
         run: TRANSPORT=nym ci/federation/gen.sh down
+
+  release-features:
+    name: release builds hold no development feature (X17)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          workspaces: |
+            .
+            nym
+      # What ships on a device, built as a release builds it: default
+      # features only. Each development feature puts an `ENCLAVE-DEV-…`
+      # marker in the binary (the server image's build checks its own).
+      - name: Build the device binaries
+        run: |
+          cargo build --release --locked -p enclave-netd -p enclave-vault -p enclave-tord -p enclave-mediad
+          (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-ingress-bin)
+      - name: No development marker in them
+        run: |
+          set -euo pipefail
+          bins="target/release/enclave-netd target/release/enclave-vault target/release/enclave-tord
+                target/release/enclave-mediad nym/target/release/enclave-nymd nym/target/release/enclave-ingress"
+          found=0
+          for b in $bins; do
+            test -x "$b"
+            if strings -a "$b" | grep -q 'ENCLAVE-DEV-'; then
+              echo "::error::$b contains a development feature: $(strings -a "$b" | grep -o 'ENCLAVE-DEV-[A-Z-]*' | sort -u | tr '\n' ' ')"
+              found=1
+            fi
+          done
+          exit $found
+      - name: Without the development transport, TCP routes are refused
+        run: cargo test --release --locked -p enclave-net --lib release_build
+      # And the markers are real: a development build has them.
+      - name: The check would catch one
+        run: |
+          cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
+          strings -a target/release/enclave-tord | grep -q ENCLAVE-DEV-DIRECT-ENABLED
 
   done-gate:
     name: completion gate (report)

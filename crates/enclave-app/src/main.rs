@@ -7,7 +7,8 @@
 //! reaches a server over the mixnet (through `enclave-netd` and
 //! `enclave-nymd`; `--nym-env` for a local mixnet or the sandbox), and
 //! `--server SERVER_ID=HOST:PORT` a dev server (`enclave-server`) over TCP
-//! (add `--kt-pins FILE`, written by the server, to use usernames).
+//! in a build with the `dev-transport` feature (never a release; add
+//! `--kt-pins FILE`, written by the server, to use usernames).
 #![deny(unsafe_code)]
 
 use enclave_app::{AppWindow, Screen, Sheet, vault, view};

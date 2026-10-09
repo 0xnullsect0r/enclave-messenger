@@ -12,6 +12,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Local mixnets (`ENCLAVE_NYM_TOPOLOGY`) and their test CA: CI and
+# development only, never in a release build.
+dev-networks = []
+
 [dependencies]
 enclave-nym = { path = "../../crates/enclave-nym" }
 # Exactly 1.21.5: 1.21.6 doesn't resolve on crates.io, and 1.21.5 resolves
@@ -55,3 +60,11 @@ nym-compact-ecash = "=1.21.5"
 nym-validator-client = "=1.21.5"
 enclave-wire = { path = "../../crates/enclave-wire" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[example]]
+name = "localnet_roundtrip"
+required-features = ["dev-networks"]
+
+[[example]]
+name = "localnet_ticks"
+required-features = ["dev-networks"]

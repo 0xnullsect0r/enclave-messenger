@@ -82,6 +82,11 @@ mod arti {
     }
 }
 
+/// In a `dev-direct` build this string is in the binary; release builds
+/// must not contain it (CI checks with `strings`).
+#[cfg(feature = "dev-direct")]
+pub const DEV_DIRECT_MARKER: &str = "ENCLAVE-DEV-DIRECT-ENABLED";
+
 /// Dials directly: tests and the local mixnet only (`dev-direct`).
 #[cfg(any(test, feature = "dev-direct"))]
 pub struct DirectDialer;
@@ -90,6 +95,8 @@ pub struct DirectDialer;
 #[async_trait::async_trait]
 impl Dialer for DirectDialer {
     async fn dial(&self, host: &str, port: u16) -> std::io::Result<Box<dyn socks::Stream>> {
+        #[cfg(feature = "dev-direct")]
+        std::hint::black_box(DEV_DIRECT_MARKER);
         Ok(Box::new(
             tokio::net::TcpStream::connect((host, port)).await?,
         ))

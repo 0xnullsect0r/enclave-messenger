@@ -163,8 +163,14 @@ pub enum Route {
 /// The port of a stack's onion service (`enclave-onion`).
 pub const ONION_PORT: u16 = 7443;
 
+/// In a build with the development transport, this string is in the
+/// binary; release builds must not contain it (CI checks with `strings`).
+#[cfg(feature = "dev-transport")]
+pub const DEV_TRANSPORT_MARKER: &str = "ENCLAVE-DEV-TRANSPORT-ENABLED";
+
 impl Route {
-    /// Parse `HOST:PORT`, `nym:ADDRESS` or `onion:HOST.onion`.
+    /// Parse `HOST:PORT` (a build with the `dev-transport` feature only),
+    /// `nym:ADDRESS` or `onion:HOST.onion`.
     pub fn parse(s: &str) -> Option<Self> {
         if let Some(h) = s.strip_prefix("onion:") {
             return (h.len() > ".onion".len() && h.ends_with(".onion") && !h.contains(':'))
@@ -173,7 +179,10 @@ impl Route {
         match s.strip_prefix("nym:") {
             Some(a) if !a.is_empty() => Some(Route::Nym(a.into())),
             Some(_) => None,
+            #[cfg(feature = "dev-transport")]
             None => s.parse().ok().map(Route::Tcp),
+            #[cfg(not(feature = "dev-transport"))]
+            None => None,
         }
     }
 }
@@ -241,6 +250,13 @@ impl TcpTransport {
     }
 
     async fn roundtrip(&self, server: &ServerId, frame: &[u8]) -> Result<Vec<u8>> {
+        if !cfg!(feature = "dev-transport") {
+            return Err(NetError::Unavailable(
+                "the development transport isn't in this build",
+            ));
+        }
+        #[cfg(feature = "dev-transport")]
+        std::hint::black_box(DEV_TRANSPORT_MARKER);
         if self.private.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(NetError::Unavailable(
                 "Maximum privacy needs the private route",
@@ -717,5 +733,24 @@ impl Transport for NymTransport {
         if let (Route::Nym(a), Ok(mut r)) = (route, self.routes.write()) {
             r.insert(server, a);
         }
+    }
+}
+
+/// A release build (no `dev-transport`): no TCP route parses, and the TCP
+/// transport doesn't dial.
+#[cfg(all(test, not(feature = "dev-transport")))]
+mod release_build {
+    use super::*;
+
+    #[tokio::test]
+    async fn no_tcp_routes() {
+        assert_eq!(Route::parse("127.0.0.1:7443"), None);
+        assert!(parse_route("00112233445566778899aabbccddeeff=127.0.0.1:7443").is_none());
+        assert!(Route::parse("nym:abc").is_some());
+        let t = TcpTransport::new(HashMap::from([([1; 16], "127.0.0.1:9".parse().unwrap())]));
+        assert!(matches!(
+            t.exchange(&[1; 16], vec![0]).await,
+            Err(NetError::Unavailable(_))
+        ));
     }
 }

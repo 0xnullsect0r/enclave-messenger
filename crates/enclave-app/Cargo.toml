@@ -29,6 +29,11 @@ path = "src/main.rs"
 name = "enclave-shots"
 path = "src/bin/shots.rs"
 
+[features]
+# The development TCP transport (`--server ID=HOST:PORT` against
+# `enclave-server dev`); never in a release build.
+dev-transport = ["enclave-vault/dev-transport"]
+
 [dependencies]
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-vault = { path = "../enclave-vault" }

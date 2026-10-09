@@ -12,6 +12,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Local mixnets: CI and development only, never in a release build.
+dev-networks = ["enclave-nym-sdk/dev-networks"]
+
 [dependencies]
 enclave-nym = { path = "../../crates/enclave-nym" }
 enclave-nym-sdk = { path = "../enclave-nym-sdk" }

@@ -57,7 +57,8 @@ impl Fetcher {
         use rustls::pki_types::pem::PemObject;
         let mut roots = rustls::RootCertStore::empty();
         roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        if matches!(network, crate::Network::Local { .. })
+        if cfg!(feature = "dev-networks")
+            && matches!(network, crate::Network::Local { .. })
             && let Some(path) = std::env::var_os(TEST_CA_VAR)
         {
             for c in CertificateDer::pem_file_iter(&path).map_err(client_error)? {

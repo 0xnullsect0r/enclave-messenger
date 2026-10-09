@@ -16,6 +16,11 @@ workspace = true
 name = "enclave-vault"
 path = "src/bin/enclave-vault.rs"
 
+[features]
+# The development TCP transport (`--server ID=HOST:PORT`); never in a
+# release build.
+dev-transport = ["enclave-net/dev-transport"]
+
 [dependencies]
 enclave-core = { path = "../enclave-core" }
 enclave-crypto = { path = "../enclave-crypto" }
@@ -34,5 +39,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [dev-dependencies]
+# The tests reach servers over the development transport.
+enclave-net = { path = "../enclave-net", features = ["dev-transport"] }
 jpeg-encoder = "0.7"
 gif = "0.14"

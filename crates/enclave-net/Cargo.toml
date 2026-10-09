@@ -20,6 +20,11 @@ tor = ["dep:arti-client", "dep:tor-rtcompat"]
 # The Nym transport (`NymTransport`); the mixframe and pacing types are always
 # here.
 nym = []
+# The development TCP transport (`--server ID=HOST:PORT`, `TcpTransport`).
+# Off in every release build (completion plan X17): without it HOST:PORT
+# routes don't parse and the transport refuses to dial. Its marker string
+# is what CI's release check looks for.
+dev-transport = []
 
 [dependencies]
 enclave-crypto = { path = "../enclave-crypto" }
@@ -37,3 +42,7 @@ tor-rtcompat = { version = "0.46.0", default-features = false, features = ["toki
 enclave-server = { path = "../enclave-server" }
 enclave-federation = { path = "../enclave-federation" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
+
+[[test]]
+name = "tcp"
+required-features = ["dev-transport"]

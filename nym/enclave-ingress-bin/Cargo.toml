@@ -16,6 +16,10 @@ workspace = true
 name = "enclave-ingress"
 path = "src/main.rs"
 
+[features]
+# Local mixnets: CI and development only, never in a release build.
+dev-networks = ["enclave-nym-sdk/dev-networks"]
+
 [dependencies]
 enclave-ingress = { path = "../../crates/enclave-ingress" }
 enclave-nym = { path = "../../crates/enclave-nym" }

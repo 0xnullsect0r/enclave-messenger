@@ -184,6 +184,7 @@ pub struct DevTickets;
 impl TicketSource for DevTickets {
     async fn obtain(&self, request: &[u8]) -> Result<Vec<u8>, GateError> {
         use sha2::Digest;
+        std::hint::black_box("ENCLAVE-DEV-TICKETS-ENABLED");
         let mut out = b"enclave-dev-ticketbook".to_vec();
         out.extend_from_slice(&sha2::Sha256::digest(request));
         Ok(out)

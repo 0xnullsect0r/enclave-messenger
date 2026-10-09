@@ -14,7 +14,7 @@ services:
       federation:
         aliases: ["witness-${STACK}"]
   server:
-    networks: [backend, egress, dev, federation]
+    networks: [backend, egress, federation]
   front:
     environment:
       ENCLAVE_FRONT__TLS: files

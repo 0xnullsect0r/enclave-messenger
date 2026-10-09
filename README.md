@@ -75,7 +75,10 @@ via the `jpeg-encoder` crate).
 ```sh
 cargo build --release -p enclave-app -p enclave-vault      # the UI and the vault process that holds the keys
 target/release/enclave                                     # offline demo: local server and a demo contact
-cargo run --release -p enclave-server -- 127.0.0.1:7443 --kt-pins /tmp/kt-pins   # or a dev server: prints its id…
+# Against a dev server over TCP: a development build (feature dev-transport,
+# never in a release).
+cargo build --release -p enclave-app -p enclave-vault -p enclave-netd --features enclave-net/dev-transport
+cargo run --release -p enclave-server -- 127.0.0.1:7443 --kt-pins /tmp/kt-pins   # prints its id…
 target/release/enclave --server SERVER_ID=127.0.0.1:7443 --profile ~/.enclave-dev --kt-pins /tmp/kt-pins
 ```
 

@@ -88,7 +88,7 @@ Enclave's protocol, client engine, desktop app and dev server work and are teste
 | # | Decision |
 |---|---|
 | X16 | **Nym tests in three tiers:** (1) `FakeMixnet` + `enclave-sim`, deterministic, on every PR; (2) a local `nym-node` mixnet in Docker (`ghcr.io/enclavechat/nym-localnet`), blocking on `main` and nightly; (3) the Nym sandbox nightly and a mainnet benchmark weekly, both non-blocking. |
-| X17 | **Dev features:** `dev-transport` (TCP) and `dev-networks` (custom topology) are cargo features that are off in every release build. CI checks this with `strings`. |
+| X17 | **Dev features:** `dev-transport` (TCP) and `dev-networks` (custom topology) are cargo features that are off in every release build. CI checks this with `strings`. Done in S4 (markers `ENCLAVE-DEV-*`, job `release-features`). |
 | X18 | **New service `enclave-credgate`** (Equi-X + Privacy Pass RFC 9578 type 0x0001, VOPRF over P-384: RFC 0001, chosen over 0x0002 for the RSA timing advisory) in front of a pinned upstream `nym-credential-proxy`. Clients reach it over Tor. Ticketbooks are stored in the vault and imported into netd. Operator ingresses buy their own tickets from a mnemonic held as a Docker secret. |
 
 ### Clients, packaging and licensing
@@ -216,6 +216,10 @@ Client:
 - Release binaries and images contain no dev symbols (a `strings` CI check).
 
 **Exit:** production-profile federation e2e passes over the local mixnet.
+
+Done (2026-10-09):
+- `compose.yml` publishes only the front and the relay; the server's port is in `compose.dev.yml` alone, and the localnet e2e runs without it (`gen.sh`: the dev override only with `TRANSPORT=tcp`).
+- Development features are off by default and leave a marker when on: `enclave-net/dev-transport` (`ENCLAVE-DEV-TRANSPORT-ENABLED`; without it HOST:PORT routes don't parse and `TcpTransport` doesn't dial), `enclave-nym-sdk/dev-networks` (local mixnets and their test CA), `enclave-tord/dev-direct`, `enclave-credgate/dev-tickets`. The server and nym image builds fail if a marker is in them; CI job `release-features` builds the device binaries as a release does, scans them with `strings`, runs `release_build::no_tcp_routes`, and checks a dev build does carry a marker. CI's local-mixnet image and host tools turn `dev-networks` on explicitly.
 
 #### S5: server completeness
 

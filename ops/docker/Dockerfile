@@ -43,7 +43,8 @@ RUN --mount=type=cache,target=/cargo/registry \
  && cp target/release/enclave-server target/release/enclave-witness \
        target/release/enclave-front target/release/enclave-relay \
        target/release/enclave-push-relay target/release/enclave-admin \
-       target/release/enclave-credgate target/release/enclave-onion /out/
+       target/release/enclave-credgate target/release/enclave-onion /out/ \
+ && if grep -rqa 'ENCLAVE-DEV-' /out/; then echo 'a development feature is in the image' >&2; exit 1; fi
 # State directories, owned by `nonroot` (65532), so the named volumes
 # mounted on them start out writable; key directories owner-only.
 RUN cd /var/lib && mkdir -p enclave \
@@ -69,6 +70,10 @@ CMD ["run", "--config", "/etc/enclave/server.toml"]
 # The Nym sidecar, from the separate nym/ workspace (its own Cargo.lock:
 # nym-sdk and arti can't share one).
 FROM ${RUST_IMAGE} AS build-nym
+# CI's local-mixnet run builds with `--build-arg NYM_FEATURES=dev-networks`;
+# a release image never does, and the build fails if a development
+# feature's marker is in it.
+ARG NYM_FEATURES=""
 ENV CARGO_HOME=/cargo \
     CARGO_INCREMENTAL=0 \
     CARGO_TERM_COLOR=never \
@@ -79,8 +84,9 @@ WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/cargo/registry \
     --mount=type=cache,target=/src/nym/target \
-    cd nym && cargo build --release --locked -p enclave-ingress-bin \
- && mkdir -p /out && cp target/release/enclave-ingress /out/
+    cd nym && cargo build --release --locked -p enclave-ingress-bin ${NYM_FEATURES:+--features "$NYM_FEATURES"} \
+ && mkdir -p /out && cp target/release/enclave-ingress /out/ \
+ && if [ -z "$NYM_FEATURES" ] && grep -qa 'ENCLAVE-DEV-' /out/enclave-ingress; then echo 'a development feature is in the image' >&2; exit 1; fi
 RUN mkdir -p /var/lib/enclave/ingress /var/lib/enclave/public \
  && chmod 0700 /var/lib/enclave/ingress \
  && chown -R 65532:65532 /var/lib/enclave
