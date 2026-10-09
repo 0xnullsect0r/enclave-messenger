@@ -4426,8 +4426,6 @@ dependencies = [
 [[package]]
 name = "nym-credential-storage"
 version = "1.21.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c1348e09174c2eaaaf3cb760c0056f7b25fbc6a22f5ecad1d50c80be6f0196a"
 dependencies = [
  "anyhow",
  "async-trait",

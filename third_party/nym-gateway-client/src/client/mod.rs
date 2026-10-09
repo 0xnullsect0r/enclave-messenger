@@ -776,6 +776,7 @@ impl GatewayClient {
     }
 
     pub async fn claim_bandwidth(&mut self) -> Result<(), GatewayClientError> {
+        const TICKETS_SPENT_ONE: u64 = 1;
         // TODO: make it configurable
         const TICKETS_TO_SPEND: u32 = 1;
         const MIXNET_TICKET: TicketType = TicketType::V1MixnetEntry;
@@ -822,6 +823,9 @@ impl GatewayClient {
 
         match self.claim_ecash_bandwidth(prepared_credential.data).await {
             Ok(_) => {
+                // ENCLAVE PATCH: counted, so the device knows which tickets
+                // are gone after this process ends.
+                note_tickets_spent(TICKETS_SPENT_ONE);
                 self.stats_reporter.report(
                     ConnectionStatsEvent::TicketSpent {
                         typ: MIXNET_TICKET,
@@ -834,6 +838,9 @@ impl GatewayClient {
             Err(err) => {
                 error!("failed to claim ecash bandwidth with the gateway...: {err}");
                 if err.is_ticket_replay() {
+                    // ENCLAVE PATCH: spent before (an older client of this
+                    // device), so gone all the same.
+                    note_tickets_spent(TICKETS_SPENT_ONE);
                     warn!("this was due to our ticket being replayed! have you messed with the database file?")
                 } else {
                     // TODO: tracing span
@@ -1139,4 +1146,20 @@ impl InitGatewayClient {
     pub fn inner_mut(&mut self) -> &mut GatewayClient {
         &mut self.0
     }
+}
+
+// ENCLAVE PATCH (third_party/PATCHES.md): zk-nym tickets this process has
+// spent with gateways (claimed, or found already spent), in the order its
+// credential storage hands them out. A device's client keeps its tickets in
+// memory, so the device records how far into each ticketbook it got and
+// imports only the rest next time.
+static TICKETS_SPENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn note_tickets_spent(n: u64) {
+    TICKETS_SPENT.fetch_add(n, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Tickets this process has spent with gateways so far.
+pub fn tickets_spent() -> u64 {
+    TICKETS_SPENT.load(std::sync::atomic::Ordering::SeqCst)
 }

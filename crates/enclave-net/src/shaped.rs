@@ -441,6 +441,10 @@ impl Transport for ShapedTransport {
         self.inner.connect_mixnet(tickets).await
     }
 
+    async fn tickets_spent(&self) -> Result<u64> {
+        self.inner.tickets_spent().await
+    }
+
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> Result<Vec<u8>> {
         self.enqueue(server, request, false, false)
             .await?

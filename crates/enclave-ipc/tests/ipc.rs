@@ -344,6 +344,7 @@ fn net_messages_round_trip_and_refuse_garbage() {
             id: 13,
             tickets: vec![],
         },
+        NetRequest::TicketsSpent { id: 14 },
         NetRequest::SetPacing {
             pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },

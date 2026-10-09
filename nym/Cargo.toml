@@ -24,3 +24,4 @@ missing_docs = "deny"
 nym-client-core = { path = "../third_party/nym-client-core" }
 nym-gateway-client = { path = "../third_party/nym-gateway-client" }
 nym-gateway-requests = { path = "../third_party/nym-gateway-requests" }
+nym-credential-storage = { path = "../third_party/nym-credential-storage" }

@@ -1,0 +1,431 @@
+// Copyright 2022-2024 - Nym Technologies SA <contact@nymtech.net>
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::models::{
+    AvailableGlobalData, BasicTicketbookInformation, EmergencyCredential,
+    EmergencyCredentialContent, RawCoinIndexSignatures, RawExpirationDateSignatures,
+    RawVerificationKey, StoredIssuedTicketbook,
+};
+use nym_ecash_time::Date;
+use nym_sqlx_pool_guard::SqlitePoolGuard;
+use sqlx::{Executor, Sqlite, Transaction};
+
+#[derive(Clone)]
+pub struct SqliteEcashTicketbookManager {
+    connection_pool: SqlitePoolGuard,
+}
+
+impl SqliteEcashTicketbookManager {
+    /// Creates new instance of the `EcashTicketbookManager` with the provided sqlite connection pool.
+    ///
+    /// # Arguments
+    ///
+    /// * `connection_pool`: database connection pool to use.
+    pub fn new(connection_pool: SqlitePoolGuard) -> Self {
+        SqliteEcashTicketbookManager { connection_pool }
+    }
+
+    /// Closes the connection pool.
+    pub async fn close(&self) {
+        self.connection_pool.close().await
+    }
+
+    pub(crate) async fn cleanup_expired(&self, deadline: Date) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "DELETE FROM ecash_ticketbook WHERE expiration_date <= ?",
+            deadline
+        )
+        .execute(&*self.connection_pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Starts a write (IMMEDIATE) transaction, to prevent issue when upgrading from a read one to a write one
+    pub(crate) async fn begin_storage_write_tx(
+        &self,
+    ) -> Result<Transaction<'_, Sqlite>, sqlx::Error> {
+        self.connection_pool.begin_with("BEGIN IMMEDIATE").await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn insert_new_ticketbook(
+        &self,
+        serialisation_revision: u8,
+        data: &[u8],
+        expiration_date: Date,
+        typ: &str,
+        epoch_id: u32,
+        total_tickets: u32,
+        used_tickets: u32,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                INSERT INTO ecash_ticketbook
+                (serialization_revision, ticketbook_data, expiration_date, ticketbook_type, epoch_id, total_tickets, used_tickets)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+            serialisation_revision,
+            data,
+            expiration_date,
+            typ,
+            epoch_id,
+            total_tickets,
+            used_tickets,
+        ).execute(&*self.connection_pool).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn contains_ticketbook_data(&self, data: &[u8]) -> Result<bool, sqlx::Error> {
+        let exists = sqlx::query(
+            r#"
+                SELECT 1
+                FROM ecash_ticketbook
+                WHERE ticketbook_data = ?
+
+            "#,
+        )
+        .bind(data)
+        .fetch_optional(&*self.connection_pool)
+        .await?
+        .is_some();
+
+        Ok(exists)
+    }
+
+    pub(crate) async fn get_ticketbooks_info(
+        &self,
+    ) -> Result<Vec<BasicTicketbookInformation>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+                    SELECT id, expiration_date, ticketbook_type, epoch_id, total_tickets, used_tickets
+                    FROM ecash_ticketbook
+                "#,
+        )
+        .fetch_all(&*self.connection_pool)
+        .await
+    }
+
+    pub(crate) async fn decrease_used_ticketbook_tickets(
+        &self,
+        ticketbook_id: i64,
+        reverted_spent: u32,
+        expected_current_total_spent: u32,
+    ) -> Result<bool, sqlx::Error> {
+        // the 'AND' clause will ensure this will only be executed if nobody else interacted with the row
+        let affected = sqlx::query!(
+            r#"
+                UPDATE ecash_ticketbook
+                SET used_tickets = used_tickets - ?
+                WHERE id = ?
+                AND used_tickets = ?
+            "#,
+            reverted_spent,
+            ticketbook_id,
+            expected_current_total_spent
+        )
+        .execute(&*self.connection_pool)
+        .await?
+        .rows_affected();
+        Ok(affected > 0)
+    }
+
+    pub(crate) async fn get_master_verification_key(
+        &self,
+        epoch_id: i64,
+    ) -> Result<Option<RawVerificationKey>, sqlx::Error> {
+        sqlx::query_as!(
+            RawVerificationKey,
+            r#"
+                SELECT epoch_id as "epoch_id: u32", serialised_key, serialization_revision as "serialization_revision: u8"
+                FROM master_verification_key WHERE epoch_id = ?
+            "#,
+            epoch_id
+        )
+        .fetch_optional(&*self.connection_pool)
+        .await
+    }
+
+    pub(crate) async fn insert_master_verification_key(
+        &self,
+        serialisation_revision: u8,
+        epoch_id: i64,
+        data: &[u8],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                INSERT OR IGNORE INTO master_verification_key(epoch_id, serialised_key, serialization_revision) VALUES (?, ?, ?);
+                UPDATE master_verification_key
+                    SET
+                        serialised_key = ?,
+                        serialization_revision = ?
+                     WHERE epoch_id = ?
+            "#,
+            epoch_id,
+            data,
+            serialisation_revision,
+            data,
+            serialisation_revision,
+            epoch_id
+        )
+        .execute(&*self.connection_pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn get_coin_index_signatures(
+        &self,
+        epoch_id: i64,
+    ) -> Result<Option<RawCoinIndexSignatures>, sqlx::Error> {
+        sqlx::query_as!(
+            RawCoinIndexSignatures,
+            r#"
+                SELECT epoch_id as "epoch_id: u32", serialised_signatures, serialization_revision as "serialization_revision: u8"
+                FROM coin_indices_signatures WHERE epoch_id = ?
+            "#,
+            epoch_id
+        )
+        .fetch_optional(&*self.connection_pool)
+        .await
+    }
+
+    pub(crate) async fn insert_coin_index_signatures(
+        &self,
+        serialisation_revision: u8,
+        epoch_id: i64,
+        data: &[u8],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                INSERT OR IGNORE INTO coin_indices_signatures(epoch_id, serialised_signatures, serialization_revision) VALUES (?, ?, ?);
+                UPDATE coin_indices_signatures
+                    SET
+                        serialised_signatures = ?,
+                        serialization_revision = ?
+                     WHERE epoch_id = ?
+            "#,
+            epoch_id,
+            data,
+            serialisation_revision,
+            data,
+            serialisation_revision,
+            epoch_id,
+        )
+        .execute(&*self.connection_pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn get_expiration_date_signatures(
+        &self,
+        expiration_date: Date,
+        epoch_id: i64,
+    ) -> Result<Option<RawExpirationDateSignatures>, sqlx::Error> {
+        sqlx::query_as!(
+            RawExpirationDateSignatures,
+            r#"
+                SELECT serialised_signatures, serialization_revision as "serialization_revision: u8"
+                FROM expiration_date_signatures
+                WHERE expiration_date = ? AND epoch_id = ?
+            "#,
+            expiration_date,
+            epoch_id
+        )
+        .fetch_optional(&*self.connection_pool)
+        .await
+    }
+
+    pub(crate) async fn insert_expiration_date_signatures(
+        &self,
+        serialisation_revision: u8,
+        epoch_id: i64,
+        expiration_date: Date,
+        data: &[u8],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                INSERT OR IGNORE INTO expiration_date_signatures(expiration_date, epoch_id, serialised_signatures, serialization_revision)
+                VALUES (?, ?, ?, ?);
+                UPDATE expiration_date_signatures
+                    SET
+                        serialised_signatures = ?,
+                        serialization_revision = ?
+                     WHERE expiration_date = ?
+            "#,
+            expiration_date,
+            epoch_id,
+            data,
+            serialisation_revision,
+            data,
+            serialisation_revision,
+            expiration_date
+        )
+            .execute(&*self.connection_pool)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn get_available_global_data(
+        &self,
+    ) -> Result<AvailableGlobalData, sqlx::Error> {
+        let master_verification_key_epochs = sqlx::query_scalar!(
+            r#"SELECT epoch_id as "epoch_id: i64" FROM master_verification_key"#
+        )
+        .fetch_all(&*self.connection_pool)
+        .await?;
+
+        let coin_index_signature_epochs = sqlx::query_scalar!(
+            r#"SELECT epoch_id as "epoch_id: i64" FROM coin_indices_signatures"#
+        )
+        .fetch_all(&*self.connection_pool)
+        .await?;
+
+        let expiration_date_signatures = sqlx::query!(
+            r#"SELECT epoch_id as "epoch_id: i64", expiration_date as "expiration_date: Date" FROM expiration_date_signatures"#
+        )
+        .fetch_all(&*self.connection_pool)
+        .await?;
+
+        Ok(AvailableGlobalData {
+            master_verification_key_epochs: master_verification_key_epochs
+                .into_iter()
+                .map(|epoch_id| epoch_id as u64)
+                .collect(),
+            coin_index_signature_epochs: coin_index_signature_epochs
+                .into_iter()
+                .map(|epoch_id| epoch_id as u64)
+                .collect(),
+            expiration_date_signatures: expiration_date_signatures
+                .into_iter()
+                .map(|row| (row.epoch_id as u64, row.expiration_date))
+                .collect(),
+        })
+    }
+
+    pub(crate) async fn get_emergency_credential(
+        &self,
+        typ: &str,
+    ) -> Result<Option<EmergencyCredential>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+                SELECT *
+                FROM emergency_credential
+                WHERE type = ?
+                  AND (expiration IS NULL OR expiration > CURRENT_TIMESTAMP)
+                ORDER BY expiration DESC NULLS LAST
+                LIMIT 1
+            "#,
+        )
+        .bind(typ)
+        .fetch_optional(&*self.connection_pool)
+        .await
+    }
+
+    pub(crate) async fn insert_emergency_credential(
+        &self,
+        credential: &EmergencyCredentialContent,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                INSERT INTO emergency_credential
+                (type, content, expiration)
+                VALUES (?, ?, ?)
+                ON CONFLICT(type, content) DO NOTHING;
+            "#,
+            credential.typ,
+            credential.content,
+            credential.expiration,
+        )
+        .execute(&*self.connection_pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn remove_emergency_credential(&self, id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                DELETE FROM emergency_credential
+                WHERE id = ?
+            "#,
+            id
+        )
+        .execute(&*self.connection_pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn remove_emergency_credentials_of_type(
+        &self,
+        typ: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+                DELETE FROM emergency_credential
+                WHERE type = ?
+            "#,
+            typ
+        )
+        .execute(&*self.connection_pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn clear_ticketbooks(&self) -> Result<(), sqlx::Error> {
+        sqlx::query!("DELETE FROM ecash_ticketbook")
+            .execute(&*self.connection_pool)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn clear_emergency_credentials(&self) -> Result<(), sqlx::Error> {
+        sqlx::query!("DELETE FROM emergency_credential")
+            .execute(&*self.connection_pool)
+            .await?;
+        Ok(())
+    }
+}
+
+pub(crate) async fn get_next_unspent_ticketbook<'a, E>(
+    executor: E,
+    ticketbook_type: String,
+    deadline: Date,
+    tickets: u32,
+) -> Result<Option<StoredIssuedTicketbook>, sqlx::Error>
+where
+    E: Executor<'a, Database = Sqlite>,
+{
+    sqlx::query_as(
+        r#"
+                SELECT *
+                FROM ecash_ticketbook
+                WHERE used_tickets + ? <= total_tickets
+                AND expiration_date >= ?
+                AND ticketbook_type = ?
+                ORDER BY expiration_date ASC
+                LIMIT 1
+            "#,
+    )
+    .bind(tickets)
+    .bind(deadline)
+    .bind(ticketbook_type)
+    .fetch_optional(executor)
+    .await
+}
+
+pub(crate) async fn increase_used_ticketbook_tickets<'a, E>(
+    executor: E,
+    ticketbook_id: i64,
+    extra_spent: u32,
+) -> Result<(), sqlx::Error>
+where
+    E: Executor<'a, Database = Sqlite>,
+{
+    sqlx::query!(
+        "UPDATE ecash_ticketbook SET used_tickets = used_tickets + ? WHERE id = ?",
+        extra_spent,
+        ticketbook_id
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
+}

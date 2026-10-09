@@ -88,8 +88,15 @@ pub enum NetRequest {
     Connect {
         /// Request number.
         id: u32,
-        /// Ticketbooks, as `BuyTickets` returned them.
+        /// Ticketbooks, `enclave_nym::Held` encoded, in the order to spend
+        /// them.
         tickets: Vec<Vec<u8>>,
+    },
+    /// zk-nym tickets the mixnet client's process has spent so far. The
+    /// reply is a `u64`.
+    TicketsSpent {
+        /// Request number.
+        id: u32,
     },
 }
 
@@ -141,6 +148,9 @@ impl NetRequest {
                 for t in tickets {
                     w.bytes(t);
                 }
+            }
+            NetRequest::TicketsSpent { id } => {
+                w.u8(10).u32(*id);
             }
         }
         w.0
@@ -202,6 +212,7 @@ impl NetRequest {
                 }
                 NetRequest::Connect { id, tickets }
             }
+            10 => NetRequest::TicketsSpent { id: r.u32()? },
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

@@ -255,6 +255,13 @@ impl Transport for PipeTransport {
         .map(|_| ())
     }
 
+    async fn tickets_spent(&self) -> enclave_net::Result<u64> {
+        let b = self.call(|id| NetRequest::TicketsSpent { id }).await?;
+        Ok(u64::from_be_bytes(
+            b.as_slice().try_into().map_err(|_| NetError::BadReply)?,
+        ))
+    }
+
     fn require_private(&self, on: bool) {
         let body = NetRequest::RequirePrivate { on }.encode();
         for l in &self.links {

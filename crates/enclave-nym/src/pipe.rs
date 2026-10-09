@@ -12,10 +12,11 @@
 //!            3 ‖ u32 millis                                    flush
 //!            4 ‖ pacing (13, `Pacing::encode`)                 pace
 //!            5                                                 switch gateway
-//!            6 ‖ ticketbook                                    import (before 7)
+//!            6 ‖ held ticketbook (`Held`)                      import (before 7)
 //!            7                                                 connect (`--await-tickets`)
 //!            8 ‖ u16 len ‖ method ‖ u16 len ‖ url ‖ body       fetch (through Tor)
 //!            9 ‖ u16 len ‖ gate ‖ token                        buy a ticketbook
+//!            10                                                tickets spent so far
 //! from nymd: 1 ‖ address                                       ready (first, and
 //!                                                              after a switch)
 //!            2 ‖ u8 has_tag ‖ [tag (16)] ‖ data                a message
@@ -23,7 +24,8 @@
 //!            5 ‖ 0 ‖ gateway | 5 ‖ 1 ‖ reason                  switched (after a
 //!                                                              ready frame) or not
 //!            8 ‖ 0 ‖ u16 status ‖ body | 8 ‖ 1 ‖ reason        fetched or not
-//!            9 ‖ 0 ‖ ticketbook | 9 ‖ 1 ‖ reason               bought or not
+//!            9 ‖ 0 ‖ held ticketbook | 9 ‖ 1 ‖ reason          bought or not
+//!            10 ‖ 0 ‖ u64 spent                                the count
 //! ```
 //!
 //! Started with `--await-tickets`, nymd answers 6, 8 and 9 before it
@@ -330,7 +332,7 @@ impl PipeDriver {
                         answer(if *ok == 0 { Ok(text) } else { Err(text) });
                         continue;
                     }
-                    Some((kind @ (8 | 9), [ok, v @ ..])) => {
+                    Some((kind @ (8..=10), [ok, v @ ..])) => {
                         let waiting = call_waiter.lock().ok().and_then(|mut w| w.take());
                         if let Some((k, w)) = waiting
                             && k == *kind
@@ -475,6 +477,13 @@ impl MixnetDriver for PipeDriver {
         self.call(&f, 9).await
     }
 
+    async fn tickets_spent(&self) -> Result<u64> {
+        let v = self.call(&[10], 10).await?;
+        Ok(u64::from_be_bytes(
+            v.as_slice().try_into().map_err(|_| NymError::Malformed)?,
+        ))
+    }
+
     async fn flush(&self, within: Duration) -> bool {
         // One flush at a time: the answer carries no id.
         let _one = self.flushing.lock().await;
@@ -567,6 +576,20 @@ pub async fn serve(
                 handing.push(tokio::spawn(async move {
                     let _ = driver.reply(tag, data).await;
                 }));
+            }
+            Some((10, [])) => {
+                let writer = Arc::clone(&writer);
+                tokio::spawn(async move {
+                    let answer = answer_frame(
+                        10,
+                        driver
+                            .tickets_spent()
+                            .await
+                            .map(|n| n.to_be_bytes().to_vec())
+                            .map_err(|e| e.to_string()),
+                    );
+                    let _ = write_frame(&mut *writer.lock().await, &answer).await;
+                });
             }
             Some((8 | 9, _)) => {
                 let writer = Arc::clone(&writer);
@@ -685,6 +708,9 @@ mod tests {
         // A flush is answered (the fake mixnet has nothing in flight).
         assert!(pipe.flush(Duration::from_secs(1)).await);
         assert!(pipe.flush(Duration::from_secs(1)).await);
+
+        // The fake client has spent no tickets.
+        assert_eq!(pipe.tickets_spent().await.unwrap(), 0);
 
         // Fetching through a client that can't comes back as an error.
         assert!(pipe.fetch("GET", "https://x", vec![]).await.is_err());

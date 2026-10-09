@@ -156,10 +156,108 @@ pub trait MixnetDriver: Send + Sync {
         Err(NymError::Client("this client can't fetch".into()))
     }
     /// Buy a zk-nym ticketbook from the credential gate at `gate` with one
-    /// Privacy Pass token: its stored form, for the next connection.
+    /// Privacy Pass token: a [`Held`] (nothing spent) encoded, to keep.
     async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
         let _ = (gate, token);
         Err(NymError::Client("this client can't buy tickets".into()))
+    }
+    /// zk-nym tickets this client's process has spent with gateways so
+    /// far ([`advance`] says from which ticketbooks).
+    async fn tickets_spent(&self) -> Result<u64> {
+        Ok(0)
+    }
+}
+
+/// A zk-nym ticketbook a device holds (`docs/09-transport.md` §7): how
+/// many tickets it has, how many are spent, and nym's stored form
+/// (`ImportableTicketBook`, opaque here). Encoded `u32 total ‖ u32 spent ‖
+/// book`, in pipe frame 6 and netd's `Connect`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Held {
+    /// Tickets in the book.
+    pub total: u32,
+    /// Tickets spent.
+    pub spent: u32,
+    /// nym's stored form.
+    pub book: Vec<u8>,
+}
+
+impl Held {
+    /// Encode.
+    pub fn encode(&self) -> Vec<u8> {
+        [
+            &self.total.to_be_bytes()[..],
+            &self.spent.to_be_bytes(),
+            &self.book,
+        ]
+        .concat()
+    }
+
+    /// Decode.
+    pub fn decode(b: &[u8]) -> Result<Self> {
+        if b.len() < 8 {
+            return Err(NymError::Malformed);
+        }
+        let total = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
+        let spent = u32::from_be_bytes([b[4], b[5], b[6], b[7]]);
+        if spent > total {
+            return Err(NymError::Malformed);
+        }
+        Ok(Self {
+            total,
+            spent,
+            book: b[8..].to_vec(),
+        })
+    }
+
+    /// Tickets left.
+    pub fn left(&self) -> u32 {
+        self.total - self.spent
+    }
+}
+
+/// `held` after `n` more tickets were spent: a client spends them from
+/// its ticketbooks in the order they were imported (our patched
+/// nym-credential-storage), each from where it was.
+pub fn advance(held: &[Held], n: u64) -> Vec<Held> {
+    let mut n = n;
+    held.iter()
+        .map(|h| {
+            let take = u64::from(h.left()).min(n);
+            n -= take;
+            Held {
+                spent: h.spent + take as u32,
+                ..h.clone()
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod held_tests {
+    use super::*;
+
+    #[test]
+    fn spending_goes_through_the_books_in_order() {
+        let h = |total, spent| Held {
+            total,
+            spent,
+            book: vec![1, 2],
+        };
+        let books = [h(10, 8), h(5, 0), h(3, 0)];
+        let after = advance(&books, 4);
+        assert_eq!(
+            after.iter().map(|b| b.spent).collect::<Vec<_>>(),
+            vec![10, 2, 0]
+        );
+        assert_eq!(
+            advance(&books, 100).iter().map(|b| b.left()).sum::<u32>(),
+            0
+        );
+        let e = h(7, 3).encode();
+        assert_eq!(Held::decode(&e), Ok(h(7, 3)));
+        assert!(Held::decode(&e[..7]).is_err());
+        assert!(Held::decode(&h(2, 3).encode()).is_err());
     }
 }
 

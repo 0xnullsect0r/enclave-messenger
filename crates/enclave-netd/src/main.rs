@@ -166,6 +166,13 @@ impl Transport for Routed {
         }
     }
 
+    async fn tickets_spent(&self) -> enclave_net::Result<u64> {
+        match self.nym.get() {
+            Some(n) => n.tickets_spent().await,
+            None => Ok(0),
+        }
+    }
+
     async fn connect_mixnet(&self, tickets: Vec<Vec<u8>>) -> enclave_net::Result<()> {
         let Some(starting) = self.waiting.lock().await.take() else {
             return Ok(());
@@ -499,6 +506,13 @@ fn main() -> ExitCode {
                         id,
                         t.buy_tickets(&gate, &token)
                             .await
+                            .map_err(|e| e.to_string()),
+                    ),
+                    NetRequest::TicketsSpent { id } => (
+                        id,
+                        t.tickets_spent()
+                            .await
+                            .map(|n| n.to_be_bytes().to_vec())
                             .map_err(|e| e.to_string()),
                     ),
                     NetRequest::Connect { id, tickets } => (

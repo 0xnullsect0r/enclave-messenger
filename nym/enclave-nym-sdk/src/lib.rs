@@ -101,9 +101,10 @@ pub struct Options {
     pub gateway: Option<String>,
     /// Which mixnet ([`Network::from_env`] for `--env`).
     pub network: Network,
-    /// zk-nym ticketbooks to spend (a device's, serialized by
-    /// [`credentials::buy`]). With any, a device's client runs in
-    /// credentials mode on Nym's networks; a local mixnet doesn't check.
+    /// zk-nym ticketbooks to spend, [`enclave_nym::Held`] encoded (a
+    /// device's, from [`credentials::buy`]). With any, a device's client
+    /// runs in credentials mode on Nym's networks, importing what is left of
+    /// each in order; a local mixnet doesn't check.
     pub tickets: Vec<Vec<u8>>,
 }
 
@@ -245,7 +246,7 @@ async fn build(opts: &Options) -> Result<nym_sdk::mixnet::MixnetClient> {
             let client = b.build().map_err(client_error)?;
             if paid {
                 for t in &opts.tickets {
-                    credentials::import(&client, &credentials::decode(t)?).await?;
+                    credentials::import(&client, &enclave_nym::Held::decode(t)?).await?;
                 }
             }
             client.connect_to_mixnet().await.map_err(client_error)
@@ -373,9 +374,20 @@ impl MixnetDriver for NymDriver {
             gateway: None,
             ..self.opts.clone()
         };
+        // What this process started with, as far as it has spent, then
+        // what it bought since.
+        let mut held: Vec<enclave_nym::Held> = opts
+            .tickets
+            .iter()
+            .filter_map(|t| enclave_nym::Held::decode(t).ok())
+            .collect();
         if let Ok(b) = self.bought.lock() {
-            opts.tickets.extend(b.iter().cloned());
+            held.extend(b.iter().filter_map(|t| enclave_nym::Held::decode(t).ok()));
         }
+        opts.tickets = enclave_nym::advance(&held, nym_gateway_client::client::tickets_spent())
+            .iter()
+            .map(enclave_nym::Held::encode)
+            .collect();
         // nym-sdk picks a gateway uniformly at random: with two to choose
         // from, eight tries all landing on the old one is 1 in 256.
         for _ in 0..8 {
@@ -418,6 +430,10 @@ impl MixnetDriver for NymDriver {
 
     async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
         self.fetcher()?.fetch(method, url, body).await
+    }
+
+    async fn tickets_spent(&self) -> Result<u64> {
+        Ok(nym_gateway_client::client::tickets_spent())
     }
 
     async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {

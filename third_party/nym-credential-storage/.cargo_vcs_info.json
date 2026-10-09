@@ -1,0 +1,7 @@
+{
+  "git": {
+    "sha1": "d28fed9addf4d612e65f19dfc63a5839bfb1df84",
+    "dirty": true
+  },
+  "path_in_vcs": "common/credential-storage"
+}

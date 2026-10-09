@@ -1,0 +1,400 @@
+// Copyright 2023 - Nym Technologies SA <contact@nymtech.net>
+// SPDX-License-Identifier: Apache-2.0
+
+mod legacy_helpers;
+
+use crate::models::{AvailableGlobalData, EmergencyCredential, EmergencyCredentialContent};
+use crate::{
+    backends::sqlite::{
+        get_next_unspent_ticketbook, increase_used_ticketbook_tickets, SqliteEcashTicketbookManager,
+    },
+    error::StorageError,
+    models::{BasicTicketbookInformation, RetrievedTicketbook},
+    persistent_storage::legacy_helpers::{
+        deserialise_v1_coin_index_signatures, deserialise_v1_expiration_date_signatures,
+        deserialise_v1_master_verification_key,
+    },
+    storage::Storage,
+};
+use async_trait::async_trait;
+use log::{debug, error};
+use nym_compact_ecash::{
+    scheme::{
+        coin_indices_signatures::AnnotatedCoinIndexSignature,
+        expiration_date_signatures::AnnotatedExpirationDateSignature,
+    },
+    VerificationKeyAuth,
+};
+use nym_credentials::{
+    ecash::bandwidth::serialiser::{
+        keys::EpochVerificationKey,
+        signatures::{AggregatedCoinIndicesSignatures, AggregatedExpirationDateSignatures},
+        VersionedSerialise,
+    },
+    IssuedTicketBook,
+};
+use nym_ecash_time::{ecash_today, Date, EcashTime};
+use nym_sqlx_pool_guard::SqlitePoolGuard;
+use sqlx::{
+    sqlite::{SqliteAutoVacuum, SqliteSynchronous},
+    ConnectOptions,
+};
+use std::path::Path;
+use zeroize::Zeroizing;
+
+// note that clone here is fine as upon cloning the same underlying pool will be used
+#[derive(Clone)]
+pub struct PersistentStorage {
+    storage_manager: SqliteEcashTicketbookManager,
+}
+
+impl PersistentStorage {
+    /// Initialises `PersistentStorage` using the provided path.
+    ///
+    /// # Arguments
+    ///
+    /// * `database_path`: path to the database.
+    pub async fn init<P: AsRef<Path>>(database_path: P) -> Result<Self, StorageError> {
+        debug!(
+            "Attempting to connect to database {}",
+            database_path.as_ref().display()
+        );
+        let opts = sqlx::sqlite::SqliteConnectOptions::new()
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .auto_vacuum(SqliteAutoVacuum::Incremental)
+            .filename(database_path)
+            .create_if_missing(true)
+            .disable_statement_logging();
+
+        let connection_pool = match sqlx::SqlitePool::connect_with(opts).await {
+            Ok(db) => db,
+            Err(err) => {
+                error!("Failed to connect to SQLx database: {err}");
+                return Err(err.into());
+            }
+        };
+
+        let connection_pool = SqlitePoolGuard::new(connection_pool);
+
+        if let Err(err) = sqlx::migrate!("./migrations").run(&*connection_pool).await {
+            error!("Failed to perform migration on the SQLx database: {err}");
+            connection_pool.close().await;
+            return Err(err.into());
+        }
+
+        Ok(PersistentStorage {
+            storage_manager: SqliteEcashTicketbookManager::new(connection_pool),
+        })
+    }
+}
+
+#[async_trait]
+impl Storage for PersistentStorage {
+    type StorageError = StorageError;
+
+    async fn close(&self) {
+        self.storage_manager.close().await
+    }
+
+    /// remove all expired ticketbooks and expiration date signatures
+    async fn cleanup_expired(&self) -> Result<(), Self::StorageError> {
+        let ecash_yesterday = ecash_today().date().previous_day().unwrap();
+        self.storage_manager
+            .cleanup_expired(ecash_yesterday)
+            .await?;
+        Ok(())
+    }
+
+    async fn insert_issued_ticketbook(
+        &self,
+        ticketbook: &IssuedTicketBook,
+    ) -> Result<(), Self::StorageError> {
+        let ser = ticketbook.pack();
+        let data = Zeroizing::new(ser.data);
+        let serialisation_revision = ser.revision;
+
+        self.storage_manager
+            .insert_new_ticketbook(
+                serialisation_revision,
+                &data,
+                ticketbook.expiration_date(),
+                &ticketbook.ticketbook_type().to_string(),
+                ticketbook.epoch_id() as u32,
+                ticketbook.params_total_tickets() as u32,
+                ticketbook.spent_tickets() as u32,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn insert_partial_issued_ticketbook(
+        &self,
+        ticketbook: &IssuedTicketBook,
+        allowed_start_ticket_index: u32,
+        allowed_final_ticket_index: u32,
+    ) -> Result<(), Self::StorageError> {
+        // sanity check: start <= final && final <= params max
+        if allowed_start_ticket_index > allowed_final_ticket_index {
+            return Err(StorageError::database_inconsistency(
+                "start_ticket_index must be less than or equal to final_ticket_index",
+            ));
+        }
+
+        if allowed_final_ticket_index > ticketbook.params_total_tickets() as u32 {
+            return Err(StorageError::database_inconsistency(
+                "final ticket index must be less than or equal to params_total_tickets()",
+            ));
+        }
+
+        let ser = ticketbook.pack();
+        let data = Zeroizing::new(ser.data);
+        let serialisation_revision = ser.revision;
+
+        self.storage_manager
+            .insert_new_ticketbook(
+                serialisation_revision,
+                &data,
+                ticketbook.expiration_date(),
+                &ticketbook.ticketbook_type().to_string(),
+                ticketbook.epoch_id() as u32,
+                allowed_final_ticket_index + 1,
+                allowed_start_ticket_index,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn contains_issued_ticketbook(
+        &self,
+        ticketbook: &IssuedTicketBook,
+    ) -> Result<bool, Self::StorageError> {
+        let ser = ticketbook.pack();
+        let data = Zeroizing::new(ser.data);
+
+        Ok(self.storage_manager.contains_ticketbook_data(&data).await?)
+    }
+
+    async fn get_ticketbooks_info(
+        &self,
+    ) -> Result<Vec<BasicTicketbookInformation>, Self::StorageError> {
+        Ok(self.storage_manager.get_ticketbooks_info().await?)
+    }
+
+    /// Tries to retrieve one of the stored ticketbook,
+    /// that has not yet expired and has required number of unspent tickets.
+    /// it immediately updated the on-disk number of used tickets so that another task
+    /// could obtain their own tickets at the same time
+    async fn get_next_unspent_usable_ticketbook(
+        &self,
+        ticketbook_type: String,
+        tickets: u32,
+    ) -> Result<Option<RetrievedTicketbook>, Self::StorageError> {
+        let deadline = ecash_today().ecash_date();
+        let mut tx = self.storage_manager.begin_storage_write_tx().await?;
+
+        // we don't want ticketbooks with expiration in the past
+        let Some(raw) =
+            get_next_unspent_ticketbook(&mut *tx, ticketbook_type, deadline, tickets).await?
+        else {
+            // make sure to finish our tx
+            tx.commit().await?;
+            return Ok(None);
+        };
+
+        let mut deserialised =
+            IssuedTicketBook::try_unpack(&raw.ticketbook_data, raw.serialization_revision)
+                .map_err(|err| {
+                    StorageError::database_inconsistency(format!(
+                        "failed to deserialise stored ticketbook: {err}"
+                    ))
+                })?;
+
+        increase_used_ticketbook_tickets(&mut *tx, raw.id, tickets).await?;
+        tx.commit().await?;
+
+        // set the number of spent tickets on the crypto object
+        // TODO: I don't like how that's required and can be easily missed,
+        // perhaps we shouldn't be storing the `IssuedTicketBook` data in the db,
+        // but all of its fields instead?
+        deserialised.update_spent_tickets(raw.used_tickets as u64);
+        Ok(Some(RetrievedTicketbook {
+            ticketbook_id: raw.id,
+            total_tickets: raw.total_tickets,
+            ticketbook: deserialised,
+        }))
+    }
+
+    async fn attempt_revert_ticketbook_withdrawal(
+        &self,
+        ticketbook_id: i64,
+        withdrawn: u32,
+        expected_current_total_spent: u32,
+    ) -> Result<bool, Self::StorageError> {
+        Ok(self
+            .storage_manager
+            .decrease_used_ticketbook_tickets(
+                ticketbook_id,
+                withdrawn,
+                expected_current_total_spent,
+            )
+            .await?)
+    }
+
+    async fn get_available_global_data(&self) -> Result<AvailableGlobalData, Self::StorageError> {
+        Ok(self.storage_manager.get_available_global_data().await?)
+    }
+
+    async fn get_master_verification_key(
+        &self,
+        epoch_id: u64,
+    ) -> Result<Option<VerificationKeyAuth>, Self::StorageError> {
+        let Some(raw) = self
+            .storage_manager
+            .get_master_verification_key(epoch_id as i64)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        match raw.serialization_revision {
+            1 => deserialise_v1_master_verification_key(&raw.serialised_key).map(Some),
+            other => {
+                let deserialised = EpochVerificationKey::try_unpack(&raw.serialised_key, other)
+                    .map_err(|err| StorageError::database_inconsistency(err.to_string()))?;
+                Ok(Some(deserialised.key))
+            }
+        }
+    }
+
+    async fn insert_master_verification_key(
+        &self,
+        key: &EpochVerificationKey,
+    ) -> Result<(), Self::StorageError> {
+        let packed = key.pack();
+        Ok(self
+            .storage_manager
+            .insert_master_verification_key(packed.revision, key.epoch_id as i64, &packed.data)
+            .await?)
+    }
+
+    async fn get_coin_index_signatures(
+        &self,
+        epoch_id: u64,
+    ) -> Result<Option<Vec<AnnotatedCoinIndexSignature>>, Self::StorageError> {
+        let Some(raw) = self
+            .storage_manager
+            .get_coin_index_signatures(epoch_id as i64)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        match raw.serialization_revision {
+            1 => deserialise_v1_coin_index_signatures(&raw.serialised_signatures).map(Some),
+            other => {
+                let deserialised =
+                    AggregatedCoinIndicesSignatures::try_unpack(&raw.serialised_signatures, other)
+                        .map_err(|err| StorageError::database_inconsistency(err.to_string()))?;
+                Ok(Some(deserialised.signatures))
+            }
+        }
+    }
+
+    async fn insert_coin_index_signatures(
+        &self,
+        signatures: &AggregatedCoinIndicesSignatures,
+    ) -> Result<(), Self::StorageError> {
+        let packed = signatures.pack();
+        self.storage_manager
+            .insert_coin_index_signatures(packed.revision, signatures.epoch_id as i64, &packed.data)
+            .await?;
+        Ok(())
+    }
+
+    async fn get_expiration_date_signatures(
+        &self,
+        expiration_date: Date,
+        epoch_id: u64,
+    ) -> Result<Option<Vec<AnnotatedExpirationDateSignature>>, Self::StorageError> {
+        let Some(raw) = self
+            .storage_manager
+            .get_expiration_date_signatures(expiration_date, epoch_id as i64)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        match raw.serialization_revision {
+            1 => deserialise_v1_expiration_date_signatures(&raw.serialised_signatures).map(Some),
+            other => {
+                let deserialised = AggregatedExpirationDateSignatures::try_unpack(
+                    &raw.serialised_signatures,
+                    other,
+                )
+                .map_err(|err| StorageError::database_inconsistency(err.to_string()))?;
+                Ok(Some(deserialised.signatures))
+            }
+        }
+    }
+
+    async fn insert_expiration_date_signatures(
+        &self,
+        signatures: &AggregatedExpirationDateSignatures,
+    ) -> Result<(), Self::StorageError> {
+        let packed = signatures.pack();
+        self.storage_manager
+            .insert_expiration_date_signatures(
+                packed.revision,
+                signatures.epoch_id as i64,
+                signatures.expiration_date,
+                &packed.data,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn get_emergency_credential(
+        &self,
+        typ: &str,
+    ) -> Result<Option<EmergencyCredential>, Self::StorageError> {
+        Ok(self.storage_manager.get_emergency_credential(typ).await?)
+    }
+
+    async fn insert_emergency_credential(
+        &self,
+        credential: &EmergencyCredentialContent,
+    ) -> Result<(), Self::StorageError> {
+        self.storage_manager
+            .insert_emergency_credential(credential)
+            .await?;
+        Ok(())
+    }
+
+    async fn remove_emergency_credential(&self, id: i64) -> Result<(), Self::StorageError> {
+        self.storage_manager.remove_emergency_credential(id).await?;
+        Ok(())
+    }
+
+    async fn remove_emergency_credentials_of_type(
+        &self,
+        typ: &str,
+    ) -> Result<(), Self::StorageError> {
+        self.storage_manager
+            .remove_emergency_credentials_of_type(typ)
+            .await?;
+        Ok(())
+    }
+
+    async fn clear_ticketbooks(&self) -> Result<(), Self::StorageError> {
+        self.storage_manager.clear_ticketbooks().await?;
+        Ok(())
+    }
+
+    async fn clear_emergency_credentials(&self) -> Result<(), Self::StorageError> {
+        self.storage_manager.clear_emergency_credentials().await?;
+        Ok(())
+    }
+}

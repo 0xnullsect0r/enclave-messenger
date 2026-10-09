@@ -85,8 +85,9 @@ fn ok(status: u16, what: &str) -> Result<()> {
 }
 
 /// Buy one ticketbook from the gate at `gate` (`https://host`) with one
-/// Privacy Pass `token` (`enclave-tokens`' `Token` encoding): the
-/// serialized [`ImportableTicketBook`].
+/// Privacy Pass `token` (`enclave-tokens`' `Token` encoding): a
+/// [`enclave_nym::Held`] (nothing spent yet) around the serialized
+/// [`ImportableTicketBook`], encoded.
 pub async fn buy(fetch: &Fetcher, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
     let gate = gate.trim_end_matches('/');
     let (status, keys) = fetch
@@ -109,7 +110,14 @@ pub async fn buy(fetch: &Fetcher, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
     ok(status, "ticketbook")?;
     let shares: TicketbookWalletSharesResponse =
         serde_json::from_slice(&shares).map_err(client_error)?;
-    finish(issuance, request.1, &keys, shares)
+    let book = finish(issuance, request.1, &keys, shares)?;
+    let total = decode(&book)?.0.ticketbook.params_total_tickets();
+    Ok(enclave_nym::Held {
+        total: u32::try_from(total).map_err(client_error)?,
+        spent: 0,
+        book,
+    }
+    .encode())
 }
 
 /// A fresh ecash key pair and withdrawal request for a mixnet-entry
@@ -197,12 +205,16 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded> {
     Ok(Decoded(importable.try_unpack_full().map_err(client_error)?))
 }
 
-/// Import a stored ticketbook into a device's (ephemeral) client before it
-/// connects.
+/// Import what is left of a held ticketbook into a device's (ephemeral)
+/// client before it connects.
 pub async fn import(
     client: &nym_sdk::mixnet::DisconnectedMixnetClient<nym_sdk::mixnet::Ephemeral>,
-    ticketbook: &Decoded,
+    held: &enclave_nym::Held,
 ) -> Result<()> {
+    if held.left() == 0 {
+        return Ok(());
+    }
+    let ticketbook = decode(&held.book)?;
     let importer = client.begin_bandwidth_import();
     let d = &ticketbook.0;
     if let Some(k) = &d.master_verification_key {
@@ -223,10 +235,14 @@ pub async fn import(
             .await
             .map_err(client_error)?;
     }
-    importer
-        .import_ticketbook(&d.ticketbook)
-        .await
-        .map_err(client_error)
+    if held.spent == 0 {
+        importer.import_ticketbook(&d.ticketbook).await
+    } else {
+        importer
+            .import_partial_ticketbook(&d.ticketbook, held.spent, held.total - 1)
+            .await
+    }
+    .map_err(client_error)
 }
 
 #[cfg(test)]

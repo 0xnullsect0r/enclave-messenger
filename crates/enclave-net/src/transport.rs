@@ -110,6 +110,12 @@ pub trait Transport: Send + Sync {
         let _ = tickets;
         Ok(())
     }
+    /// zk-nym tickets the mixnet client's process has spent so far
+    /// (`enclave_nym::advance` says from which of the ticketbooks it
+    /// connected with).
+    async fn tickets_spent(&self) -> Result<u64> {
+        Ok(0)
+    }
     /// Current time, Unix seconds. The system clock, except in simulations
     /// that move time forward.
     fn now(&self) -> u64 {
@@ -635,6 +641,13 @@ impl Transport for NymTransport {
     async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
         self.driver
             .buy_tickets(gate, token)
+            .await
+            .map_err(|e| NetError::Unreachable(e.to_string()))
+    }
+
+    async fn tickets_spent(&self) -> Result<u64> {
+        self.driver
+            .tickets_spent()
             .await
             .map_err(|e| NetError::Unreachable(e.to_string()))
     }

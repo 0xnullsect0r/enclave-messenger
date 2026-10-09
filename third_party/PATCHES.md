@@ -16,3 +16,5 @@ change is offered upstream; the copy goes when a release carries it
 
 Every other `nym-*` crate is pinned to 1.21.5 in `nym/Cargo.lock`: mixing
 1.21.5 with the later-published 1.22.0 helper crates doesn't compile.
+| `nym-gateway-client` | 1.21.5 | Apache-2.0 | as above | `client::tickets_spent()`: a process-wide count of zk-nym tickets claimed with gateways (and of tickets a gateway reported as already spent) in `claim_bandwidth` | A device's client keeps its ticketbooks in memory; the vault records how many were spent and imports only the unspent range at the next connection, or the gateway would see the same tickets again (`docs/09-transport.md` §7). |
+| `nym-credential-storage` | 1.21.5 | Apache-2.0 | as above | The in-memory backend keeps ticketbooks in a `BTreeMap` by id instead of a `HashMap` | Tickets are then spent from ticketbooks in import order, so a count of tickets spent says which ones are gone. |
