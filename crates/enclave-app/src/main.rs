@@ -214,6 +214,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::RevealShare(id.to_string()));
     });
     let t = tx.clone();
+    ui.on_release_share(move |code| {
+        let _ = t.send(Cmd::ReleaseShare(code.to_string()));
+    });
+    let t = tx.clone();
+    ui.on_ask_shares(move || {
+        let _ = t.send(Cmd::AskShares);
+    });
+    let t = tx.clone();
     ui.on_create_poll(move |id, q, a, b, c, d| {
         let options = [a, b, c, d]
             .iter()

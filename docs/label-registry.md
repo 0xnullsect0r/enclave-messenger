@@ -170,6 +170,8 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | Label | Kind | Output | Where | Purpose |
 |---|---|---|---|---|
 | `enclave/v1/proto/link-transcript` | TR | — | `enclave-core/src/client/link.rs` | Device-link transcript prefix (spec: 02b §11) |
+| `enclave/v1/proto/share-release` | KMAC | 256 | `enclave-core/src/client/social.rs` `release_key` | Seal key for a recovery share given back in person, from the X448 and ML-KEM-1024 secrets to the request code, combined over both codes (spec: 03 §8.3) |
+| `enclave/v1/proto/share-words` | KMAC | 256 | `enclave-core/src/client/social.rs` `check_words` | Three check words from a share request, shown on both screens; key SHA3-512 of the request (spec: 03 §8.3) |
 | `enclave/v1/proto/link-keys` | KMAC | 512 | `enclave-core/src/client/link.rs` | Link channel keys `k_p2n ‖ k_n2p` (spec: 02b §11) |
 | `enclave/v1/proto/link-phrase` | KMAC | 256 (33 bits used) | `enclave-core/src/client/link.rs` | Three-word link phrase (spec: 02b §11) |
 | `enclave/v1/proto/grp-chain` | KMAC | 512 | `enclave-proto/src/labels.rs` | Group sender chain `cs' ‖ gmk` (spec: 07 §2) |

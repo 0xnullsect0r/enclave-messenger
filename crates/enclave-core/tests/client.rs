@@ -2310,19 +2310,75 @@ async fn social_recovery() {
         assert!(h.holds_recovery_share(&ada.root()));
     }
     assert!(!ben.holds_recovery_share(&cy.root()));
-    let archive = ada.export_backup().unwrap();
-    let root = ada.root();
-    drop(ada);
+    let old_root = ada.root();
+    let old_archive = ada.export_backup().unwrap();
+    let old_b = ben.recovery_share_for(&old_root).unwrap();
+    let old_c = cy.recovery_share_for(&old_root).unwrap();
+    assert_eq!(
+        enclave_core::words_from_shares(&[old_b.as_str(), old_c.as_str()]).unwrap(),
+        words
+    );
 
-    // In person, Ben and Dee each show Ada their share.
-    let b = ben.recovery_share_for(&root).unwrap();
-    let d = dee.recovery_share_for(&root).unwrap();
+    // Ada falls out with Cy: taking Cy's share away changes her words, and
+    // Ben and Dee get shares of the new ones.
+    assert!(ada.remove_recovery_holder(&ada.root()).await.is_err());
+    let new_words = ada
+        .remove_recovery_holder(&cy.root())
+        .await
+        .unwrap()
+        .join(" ");
+    assert_ne!(new_words, words);
+    let root = ada.root();
+    assert_ne!(root, old_root);
+    assert_eq!(
+        ada.recovery_holders(),
+        Some((2, vec![ben.root(), dee.root()]))
+    );
+    for _ in 0..3 {
+        ada.sync().await.unwrap();
+        for h in [&mut ben, &mut cy, &mut dee] {
+            h.sync().await.unwrap();
+        }
+    }
+    assert!(!ada.migration_pending());
+    assert!(!cy.holds_recovery_share(&root) && !cy.holds_recovery_share(&old_root));
+    assert!(ben.holds_recovery_share(&root) && dee.holds_recovery_share(&root));
+    let archive = ada.export_backup().unwrap();
+    drop(ada);
+    // The old shares only rebuild the old words, which bring nothing back.
+    assert!(
+        Client::restore(&words, &old_archive, memory(), Arc::new(net.clone()))
+            .await
+            .is_err()
+    );
+
+    // In person: Ada's new device shows a request; Ben and Dee each scan
+    // it, see the same words, and give their part back as a code.
+    let request = enclave_core::ShareRequest::new().unwrap();
+    let elsewhere = enclave_core::ShareRequest::new().unwrap();
+    let rb = ben.release_recovery_share(&root, &request.code()).unwrap();
+    let rd = dee.release_recovery_share(&root, &request.code()).unwrap();
+    assert_eq!(rb.words, request.words());
+    assert_ne!(rb.words, elsewhere.words());
+    assert!(
+        !rb.code
+            .contains(ben.recovery_share_for(&root).unwrap().as_str()),
+        "sealed, not shown"
+    );
+    assert!(elsewhere.open(&rb.code).is_err(), "only for that screen");
+    assert!(
+        cy.release_recovery_share(&root, &request.code()).is_err(),
+        "Cy has nothing to give"
+    );
+    assert!(ben.release_recovery_share(&root, &rd.code).is_err());
+    let b = request.open(&rb.code).unwrap();
+    let d = request.open(&rd.code).unwrap();
     assert!(
         enclave_core::words_from_shares(&[b.as_str()]).is_err(),
         "one isn't enough"
     );
     let rebuilt = enclave_core::words_from_shares(&[b.as_str(), d.as_str()]).unwrap();
-    assert_eq!(rebuilt, words);
+    assert_eq!(rebuilt, new_words);
     let restored = Client::restore(&rebuilt, &archive, memory(), Arc::new(net.clone()))
         .await
         .unwrap();

@@ -724,7 +724,13 @@ export component AppWindow inherits Window {
     in property <[string]> share-holders;
     in property <int> share-threshold;
     in property <bool> holds-share;
-    in property <string> shown-share;
+    in property <string> share-release;
+    in property <string> share-release-words;
+    in property <image> share-release-qr;
+    in-out property <string> share-request-input;
+    in property <string> share-request;
+    in property <string> share-request-words;
+    in property <image> share-request-qr;
     in-out property <string> restore-words;
     in-out property <string> restore-s1;
     in-out property <string> restore-s2;
@@ -736,6 +742,8 @@ export component AppWindow inherits Window {
     callback save-backup();
     callback give-shares(int);
     callback reveal-share(string);
+    callback release-share(string);
+    callback ask-shares();
     callback new-group-invite(string);
     callback stop-recovery();
     callback backup-route(bool);
@@ -857,8 +865,32 @@ export component AppWindow inherits Window {
                     ScreenTitle { text: "Bring your account back"; }
                     Secondary { text: "You need your backup file, and either your 24 recovery words or enough shares from the friends who hold them."; }
                     Field { placeholder: "Your 24 recovery words"; mono: true; text <=> root.restore-words; }
-                    Caption { text: "Or paste the shares your friends showed you, one in each box:"; wrap: word-wrap; }
-                    Field { placeholder: "Share 1"; mono: true; text <=> root.restore-s1; }
+                    Caption { text: "Or get your friends' shares: meet each of them, let them scan the code below, and scan the code they show you back, one in each box."; wrap: word-wrap; }
+                    if root.share-request == "": HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: "Ask a friend in person"; outlined: true; clicked => { root.ask-shares(); } }
+                    }
+                    if root.share-request != "": HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 296px;
+                            height: 296px;
+                            background: #ffffff;
+                            border-radius: Tokens.radius-control;
+                            Image {
+                                width: 280px;
+                                height: 280px;
+                                source: root.share-request-qr;
+                                image-rendering: pixelated;
+                                accessible-role: image;
+                                accessible-label: "Code for a friend who holds part of your recovery";
+                            }
+                        }
+                    }
+                    if root.share-request != "": Secondary {
+                        text: "Their screen should show: " + root.share-request-words + ". Each friend scans this same code.";
+                    }
+                    Field { placeholder: "Share 1 (the code a friend shows you)"; mono: true; text <=> root.restore-s1; }
                     Field { placeholder: "Share 2"; mono: true; text <=> root.restore-s2; }
                     Field { placeholder: "Share 3 (if needed)"; mono: true; text <=> root.restore-s3; }
                     Field { placeholder: "Share 4 (if needed)"; mono: true; text <=> root.restore-s4; }
@@ -1563,11 +1595,11 @@ export component AppWindow inherits Window {
                     padding-right: Tokens.space-m;
                     Notice {
                         title: "You hold part of " + root.current.name + "'s recovery";
-                        text: "If they lose every device, meet them and show it. Only to them, and only in person.";
+                        text: "If they lose every device, meet them: their new phone shows a code, and you give them your part by scanning it. Only in person.";
                         kind: 0;
                         HorizontalLayout {
                             alignment: start;
-                            QuietButton { text: "Show it"; clicked => { root.reveal-share(root.current-id); root.open-sheet(Sheet.share); } }
+                            QuietButton { text: "Help them get back in"; clicked => { root.share-request-input = ""; root.reveal-share(root.current-id); root.open-sheet(Sheet.share); } }
                         }
                     }
                 }
@@ -2441,7 +2473,8 @@ export component AppWindow inherits Window {
         property <int> chosen: root.friends-chosen;
         title: "Recovery with friends";
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "Choose 3 to 5 people you trust and can meet. Each gets a share by message; they only show it to you in person."; }
+        Secondary { text: "Choose 3 to 5 people you trust and can meet. Each gets a share by message, and can only give it back to you in person."; }
+        if root.share-threshold > 0: Secondary { text: "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."; }
         for p in root.friends: Rectangle {
             height: 56px;
             border-radius: Tokens.radius-control;
@@ -2474,9 +2507,53 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.share: SheetFrame {
         title: "Part of " + root.current.name + "'s recovery";
         close => { root.reveal-share(""); root.sheet = Sheet.none; }
-        Secondary { text: "Show this only to " + root.current.name + ", in person. Anyone who collects enough of these can take over their account."; }
-        Code { text: root.shown-share; }
-        HorizontalLayout {
+        if root.share-release == "": Body {
+            text: root.current.name + " asked for your part of their recovery. Only continue if you're with " + root.current.name + " right now.";
+            wrap: word-wrap;
+        }
+        if root.share-release == "": Secondary {
+            text: "Anyone who collects enough of these can take over their account. Never give it over a message or a call, even if it seems to be them.";
+        }
+        if root.share-release == "": Field {
+            placeholder: "Scan or paste the code on their new device";
+            mono: true;
+            text <=> root.share-request-input;
+        }
+        if root.share-release == "": HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            PrimaryButton {
+                text: "I'm with them: continue";
+                enabled: root.share-request-input != "";
+                clicked => { root.release-share(root.share-request-input); }
+            }
+            QuietButton { text: "Not now"; clicked => { root.reveal-share(""); root.sheet = Sheet.none; } }
+        }
+        if root.share-release != "": Body {
+            text: "Check their screen shows these words: " + root.share-release-words;
+            wrap: word-wrap;
+        }
+        if root.share-release != "": Secondary {
+            text: "If the words differ, close this: you scanned the wrong screen. If they match, let " + root.current.name + " scan this code.";
+        }
+        if root.share-release != "": HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 296px;
+                height: 296px;
+                background: #ffffff;
+                border-radius: Tokens.radius-control;
+                Image {
+                    width: 280px;
+                    height: 280px;
+                    source: root.share-release-qr;
+                    image-rendering: pixelated;
+                    accessible-role: image;
+                    accessible-label: "Your part of " + root.current.name + "'s recovery, sealed for their new device";
+                }
+            }
+        }
+        if root.share-release != "": HorizontalLayout {
             alignment: start;
             PrimaryButton { text: "Done"; clicked => { root.reveal-share(""); root.sheet = Sheet.none; } }
         }

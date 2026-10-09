@@ -168,8 +168,12 @@ fn strings(v: &[String]) -> ModelRc<SharedString> {
 }
 
 /// A QR code as a Slint image (Ink modules on white, 4-module quiet zone).
+/// Medium error correction, or Low for codes too long for it (the sealed
+/// recovery share).
 pub fn qr_image(text: &str) -> Image {
-    let Ok(qr) = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium) else {
+    let Ok(qr) = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium)
+        .or_else(|_| qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Low))
+    else {
         return Image::default();
     };
     let border = 4;
@@ -353,7 +357,20 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_share_holders(strings(&s.share_holders));
     ui.set_share_threshold(s.share_threshold as i32);
     ui.set_holds_share(s.holds_share);
-    ui.set_shown_share(s.shown_share.clone().into());
+    if ui.get_share_release().as_str() != s.share_release {
+        ui.set_share_release(s.share_release.clone().into());
+        if !s.share_release.is_empty() {
+            ui.set_share_release_qr(qr_image(&s.share_release));
+        }
+    }
+    ui.set_share_release_words(s.share_release_words.clone().into());
+    if ui.get_share_request().as_str() != s.share_request {
+        ui.set_share_request(s.share_request.clone().into());
+        if !s.share_request.is_empty() {
+            ui.set_share_request_qr(qr_image(&s.share_request));
+        }
+    }
+    ui.set_share_request_words(s.share_request_words.clone().into());
     ui.set_pins(strings(&s.pins));
     ui.set_sticker_packs(ModelRc::from(Rc::new(VecModel::from(
         s.sticker_packs

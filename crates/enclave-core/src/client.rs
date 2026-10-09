@@ -171,7 +171,9 @@ pub use record::Evidence;
 pub use reports::{CALM_PER_DAY, FLOOD_PER_DAY, RAISED_EFFORT_SECS};
 pub use search::{Hit, Place};
 pub use servers::ListUpdate;
-pub use social::{MAX_HOLDERS, words_from_shares};
+pub use social::{
+    MAX_HOLDERS, RELEASE_PREFIX, SHARE_PREFIX, ShareRelease, ShareRequest, words_from_shares,
+};
 pub use stickers::{InstalledPack, MAX_STICKERS, PACK_MIME, StickerPack};
 pub use typing::{TYPING_RESERVE, TYPING_SHOW_SECS};
 pub use usernames::AUDIT_EVERY_SECS;
@@ -2094,7 +2096,9 @@ impl Client {
                 Content::RecoveryShare(share) => {
                     c.received_since_refill = c.received_since_refill.saturating_add(1);
                     self.keep_recovery_share(&root, &share)?;
-                    events.push(Event::RecoveryShareReceived { root });
+                    if !share.is_empty() {
+                        events.push(Event::RecoveryShareReceived { root });
+                    }
                 }
                 Content::GroupWelcome(welcome) => {
                     c.received_since_refill = c.received_since_refill.saturating_add(1);

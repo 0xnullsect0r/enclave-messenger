@@ -34,7 +34,7 @@ pub use client::{
 };
 pub use client::{
     ConvPrefs, Hit, Location, MAX_PINNED_CONVERSATIONS, MAX_PINS, MeetMatch, Place, RecoveryAlert,
-    RecoveryHold, words_from_shares,
+    RecoveryHold, ShareRelease, ShareRequest, words_from_shares,
 };
 pub use client::{ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS, TicketWallet, fetch_due};
 pub use enclave_kt::KtPolicy;

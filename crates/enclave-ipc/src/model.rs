@@ -268,8 +268,16 @@ pub struct Snapshot {
     pub share_threshold: u32,
     /// We hold part of the open contact's recovery.
     pub holds_share: bool,
-    /// The share we hold for the open contact: only while shown.
-    pub shown_share: String,
+    /// The share we hold for the open contact, sealed to the code on
+    /// their new device (`enclave:share#…`): only while shown.
+    pub share_release: String,
+    /// The three words their screen shows too.
+    pub share_release_words: String,
+    /// Before there is an account: our request for friends' shares
+    /// (`enclave:release#…`), once asked for.
+    pub share_request: String,
+    /// The three words each friend's screen should show.
+    pub share_request_words: String,
     /// The open conversation's pinned messages (text, most recently
     /// pinned first).
     pub pins: Vec<String>,
@@ -467,6 +475,12 @@ pub enum Cmd {
     /// Show the security code's words in English (else in the recovery
     /// words' language).
     CodeWordsEnglish(bool),
+    /// Seal the share we hold for the open contact to the code on their
+    /// new device (scanned or pasted), after they confirmed they're with
+    /// them.
+    ReleaseShare(String),
+    /// Before there is an account: show a request for friends' shares.
+    AskShares,
 }
 
 /// One-off UI resets after a request succeeded.
@@ -711,7 +725,10 @@ impl Snapshot {
         w.strs(&self.share_holders)
             .u32(self.share_threshold)
             .bool(self.holds_share)
-            .str(&self.shown_share)
+            .str(&self.share_release)
+            .str(&self.share_release_words)
+            .str(&self.share_request)
+            .str(&self.share_request_words)
             .strs(&self.pins)
             .len(self.sticker_packs.len());
         for p in &self.sticker_packs {
@@ -905,7 +922,10 @@ impl Snapshot {
             share_holders: r.strs()?,
             share_threshold: r.u32()?,
             holds_share: r.bool()?,
-            shown_share: r.str()?,
+            share_release: r.str()?,
+            share_release_words: r.str()?,
+            share_request: r.str()?,
+            share_request_words: r.str()?,
             pins: r.strs()?,
             sticker_packs: {
                 let n = r.len()?;
@@ -1034,6 +1054,8 @@ impl Cmd {
             Cmd::SetOnRecord(on) => w.u8(65).bool(*on),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
+            Cmd::ReleaseShare(code) => w.u8(69).str(code),
+            Cmd::AskShares => w.u8(70),
         };
         w.0
     }
@@ -1114,6 +1136,8 @@ impl Cmd {
             65 => Cmd::SetOnRecord(r.bool()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
+            69 => Cmd::ReleaseShare(r.str()?),
+            70 => Cmd::AskShares,
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

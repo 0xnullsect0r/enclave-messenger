@@ -65,6 +65,10 @@ pub enum LinkError {
     /// Corrupt or unsupported.
     #[error("the link is damaged or from a newer version")]
     Malformed,
+    /// A social-recovery code (a request for a share, or a sealed share)
+    /// used where an invite was expected.
+    #[error("this code is part of getting an account back; use it only there")]
+    RecoveryCode,
 }
 
 /// Everything needed to start a conversation with someone.
@@ -200,6 +204,11 @@ impl ContactCard {
         }
         if s.starts_with(crate::client::MEET_PREFIX) {
             return Err(LinkError::MeetCode);
+        }
+        if s.starts_with(crate::client::RELEASE_PREFIX)
+            || s.starts_with(crate::client::SHARE_PREFIX)
+        {
+            return Err(LinkError::RecoveryCode);
         }
         let body = match s.strip_prefix(ADD_PREFIX) {
             Some(b) => b,

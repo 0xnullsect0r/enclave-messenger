@@ -244,7 +244,10 @@ fn fixture() -> Snapshot {
         share_holders: Vec::new(),
         share_threshold: 0,
         holds_share: false,
-        shown_share: String::new(),
+        share_release: String::new(),
+        share_release_words: String::new(),
+        share_request: String::new(),
+        share_request_words: String::new(),
         pins: Vec::new(),
         sticker_packs: Vec::new(),
         members: Vec::new(),
@@ -967,7 +970,8 @@ fn main() -> Result<(), slint::PlatformError> {
         view::apply(&ui, &holder);
         ui.set_sheet(Sheet::None);
         shot("33-holds-share", desktop);
-        holder.shown_share = "academic acid acrobat romp academic hunting clay dream luck fumes bishop order ancestor lunar beard evoke aluminum cinema legs roster spider laser alarm spirit parcel bulb sidewalk".into();
+        holder.share_release = format!("enclave:share#{}", "A".repeat(2200));
+        holder.share_release_words = "harbor velvet orbit".into();
         view::apply(&ui, &holder);
         ui.set_sheet(Sheet::Share);
         shot("34-show-share-phone", phone);

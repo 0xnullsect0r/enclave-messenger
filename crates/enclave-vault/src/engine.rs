@@ -287,8 +287,13 @@ struct Engine {
     /// Conversation ids of contacts who changed their recovery words, old
     /// to new, so a window still showing the old id keeps working.
     renamed: HashMap<String, String>,
-    /// The contact whose recovery share is on screen (only while shown).
+    /// The contact whose recovery share is being released (only while the
+    /// sheet is open).
     reveal_share: Option<[u8; 64]>,
+    /// Their share, sealed to the code on their new device.
+    share_release: Option<([u8; 64], enclave_core::ShareRelease)>,
+    /// Before there is an account: our request for friends' shares.
+    share_request: Option<enclave_core::ShareRequest>,
     /// The mixnet client has been given its tickets (or told there are
     /// none to wait for).
     mixnet_up: bool,
@@ -590,6 +595,7 @@ fn link_error(e: &CoreError) -> String {
         CoreError::Username(U::Unverified) => "Enclave couldn't confirm that this username is genuine, so it didn't add anyone. Ask them for their invite link instead.".into(),
         CoreError::Link(LinkError::DeviceLinkCode) => "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one.".into(),
         CoreError::Link(LinkError::MeetCode) => "That's an in-person code. It only works in Meet in person, with them next to you.".into(),
+        CoreError::Link(LinkError::RecoveryCode) => "That code is for getting an account back. It only works there, with the friend next to you.".into(),
         CoreError::Link(LinkError::NotEnclave) => "That isn't an Enclave invite link.".into(),
         CoreError::Link(LinkError::Malformed) => "This link is damaged. Ask them to send it again.".into(),
         CoreError::Link(LinkError::OwnCode) => "That's your own invite link.".into(),
@@ -745,6 +751,8 @@ pub async fn run_with(
         renamed: HashMap::new(),
         clips: HashMap::new(),
         reveal_share: None,
+        share_release: None,
+        share_request: None,
         mixnet_up: false,
         mixnet_retry_at: 0,
         prewallet: None,
@@ -1128,11 +1136,25 @@ impl Engine {
                 self.restore_error.clear();
                 self.busy = true;
                 self.push();
-                let secrets: Vec<&str> = secrets
-                    .iter()
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .collect();
+                // A friend's sealed code opens with our request's keys.
+                let mut opened = Vec::new();
+                let mut sealed_bad = false;
+                for s in secrets.iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if s.starts_with(enclave_core::client::SHARE_PREFIX) {
+                        match self.share_request.as_ref().map(|r| r.open(s)) {
+                            Some(Ok(w)) => opened.push(w.to_string()),
+                            _ => sealed_bad = true,
+                        }
+                    } else {
+                        opened.push(s.to_string());
+                    }
+                }
+                if sealed_bad {
+                    self.restore_error = "One of your friends' codes doesn't open on this device. Ask them to scan the code on this screen again.".into();
+                    self.busy = false;
+                    return;
+                }
+                let secrets: Vec<&str> = opened.iter().map(String::as_str).collect();
                 let words = if secrets.len() == 1 {
                     Ok(secrets[0].to_string())
                 } else {
@@ -1154,6 +1176,7 @@ impl Engine {
                     Ok(mut c) => {
                         self.configure(&mut c);
                         self.client = Some(c);
+                        self.share_request = None;
                         self.status = "Your account is back on this device. Contacts will accept it after 72 hours unless one of your other devices stops it.".into();
                     }
                     Err(_) => {
@@ -1173,13 +1196,19 @@ impl Engine {
                 let roots: Vec<[u8; 64]> = ids.iter().filter_map(|i| self.root_of(i)).collect();
                 if let Some(c) = self.client.as_mut() {
                     let t = u8::try_from(threshold).unwrap_or(u8::MAX);
-                    match c.give_recovery_shares(&roots, t).await {
-                        Ok(()) => {
+                    match c.reshare_recovery(&roots, t).await {
+                        Ok(None) => {
                             self.picked.clear();
                             self.status = format!(
                                 "Your recovery is shared. Any {t} of these {} people can help you get your account back.",
                                 roots.len()
                             );
+                        }
+                        // Someone no longer holds a share: new words.
+                        Ok(Some(_)) => {
+                            self.picked.clear();
+                            self.reveal_words = true;
+                            self.status = "Your recovery words changed, so the share you took back stops working. Write the new words down.".into();
                         }
                         Err(_) => {
                             self.status = "Couldn't share your recovery. Choose at least two people you talk to, and check your connection.".into();
@@ -1194,6 +1223,31 @@ impl Engine {
                 } else {
                     self.root_of(&id)
                 };
+                self.share_release = None;
+            }
+            Cmd::ReleaseShare(code) => {
+                if let (Some(root), Some(c)) = (self.reveal_share, self.client.as_mut()) {
+                    match c.release_recovery_share(&root, &code) {
+                        Ok(r) => self.share_release = Some((root, r)),
+                        Err(CoreError::Link(LinkError::NotEnclave | LinkError::Malformed)) => {
+                            self.status = "That isn't the code on their new device. On their device, it's under Bring your account back → Ask a friend in person.".into();
+                        }
+                        Err(_) => {
+                            self.status = "Couldn't seal your part for them. Ask them to show their code again.".into();
+                        }
+                    }
+                }
+            }
+            Cmd::AskShares => {
+                if self.client.is_none() && self.share_request.is_none() {
+                    match enclave_core::ShareRequest::new() {
+                        Ok(r) => self.share_request = Some(r),
+                        Err(_) => {
+                            self.restore_error =
+                                "Couldn't make a code for your friends. Try again.".into()
+                        }
+                    }
+                }
             }
             Cmd::Select(id) => {
                 self.selected = self.root_of(&id);
@@ -2771,6 +2825,10 @@ impl Engine {
             bridges_restart: self.bridges != self.bridges_at_start,
             ..Default::default()
         };
+        if let Some(r) = &self.share_request {
+            s.share_request = r.code();
+            s.share_request_words = r.words().join(" ");
+        }
         let Some(c) = self.client.as_ref() else {
             return s;
         };
@@ -2856,9 +2914,11 @@ impl Engine {
         if let Some(sel) = self.selected {
             s.holds_share = c.holds_recovery_share(&sel);
             if self.reveal_share == Some(sel)
-                && let Some(share) = c.recovery_share_for(&sel)
+                && let Some((root, r)) = &self.share_release
+                && *root == sel
             {
-                s.shown_share = share.to_string();
+                s.share_release = r.code.clone();
+                s.share_release_words = r.words.join(" ");
             }
         }
         s.clock_skew = c
