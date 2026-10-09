@@ -1274,6 +1274,7 @@ impl Server {
         }
         let owner = api::credential_hash(&h.token);
         let mb = h.mailbox;
+        let old = self.db.read(|r| r.get(db::PUSH, &mb)).ok().flatten();
         let dummies = h.flags & api::FLAG_PUSH_DUMMIES != 0 && !sealed.is_empty();
         let gap = self.dummy_gap();
         if let Some(d) = self.dummies.as_mut() {
@@ -1283,26 +1284,40 @@ impl Server {
                 d.remove(&mb);
             }
         }
-        self.tx(|t| {
-            if dummies {
-                t.put(db::PUSH_DUMMY, &mb, &[])?;
-            } else {
-                t.del(db::PUSH_DUMMY, &mb)?;
-            }
-            let Some(ib) = get_inbox(t, &mb)? else {
-                return Ok(Status::NotFound);
-            };
-            if ib.owner != owner || ib.group {
-                return Ok(Status::Denied);
-            }
-            if sealed.is_empty() {
-                t.del(db::PUSH, &mb)?;
-            } else {
-                t.put(db::PUSH, &mb, sealed)?;
-            }
-            Ok(Status::Ok)
-        })
-        .unwrap_or_else(|s| s)
+        let status = self
+            .tx(|t| {
+                if dummies {
+                    t.put(db::PUSH_DUMMY, &mb, &[])?;
+                } else {
+                    t.del(db::PUSH_DUMMY, &mb)?;
+                }
+                let Some(ib) = get_inbox(t, &mb)? else {
+                    return Ok(Status::NotFound);
+                };
+                if ib.owner != owner || ib.group {
+                    return Ok(Status::Denied);
+                }
+                if sealed.is_empty() {
+                    t.del(db::PUSH, &mb)?;
+                } else {
+                    t.put(db::PUSH, &mb, sealed)?;
+                }
+                Ok(Status::Ok)
+            })
+            .unwrap_or_else(|s| s);
+        if status == Status::Ok {
+            self.drop_replaced_wake(old, sealed);
+        }
+        status
+    }
+
+    /// A registration was replaced or removed: a wake queued for its old
+    /// sealed token and not yet handed out goes too.
+    fn drop_replaced_wake(&mut self, old: Option<Vec<u8>>, new: &[u8]) {
+        if let Some(old) = old.filter(|o| o != new) {
+            let id = sha3_512(&old);
+            self.wakes.retain(|k, w| w.sent || k[..] != id[..32]);
+        }
     }
 
     /// A member device asks for wakes on a group mailbox: `id (8) ‖ sealed
@@ -1320,43 +1335,54 @@ impl Server {
         let read = api::credential_hash(&api::read_credential(&h.token));
         let mb = h.mailbox;
         let key = cat(&mb, id);
-        self.tx(|t| {
-            match get_inbox(t, &mb)? {
-                None => put_inbox(
-                    t,
-                    &mb,
-                    &Inbox {
-                        owner,
-                        read,
-                        request: false,
-                        group: true,
-                        next_seq: 1,
-                        effort: 0,
-                        until: 0,
-                    },
-                )?,
-                Some(ib) if ib.group && ib.owner == owner => {}
-                Some(_) => return Ok(Status::Denied),
-            }
-            if sealed.is_empty() {
-                t.del(db::PUSH_GROUP, &key)?;
-            } else {
-                if !t.has(db::PUSH_GROUP, &key)?
-                    && t.count(db::PUSH_GROUP, &mb)? >= api::MAX_GROUP_PUSH
-                {
-                    return Ok(Status::Quota);
+        let old = self
+            .db
+            .read(|r| r.get(db::PUSH_GROUP, &key))
+            .ok()
+            .flatten()
+            .and_then(|v| v.get(4..).map(<[u8]>::to_vec));
+        let status = self
+            .tx(|t| {
+                match get_inbox(t, &mb)? {
+                    None => put_inbox(
+                        t,
+                        &mb,
+                        &Inbox {
+                            owner,
+                            read,
+                            request: false,
+                            group: true,
+                            next_seq: 1,
+                            effort: 0,
+                            until: 0,
+                        },
+                    )?,
+                    Some(ib) if ib.group && ib.owner == owner => {}
+                    Some(_) => return Ok(Status::Denied),
                 }
-                // With its day: a group's mailboxes are daily, and the
-                // registration goes with its day (`expire`).
-                t.put(
-                    db::PUSH_GROUP,
-                    &key,
-                    &cat(&api::day_of(now).to_be_bytes(), sealed),
-                )?;
-            }
-            Ok(Status::Ok)
-        })
-        .unwrap_or_else(|s| s)
+                if sealed.is_empty() {
+                    t.del(db::PUSH_GROUP, &key)?;
+                } else {
+                    if !t.has(db::PUSH_GROUP, &key)?
+                        && t.count(db::PUSH_GROUP, &mb)? >= api::MAX_GROUP_PUSH
+                    {
+                        return Ok(Status::Quota);
+                    }
+                    // With its day: a group's mailboxes are daily, and the
+                    // registration goes with its day (`expire`).
+                    t.put(
+                        db::PUSH_GROUP,
+                        &key,
+                        &cat(&api::day_of(now).to_be_bytes(), sealed),
+                    )?;
+                }
+                Ok(Status::Ok)
+            })
+            .unwrap_or_else(|s| s);
+        if status == Status::Ok {
+            self.drop_replaced_wake(old, sealed);
+        }
+        status
     }
 
     /// A write reached `mailbox`: schedule a wake for each sealed token

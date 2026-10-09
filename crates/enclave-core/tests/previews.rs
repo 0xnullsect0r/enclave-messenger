@@ -177,15 +177,22 @@ async fn group_wakes_and_dummies() {
         }
     }
     assert!((1..=40).contains(&dummies), "{dummies} dummy wakes");
-    // Unregistering stops them.
+    // Unregistering stops them, a wake already queued for Cy included.
     cy.unregister_push().await.unwrap();
-    net.advance(6 * 3600);
-    let now = net.now();
-    assert!(
-        net.with_server(&S2, |s| s.due_wakes(now))
+    for _ in 0..36 {
+        net.advance(600);
+        let now = net.now();
+        let left: Vec<String> = net
+            .with_server(&S2, |s| s.due_wakes(now))
             .unwrap()
-            .is_empty()
-    );
+            .iter()
+            .map(|w| match relay.wake(w, now) {
+                Some(d) => String::from_utf8_lossy(&d.token).into_owned(),
+                None => format!("unopened {} B", w.len()),
+            })
+            .collect();
+        assert!(left.is_empty(), "wakes after unregistering: {left:?}");
+    }
 }
 
 /// RT-16: however many messages arrive in a window, a device gets one wake
