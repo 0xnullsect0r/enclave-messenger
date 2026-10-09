@@ -404,6 +404,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_typing_setting(s.typing_setting);
     ui.set_typing(s.typing);
     ui.set_can_change_words(s.can_change_words);
+    ui.set_removed(s.removed);
     ui.set_held_moves(s.held_moves.join(", ").into());
     ui.set_words_pending(s.words_pending);
     ui.set_moved(i32::from(s.moved));
@@ -455,6 +456,11 @@ pub fn apply_effect(ui: &AppWindow, e: Effect) {
         Effect::LeftGroup => {
             ui.set_sheet(Sheet::None);
             ui.set_current_id("".into());
+        }
+        Effect::Erased => {
+            ui.set_sheet(Sheet::None);
+            ui.set_current_id("".into());
+            ui.set_screen(Screen::Welcome);
         }
         Effect::PollCreated => {
             ui.set_sheet(Sheet::None);

@@ -56,6 +56,10 @@ pub const FLAG_MORE: u8 = 0x20;
 pub const FLAG_CREATE: u8 = 0x01;
 /// Request flag on `RegisterTokens` with create: make it a request inbox.
 pub const FLAG_REQUEST_INBOX: u8 = 0x02;
+/// Request flag on `RegisterTokens`: delete the inbox (its owner closing
+/// the account, `docs/03-identity.md` §8.5), with its envelopes, tokens,
+/// read credentials, hints and push registration.
+pub const FLAG_DELETE: u8 = 0x04;
 
 /// Request flag on `Write`: a group mailbox. The token is the mailbox's
 /// owner secret; the first write creates the mailbox, later writes must
@@ -812,6 +816,17 @@ pub fn inbox_addr(addr_seed: &[u8; 32], week: u32) -> [u8; 32] {
 pub fn inbox_owner(inbox_seed: &[u8; 32], addr: &[u8; 32]) -> [u8; 32] {
     enclave_crypto::kmac::kmac256(inbox_seed, addr, "enclave/v1/net/inbox-owner")
 }
+
+/// The owner secret of the account's vault-key blob (`DirKind::Vault`),
+/// from the key it is sealed under, so the account can replace or delete
+/// it later.
+pub fn vault_owner(vault_key: &[u8; 32]) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(vault_key, b"", "enclave/v1/net/vault-owner")
+}
+
+/// A `DirKind::Vault` upload of this one byte, with the blob's owner
+/// secret, deletes the blob (a sealed blob is never one byte).
+pub const VAULT_DELETE: &[u8] = &[0];
 
 /// The inbox read key, from the inbox seed.
 pub fn inbox_read_key(inbox_seed: &[u8; 32]) -> [u8; 32] {

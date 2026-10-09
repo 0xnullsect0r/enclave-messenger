@@ -33,7 +33,7 @@ pub use config::EnclaveKtConfig;
 pub use head::{Cosignature, Equivocation, SignedHead, TreeHead, WitnessPolicy};
 pub use log::{
     ACCOUNT_RECORD_LEN, ACCOUNT_TAG, AbsenceProof, KtLog, Witness, WitnessClient, account_label,
-    account_record, migration_record, verify_absence, verify_descriptor_lookup,
+    account_record, migration_record, tombstone_record, verify_absence, verify_descriptor_lookup,
     verify_label_lookup, verify_lookup,
 };
 pub use service::KtService;

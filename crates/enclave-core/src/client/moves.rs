@@ -278,7 +278,7 @@ impl Client {
                     &mut self.rng,
                 )
                 .await?;
-            let owner: [u8; 32] = self.rng.array("core/vault-owner")?;
+            let owner = enclave_rpc::api::vault_owner(&next.vault_key);
             let blob = persist::seal_large(
                 &SealKey::from_bytes(next.vault_key),
                 &self.account.vault_public.0[..],

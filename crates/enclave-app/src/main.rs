@@ -218,6 +218,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::ReleaseShare(code.to_string()));
     });
     let t = tx.clone();
+    ui.on_delete_account(move || {
+        let _ = t.send(Cmd::DeleteAccount);
+    });
+    let t = tx.clone();
+    ui.on_erase_device(move || {
+        let _ = t.send(Cmd::EraseDevice);
+    });
+    let t = tx.clone();
     ui.on_ask_shares(move || {
         let _ = t.send(Cmd::AskShares);
     });

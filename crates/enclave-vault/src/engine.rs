@@ -297,6 +297,8 @@ struct Engine {
     /// The mixnet client has been given its tickets (or told there are
     /// none to wait for).
     mixnet_up: bool,
+    /// This device was removed from the account.
+    removed: bool,
     /// When to try starting it again after a failure.
     mixnet_retry_at: u64,
     /// Tickets bought before there was a profile to keep them in.
@@ -754,6 +756,7 @@ pub async fn run_with(
         share_release: None,
         share_request: None,
         mixnet_up: false,
+        removed: false,
         mixnet_retry_at: 0,
         prewallet: None,
         net_failures: 0,
@@ -1236,6 +1239,31 @@ impl Engine {
                             self.status = "Couldn't seal your part for them. Ask them to show their code again.".into();
                         }
                     }
+                }
+            }
+            Cmd::DeleteAccount => {
+                self.busy = true;
+                self.push();
+                if let Some(c) = self.client.as_mut() {
+                    match c.delete_account().await {
+                        Ok(()) => {
+                            self.erase_local();
+                            self.status = "Your account is deleted, and everything on this device was erased.".into();
+                        }
+                        Err(CoreError::NotAccepted) => {
+                            self.status = "Only the device that holds your recovery words can delete your account.".into();
+                        }
+                        Err(_) => {
+                            self.status = "Couldn't finish deleting your account. Check your connection and try again: what's done stays done.".into();
+                        }
+                    }
+                }
+                self.busy = false;
+            }
+            Cmd::EraseDevice => {
+                if self.client.is_some() {
+                    self.erase_local();
+                    self.status = "Everything on this device was erased.".into();
                 }
             }
             Cmd::AskShares => {
@@ -2749,7 +2777,13 @@ impl Engine {
                         self.status = "One of your other devices stopped this change. Your contacts won't accept this device.".into();
                     }
                     if events.contains(&Event::RemovedFromAccount) {
+                        self.removed = true;
                         self.status = "This device was removed from your account on another device. It can't get new messages.".into();
+                    }
+                    if events.contains(&Event::AccountDeleted) {
+                        self.erase_local();
+                        self.status = "Your account was deleted from another of your devices, so everything on this device was erased too.".into();
+                        return;
                     }
                     if let Some(sel) = self.selected
                         && events
@@ -2793,6 +2827,25 @@ impl Engine {
 
     fn push(&self) {
         let _ = self.out.send(Out::Snapshot(Box::new(self.snapshot())));
+    }
+
+    /// Crypto-erase the profile (its key goes, then its files) and go back
+    /// to the welcome screen.
+    fn erase_local(&mut self) {
+        if let Some(c) = self.client.take() {
+            let _ = c.erase();
+        }
+        if let Mode::Server { profile, .. } = &self.mode {
+            let _ = std::fs::remove_file(profile.join("profile.redb"));
+            let _ = std::fs::remove_dir_all(profile.join("keys"));
+        }
+        self.selected = None;
+        self.selected_group = None;
+        self.removed = false;
+        self.reveal_words = false;
+        self.reveal_share = None;
+        self.share_release = None;
+        self.effect(Effect::Erased);
     }
 
     fn effect(&self, e: Effect) {
@@ -2877,6 +2930,7 @@ impl Engine {
         s.invites = c.invites().map(|v| v.len() as u32).unwrap_or(0);
         s.typing_setting = c.typing_enabled();
         s.can_change_words = c.holds_recovery_words();
+        s.removed = self.removed;
         s.words_pending = c.migration_pending();
         s.moved = self
             .selected

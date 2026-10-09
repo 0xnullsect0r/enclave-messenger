@@ -261,6 +261,7 @@ fn fixture() -> Snapshot {
         typing: false,
         can_change_words: true,
         words_pending: false,
+        removed: false,
         moved: 0,
         held_moves: Vec::new(),
         route: 0,

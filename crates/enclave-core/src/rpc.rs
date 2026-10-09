@@ -396,6 +396,28 @@ impl Rpc {
         Err(CoreError::Server(Status::Pow))
     }
 
+    /// Delete an inbox we own (the account is closing).
+    pub async fn delete_inbox(
+        &mut self,
+        server: &ServerId,
+        mailbox: [u8; 32],
+        owner: [u8; 32],
+        now: u64,
+        rng: &mut HedgedRng,
+    ) -> Result<()> {
+        let h = RequestHeader {
+            op: Op::RegisterTokens,
+            flags: api::FLAG_DELETE,
+            mailbox,
+            token: owner,
+        };
+        let env = api::frame(&[], rng)?;
+        match self.call(server, h, &env, now, rng).await?.status {
+            Status::Ok => Ok(()),
+            s => Err(CoreError::Server(s)),
+        }
+    }
+
     /// Write to a request inbox, escalating proof of work as the server asks.
     pub async fn write_request(
         &mut self,

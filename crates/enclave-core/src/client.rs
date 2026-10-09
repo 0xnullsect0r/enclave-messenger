@@ -107,6 +107,7 @@ mod blocks;
 mod braid;
 pub mod clock;
 mod closing;
+mod closing_own;
 mod devices;
 mod gaps;
 mod gossip;
@@ -294,6 +295,9 @@ pub enum Event {
     /// This device was removed from the account by another device. It can
     /// no longer read new messages; the app should say so and offer to erase.
     RemovedFromAccount,
+    /// Our account was deleted from another of our devices: its tombstone
+    /// is on our server. The app erases this device.
+    AccountDeleted,
     /// A member of the group changed their recovery words: the group was
     /// told, but we never got the change from them, so their new key is
     /// on hold here (an hour on; `Client::held_moves`).
@@ -643,7 +647,7 @@ impl Client {
             &mut rng,
         )
         .await?;
-        let vault_owner: [u8; 32] = rng.array("core/vault-owner")?;
+        let vault_owner = enclave_rpc::api::vault_owner(&profile.vault_key);
         let blob = persist::seal_large(
             &SealKey::from_bytes(profile.vault_key),
             &account.vault_public.0[..],
@@ -1326,7 +1330,13 @@ impl Client {
     /// maintain prekeys. Returns what the UI should show.
     pub async fn sync(&mut self) -> Result<Vec<Event>> {
         let now = self.now();
-        let mut events = self.sync_inboxes(now, true).await?;
+        if self.account_deleted() {
+            return Ok(Vec::new());
+        }
+        let mut events = match self.sync_inboxes(now, true).await {
+            Ok(e) => e,
+            Err(e) => return self.deleted_or(e, now).await,
+        };
         events.append(&mut self.sync_upkeep(now).await?);
         let mut group_events = self.sync_groups(now).await?;
         events.append(&mut group_events);
@@ -1360,8 +1370,14 @@ impl Client {
             .filter(|(_, e)| !e.left)
             .map(|(k, _)| *k)
             .collect();
+        if self.account_deleted() {
+            return Ok(Vec::new());
+        }
         let mut events = if round % period != period - 1 || groups.is_empty() {
-            self.sync_inboxes(now, false).await?
+            match self.sync_inboxes(now, false).await {
+                Ok(e) => e,
+                Err(e) => return self.deleted_or(e, now).await,
+            }
         } else {
             let gid = self.next_group(&groups, now);
             let got = self.sync_group_with(&gid, now, true).await?;

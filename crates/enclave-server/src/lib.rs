@@ -661,6 +661,18 @@ impl Server {
         self.stats
     }
 
+    /// Inboxes and vault-key blobs held now (diagnostics, tests).
+    pub fn inboxes_held(&self) -> (usize, usize) {
+        self.db
+            .read(|r| {
+                Ok((
+                    r.scan(db::INBOXES, b"")?.len(),
+                    r.scan(db::VAULTS, b"")?.len(),
+                ))
+            })
+            .unwrap_or((0, 0))
+    }
+
     /// Envelopes stored now, in every inbox (diagnostics, tests).
     pub fn envelopes_held(&self) -> usize {
         self.db
@@ -788,6 +800,9 @@ impl Server {
             .read(|r| {
                 if let Some(mig) = r.get(db::MIGRATIONS, key)? {
                     return Ok(Some(enclave_kt::migration_record(&mig)));
+                }
+                if let Some(t) = r.get(db::TOMBSTONES, key)? {
+                    return Ok(Some(enclave_kt::tombstone_record(&t)));
                 }
                 let Some(m) = r.get(db::MANIFESTS, key)? else {
                     return Ok(None);
@@ -1137,6 +1152,24 @@ impl Server {
                     put_inbox(t, &mb, &ib)?;
                     for (d, hash) in &days {
                         t.put(db::READ_CREDS, &cat(&mb, &d.to_be_bytes()), hash)?;
+                    }
+                    Ok(Status::Ok)
+                })
+                .unwrap_or_else(|s| s);
+        }
+        if h.flags & api::FLAG_DELETE != 0 {
+            return self
+                .tx(|t| {
+                    let Some(ib) = get_inbox(t, &mb)? else {
+                        return Ok(Status::NotFound);
+                    };
+                    if ib.owner != owner_hash || ib.group {
+                        return Ok(Status::Denied);
+                    }
+                    t.del(db::INBOXES, &mb)?;
+                    t.del(db::PUSH, &mb)?;
+                    for table in [db::ENVELOPES, db::HINTS, db::TOKENS, db::READ_CREDS] {
+                        t.remove_where(table, &mb, |_, _| true)?;
                     }
                     Ok(Status::Ok)
                 })
@@ -2004,7 +2037,7 @@ impl Server {
         if status == Status::Ok
             && matches!(
                 req.kind,
-                DirKind::Manifest | DirKind::Attest | DirKind::Migration
+                DirKind::Manifest | DirKind::Attest | DirKind::Migration | DirKind::Tombstone
             )
         {
             self.commit_account(Some(req.key), now);
@@ -2340,8 +2373,11 @@ impl Server {
         self.tx(|tx| {
             tx.put(db::TOMBSTONES, &key, bytes)?;
             tx.del(db::MANIFESTS, &key)?;
+            tx.del(db::ATTESTATIONS, &key)?;
+            tx.del(db::DEVICES_SEEN, &key)?;
             for d in &devices {
                 tx.del(db::BUNDLES, d)?;
+                tx.del(db::DEVICE_OWNER, d)?;
             }
             tx.del(db::NAMES_BY_ROOT, &root)?;
             if let Some(n) = &name {
@@ -2479,6 +2515,10 @@ impl Server {
                 && v.get(..32) != Some(&owner[..])
             {
                 return Ok(Status::Denied);
+            }
+            if bytes == api::VAULT_DELETE {
+                t.del(db::VAULTS, &key)?;
+                return Ok(Status::Ok);
             }
             t.put(db::VAULTS, &key, &cat(&owner, &bytes))?;
             Ok(Status::Ok)

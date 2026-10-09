@@ -52,6 +52,12 @@ pub fn migration_record(migration: &[u8]) -> Vec<u8> {
     [&b"M"[..], &enclave_crypto::hash::sha3_512(migration)].concat()
 }
 
+/// An account's record once it was deleted (`03-identity.md` §8.5):
+/// `"T" ‖ SHA3-512(tombstone)` (65 bytes, like a migration's).
+pub fn tombstone_record(tombstone: &[u8]) -> Vec<u8> {
+    [&b"T"[..], &enclave_crypto::hash::sha3_512(tombstone)].concat()
+}
+
 /// VRF key held in memory for the life of the process.
 #[derive(Clone)]
 pub struct VrfKey(Arc<[u8; 32]>);

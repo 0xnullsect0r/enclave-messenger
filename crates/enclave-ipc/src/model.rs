@@ -305,6 +305,9 @@ pub struct Snapshot {
     pub can_change_words: bool,
     /// Our change of recovery words is still reaching contacts and groups.
     pub words_pending: bool,
+    /// This device was removed from the account: it can't get new
+    /// messages, and may be erased.
+    pub removed: bool,
     /// The open conversation's contact changed their recovery words:
     /// 0 no, 1 confirmed by their old key, 2 not confirmed.
     pub moved: u8,
@@ -481,6 +484,12 @@ pub enum Cmd {
     ReleaseShare(String),
     /// Before there is an account: show a request for friends' shares.
     AskShares,
+    /// Delete the account everywhere, then erase this device
+    /// (`docs/03-identity.md` §8.5). Only on the device holding the words.
+    DeleteAccount,
+    /// Erase this device's copy of the account (it was removed, or the
+    /// person wants it gone from here).
+    EraseDevice,
 }
 
 /// One-off UI resets after a request succeeded.
@@ -502,6 +511,8 @@ pub enum Effect {
     RemovalDone,
     /// Close the poll sheet and clear it.
     PollCreated,
+    /// The account or this device was erased: back to the welcome screen.
+    Erased,
 }
 
 /// Vault → UI.
@@ -751,6 +762,7 @@ impl Snapshot {
             .bool(self.typing)
             .bool(self.can_change_words)
             .bool(self.words_pending)
+            .bool(self.removed)
             .u8(self.moved)
             .strs(&self.held_moves)
             .u8(self.route)
@@ -962,6 +974,7 @@ impl Snapshot {
             typing: r.bool()?,
             can_change_words: r.bool()?,
             words_pending: r.bool()?,
+            removed: r.bool()?,
             moved: r.u8()?,
             held_moves: r.strs()?,
             route: r.u8()?,
@@ -1056,6 +1069,8 @@ impl Cmd {
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
             Cmd::AskShares => w.u8(70),
+            Cmd::DeleteAccount => w.u8(71),
+            Cmd::EraseDevice => w.u8(72),
         };
         w.0
     }
@@ -1138,6 +1153,8 @@ impl Cmd {
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
             70 => Cmd::AskShares,
+            71 => Cmd::DeleteAccount,
+            72 => Cmd::EraseDevice,
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;
@@ -1193,6 +1210,7 @@ impl Out {
                     Effect::LeftGroup => 6,
                     Effect::PassphraseChanged => 7,
                     Effect::PollCreated => 8,
+                    Effect::Erased => 9,
                 },
             ],
         }
@@ -1211,6 +1229,7 @@ impl Out {
                 6 => Effect::LeftGroup,
                 7 => Effect::PassphraseChanged,
                 8 => Effect::PollCreated,
+                9 => Effect::Erased,
                 _ => return Err(IpcError::Malformed),
             })),
             [3, ..] => {

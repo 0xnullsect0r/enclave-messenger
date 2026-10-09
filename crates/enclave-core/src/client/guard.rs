@@ -351,6 +351,10 @@ impl Client {
         {
             Ok(b) => b,
             Err(e @ CoreError::Net(_)) => return Err(e),
+            // Gone: perhaps deleted from another of our devices.
+            Err(CoreError::Server(enclave_rpc::api::Status::NotFound)) => {
+                return self.check_tombstone(now).await;
+            }
             Err(_) => return Ok(Vec::new()),
         };
         let Ok(signed) = SignedManifest::from_bytes(&bytes) else {
