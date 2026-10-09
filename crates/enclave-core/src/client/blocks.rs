@@ -10,8 +10,7 @@
 use super::{Client, ContactState};
 use crate::content::Content;
 use crate::{CoreError, Result};
-use enclave_rpc::api::{self, FLAG_REVOKE};
-use enclave_wire::{Op, RequestHeader};
+use enclave_rpc::api::FLAG_REVOKE;
 
 pub(crate) const NS_BLOCKED: &str = "blocked";
 /// Tokens sent on unblocking.
@@ -40,19 +39,14 @@ impl Client {
         }
         let now = self.now();
         self.store.put(NS_BLOCKED, root, &[1], &mut self.rng)?;
-        let hashes = self.issued_hashes(root);
-        if !hashes.is_empty() {
-            let payload = api::frame(&hashes.concat(), &mut self.rng)?;
-            let h = RequestHeader {
-                op: Op::RegisterTokens,
-                flags: FLAG_REVOKE,
-                mailbox: self.profile.inbox,
-                token: self.profile.inbox_owner,
-            };
-            let server = self.profile.server;
-            self.rpc
-                .call_ok(&server, h, &payload, now, &mut self.rng)
-                .await?;
+        // Revoked at every address they could write to now; the next
+        // weekly addresses never get them.
+        let tokens = self.issued(root);
+        if !tokens.is_empty() {
+            for week in self.profile.live_weeks(self.inbox_now(now)) {
+                self.register_at(week, &tokens, 0, FLAG_REVOKE, now).await?;
+            }
+            self.store.delete(crate::persist::NS_ISSUERS, root)?;
         }
         if let Some(c) = self.contacts.get_mut(root) {
             c.unread = 0;

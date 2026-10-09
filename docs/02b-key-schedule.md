@@ -70,56 +70,38 @@ IK_sk = HedgedRng.fill("x448/keygen", 56); IK_pk = X448(IK_sk, 5)
 
 ### 2.5 Inboxes and read credentials
 
+The account inbox rotates weekly, everything from the inbox seed `is` (`09-transport.md` §3.1):
+
 ```
-address       = random 32 B                                                      # chosen by the owner
-owner_secret  = random 32 B
-read_cred     = KMAC256(owner_secret, "read", 256, "enclave/v1/rpc/read-credential")[0..24]
-stored at the server: credential_hash(owner_secret), credential_hash(read_cred)
+is            = HedgedRng.fill("core/inbox-seed", 32)                            # in the profile, shared by the account's devices
+addr_seed     = KMAC256(is, "", 256, "enclave/v1/net/inbox-addr-seed")            # what contacts get
+addr(w)       = KMAC256(addr_seed, u32(w), 256, "enclave/v1/net/inbox-addr")      # w = Unix seconds / 604,800
+owner(a)      = KMAC256(is, a, 256, "enclave/v1/net/inbox-owner")
+read_key      = KMAC256(is, "", 256, "enclave/v1/net/inbox-read-key")
+read_cred(a, d) = KMAC256(read_key, a ‖ u32(d), 256, "enclave/v1/net/read-cred")[0..24]   # d = Unix seconds / 86,400
+stored at the server: credential_hash(owner(a)), credential_hash(read_cred(a, d)) for each registered day
 credential_hash(x) = KMAC256(x, "", 256, "enclave/v1/rpc/credential-hash")
 ```
 
-Reserved (PLAN §9.3): an inbox seed `is` with weekly addresses `KMAC256(is, u32(week), 256, "enclave/v1/net/inbox-addr")`, a read key `KMAC256(is, "", 256, "enclave/v1/net/inbox-read-key")`, and daily address-bound read credentials `KMAC256(read_key, address ‖ u32(day), 256, "enclave/v1/net/read-cred")`.
-
-### 2.6 Write tokens (inbound, per contact)
+Request inboxes, group mailboxes and linking mailboxes keep a random address and owner secret with the static credential:
 
 ```
-k_contact = HedgedRng.fill("tokens/contact-key", 32)
-t_i       = KMAC256(k_contact, u64(i), 256, "enclave/v1/tokens/write")        # i = 0, 1, 2, …
-h_i       = KMAC256(t_i, "", 256, "enclave/v1/tokens/hash")                   # what the server stores
-dummy     = HedgedRng.fill("tokens/dummy", 32)                                # padding in registration batches
+read_cred     = KMAC256(owner_secret, "read", 256, "enclave/v1/rpc/read-credential")[0..24]
 ```
 
-This is PLAN §9.3's `t_i = KMAC(k_contact, i)` and `H(t_i)`. The hash is not bound to the inbox address. Reserved: `k_tok = KMAC256(is, cid ‖ u32(g), 256, "enclave/v1/net/token-key")` (tokens derived from the inbox seed).
-
-### 2.7 Request inbox and invite capabilities (reserved)
-
-The request inbox is created like an account inbox (§2.5). Invite capabilities (`enclave/v1/proto/invite-cap`, `enclave/v1/net/cap-hash`) are reserved.
-
-## 3. Device keys and prekeys
+### 2.6 Write tokens (inbound)
 
 ```
-device_id            = HedgedRng.fill("device/id", 16)
-seed89               = HedgedRng.fill("sig/composite/keygen", 89)
-ed448_sk             = seed89[0..57];  ML-DSA-87 keypair = KeyGen_internal(ξ = seed89[57..89])
-composite_pk         = ed448_pk ‖ mldsa87_pk                                   # 2,649 B
-(auth_ek, auth_dk)   = ML-KEM-1024.KeyGen_internal(HedgedRng.fill("mlkem/keygen", 64))    # d ‖ z
+t         = HedgedRng.fill("core/write-token", 32)                          # from the device's pool (09 §3.3)
+h(t, a)   = KMAC256(t, a, 256, "enclave/v1/tokens/hash")                    # what the server stores at address a
+dummy     = HedgedRng.fill("tokens/dummy", 32)                              # padding in registration batches
 ```
 
-Prekeys (`PrekeyStore::publish`):
+The hash is bound to the address, so a token re-registered at the next week's address gives an unrelated value. PLAN §9.3's per-contact `t_i = KMAC(k_contact, i)` survives as `enclave_tokens::TokenIssuer` (`enclave/v1/tokens/write`), used only by the simulator; `enclave/v1/net/token-key` is retired (`label-registry.md` §4).
 
-```
-SPK_sk = HedgedRng.fill("x448/keygen", 56); (PQSPK_ek, PQSPK_dk) = ML-KEM-1024.KeyGen_internal(fill("mlkem/keygen", 64))
-(OPK_i, PQOPK_i) = the same, 100 times per batch
-(LR_ek, LR_dk)   = ML-KEM-1024.KeyGen_internal(fill("mlkem/keygen", 64))
-spk_id, batch_id, lr_id = consecutive values of the store's counter
-leaf_i  = SHAKE256(u8(0) ‖ "enclave/v1/prekey/merkle" ‖ u32(batch_id) ‖ u16(i) ‖ OPK_i ‖ PQOPK_i, 32)
-empty_j = SHAKE256(u8(2) ‖ "enclave/v1/prekey/merkle" ‖ u16(j), 32)            # j = 100..127
-node    = SHAKE256(u8(1) ‖ "enclave/v1/prekey/merkle" ‖ left ‖ right, 32)
-```
+### 2.7 Request inbox and invite capabilities
 
-The tree has 128 leaf positions; each path is 7 × 32 = 224 B. Signatures over the prekeys are in `04-eqxdh.md` §2.
-
-## 4. Verification codes and in-person PSK
+The request inbox has a random address in the manifest and the static credential (§2.5). An invite link's capabilities `cap_i = KMAC256(secret, u32(i), 256, "enclave/v1/invite/cap")` are registered as `KMAC256(cap_i, request_inbox, 256, "enclave/v1/net/cap-hash")`, bound to the inbox (`09-transport.md` §4).
 
 ### 4.1 Security code (per side)
 

@@ -98,6 +98,12 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | `enclave/v1/rpc/credential-hash` | KMAC | 256 | `api.rs` `credential_hash` | Server-stored hash of an owner secret or read credential |
 | `enclave/v1/net/replay-id` | HASH | 256 | `lib.rs` `replay_id` | Replay-cache key of a sealed request: `SHAKE256(label ‖ u32 key_id ‖ eph X448 ‖ ML-KEM ct)` (09 §2.3) |
 | `enclave/v1/net/status-id` | KMAC | 256 | `lib.rs` `derive` | Where a deferred answer waits for its status poll: `KMAC256(exchange secret, "", label)`, known to both ends of one request (09 §6.1) |
+| `enclave/v1/net/inbox-addr-seed` | KMAC | 256 | `api.rs` `inbox_addr_seed` | The account's address seed from its inbox seed, given to contacts (09 §3.1) |
+| `enclave/v1/net/inbox-addr` | KMAC | 256 | `api.rs` `inbox_addr` | Weekly account-inbox address: `KMAC256(addr_seed, u32 week, label)` (09 §3.1) |
+| `enclave/v1/net/inbox-owner` | KMAC | 256 | `api.rs` `inbox_owner` | Owner secret of one weekly address: `KMAC256(inbox_seed, address, label)` (09 §3.1) |
+| `enclave/v1/net/inbox-read-key` | KMAC | 256 | `api.rs` `inbox_read_key` | Inbox read key from the inbox seed (09 §3.1) |
+| `enclave/v1/net/read-cred` | KMAC | 256 (first 192 bits used) | `api.rs` `daily_read_credential` | Daily read credential bound to an address: `KMAC256(read_key, address ‖ u32 day, label)` (09 §3.1) |
+| `enclave/v1/net/cap-hash` | KMAC | 256 | `api.rs` `cap_hash` | Server-stored invite-capability hash, bound to the request inbox: `KMAC256(cap, inbox, label)` (09 §4) |
 | `enclave/v1/server/request-key` | KMAC | 960 | `lib.rs` `ServerSecret::from_seed` | A day's X448 secret (56 B) and ML-KEM-1024 seed (64 B) from that day's chain seed; data is the day index (12 §1.4) |
 | `enclave/v1/server/request-chain` | KMAC | 256 | `lib.rs` `ServerSecret::next_seed` | Next day's chain seed; the old one is erased (forward secrecy, 12 §1.4) |
 
@@ -106,7 +112,7 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | Label | Kind | Output | Where | Purpose |
 |---|---|---|---|---|
 | `enclave/v1/tokens/write` | KMAC | 256 | `lib.rs` `write_token` | Single-use write token `t_i` |
-| `enclave/v1/tokens/hash` | KMAC | 256 | `lib.rs` `token_hash` | Server-stored token hash |
+| `enclave/v1/tokens/hash` | KMAC | 256 | `lib.rs` `token_hash` | Server-stored token hash, bound to the inbox address: `KMAC256(t, address, label)` (09 §3.3) |
 | `enclave/v1/tokens/pow` | HASH | 32 | `lib.rs` `accepted` | Equi-X effort check: `SHAKE256(label ‖ challenge ‖ solution)`, first 4 B |
 | `enclave/v1/tokens/pp-issuer` | INFO | — | `privpass.rs` `IssuerKey::derive` | Privacy Pass issuer key for an epoch: RFC 9497 `DeriveKeyPair(seed, label ‖ u32 epoch)` (RFC 0001) |
 
@@ -243,11 +249,6 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/net/inbox-addr` | KMAC | 256 | Weekly account-inbox address | 09 §3 |
-| `enclave/v1/net/inbox-read-key` | KMAC | 256 | Inbox read key from the inbox seed | 09 §3 |
-| `enclave/v1/net/read-cred` | KMAC | 256 | Daily, address-bound read credential | 09 §3 |
-| `enclave/v1/net/token-key` | KMAC | 256 | Per-contact write-token key derived from the inbox seed | 09 §3 |
-| `enclave/v1/net/cap-hash` | KMAC | 256 | Server-stored invite-capability hash | 09 §4 |
 | `enclave/v1/wire/ad-capsule` | AD | — | Notification capsule AD prefix | 08 §5.4 |
 | `enclave/v1/wire/ad-grp-header` | AD | — | Group routing-header AD prefix | 08 §7 |
 | `enclave/v1/wire/ad-grp-body` | AD | — | Group body AD prefix | 08 §7 |
@@ -274,6 +275,7 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 
 | Retired label | Replaced by |
 |---|---|
+| `enclave/v1/net/token-key` | Write tokens from a shared, per-device pool of hedged random values (`core/write-token`, 09 §3.3): per-contact keys let the server group writes by registration batch |
 | `enclave/v1/proto/manifest` | `enclave/v1/ctx/manifest` |
 | `enclave/v1/proto/migration` | `enclave/v1/ctx/migration` |
 | `enclave/v1/proto/manifest-hash` | Plain SHA3-512 of the signed manifest encoding (no label; `SignedManifest::hash`) |
@@ -342,8 +344,8 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 | `"enclave/v1/signed-msg"` (§5) | `enclave/v1/ctx/signed-msg` |
 | `KMAC(epoch_secret, "gmbox"‖day)` (§7) | `enclave/v1/net/grp-mailbox` (reserved) |
 | `"grp-export"` (§7) | `enclave/v1/proto/grp-export` (reserved) |
-| `KMAC(inbox_seed, "inbox"‖week)` (§9.3) | `enclave/v1/net/inbox-addr` (reserved) |
-| `KMAC(read_key, day)` (§9.3) | `enclave/v1/net/read-cred` (reserved); the implemented static credential uses `enclave/v1/rpc/read-credential` |
+| `KMAC(inbox_seed, "inbox"‖week)` (§9.3) | `enclave/v1/net/inbox-addr` over `enclave/v1/net/inbox-addr-seed` |
+| `KMAC(read_key, day)` (§9.3) | `enclave/v1/net/read-cred` (bound to the address too); request inboxes keep the static `enclave/v1/rpc/read-credential` |
 | `KMAC(k_contact, i)` (§9.3) | `enclave/v1/tokens/write` |
 | `KMAC256(hw_secret‖Argon2id(passphrase)?)` (§13) | `enclave/v1/store/master` |
 

@@ -136,7 +136,7 @@ async fn through_the_mixnet_to_a_server() {
         mailbox,
         token: owner,
     };
-    let hashes = enclave_tokens::token_hash(&token).to_vec();
+    let hashes = enclave_tokens::token_hash(&token, &mailbox).to_vec();
     let (rh, _) = call(reg, api::frame(&hashes, &mut rng).unwrap(), &mut rng).await;
     assert_eq!(Status::from_u8(rh.flags), Status::Ok);
     let envelope = vec![0x42; ENVELOPE_LEN];
@@ -345,7 +345,7 @@ async fn writes_go_one_way() {
     };
     for (flags, body) in [
         (FLAG_CREATE, Vec::new()),
-        (0, enclave_tokens::token_hash(&token).to_vec()),
+        (0, enclave_tokens::token_hash(&token, &mailbox).to_vec()),
     ] {
         let h = RequestHeader {
             op: Op::RegisterTokens,

@@ -200,7 +200,14 @@ async fn read(
     rng: &mut HedgedRng,
 ) -> Result<Vec<Vec<u8>>> {
     let items = match rpc
-        .poll(&code.server, code.mailbox, &code.owner, *cursor, now, rng)
+        .poll(
+            &code.server,
+            code.mailbox,
+            api::read_credential(&code.owner),
+            *cursor,
+            now,
+            rng,
+        )
         .await
     {
         Ok(v) => v,
@@ -208,9 +215,9 @@ async fn read(
         Err(e) => return Err(e),
     };
     let mut out = Vec::new();
-    for (env, c) in items {
-        *cursor = c;
-        if let Ok(p) = api::unframe(&env) {
+    for polled in items {
+        *cursor = polled.cursor;
+        if let Ok(p) = api::unframe(&polled.envelope) {
             out.push(p.to_vec());
         }
     }
@@ -356,7 +363,9 @@ impl LinkingDevice {
             return Err(ProtoError::Decode.into());
         }
         let mut profile = Profile::decode(r.bytes(4096)?)?;
-        profile.cursor = 0;
+        for (_, cursor) in profile.weeks.iter_mut() {
+            *cursor = 0;
+        }
         profile.request_cursor = 0;
         let account = AccountKeys::import_shared(r.bytes(4 << 20)?, None)?;
         let signed = SignedManifest::from_bytes(r.bytes(1 << 20)?)?;
@@ -448,6 +457,9 @@ impl LinkingDevice {
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
             maximum: false,
+            inbox_rounds: 0,
+            fallback_week: false,
+            group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
         };
@@ -767,7 +779,7 @@ impl Client {
         let tokens = self.issue_tokens(root, super::HELLO_TOKENS, now).await?;
         Ok(Content::Hello {
             server: self.profile.server,
-            inbox: self.profile.inbox,
+            inbox: self.profile.addr_seed(),
             tokens,
             name: self.profile.name.clone(),
             text: String::new(),
@@ -836,7 +848,7 @@ impl Client {
         let h = RequestHeader {
             op: Op::Write,
             flags: 0,
-            mailbox: self.profile.inbox,
+            mailbox: self.profile.addr(enclave_rpc::api::week_of(now)),
             token,
         };
         let server = self.profile.server;

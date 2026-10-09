@@ -27,6 +27,12 @@ type Bytes = TableDefinition<'static, &'static [u8], &'static [u8]>;
 
 /// Inbox metadata: owner and read credential hashes, flags, next sequence.
 pub const INBOXES: Bytes = TableDefinition::new("inboxes");
+/// Daily read credentials of a rotating inbox: `mailbox ‖ u32 day` →
+/// credential hash.
+pub const READ_CREDS: Bytes = TableDefinition::new("read-creds");
+/// Session hints: `mailbox ‖ u64 seq` → `u64 time ‖` the first 24 bytes of
+/// the token hash the envelope's write burned.
+pub const HINTS: Bytes = TableDefinition::new("hints");
 /// Registered write tokens: `mailbox ‖ token hash` → empty.
 pub const TOKENS: Bytes = TableDefinition::new("tokens");
 /// Stored envelopes: `mailbox ‖ seq` → `time ‖ envelope`.
@@ -74,7 +80,7 @@ pub const REPORTS: Bytes = TableDefinition::new("reports");
 pub const META: Bytes = TableDefinition::new("meta");
 
 /// The schema this code writes. Older files are migrated on open.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// Storage failure. The server answers `Status::Internal` and logs it.
 #[derive(Debug, thiserror::Error)]
@@ -172,7 +178,8 @@ impl Db {
             }
             // Every table is created at each start: 0 → 1 made them all,
             // 1 → 2 added `server-moves`, 2 → 3 `tombstones`, 3 → 4
-            // `replays`, 4 → 5 `pow-spent`, 5 → 6 `equivocations`.
+            // `replays`, 4 → 5 `pow-spent`, 5 → 6 `equivocations`, 6 → 7
+            // `read-creds` and `hints`.
             t.create_tables()?;
             t.put(META, b"schema", &SCHEMA_VERSION.to_be_bytes())
         })
@@ -273,8 +280,10 @@ impl Db {
 type Rows = Vec<(Vec<u8>, Vec<u8>)>;
 
 /// Every table, for snapshots.
-const ALL: [Bytes; 22] = [
+const ALL: [Bytes; 24] = [
     INBOXES,
+    READ_CREDS,
+    HINTS,
     TOKENS,
     ENVELOPES,
     MANIFESTS,

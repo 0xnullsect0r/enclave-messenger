@@ -97,7 +97,9 @@ impl Client {
                 .get(NS_PROFILE, b"profile")?
                 .ok_or(CoreError::NotFound)?,
         )?;
-        profile.cursor = 0;
+        for (_, cursor) in profile.weeks.iter_mut() {
+            *cursor = 0;
+        }
         profile.request_cursor = 0;
 
         let mut rpc = Rpc::new(Arc::clone(&transport));
@@ -211,6 +213,9 @@ impl Client {
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
             maximum: false,
+            inbox_rounds: 0,
+            fallback_week: false,
+            group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
         };

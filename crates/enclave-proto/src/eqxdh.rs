@@ -734,7 +734,8 @@ pub fn invite_psk(secret: &[u8; 32]) -> Zeroizing<[u8; 32]> {
 }
 
 /// The `i`-th request-inbox capability of an invite link (§9.2): the
-/// server holds only its token hash and burns it on use.
+/// server holds only its capability hash (`api::cap_hash`) and burns it on
+/// use.
 pub fn invite_cap(secret: &[u8; 32], i: u32) -> [u8; 32] {
     enclave_crypto::kmac::kmac256(secret, &i.to_be_bytes(), labels::INVITE_CAP)
 }

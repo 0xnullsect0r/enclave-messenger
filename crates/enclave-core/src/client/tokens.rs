@@ -9,17 +9,16 @@
 //! batch, as before, would let it: every token in a batch that is ever
 //! burned would be the same person's.)
 //!
-//! The hashes of the tokens each contact was given are kept (the last
-//! [`MAX_ISSUED`]), so a block can revoke the ones still outstanding.
+//! The tokens each contact was given are kept (the last [`MAX_ISSUED`],
+//! less the ones whose writes have arrived), so a block can revoke the
+//! ones still outstanding and a new weekly address can register them.
 //! The pool is per device and never in a backup: a restored device starts
 //! with an empty one, so no token is handed out twice.
 
 use super::Client;
 use crate::persist::NS_ISSUERS;
 use crate::{CoreError, Result};
-use enclave_rpc::api;
-use enclave_tokens::{Token, token_hash};
-use enclave_wire::{Op, RequestHeader};
+use enclave_tokens::Token;
 
 pub(crate) const NS_TOKEN_POOL: &str = "token-pool";
 const POOL_KEY: &[u8] = b"pool";
@@ -27,7 +26,7 @@ const POOL_KEY: &[u8] = b"pool";
 pub const POOL_BATCH: usize = 64;
 /// Random values shuffled into each batch.
 pub const POOL_DUMMIES: usize = 16;
-/// Hashes kept per contact for revocation.
+/// Tokens kept per contact for revocation and re-registration.
 pub const MAX_ISSUED: usize = 128;
 
 pub(crate) fn load_pool(store: &enclave_store::Store) -> Result<Vec<Token>> {
@@ -49,24 +48,25 @@ impl Client {
         Ok(())
     }
 
-    /// Register a batch of fresh tokens and add them to the pool.
+    /// Register a batch of fresh tokens at every address writers may use
+    /// now, and add them to the pool.
     async fn refill_pool(&mut self, at_least: usize, now: u64) -> Result<()> {
         let n = at_least.max(POOL_BATCH);
         let fresh: Vec<Token> = (0..n)
             .map(|_| self.rng.array("core/write-token"))
             .collect::<std::result::Result<_, _>>()?;
-        let hashes: Vec<[u8; 32]> = fresh.iter().map(token_hash).collect();
-        let batch = enclave_tokens::registration_batch(&hashes, POOL_DUMMIES, &mut self.rng)?;
-        let payload = api::frame(&batch.concat(), &mut self.rng)?;
-        let h = RequestHeader {
-            op: Op::RegisterTokens,
-            flags: 0,
-            mailbox: self.profile.inbox,
-            token: self.profile.inbox_owner,
-        };
-        self.rpc
-            .call_ok(&self.profile.server, h, &payload, now, &mut self.rng)
-            .await?;
+        // Just moved, or back after weeks away: make the addresses first.
+        let inow = self.inbox_now(now);
+        if self.profile.live_weeks(inow).is_empty() {
+            self.ensure_weeks(now).await?;
+        }
+        let weeks = self.profile.live_weeks(inow);
+        if weeks.is_empty() {
+            return Err(CoreError::NotFound);
+        }
+        for week in weeks {
+            self.register_at(week, &fresh, POOL_DUMMIES, 0, now).await?;
+        }
         // Hand out the oldest first; new ones go to the back.
         self.token_pool.extend(fresh);
         self.save_pool()
@@ -89,17 +89,23 @@ impl Client {
         }
         let toks: Vec<Token> = self.token_pool.drain(..n).collect();
         self.save_pool()?;
-        let mut issued = self.issued_hashes(root);
-        issued.extend(toks.iter().map(token_hash));
+        let mut issued = self.issued(root);
+        issued.extend(toks.iter().copied());
         let drop = issued.len().saturating_sub(MAX_ISSUED);
         issued.drain(..drop);
-        self.store
-            .put(NS_ISSUERS, root, &issued.concat(), &mut self.rng)?;
+        self.save_issued(root, &issued)?;
         Ok(toks)
     }
 
-    /// Hashes of the tokens `root` was given (the last [`MAX_ISSUED`]).
-    pub(crate) fn issued_hashes(&self, root: &[u8; 64]) -> Vec<[u8; 32]> {
+    fn save_issued(&mut self, root: &[u8; 64], issued: &[Token]) -> Result<()> {
+        let bytes = zeroize::Zeroizing::new(issued.concat());
+        self.store.put(NS_ISSUERS, root, &bytes, &mut self.rng)?;
+        Ok(())
+    }
+
+    /// The tokens `root` was given and hasn't used, as far as we know (the
+    /// last [`MAX_ISSUED`]).
+    pub(crate) fn issued(&self, root: &[u8; 64]) -> Vec<Token> {
         self.store
             .get(NS_ISSUERS, root)
             .ok()
@@ -112,7 +118,43 @@ impl Client {
             .unwrap_or_default()
     }
 
-    /// Forget the pool (a restored device must not reuse the old one).
+    /// How many of the tokens `root` was given haven't been used, as far
+    /// as we know (diagnostics, tests).
+    pub fn tokens_outstanding(&self, root: &[u8; 64]) -> usize {
+        self.issued(root).len()
+    }
+
+    /// Every contact's outstanding tokens.
+    pub(crate) fn all_issued(&self) -> Result<Vec<([u8; 64], Vec<Token>)>> {
+        Ok(self
+            .store
+            .scan(NS_ISSUERS)?
+            .into_iter()
+            .filter_map(|(k, v)| {
+                let root: [u8; 64] = k.as_slice().try_into().ok()?;
+                let toks = v
+                    .chunks_exact(32)
+                    .filter_map(|c| c.try_into().ok())
+                    .collect();
+                Some((root, toks))
+            })
+            .collect())
+    }
+
+    /// A write that burned `token` arrived (its hint said whose): it's
+    /// used, so it isn't registered at new addresses any more.
+    pub(crate) fn burned(&mut self, root: &[u8; 64], token: &Token) -> Result<()> {
+        let mut issued = self.issued(root);
+        let before = issued.len();
+        issued.retain(|t| t != token);
+        if issued.len() != before {
+            self.save_issued(root, &issued)?;
+        }
+        Ok(())
+    }
+
+    /// Forget the pool and what was handed out (a restored device must not
+    /// reuse the old pool; a moved account's tokens were for the old home).
     pub(crate) fn clear_pool(&mut self) -> Result<()> {
         self.token_pool.clear();
         self.store.delete(NS_TOKEN_POOL, POOL_KEY)?;

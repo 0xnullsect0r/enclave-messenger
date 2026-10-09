@@ -464,7 +464,7 @@ impl SimUser {
             .issuers
             .entry(contact)
             .or_insert_with(|| TokenIssuer::new(rng).unwrap());
-        let (toks, hashes) = issuer.issue(n);
+        let (toks, hashes) = issuer.issue(n, &self.inbox);
         let batch = enclave_tokens::registration_batch(&hashes, 8, rng).unwrap();
         let payload: Vec<u8> = batch.concat();
         let h = RequestHeader {

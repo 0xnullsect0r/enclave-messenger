@@ -19,6 +19,16 @@ pub(crate) struct Reply {
     pub envelope: Vec<u8>,
 }
 
+/// One envelope read from a mailbox.
+pub(crate) struct Polled {
+    pub envelope: Vec<u8>,
+    /// Its sequence number: the cursor after it.
+    pub cursor: u64,
+    /// The first 24 bytes of the token hash its write burned (zeros when
+    /// none): which contact wrote it (`docs/09-transport.md` §3.3).
+    pub hint: [u8; 24],
+}
+
 /// Proof-of-work efforts tried in order when a server asks for more.
 pub(crate) const EFFORT_LADDER: [u32; 7] = [8, 16, 64, 256, 1024, 4096, 16_384];
 
@@ -350,14 +360,17 @@ impl Rpc {
     }
 
     /// Create an inbox (`flags` is `FLAG_CREATE`, with `FLAG_REQUEST_INBOX`
-    /// for a request inbox) owned by `owner`, escalating proof of work as
-    /// the server asks.
+    /// for a request inbox) owned by `owner`, read with the daily
+    /// credentials whose hashes are `days` (none: the static credential),
+    /// escalating proof of work as the server asks.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_inbox(
         &mut self,
         server: &ServerId,
         mailbox: [u8; 32],
         owner: [u8; 32],
         flags: u8,
+        days: &[(u32, [u8; 32])],
         now: u64,
         rng: &mut HedgedRng,
     ) -> Result<()> {
@@ -370,7 +383,7 @@ impl Rpc {
                 mailbox,
                 token: owner,
             };
-            let env = api::frame(&proof.0, rng)?;
+            let env = api::frame(&api::create_payload(&proof.0, days), rng)?;
             match self.call(server, h, &env, now, rng).await?.status {
                 Status::Ok => return Ok(()),
                 Status::Pow => continue,
@@ -467,18 +480,16 @@ impl Rpc {
         Err(crate::LinkError::InviteUsed.into())
     }
 
-    /// Fetch everything in `mailbox` after `cursor`. Returns the envelopes with
-    /// the cursor after each one.
+    /// Fetch everything in `mailbox` after `cursor`, reading with `cred`.
     pub async fn poll(
         &mut self,
         server: &ServerId,
         mailbox: [u8; 32],
-        owner: &[u8; 32],
+        cred: [u8; 24],
         cursor: u64,
         now: u64,
         rng: &mut HedgedRng,
-    ) -> Result<Vec<(Vec<u8>, u64)>> {
-        let cred = api::read_credential(owner);
+    ) -> Result<Vec<Polled>> {
         let mut out = Vec::new();
         // Catching up on a backlog is a bulk transfer (a shaping transport
         // may then skip its clock, where the profile allows).
@@ -501,7 +512,7 @@ impl Rpc {
         mut cursor: u64,
         now: u64,
         rng: &mut HedgedRng,
-        out: &mut Vec<(Vec<u8>, u64)>,
+        out: &mut Vec<Polled>,
         bulk: &mut bool,
     ) -> Result<()> {
         // Bounded so a hostile server cannot keep us polling forever.
@@ -526,8 +537,19 @@ impl Rpc {
                 return Err(CoreError::Server(Status::Malformed));
             }
             cursor = next;
-            out.push((r.envelope, cursor));
-            if r.flags & api::FLAG_MORE != 0 && !*bulk {
+            let mut hint = [0u8; 24];
+            hint.copy_from_slice(&r.header.token[..24]);
+            out.push(Polled {
+                envelope: r.envelope,
+                cursor,
+                hint,
+            });
+            // `MORE` steers the next poll to this mailbox; without it the
+            // mailbox is read to the end (`docs/09-transport.md` §5).
+            if r.flags & api::FLAG_MORE == 0 {
+                break;
+            }
+            if !*bulk {
                 *bulk = true;
                 self.bulk(true);
             }

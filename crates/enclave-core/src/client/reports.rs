@@ -22,6 +22,12 @@ use enclave_rpc::api::{
 use enclave_wire::{Op, RequestHeader};
 
 const EFFORT: &str = "request-effort";
+/// Requests seen per day: `u32 day ‖ u32 today ‖ u32 yesterday ‖ u8 auto`.
+const LOAD: &str = "request-load";
+/// Requests in one day that make new ones cost more (a flood).
+pub const FLOOD_PER_DAY: u32 = 20;
+/// A raise the flood caused ends after a day with fewer than this.
+pub const CALM_PER_DAY: u32 = 5;
 /// How long a raised request effort lasts.
 pub const RAISED_EFFORT_SECS: u64 = 30 * 86_400;
 /// The first raise (above the server's default of 64).
@@ -103,12 +109,69 @@ impl Client {
     }
 
     /// A month after the last raise, requests cost what the server asks
-    /// again (from `sync`).
+    /// again; a raise a flood caused ends after a calm day (from `sync`).
     pub(crate) async fn relax_request_effort(&mut self, now: u64) -> Result<()> {
         let (effort, since) = self.request_effort()?;
-        if effort > 0 && now >= since + RAISED_EFFORT_SECS {
+        let load = self.request_load(now)?;
+        let calm = load.3 && load.2 < CALM_PER_DAY && load.1 < CALM_PER_DAY;
+        if effort > 0 && (now >= since + RAISED_EFFORT_SECS || calm) {
             self.set_request_effort(0, now).await?;
+            self.set_request_load(&(load.0, load.1, load.2, false))?;
         }
         Ok(())
+    }
+
+    /// `n` more envelopes came to the request inbox (`docs/09-transport.md`
+    /// §4, adaptive effort): past [`FLOOD_PER_DAY`] in a day, and at each
+    /// multiple of it, new requests cost four times more, up to
+    /// [`MAX_INBOX_EFFORT`].
+    pub(crate) async fn note_requests(&mut self, n: u32, now: u64) -> Result<()> {
+        if n == 0 {
+            return Ok(());
+        }
+        let (day, today, yesterday, auto) = self.request_load(now)?;
+        let after = today.saturating_add(n);
+        let flood = after / FLOOD_PER_DAY > today / FLOOD_PER_DAY;
+        let (effort, _) = self.request_effort()?;
+        let auto = if flood && effort < MAX_INBOX_EFFORT {
+            let next = effort
+                .saturating_mul(4)
+                .clamp(FIRST_RAISE, MAX_INBOX_EFFORT);
+            self.set_request_effort(next, now).await?;
+            // A raise the person asked for stays its month.
+            auto || effort == 0
+        } else {
+            auto
+        };
+        self.set_request_load(&(day, after, yesterday, auto))
+    }
+
+    /// Today's day, requests today and yesterday, and whether the current
+    /// raise came from a flood (moved on to `now`'s day).
+    fn request_load(&self, now: u64) -> Result<(u32, u32, u32, bool)> {
+        let day = api::day_of(now);
+        let (d, today, yesterday, auto) =
+            self.setting(LOAD)?
+                .filter(|b| b.len() == 13)
+                .map_or((day, 0, 0, false), |b| {
+                    let at = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+                    (at(0), at(4), at(8), b[12] == 1)
+                });
+        Ok(match day.saturating_sub(d) {
+            0 => (day, today, yesterday, auto),
+            1 => (day, 0, today, auto),
+            _ => (day, 0, 0, auto),
+        })
+    }
+
+    fn set_request_load(&mut self, l: &(u32, u32, u32, bool)) -> Result<()> {
+        let b = [
+            &l.0.to_be_bytes()[..],
+            &l.1.to_be_bytes(),
+            &l.2.to_be_bytes(),
+            &[u8::from(l.3)],
+        ]
+        .concat();
+        self.set_setting(LOAD, &b)
     }
 }

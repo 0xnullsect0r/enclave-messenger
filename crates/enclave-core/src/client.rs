@@ -24,7 +24,7 @@ use enclave_proto::ratchet::Session;
 use enclave_proto::recovery::RecoverySecret;
 use enclave_proto::{ProtoError, manifest::MAX_DEVICES};
 use enclave_rpc::api::{
-    DirAction, DirKind, FLAG_CREATE, FLAG_REQUEST_INBOX, device_key, manifest_key,
+    self, DirAction, DirKind, FLAG_CREATE, FLAG_REQUEST_INBOX, device_key, manifest_key,
 };
 use enclave_store::{Keystore, Store};
 use enclave_wire::{Op, RequestHeader};
@@ -107,6 +107,7 @@ mod group_pq;
 mod groups;
 mod guard;
 mod history;
+mod inbox;
 mod invites;
 mod link;
 mod location;
@@ -146,7 +147,7 @@ pub use migrate::Moved;
 pub use pins::MAX_PINS;
 pub use polls::{MAX_OPTIONS, PollView};
 pub use prefs::{ConvPrefs, MAX_PINNED_CONVERSATIONS};
-pub use reports::RAISED_EFFORT_SECS;
+pub use reports::{CALM_PER_DAY, FLOOD_PER_DAY, RAISED_EFFORT_SECS};
 pub use search::{Hit, Place};
 pub use servers::ListUpdate;
 pub use social::{MAX_HOLDERS, words_from_shares};
@@ -361,11 +362,32 @@ pub struct Client {
     /// Maximum privacy (`docs/09-transport.md` §6.6): no push, and nothing
     /// sent to a contact until all three KEMs protect the session.
     maximum: bool,
+    /// Inbox rounds so far (the previous week's address is read in some).
+    inbox_rounds: u64,
+    /// A re-send writes to the week before's address (`outbox.rs`).
+    fallback_week: bool,
+    /// When each group was last read and how busy it has been, for the
+    /// group rounds of [`Client::sync_round`].
+    group_polls: HashMap<[u8; 32], GroupPoll>,
     /// Tests: start sessions without the McEliece vault key (2 KEMs, then
     /// the braid), as a client that doesn't have it would.
     #[cfg(test)]
     pub(crate) two_kem_for_tests: bool,
 }
+
+/// A group's place in the group rounds (`docs/09-transport.md` §5).
+#[derive(Clone, Copy, Default)]
+struct GroupPoll {
+    /// When it was last read (0: not yet).
+    last: u64,
+    /// Smooth weighted round-robin credit.
+    credit: i64,
+    /// What its recent reads brought, halved at each read.
+    activity: u32,
+}
+
+/// A group not read for this long goes first in the next group round.
+pub const GROUP_FLOOR_SECS: u64 = 60;
 
 /// A session is identified by the peer root and the peer device.
 type SessionKey = ([u8; 64], [u8; 16]);
@@ -446,16 +468,15 @@ impl Client {
         let device = DeviceKeys::generate(&mut rng)?;
         let mut prekeys = PrekeyStore::default();
         let publication = prekeys.publish(&device, now, &mut rng)?;
-        let profile = Profile {
+        let mut profile = Profile {
             server,
-            inbox: rng.array("core/inbox")?,
-            inbox_owner: rng.array("core/inbox-owner")?,
+            inbox_seed: rng.array("core/inbox-seed")?,
             request_inbox: rng.array("core/request-inbox")?,
             request_owner: rng.array("core/request-owner")?,
             vault_locator: rng.array("core/vault-locator")?,
             vault_key: rng.array("core/vault-key")?,
             name: name.to_string(),
-            cursor: 0,
+            weeks: Vec::new(),
             request_cursor: 0,
             created_at: now,
         };
@@ -463,16 +484,31 @@ impl Client {
         let signed = manifest.sign(&account, &mut rng)?;
 
         let mut rpc = Rpc::new(transport);
-        for (addr, owner, flags) in [
-            (profile.inbox, profile.inbox_owner, FLAG_CREATE),
-            (
-                profile.request_inbox,
-                profile.request_owner,
-                FLAG_CREATE | FLAG_REQUEST_INBOX,
-            ),
-        ] {
-            rpc.create_inbox(&server, addr, owner, flags, now, &mut rng)
-                .await?;
+        rpc.create_inbox(
+            &server,
+            profile.request_inbox,
+            profile.request_owner,
+            FLAG_CREATE | FLAG_REQUEST_INBOX,
+            &[],
+            now,
+            &mut rng,
+        )
+        .await?;
+        // This week's and next week's account-inbox addresses.
+        let week = api::week_of(now);
+        for w in [week, week + 1] {
+            let days = inbox::read_days(&profile, w, now);
+            rpc.create_inbox(
+                &server,
+                profile.addr(w),
+                profile.owner(w),
+                FLAG_CREATE,
+                &days,
+                now,
+                &mut rng,
+            )
+            .await?;
+            profile.add_week(w);
         }
         let mk = manifest_key(&account.root_public.0);
         rpc.dir_put(
@@ -551,6 +587,9 @@ impl Client {
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
             maximum: false,
+            inbox_rounds: 0,
+            fallback_week: false,
+            group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
         };
@@ -629,6 +668,9 @@ impl Client {
             pending_bond: None,
             pending_receipts: BTreeMap::new(),
             maximum: false,
+            inbox_rounds: 0,
+            fallback_week: false,
+            group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
         };
@@ -799,7 +841,7 @@ impl Client {
         let hello_id: crate::content::MsgId = self.rng.array("core/msg-id")?;
         let hello = Content::Hello {
             server: self.profile.server,
-            inbox: self.profile.inbox,
+            inbox: self.profile.addr_seed(),
             tokens,
             name: self.profile.name.clone(),
             text: text.to_string(),
@@ -991,7 +1033,7 @@ impl Client {
         let tokens = self.issue_tokens(root, HELLO_TOKENS, now).await?;
         let hello = Content::Hello {
             server: self.profile.server,
-            inbox: self.profile.inbox,
+            inbox: self.profile.addr_seed(),
             tokens,
             name: self.profile.name.clone(),
             text: String::new(),
@@ -1081,7 +1123,7 @@ impl Client {
     /// maintain prekeys. Returns what the UI should show.
     pub async fn sync(&mut self) -> Result<Vec<Event>> {
         let now = self.now();
-        let mut events = self.sync_inboxes(now).await?;
+        let mut events = self.sync_inboxes(now, true).await?;
         events.append(&mut self.sync_upkeep(now).await?);
         let mut group_events = self.sync_groups(now).await?;
         events.append(&mut group_events);
@@ -1116,10 +1158,14 @@ impl Client {
             .map(|(k, _)| *k)
             .collect();
         let mut events = if round % period != period - 1 || groups.is_empty() {
-            self.sync_inboxes(now).await?
+            self.sync_inboxes(now, false).await?
         } else {
-            let gid = groups[((round / period) % groups.len() as u64) as usize];
-            self.sync_group_with(&gid, now, true).await?
+            let gid = self.next_group(&groups, now);
+            let got = self.sync_group_with(&gid, now, true).await?;
+            let p = self.group_polls.entry(gid).or_default();
+            p.last = now;
+            p.activity = p.activity / 2 + got.len() as u32;
+            got
         };
         if round % UPKEEP_EVERY == 1 {
             events.append(&mut self.sync_upkeep(now).await?);
@@ -1129,8 +1175,44 @@ impl Client {
         Ok(events)
     }
 
-    /// Read the request inbox and the account inbox.
-    async fn sync_inboxes(&mut self, now: u64) -> Result<Vec<Event>> {
+    /// The group a group round reads: one not read for
+    /// [`GROUP_FLOOR_SECS`] (the longest waiting first), else by smooth
+    /// weighted round robin, a group's weight growing with what its recent
+    /// reads brought.
+    fn next_group(&mut self, groups: &[[u8; 32]], now: u64) -> [u8; 32] {
+        self.group_polls.retain(|g, _| groups.contains(g));
+        let overdue = groups
+            .iter()
+            .map(|g| (*g, self.group_polls.get(g).map_or(0, |p| p.last)))
+            .filter(|(_, last)| last.saturating_add(GROUP_FLOOR_SECS) <= now)
+            .min_by_key(|(_, last)| *last);
+        if let Some((g, _)) = overdue {
+            return g;
+        }
+        let weight = |p: &GroupPoll| 1 + i64::from(p.activity.min(7));
+        let total: i64 = groups
+            .iter()
+            .map(|g| weight(&self.group_polls.get(g).copied().unwrap_or_default()))
+            .sum();
+        let mut best = groups[0];
+        let mut best_credit = i64::MIN;
+        for g in groups {
+            let p = self.group_polls.entry(*g).or_default();
+            p.credit += weight(p);
+            if p.credit > best_credit {
+                best_credit = p.credit;
+                best = *g;
+            }
+        }
+        if let Some(p) = self.group_polls.get_mut(&best) {
+            p.credit -= total;
+        }
+        best
+    }
+
+    /// Read the request inbox and the account inbox's addresses (`all`:
+    /// the previous week's too, whatever the round).
+    async fn sync_inboxes(&mut self, now: u64, all: bool) -> Result<Vec<Event>> {
         let mut events = Vec::new();
         let server = self.profile.server;
         let reqs = self
@@ -1138,14 +1220,20 @@ impl Client {
             .poll(
                 &server,
                 self.profile.request_inbox,
-                &self.profile.request_owner,
+                enclave_rpc::api::read_credential(&self.profile.request_owner),
                 self.profile.request_cursor,
                 now,
                 &mut self.rng,
             )
             .await?;
-        for (env, cursor) in reqs {
-            match self.handle_request(&env, now).await {
+        // A flood of requests makes new ones cost more (`reports.rs`).
+        if let Err(e) = self.note_requests(reqs.len() as u32, now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
+        for polled in reqs {
+            match self.handle_request(&polled.envelope, now).await {
                 Ok(Some(e)) => events.push(e),
                 Ok(None) => {}
                 // Network trouble: stop here and retry this envelope next time.
@@ -1156,27 +1244,27 @@ impl Client {
                 // Anything else is a bad or foreign envelope: skip it.
                 Err(_) => {}
             }
-            self.profile.request_cursor = cursor;
+            self.profile.request_cursor = polled.cursor;
             self.save_profile()?;
         }
 
-        let msgs = self
-            .rpc
-            .poll(
-                &server,
-                self.profile.inbox,
-                &self.profile.inbox_owner,
-                self.profile.cursor,
-                now,
-                &mut self.rng,
-            )
-            .await?;
-        for (env, cursor) in msgs {
-            if let Ok(mut e) = self.handle_direct(&env, now) {
-                events.append(&mut e);
-            }
-            self.profile.cursor = cursor;
-            self.save_profile()?;
+        // A new week whose address isn't there yet (we were away). If it
+        // can't be made now, the addresses we have are still read.
+        if !self.profile.has_week(api::week_of(self.inbox_now(now)))
+            && let Err(e) = self.ensure_weeks(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
+        for week in self.weeks_to_read(now, all) {
+            let mut p = Profile::decode(&self.profile.encode())?;
+            let read = self
+                .read_week(&mut p, week, now, |c, p| {
+                    c.profile.weeks = p.weeks.clone();
+                    c.save_profile()
+                })
+                .await;
+            events.append(&mut read?);
         }
         events.append(&mut self.process_migrations(now).await?);
         events.append(&mut self.home_upkeep(now).await?);
@@ -1197,6 +1285,13 @@ impl Client {
             Ok(mut e) => events.append(&mut e),
             Err(CoreError::Net(e)) => return Err(CoreError::Net(e)),
             Err(_) => {}
+        }
+        // Next week's address, made ahead (`inbox.rs`), by the clock just
+        // checked.
+        if let Err(e) = self.ensure_weeks(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
         }
         // Until it has switched, our own manifest check would look at the
         // home we are leaving.
@@ -1564,10 +1659,21 @@ impl Client {
         Ok(event)
     }
 
-    fn handle_direct(&mut self, env: &[u8], now: u64) -> Result<Vec<Event>> {
+    /// An envelope from an inbox; `from` is who its session hint says
+    /// wrote it, whose sessions are tried first.
+    fn handle_direct_from(
+        &mut self,
+        env: &[u8],
+        from: Option<[u8; 64]>,
+        now: u64,
+    ) -> Result<Vec<Event>> {
         let (key, content) = {
-            let (keys, mut refs): (Vec<SessionKey>, Vec<&mut Session>) =
-                self.sessions.iter_mut().map(|(k, s)| (*k, s)).unzip();
+            let mut all: Vec<(SessionKey, &mut Session)> =
+                self.sessions.iter_mut().map(|(k, s)| (*k, s)).collect();
+            if let Some(r) = from {
+                all.sort_by_key(|(k, _)| k.0 != r);
+            }
+            let (keys, mut refs): (Vec<SessionKey>, Vec<&mut Session>) = all.into_iter().unzip();
             let opened =
                 envelope::open_direct(&mut refs, env, Some(&self.account.vault), &mut self.rng)?;
             (keys[opened.session_index], opened.content)
@@ -1791,8 +1897,12 @@ impl Client {
         {
             return Err(CoreError::Finishing);
         }
+        // Their inbox's address this week (the week before's for a re-send
+        // that falls back: they may not have been online to make this one).
+        let week =
+            api::week_of(self.inbox_now(self.now())).saturating_sub(u32::from(self.fallback_week));
         let c = self.contacts.get_mut(root).ok_or(CoreError::NotFound)?;
-        let inbox = c.inbox.ok_or(CoreError::NotAccepted)?;
+        let inbox = api::inbox_addr(&c.inbox.ok_or(CoreError::NotAccepted)?, week);
         let server = c.server;
         let token = c.tokens.pop().ok_or(CoreError::OutOfTokens)?;
         let c = c.clone();

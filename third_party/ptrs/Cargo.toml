@@ -30,12 +30,12 @@ categories = [
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jmwample/ptrs"
 
+# ENCLAVE PATCH: rlib only. Upstream also builds a cdylib, whose
+# unhashed file names collide between builds sharing a target directory
+# (E0460 in CI).
 [lib]
 name = "ptrs"
-crate-type = [
-    "cdylib",
-    "rlib",
-]
+crate-type = ["rlib"]
 
 [dependencies.futures]
 version = "0.3.30"

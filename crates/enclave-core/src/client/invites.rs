@@ -28,7 +28,6 @@ use enclave_proto::codec::{Reader, Writer};
 use enclave_proto::eqxdh;
 use enclave_proto::manifest::MAX_DEVICES;
 use enclave_rpc::api::{self, FLAG_REVOKE};
-use enclave_tokens::token_hash;
 use enclave_wire::{Op, RequestHeader};
 use zeroize::Zeroizing;
 
@@ -166,9 +165,11 @@ impl Stored {
         eqxdh::invite_cap(&self.secret, u32::MAX)
     }
 
-    fn cap_hashes(&self) -> Vec<[u8; 32]> {
+    /// What the request inbox's server stores for each capability, bound
+    /// to that inbox.
+    fn cap_hashes(&self, request_inbox: &[u8; 32]) -> Vec<[u8; 32]> {
         (0..u32::from(self.uses) * CAPS_PER_USE)
-            .map(|i| token_hash(&eqxdh::invite_cap(&self.secret, i)))
+            .map(|i| api::cap_hash(&eqxdh::invite_cap(&self.secret, i), request_inbox))
             .collect()
     }
 }
@@ -223,7 +224,8 @@ impl Client {
             used_by: Vec::new(),
             group,
         };
-        self.register_caps(&inv.cap_hashes(), 0, now).await?;
+        self.register_caps(&inv.cap_hashes(&self.profile.request_inbox), 0, now)
+            .await?;
         self.store
             .put(NS_INVITES, &inv.key(), &inv.encode(), &mut self.rng)?;
         let mut card = self.card();
@@ -368,8 +370,12 @@ impl Client {
             // Keep the record (its PSK still opens greetings from the other
             // devices of the people it brought) until it lapses.
             let now = self.now();
-            self.register_caps(&inv.cap_hashes(), FLAG_REVOKE, now)
-                .await?;
+            self.register_caps(
+                &inv.cap_hashes(&self.profile.request_inbox),
+                FLAG_REVOKE,
+                now,
+            )
+            .await?;
         }
         Ok(true)
     }
@@ -384,8 +390,12 @@ impl Client {
     }
 
     async fn drop_invite(&mut self, inv: &Stored, now: u64) -> Result<()> {
-        self.register_caps(&inv.cap_hashes(), FLAG_REVOKE, now)
-            .await?;
+        self.register_caps(
+            &inv.cap_hashes(&self.profile.request_inbox),
+            FLAG_REVOKE,
+            now,
+        )
+        .await?;
         self.store.delete(NS_INVITES, &inv.key())?;
         Ok(())
     }
@@ -395,7 +405,8 @@ impl Client {
     pub(crate) async fn reregister_invites(&mut self, now: u64) -> Result<()> {
         for inv in self.stored_invites()? {
             if inv.expires > now {
-                self.register_caps(&inv.cap_hashes(), 0, now).await?;
+                self.register_caps(&inv.cap_hashes(&self.profile.request_inbox), 0, now)
+                    .await?;
             }
         }
         Ok(())

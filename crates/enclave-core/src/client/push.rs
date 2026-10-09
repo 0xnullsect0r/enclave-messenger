@@ -12,6 +12,9 @@ use enclave_push_relay::{Platform, RelayPublic, seal_token};
 use enclave_rpc::api;
 use enclave_wire::{Op, RequestHeader};
 
+/// Setting holding the sealed push token last registered (empty: none).
+const KEY_PUSH: &str = "push-sealed";
+
 impl Client {
     /// Ask for wakes when messages reach our inbox.
     pub async fn register_push(
@@ -36,12 +39,29 @@ impl Client {
 
     async fn send_push_registration(&mut self, sealed: &[u8]) -> Result<()> {
         let now = self.now();
+        // Kept, so each new weekly address gets it too.
+        self.set_setting(KEY_PUSH, sealed)?;
+        for week in self.profile.live_weeks(self.inbox_now(now)) {
+            self.push_at(week, sealed, now).await?;
+        }
+        Ok(())
+    }
+
+    /// Give the address of `week` the push registration, if there is one.
+    pub(crate) async fn reapply_push(&mut self, week: u32, now: u64) -> Result<()> {
+        match self.setting(KEY_PUSH)? {
+            Some(sealed) if !sealed.is_empty() => self.push_at(week, &sealed, now).await,
+            _ => Ok(()),
+        }
+    }
+
+    async fn push_at(&mut self, week: u32, sealed: &[u8], now: u64) -> Result<()> {
         let payload = api::frame(sealed, &mut self.rng)?;
         let h = RequestHeader {
             op: Op::PushRegister,
             flags: 0,
-            mailbox: self.profile.inbox,
-            token: self.profile.inbox_owner,
+            mailbox: self.profile.addr(week),
+            token: self.profile.owner(week),
         };
         let server = self.profile.server;
         self.rpc

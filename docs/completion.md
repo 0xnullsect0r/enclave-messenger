@@ -39,10 +39,10 @@ The milestones are the ones in `completion-plan.md`. Each closes the items that 
 | S1 | Server identity, keys, redb state (server, key transparency, relays), restart | Done |
 | S2 | Federation: descriptors checked against KT, server list, Enclave TLS (OpenSSL 3.5 interop), witnesses, front with ACME, admin tools, server moves | Done |
 | S3 | Image, compose stack, operator kit, 3-stack federation e2e in CI (images published to GHCR by R1) | Done (job `federation-e2e-tcp`) |
-| S4 | Production compose reachable only through Nym | Open (after N1–N4) |
+| S4 | Production compose reachable only through Nym | Done (development transports are cargo features off in every release build, checked in CI job `release-features` and the image build; the localnet e2e runs the production compose) |
 | S5 | Server completeness: Unicode usernames, tombstones, absence proofs, replay cache, inbox and single-use proofs of work, clock warning, C2SP cosignatures, published split views, PostgreSQL, report tooling, 100k scale run | Done (verifiable On-the-record reports come with P3) |
-| N0–N4 | Full Nym integration, credentials, fallback, M4 gate report | Open |
-| P1–P7 | Protocol completion | Open |
+| N0–N4 | Full Nym integration, credentials, fallback, M4 gate report | Done (live-network numbers wait on G7 and G8; Snowflake and WebTunnel ship with the packages in D1, A1 and I1) |
+| P1–P7 | Protocol completion | In progress (P1 done: weekly inbox addresses, daily read credentials, address-bound tokens, session hints, adaptive request effort, polling rules) |
 | D1, R1 | Desktop shippable; release pipeline | Open |
 | A1–A2, I1–I2 | Android and iOS | Open |
 | C1–C5 | Calls | Open |

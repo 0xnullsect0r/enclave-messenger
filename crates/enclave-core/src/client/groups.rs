@@ -792,14 +792,21 @@ impl Client {
             .unwrap_or(0);
         match self
             .rpc
-            .poll(&host, addr, &secret, cursor, now, &mut self.rng)
+            .poll(
+                &host,
+                addr,
+                enclave_rpc::api::read_credential(&secret),
+                cursor,
+                now,
+                &mut self.rng,
+            )
             .await
         {
             Ok(items) => {
-                if let (Some((_, last)), Some(e)) = (items.last(), self.groups.get_mut(gid)) {
-                    e.cursors.insert(addr, *last);
+                if let (Some(last), Some(e)) = (items.last(), self.groups.get_mut(gid)) {
+                    e.cursors.insert(addr, last.cursor);
                 }
-                Ok(items.into_iter().map(|(u, _)| u).collect())
+                Ok(items.into_iter().map(|p| p.envelope).collect())
             }
             Err(CoreError::Server(Status::Denied | Status::NotFound)) => Ok(Vec::new()),
             Err(e) => Err(e),

@@ -29,56 +29,147 @@ pub(crate) fn msg_ns(root: &[u8; 64]) -> String {
 /// Where this account lives and how to read it.
 pub(crate) struct Profile {
     pub server: [u8; 16],
-    pub inbox: [u8; 32],
-    pub inbox_owner: [u8; 32],
+    /// The account inbox's seed: its weekly addresses, their owner secrets
+    /// and its read credentials all come from it (`docs/09-transport.md`
+    /// §3.1).
+    pub inbox_seed: [u8; 32],
     pub request_inbox: [u8; 32],
     pub request_owner: [u8; 32],
     pub vault_locator: [u8; 32],
     pub vault_key: [u8; 32],
     pub name: String,
-    pub cursor: u64,
+    /// The weekly addresses that exist at the server, with how far each
+    /// has been read, oldest first.
+    pub weeks: Vec<(u32, u64)>,
     pub request_cursor: u64,
     pub created_at: u64,
 }
 
+/// Most weekly addresses a profile keeps track of.
+const MAX_WEEKS: usize = 8;
+
 impl Profile {
     pub fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(1)
+        w.u8(2)
             .fixed(&self.server)
-            .fixed(&self.inbox)
-            .fixed(&self.inbox_owner)
+            .fixed(&self.inbox_seed)
             .fixed(&self.request_inbox)
             .fixed(&self.request_owner)
             .fixed(&self.vault_locator)
             .fixed(&self.vault_key)
             .bytes(self.name.as_bytes())
-            .u64(self.cursor)
-            .u64(self.request_cursor)
-            .u64(self.created_at);
+            .u8(self.weeks.len() as u8);
+        for (week, cursor) in &self.weeks {
+            w.u32(*week).u64(*cursor);
+        }
+        w.u64(self.request_cursor).u64(self.created_at);
         w.finish()
     }
 
     pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);
-        if r.u8()? != 1 {
+        if r.u8()? != 2 {
             return Err(ProtoError::Decode);
         }
+        let server = r.array()?;
+        let inbox_seed = r.array()?;
+        let request_inbox = r.array()?;
+        let request_owner = r.array()?;
+        let vault_locator = r.array()?;
+        let vault_key = r.array()?;
+        let name = String::from_utf8(r.bytes(256)?.to_vec()).map_err(|_| ProtoError::Decode)?;
+        let n = usize::from(r.u8()?);
+        if n > MAX_WEEKS {
+            return Err(ProtoError::Decode);
+        }
+        let mut weeks = Vec::with_capacity(n);
+        for _ in 0..n {
+            weeks.push((r.u32()?, r.u64()?));
+        }
         let p = Self {
-            server: r.array()?,
-            inbox: r.array()?,
-            inbox_owner: r.array()?,
-            request_inbox: r.array()?,
-            request_owner: r.array()?,
-            vault_locator: r.array()?,
-            vault_key: r.array()?,
-            name: String::from_utf8(r.bytes(256)?.to_vec()).map_err(|_| ProtoError::Decode)?,
-            cursor: r.u64()?,
+            server,
+            inbox_seed,
+            request_inbox,
+            request_owner,
+            vault_locator,
+            vault_key,
+            name,
+            weeks,
             request_cursor: r.u64()?,
             created_at: r.u64()?,
         };
         r.end()?;
         Ok(p)
+    }
+
+    /// What contacts are given to follow the weekly addresses.
+    pub fn addr_seed(&self) -> [u8; 32] {
+        enclave_rpc::api::inbox_addr_seed(&self.inbox_seed)
+    }
+
+    /// The account inbox's address in `week`.
+    pub fn addr(&self, week: u32) -> [u8; 32] {
+        enclave_rpc::api::inbox_addr(&self.addr_seed(), week)
+    }
+
+    /// The owner secret of the address of `week`.
+    pub fn owner(&self, week: u32) -> [u8; 32] {
+        enclave_rpc::api::inbox_owner(&self.inbox_seed, &self.addr(week))
+    }
+
+    /// The read credential of the address of `week` on `day`.
+    pub fn read_cred(&self, week: u32, day: u32) -> [u8; 24] {
+        let key = enclave_rpc::api::inbox_read_key(&self.inbox_seed);
+        enclave_rpc::api::daily_read_credential(&key, &self.addr(week), day)
+    }
+
+    /// Whether the address of `week` exists at the server.
+    pub fn has_week(&self, week: u32) -> bool {
+        self.weeks.iter().any(|(w, _)| *w == week)
+    }
+
+    /// How far the address of `week` has been read.
+    pub fn cursor(&self, week: u32) -> u64 {
+        self.weeks
+            .iter()
+            .find(|(w, _)| *w == week)
+            .map_or(0, |(_, c)| *c)
+    }
+
+    /// Record how far the address of `week` has been read.
+    pub fn set_cursor(&mut self, week: u32, cursor: u64) {
+        if let Some(e) = self.weeks.iter_mut().find(|(w, _)| *w == week) {
+            e.1 = cursor;
+        }
+    }
+
+    /// Note that the address of `week` exists, forgetting ones too old to
+    /// be read any more.
+    pub fn add_week(&mut self, week: u32) {
+        if !self.has_week(week) {
+            self.weeks.push((week, 0));
+            self.weeks.sort_unstable();
+        }
+        let drop = self.weeks.len().saturating_sub(MAX_WEEKS);
+        self.weeks.drain(..drop);
+    }
+
+    /// Forget addresses before `week`.
+    pub fn drop_before(&mut self, week: u32) {
+        self.weeks.retain(|(w, _)| *w >= week);
+    }
+
+    /// The weeks whose addresses writers may use now (the current one,
+    /// the one before for a writer whose clock is behind or whose re-send
+    /// falls back, the next one ahead of a boundary) and that exist.
+    pub fn live_weeks(&self, now: u64) -> Vec<u32> {
+        let w = enclave_rpc::api::week_of(now);
+        self.weeks
+            .iter()
+            .map(|(x, _)| *x)
+            .filter(|x| *x + 1 >= w && *x <= w + 1)
+            .collect()
     }
 }
 

@@ -120,7 +120,7 @@ fn main() {
                 );
             }
             let hashes: Vec<u8> = (1..=16u8)
-                .flat_map(|n| enclave_tokens::token_hash(&token(i, n)))
+                .flat_map(|n| enclave_tokens::token_hash(&token(i, n), &mailbox(i, 1)))
                 .collect();
             let reg = RequestHeader {
                 op: Op::RegisterTokens,

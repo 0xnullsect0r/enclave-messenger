@@ -116,6 +116,8 @@ impl Default for Config {
 #[derive(Clone, Copy)]
 struct Inbox {
     owner: [u8; 32],
+    /// The static read credential's hash, or zeros for an inbox read with
+    /// daily credentials (`db::READ_CREDS`).
     read: [u8; 32],
     request: bool,
     group: bool,
@@ -123,35 +125,44 @@ struct Inbox {
     /// Proof-of-work effort its owner asks of request writers (0: the
     /// server's).
     effort: u32,
+    /// The last day it has a read credential for (0: no end). A rotating
+    /// inbox is deleted, with everything in it, once its envelopes would
+    /// have expired after that day.
+    until: u32,
 }
 
 impl Inbox {
-    /// `owner ‖ read ‖ flags ‖ u64 next_seq ‖ u32 effort` (77 B; records
-    /// written before the effort existed are 73 B, effort 0).
-    fn encode(&self) -> [u8; 77] {
-        let mut b = [0u8; 77];
+    /// `owner ‖ read ‖ flags ‖ u64 next_seq ‖ u32 effort ‖ u32 until` (81
+    /// B; records written before the effort existed are 73 B, before the
+    /// end day 77 B, both with 0).
+    fn encode(&self) -> [u8; 81] {
+        let mut b = [0u8; 81];
         b[..32].copy_from_slice(&self.owner);
         b[32..64].copy_from_slice(&self.read);
         b[64] = u8::from(self.request) | u8::from(self.group) << 1;
         b[65..73].copy_from_slice(&self.next_seq.to_be_bytes());
-        b[73..].copy_from_slice(&self.effort.to_be_bytes());
+        b[73..77].copy_from_slice(&self.effort.to_be_bytes());
+        b[77..].copy_from_slice(&self.until.to_be_bytes());
         b
     }
 
     fn decode(b: &[u8]) -> Option<Self> {
-        if b.len() != 73 && b.len() != 77 {
+        if b.len() != 73 && b.len() != 77 && b.len() != 81 {
             return None;
         }
+        let u32_at = |r: std::ops::Range<usize>| {
+            b.get(r)
+                .and_then(|e| e.try_into().ok())
+                .map_or(0, u32::from_be_bytes)
+        };
         Some(Self {
             owner: b[..32].try_into().ok()?,
             read: b[32..64].try_into().ok()?,
             request: b[64] & 1 != 0,
             group: b[64] & 2 != 0,
             next_seq: u64::from_be_bytes(b[65..73].try_into().ok()?),
-            effort: b
-                .get(73..77)
-                .and_then(|e| e.try_into().ok())
-                .map_or(0, u32::from_be_bytes),
+            effort: u32_at(73..77),
+            until: u32_at(77..81),
         })
     }
 }
@@ -297,6 +308,8 @@ pub struct Server {
     token_log: (Vec<Vec<[u8; 32]>>, Vec<[u8; 32]>),
     /// Chunked lookup replies by reply id.
     kt_replies: HashMap<[u8; 32], (Vec<u8>, u64)>,
+    /// The day rotating inboxes were last swept for expiry.
+    swept: u32,
     /// Answers to requests sent one way (`FLAG_DEFER`), by status id,
     /// with when they were made, until their status poll fetches them.
     deferred: HashMap<[u8; 32], (RequestHeader, Reply, u64)>,
@@ -381,6 +394,7 @@ impl Server {
             #[cfg(feature = "test-hooks")]
             token_log: (Vec::new(), Vec::new()),
             kt_replies: HashMap::new(),
+            swept: 0,
             deferred: HashMap::new(),
             deferred_bytes: 0,
             stats: Stats::default(),
@@ -610,8 +624,43 @@ impl Server {
         let ttl = self.cfg.ttl_secs;
         // Spent proofs of days that can't be proven for any more.
         let oldest = u32::try_from((now / 86_400).saturating_sub(1)).unwrap_or(u32::MAX);
+        // Rotating inboxes past their last read day and the envelope
+        // lifetime after it go, with everything kept for them.
+        let today = api::day_of(now);
+        let ttl_days = u32::try_from(ttl.div_ceil(86_400)).unwrap_or(u32::MAX);
+        let sweep = std::mem::replace(&mut self.swept, today) != today;
         let _ = self.tx(|t| {
+            let gone: Vec<Vec<u8>> = if !sweep {
+                Vec::new()
+            } else {
+                t.scan(db::INBOXES, b"")?
+                    .into_iter()
+                    .filter(|(_, v)| {
+                        Inbox::decode(v).is_some_and(|ib| {
+                            ib.until > 0 && ib.until.saturating_add(ttl_days) < today
+                        })
+                    })
+                    .map(|(k, _)| k)
+                    .collect()
+            };
+            for mb in &gone {
+                t.del(db::INBOXES, mb)?;
+                t.del(db::PUSH, mb)?;
+                for table in [db::ENVELOPES, db::HINTS, db::TOKENS, db::READ_CREDS] {
+                    t.remove_where(table, mb, |_, _| true)?;
+                }
+            }
+            // Read credentials for days that are over.
+            if sweep {
+                t.remove_where(db::READ_CREDS, b"", |k, _| {
+                    k.get(32..36)
+                        .and_then(|b| b.try_into().ok())
+                        .map(u32::from_be_bytes)
+                        .is_some_and(|d| d.saturating_add(1) < today)
+                })?;
+            }
             t.remove_where(db::ENVELOPES, b"", |_, v| now > head_u64(v) + ttl)?;
+            t.remove_where(db::HINTS, b"", |_, v| now > head_u64(v) + ttl)?;
             t.remove_where(db::BLOBS, b"", |_, v| now > head_u64(v) + ttl)?;
             t.remove_where(db::POW_SPENT, b"", |k, _| {
                 k.get(..4)
@@ -793,8 +842,8 @@ impl Server {
             Op::RegisterTokens => (self.register_tokens(h, env, now), 0, none, Reply::Empty),
             Op::Write => (self.write(h, env, now), 0, none, Reply::Empty),
             Op::WriteRequest => (self.write_request(h, env, now), 0, none, Reply::Empty),
-            Op::Poll => self.poll(h),
-            Op::Ack => (self.ack(h), 0, none, Reply::Empty),
+            Op::Poll => self.poll(h, now),
+            Op::Ack => (self.ack(h, now), 0, none, Reply::Empty),
             Op::BlobPut => (self.blob_put(h, env, now), 0, none, Reply::Empty),
             Op::BlobGet => match self.db.read(|r| r.get(db::BLOBS, &h.mailbox)) {
                 Ok(Some(v)) => (Status::Ok, 0, none, Reply::Envelope(tail(&v).to_vec())),
@@ -823,11 +872,11 @@ impl Server {
         let owner_hash = api::credential_hash(&h.token);
         let mb = h.mailbox;
         if h.flags & FLAG_CREATE != 0 {
+            let body = api::unframe(env).ok();
             // A new inbox costs a proof of work for its address, today's or
             // yesterday's (`09-transport.md` §3.1).
             if self.cfg.effort_inbox > 0 {
-                let proof: Option<[u8; 32]> = api::unframe(env)
-                    .ok()
+                let proof: Option<[u8; 32]> = body
                     .and_then(|p| p.get(..32))
                     .and_then(|p| p.try_into().ok());
                 let effort = self.cfg.effort_inbox;
@@ -838,15 +887,34 @@ impl Server {
                     return Status::Pow;
                 }
             }
+            // Daily read credentials, if the owner sent any: from yesterday
+            // to three weeks ahead.
+            let days = match body.filter(|p| p.len() > 32) {
+                None => Vec::new(),
+                Some(p) => match api::parse_create_payload(p) {
+                    Some((_, d)) => d,
+                    None => return Status::Malformed,
+                },
+            };
+            let today = api::day_of(now);
+            let window = today.saturating_sub(1)..=today.saturating_add(api::MAX_READ_DAYS as u32);
+            if days.iter().any(|(d, _)| !window.contains(d)) {
+                return Status::Malformed;
+            }
             let mut owner = [0u8; 32];
             owner.copy_from_slice(&h.token);
             let ib = Inbox {
                 owner: owner_hash,
-                read: api::credential_hash(&api::read_credential(&owner)),
+                read: if days.is_empty() {
+                    api::credential_hash(&api::read_credential(&owner))
+                } else {
+                    [0; 32]
+                },
                 request: h.flags & FLAG_REQUEST_INBOX != 0,
                 group: false,
                 next_seq: 1,
                 effort: 0,
+                until: days.iter().map(|(d, _)| *d).max().unwrap_or(0),
             };
             return self
                 .tx(|t| {
@@ -854,6 +922,9 @@ impl Server {
                         return Ok(Status::Denied);
                     }
                     put_inbox(t, &mb, &ib)?;
+                    for (d, hash) in &days {
+                        t.put(db::READ_CREDS, &cat(&mb, &d.to_be_bytes()), hash)?;
+                    }
                     Ok(Status::Ok)
                 })
                 .unwrap_or_else(|s| s);
@@ -1004,6 +1075,7 @@ impl Server {
         env: &[u8],
         now: u64,
         quota: usize,
+        hint: Option<&[u8; 32]>,
     ) -> db::Result<Status> {
         let Some(mut ib) = get_inbox(t, mailbox)? else {
             return Ok(Status::NotFound);
@@ -1021,7 +1093,11 @@ impl Server {
         let seq = ib.next_seq;
         ib.next_seq += 1;
         put_inbox(t, mailbox, &ib)?;
-        t.put(db::ENVELOPES, &cat(mailbox, &be(seq)), &cat(&be(now), env))?;
+        let key = cat(mailbox, &be(seq));
+        t.put(db::ENVELOPES, &key, &cat(&be(now), env))?;
+        if let Some(h) = hint {
+            t.put(db::HINTS, &key, &cat(&be(now), &h[..24]))?;
+        }
         Ok(Status::Ok)
     }
 
@@ -1037,7 +1113,7 @@ impl Server {
             return self.write_group(h, env, now);
         }
         let mb = h.mailbox;
-        let th = token_hash(&h.token);
+        let th = token_hash(&h.token, &mb);
         let quota = self.cfg.inbox_quota;
         // The token burn and the stored envelope commit together: a crash
         // leaves both or neither, and a replay after a restart is refused.
@@ -1052,7 +1128,9 @@ impl Server {
                 if !t.del(db::TOKENS, &cat(&mb, &th))? {
                     return Ok(Status::Denied);
                 }
-                Self::store_in(t, &mb, env, now, quota)
+                // The burned token's hash goes back to the owner with the
+                // envelope: a session hint (`09-transport.md` §3.3).
+                Self::store_in(t, &mb, env, now, quota, Some(&th))
             })
             .unwrap_or_else(|s| s);
         if status == Status::Ok {
@@ -1082,12 +1160,13 @@ impl Server {
                             group: true,
                             next_seq: 1,
                             effort: 0,
+                            until: 0,
                         },
                     )?,
                     Some(ib) if ib.group && ib.owner == owner_hash => {}
                     Some(_) => return Ok(Status::Denied),
                 }
-                Self::store_in(t, &mb, env, now, quota)
+                Self::store_in(t, &mb, env, now, quota, None)
             })
             .unwrap_or_else(|s| s);
         if status == Status::Ok {
@@ -1115,7 +1194,7 @@ impl Server {
             }
         }
         let mb = h.mailbox;
-        let th = token_hash(&h.token);
+        let th = api::cap_hash(&h.token, &mb);
         let quota = self.cfg.request_quota;
         let status = self
             .tx(|t| {
@@ -1129,7 +1208,7 @@ impl Server {
                 if invite && !t.del(db::TOKENS, &cat(&mb, &th))? {
                     return Ok(Status::Denied);
                 }
-                Self::store_in(t, &mb, env, now, quota)
+                Self::store_in(t, &mb, env, now, quota, None)
             })
             .unwrap_or_else(|s| s);
         if status == Status::Ok {
@@ -1230,27 +1309,43 @@ impl Server {
             }
             t.del(db::INBOXES, &mb)?;
             t.remove_where(db::ENVELOPES, &mb, |_, _| true)?;
+            t.remove_where(db::HINTS, &mb, |_, _| true)?;
             t.remove_where(db::TOKENS, &mb, |_, _| true)?;
             Ok(true)
         })
         .unwrap_or(false)
     }
 
-    /// The inbox, if `h` carries its read credential.
-    fn check_read(&self, h: &RequestHeader) -> Option<Inbox> {
-        let ib = self
-            .db
+    /// The inbox, if `h` carries its read credential: the static one, or
+    /// a daily one for yesterday, today or tomorrow (clocks disagree).
+    fn check_read(&self, h: &RequestHeader, now: u64) -> Option<Inbox> {
+        let hash = api::credential_hash(&h.token[..24]);
+        let today = api::day_of(now);
+        self.db
             .read(|r| {
-                Ok(r.get(db::INBOXES, &h.mailbox)?
-                    .and_then(|b| Inbox::decode(&b)))
+                let Some(ib) = r
+                    .get(db::INBOXES, &h.mailbox)?
+                    .and_then(|b| Inbox::decode(&b))
+                else {
+                    return Ok(None);
+                };
+                if ib.read != [0; 32] {
+                    return Ok((hash == ib.read).then_some(ib));
+                }
+                for d in today.saturating_sub(1)..=today.saturating_add(1) {
+                    let key = cat(&h.mailbox, &d.to_be_bytes());
+                    if r.get(db::READ_CREDS, &key)?.is_some_and(|v| v == hash) {
+                        return Ok(Some(ib));
+                    }
+                }
+                Ok(None)
             })
-            .ok()??;
-        (api::credential_hash(&h.token[..24]) == ib.read).then_some(ib)
+            .ok()?
     }
 
-    fn poll(&mut self, h: &RequestHeader) -> (Status, u8, [u8; 32], Reply) {
+    fn poll(&mut self, h: &RequestHeader, now: u64) -> (Status, u8, [u8; 32], Reply) {
         let none = [0u8; 32];
-        if self.check_read(h).is_none() {
+        if self.check_read(h, now).is_none() {
             return (Status::Denied, 0, none, Reply::Empty);
         }
         let mut cursor = [0u8; 8];
@@ -1259,20 +1354,28 @@ impl Server {
             &h.mailbox,
             &be(u64::from_be_bytes(cursor).saturating_add(1)),
         );
-        let next = match self
-            .db
-            .read(|r| r.next_two(db::ENVELOPES, &h.mailbox, &from))
-        {
+        let next = match self.db.read(|r| {
+            let next = r.next_two(db::ENVELOPES, &h.mailbox, &from)?;
+            let hint = match next.first() {
+                Some((k, _)) => r.get(db::HINTS, k)?,
+                None => None,
+            };
+            Ok((next, hint))
+        }) {
             Ok(n) => n,
             Err(e) => {
                 log_db_error(&e);
                 return (Status::Unavailable, 0, none, Reply::Empty);
             }
         };
+        let (next, hint) = next;
         match next.first() {
             Some((k, v)) => {
                 let more = if next.len() > 1 { FLAG_MORE } else { 0 };
                 let mut tok = [0u8; 32];
+                if let Some(hint) = hint.as_deref().map(tail).filter(|h| h.len() == 24) {
+                    tok[..24].copy_from_slice(hint);
+                }
                 tok[24..].copy_from_slice(&k[32..40]);
                 (
                     Status::Ok,
@@ -1285,21 +1388,23 @@ impl Server {
         }
     }
 
-    fn ack(&mut self, h: &RequestHeader) -> Status {
-        if self.check_read(h).is_none() {
+    fn ack(&mut self, h: &RequestHeader, now: u64) -> Status {
+        if self.check_read(h, now).is_none() {
             return Status::Denied;
         }
         let mut w = [0u8; 8];
         w.copy_from_slice(&h.token[24..]);
         let watermark = u64::from_be_bytes(w);
         let mb = h.mailbox;
+        let acked = |k: &[u8], _: &[u8]| {
+            k.get(32..40)
+                .and_then(|s| s.try_into().ok())
+                .map(u64::from_be_bytes)
+                .is_some_and(|seq| seq <= watermark)
+        };
         self.tx(|t| {
-            t.remove_where(db::ENVELOPES, &mb, |k, _| {
-                k.get(32..40)
-                    .and_then(|s| s.try_into().ok())
-                    .map(u64::from_be_bytes)
-                    .is_some_and(|seq| seq <= watermark)
-            })?;
+            t.remove_where(db::ENVELOPES, &mb, acked)?;
+            t.remove_where(db::HINTS, &mb, acked)?;
             Ok(Status::Ok)
         })
         .unwrap_or_else(|s| s)

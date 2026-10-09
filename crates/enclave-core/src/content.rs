@@ -42,7 +42,8 @@ pub enum Content {
     Hello {
         /// Sender's home server.
         server: [u8; 16],
-        /// Sender's account inbox.
+        /// Sender's account inbox: its address seed, from which each
+        /// week's address follows (`docs/09-transport.md` §3.1).
         inbox: [u8; 32],
         /// Write tokens for that inbox.
         tokens: Vec<Token>,
@@ -189,7 +190,7 @@ pub enum Content {
     ServerMoved {
         /// The new home server.
         server: [u8; 16],
-        /// The account inbox there.
+        /// The account inbox there (its address seed).
         inbox: [u8; 32],
         /// The request inbox there (for their card).
         request_inbox: [u8; 32],
@@ -199,14 +200,12 @@ pub enum Content {
         tokens: Vec<Token>,
     },
     /// To our other devices: the account moved to another server, with the
-    /// new inboxes and their owner secrets.
+    /// new inboxes and their secrets.
     HomeMoved {
         /// The new home server.
         server: [u8; 16],
-        /// Account inbox.
-        inbox: [u8; 32],
-        /// Its owner secret.
-        inbox_owner: [u8; 32],
+        /// The account inbox's new seed.
+        inbox_seed: [u8; 32],
         /// Request inbox.
         request_inbox: [u8; 32],
         /// Its owner secret.
@@ -519,16 +518,14 @@ impl Content {
             }
             Content::HomeMoved {
                 server,
-                inbox,
-                inbox_owner,
+                inbox_seed,
                 request_inbox,
                 request_owner,
                 vault_locator,
             } => {
                 w.u8(K_HOME_MOVED)
                     .fixed(server)
-                    .fixed(inbox)
-                    .fixed(inbox_owner)
+                    .fixed(inbox_seed)
                     .fixed(request_inbox)
                     .fixed(request_owner)
                     .fixed(vault_locator);
@@ -638,8 +635,7 @@ impl Content {
             },
             K_HOME_MOVED => Content::HomeMoved {
                 server: r.array()?,
-                inbox: r.array()?,
-                inbox_owner: r.array()?,
+                inbox_seed: r.array()?,
                 request_inbox: r.array()?,
                 request_owner: r.array()?,
                 vault_locator: r.array()?,
@@ -757,8 +753,7 @@ mod tests {
             },
             Content::HomeMoved {
                 server: [1; 16],
-                inbox: [2; 32],
-                inbox_owner: [3; 32],
+                inbox_seed: [2; 32],
                 request_inbox: [4; 32],
                 request_owner: [5; 32],
                 vault_locator: [6; 32],

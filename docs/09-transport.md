@@ -97,47 +97,67 @@ A request that fails to open gets 16,384 random bytes as its reply. An opened re
 
 An inbox is created with `RegisterTokens` and the `CREATE` flag (`08-envelope.md` §2.2):
 
-- `mailbox` is the inbox address, 32 bytes chosen at random by the owner.
-- `token` is the **owner secret**, 32 random bytes kept by the owner.
-- The server stores `credential_hash(owner_secret)` and `credential_hash(read_credential(owner_secret))`, and refuses to create an address that exists (`Denied`).
+- `mailbox` is the inbox address and `token` its **owner secret**.
+- The payload is the proof of work (below), optionally followed by daily read credentials: `n × (u32 day ‖ credential_hash(read_cred))`, at most 21, for days from yesterday to 21 days ahead (`Malformed` otherwise).
+- The server stores `credential_hash(owner_secret)` and, without daily credentials, `credential_hash(read_credential(owner_secret))` (the static credential), and refuses to create an address that exists (`Denied`).
 - With `REQUEST_INBOX` also set, the inbox is a request inbox (§4).
 
 ```
-read_credential(owner) = KMAC256(owner, "read", 256, "enclave/v1/rpc/read-credential")[0..24]    # 24 B
+read_credential(owner) = KMAC256(owner, "read", 256, "enclave/v1/rpc/read-credential")[0..24]    # 24 B, static
 credential_hash(x)     = KMAC256(x, "", 256, "enclave/v1/rpc/credential-hash")
 ```
 
-**Proof of work.** Creating an inbox costs an Equi-X proof over `"inbox-create" ‖ mailbox ‖ u64(day)` (`api::pow_context_inbox`) at the server's `effort_inbox` (default 16, published in the descriptor policy). The 32-byte proof is the framed payload of the creating `RegisterTokens`. The server takes today's or yesterday's day (a client near midnight) and checks it before anything else, so a missing or wrong proof is `Pow` whether or not the address exists. The client climbs the effort ladder until the server accepts (`Rpc::create_inbox`, used at account creation and when moving server). Test: `a_request_is_processed_once` (no proof, another address's proof and one from two days ago are refused; yesterday's is accepted).
+**The account inbox rotates weekly** (PLAN §9.3). Everything comes from a 32-byte inbox seed `is` in the profile (shared by the account's devices through linking and backups):
 
-Weekly address rotation from an inbox seed and daily address-bound read credentials are milestone P1 (`docs/completion.md`; the reserved labels are in `label-registry.md` §3.3). Until then the address and the read credential are static for the life of the inbox, and the server sees the owner secret whenever the owner creates the inbox or registers tokens.
+```
+addr_seed  = KMAC256(is, "", 256, "enclave/v1/net/inbox-addr-seed")
+addr(w)    = KMAC256(addr_seed, u32(w), 256, "enclave/v1/net/inbox-addr")      # w = Unix seconds / 604,800
+owner(a)   = KMAC256(is, a, 256, "enclave/v1/net/inbox-owner")                 # one owner secret per address
+read_key   = KMAC256(is, "", 256, "enclave/v1/net/inbox-read-key")
+read_cred(a, d) = KMAC256(read_key, a ‖ u32(d), 256, "enclave/v1/net/read-cred")[0..24]   # d = Unix seconds / 86,400
+```
+
+- **What contacts get.** The greeting (`Hello.inbox`) and a server move (`ServerMoved.inbox`) carry `addr_seed`, not `is`: a contact follows the weeks but can't derive the read key or any owner secret.
+- **Creation ahead of time.** The owner creates `addr(w)` and `addr(w+1)` at account creation, and from then on keeps the next week's address made ahead (`Client::ensure_weeks`, every upkeep, and at once if the current week's is missing). Each address registers read credentials from the day it is created through the last day of the week after its own (up to 21), and gets every write token still outstanding (§3.3) and the push registration (`10-push.md`). Another device of ours may have made it already: `Denied` counts as made.
+- **Writers** use `addr(week(now))`. Over the mixnet a write gets no answer, so a writer never learns an address is missing; the outbox's second re-send, and every other one after it, goes to `addr(week(now) − 1)` instead, in case the owner wasn't online to make this week's (`outbox.rs`; the first re-send is for a write lost on the way). An owner away for a whole week therefore still receives, about an hour late: the address of the week it was last online is the previous week's.
+- **Reading.** The owner reads the current week's address every inbox round and the previous week's one inbox round in four (overlap-week polling; every time in an unshaped `sync`). The server accepts a daily credential for yesterday, today or tomorrow (clocks disagree), so a stolen credential is good for at most three days and only for its address.
+- **Expiry.** The server records an address's last credential day; once that day plus the envelope lifetime (30 days) has passed, the inbox, its tokens, envelopes, hints, read credentials and push registration are deleted (swept once a day). Inboxes without daily credentials (request inboxes, group mailboxes, linking mailboxes) keep the static credential and don't expire this way.
+- **What the server learns.** Unrelated addresses, owner secrets and credentials each week; token hashes bound to the address (§3.3), so re-registering the same tokens at the next address gives unrelated values. Residuals: the timing of an owner's polls of two overlapping addresses, and the burst of registrations when a new address is made, can link consecutive weeks for a server watching closely; both go through the mixnet in separate requests.
+
+Tests: `crates/enclave-server/tests/inboxes.rs` (`read_credential_is_daily`, `token_hash_bound_to_address`, `session_hint_returns_burned_token`, `rotating_inbox_expires`) and `crates/enclave-core/tests/inboxes.rs` (`inbox_rotates_weekly`: an address made ahead, then an owner away for two weeks reached through the fallback re-send).
+
+**Proof of work.** Creating an inbox costs an Equi-X proof over `"inbox-create" ‖ mailbox ‖ u64(day)` (`api::pow_context_inbox`) at the server's `effort_inbox` (default 16, published in the descriptor policy). The 32-byte proof is the framed payload of the creating `RegisterTokens`. The server takes today's or yesterday's day (a client near midnight) and checks it before anything else, so a missing or wrong proof is `Pow` whether or not the address exists. The client climbs the effort ladder until the server accepts (`Rpc::create_inbox`, used at account creation and when moving server). Test: `a_request_is_processed_once` (no proof, another address's proof and one from two days ago are refused; yesterday's is accepted).
 
 ### 3.2 Reading
 
-- `Poll`: `token = read_credential ‖ u64(cursor)`. The server checks `credential_hash(token[0..24])` and returns the first envelope with a sequence number above the cursor, with `FOUND`, its sequence number in the reply token, and `MORE` if another follows. With nothing to return it replies `Ok` with an empty payload.
+- `Poll`: `token = read_credential ‖ u64(cursor)` (the day's `read_cred` for an account inbox). The server checks `credential_hash(token[0..24])` and returns the first envelope with a sequence number above the cursor, with `FOUND`, its sequence number in the reply token's last 8 bytes, the session hint (§3.3) in its first 24, and `MORE` if another follows. With nothing to return it replies `Ok` with an empty payload.
 - `Ack`: `token = read_credential ‖ u64(watermark)`. The server deletes every envelope with sequence number ≤ watermark.
 - A wrong credential gets `Denied`.
 
 ### 3.3 Write tokens
 
 ```
-k_contact = HedgedRng.fill("tokens/contact-key", 32)                  # per contact, kept by the inbox owner
-t_i       = KMAC256(k_contact, u64(i), 256, "enclave/v1/tokens/write")   # i = 0, 1, 2, …
-h_i       = KMAC256(t_i, "", 256, "enclave/v1/tokens/hash")              # what the server stores
+t      = HedgedRng.fill("core/write-token", 32)                        # one write token
+h(t, a) = KMAC256(t, a, 256, "enclave/v1/tokens/hash")                  # what the server stores at address a
 ```
+
+The hash is bound to the address, so the same token registered at two of an owner's weekly addresses (§3.1) gives the server two unrelated values. (`enclave_tokens::TokenIssuer`, the per-contact derivation `KMAC256(k_contact, u64(i), 256, "enclave/v1/tokens/write")` of PLAN §9.3, is kept for the simulator; the client uses the pool below, and `net/token-key`, a per-contact key from the inbox seed, is retired for the same reason, `label-registry.md` §4.)
 
 **As implemented: a shared pool** (`enclave-core/src/client/tokens.rs`). Registering one contact's tokens as their own batch, as the derivation above suggests, lets the server group writes by sender: every token of a batch that is ever burned belongs to the same person (the dummies never are). The client therefore registers tokens ahead of time in batches that later go to different contacts:
 
-- **Pool.** Tokens are 32 random bytes from the hedged RNG (`core/write-token`). The owner registers 64 at a time (more if one hand-out needs more), shuffled with 16 dummies, and keeps the registered-but-unissued tokens as a per-device pool in the sealed store. The pool is never in a backup, and a restore clears it, so no token is handed out twice.
-- **Issue.** A contact who needs tokens gets the oldest ones from the pool, inside the encrypted session; the pool is refilled first if it runs short. The owner keeps the hashes of the last 128 tokens each contact was given, for revocation.
-- **Register.** `RegisterTokens` without `CREATE`, `token` = owner secret, payload = the hashes. `registration_batch(real, dummies)` appends `dummies` random 32 B values and shuffles the batch (Fisher-Yates with hedged randomness). The server checks the owner secret, that the payload length is a multiple of 32, and the per-inbox quota of 4,096 unspent hashes (`Quota`). One frame carries at most 447 hashes.
+- **Pool.** Tokens are 32 random bytes from the hedged RNG (`core/write-token`). The owner registers 64 at a time (more if one hand-out needs more) at every address writers may use now (the current week's, the next week's made ahead, and the previous week's for fallback re-sends), each batch shuffled with 16 dummies, and keeps the registered-but-unissued tokens as a per-device pool in the sealed store. The pool is never in a backup, and a restore clears it, so no token is handed out twice.
+- **Issue.** A contact who needs tokens gets the oldest ones from the pool, inside the encrypted session; the pool is refilled first if it runs short. The owner keeps the last 128 tokens each contact was given, less the ones it has seen used (the session hint below), for revocation and for the next address.
+- **Register.** `RegisterTokens` without `CREATE`, `token` = that address's owner secret, payload = the hashes. `registration_batch(real, dummies)` appends `dummies` random 32 B values and shuffles the batch (Fisher-Yates with hedged randomness). The server checks the owner secret, that the payload length is a multiple of 32, and the per-inbox quota of 4,096 unspent hashes (`Quota`). The client sends at most 400 hashes a frame (one frame carries 447).
+- **Re-registration.** A new weekly address gets the pool and every contact's outstanding tokens, hashed for that address, in shuffled batches with dummies (`Client::ensure_weeks`).
+- **Session hint.** The server keeps the first 24 bytes of the hash a write burned with the envelope (table `hints`, expiring with it) and returns them in the poll reply's token. The owner looks them up among its outstanding tokens at that address: that contact's sessions are tried first, and the token is no longer outstanding, so it isn't registered at the next address. The server learns nothing new: it computed the hash itself. A contact could use one token at each of the (at most three) addresses it is registered at; its own client never does.
+- **Refills** are control messages inside the session: `Content::Tokens` when a contact has written `REFILL_AFTER + 4` times without a reply of ours, or tokens riding in our next text (`refill_size`), and `Hello`/`ServerMoved` carry 16.
+- **Self tokens.** A device writing to its own account's inbox (self-copies, `06-multidevice.md`) takes a token from its own pool, like a contact would be given one; other devices see it as a write with a hint that names the account itself.
 
 Test `token_batches_mix_contacts` plays a server that logs every batch and every burn, and checks that two contacts' writes used tokens from the same batch. `TokenIssuer` (the per-contact derivation) remains in `enclave-tokens` but the client no longer uses it. Residual: a batch still bounds a time window, and a contact who is the only one given tokens from a batch before it is used up could be grouped by it; the pool's order makes that rare but not impossible for an account with one active contact.
 - **Use.** A `Write` carries `t_i` in the header's token field. The server computes `h_i`, accepts the write only if `h_i` is registered, and deletes it (burns it). Reuse gets `Denied` (RT-24). The server cannot tell which contact a token belongs to, and two writes by one contact are unlinkable.
 - Hashing is the only cryptography in a token, so nothing here weakens under a quantum computer.
 
-- **Block** (`enclave-core/src/client/blocks.rs`, RT-25). The owner keeps the hashes of the last 128 tokens each contact was given (above). Blocking someone sends `RegisterTokens` with `FLAG_REVOKE` and those hashes (more than anyone holds: 32 outstanding plus a refill in flight), so their writes to the inbox fail with `Denied`; they get no refills, and they are not told. Anything that still arrives from them is dropped without a trace: messages already in the inbox, a new greeting through the request inbox (its prekey is spent and the replay marker kept, but no contact or session is stored), and their messages, reactions and pins in groups we share (their group state updates still apply, so the membership stays consistent). We can't send to them either. Unblocking sends 32 fresh tokens. The app offers **Block** on a message request and in the conversation sheet, and a blocked conversation shows a notice with **Unblock** instead of the composer. Test `block_and_unblock` checks that the server refuses the blocked contact's write.
-
-Not implemented yet: returning the burned token to the owner as a session hint, refill control messages, weekly re-registration under a new address, token hashes bound to the address, and self tokens.
+- **Block** (`enclave-core/src/client/blocks.rs`, RT-25). The owner keeps the last 128 tokens each contact was given (above). Blocking someone sends `RegisterTokens` with `FLAG_REVOKE` and their hashes at every live address, and forgets them, so no later address gets them: their writes fail with `Denied`; they get no refills, and they are not told. Anything that still arrives from them is dropped without a trace: messages already in the inbox, a new greeting through the request inbox (its prekey is spent and the replay marker kept, but no contact or session is stored), and their messages, reactions and pins in groups we share (their group state updates still apply, so the membership stays consistent). We can't send to them either. Unblocking sends 32 fresh tokens. The app offers **Block** on a message request and in the conversation sheet, and a blocked conversation shows a notice with **Unblock** instead of the composer. Test `block_and_unblock` checks that the server refuses the blocked contact's write.
 
 ## 4. Request inbox
 
@@ -146,7 +166,9 @@ Not implemented yet: returning the burned token to the owner as a session hint, 
 - It holds at most `request_quota` pending envelopes (default 100). When full, the oldest is dropped to make room (FIFO).
 - The owner reads it with `Poll`/`Ack` and its own read credential.
 
-Not implemented yet: invite capabilities, adaptive effort, and client-side rules for requests (text-only, no auto-download).
+- **Invite capabilities** (`enclave-core/src/client/invites.rs`, `03-identity.md` §9). An invite link's capabilities are registered at the request inbox as `cap_hash(cap, inbox) = KMAC256(cap, inbox, 256, "enclave/v1/net/cap-hash")`, bound to the inbox. A `WriteRequest` with `FLAG_INVITE` carries a capability instead of a proof of work; the server burns its hash. Revoking a link sends the hashes with `FLAG_REVOKE`; a move re-registers them at the new request inbox.
+- **Adaptive effort** (`enclave-core/src/client/reports.rs`). The owner counts what reaches its request inbox each day. Past 20 in a day, and at each further 20, it asks its server (`FLAG_EFFORT`) for four times the effort (256 the first time, up to `MAX_INBOX_EFFORT`), so a flood costs the flooder more while one message from a friend still goes through; after a day with fewer than 5 (and the day after it calm too) the effort goes back to the server's own. A raise the person chose after a report keeps its month. Test `request_effort_adapts`.
+- **Requests are text-only.** The request inbox only ever carries a greeting (`Content::Hello`: a name, a line of text and a contact card); anything else is dropped as malformed. Nothing in it is fetched: it has no attachments, no previews, and the app shows its text as plain text (no message text is ever turned into links). No delivery or read receipts go to someone whose request we haven't accepted (`mark_read` sends receipts only to accepted contacts; a requester holds no tokens of ours until then).
 
 ## 5. Polling
 
@@ -158,7 +180,12 @@ Not implemented yet: invite capabilities, adaptive effort, and client-side rules
 - This alternation is the same in all three profiles.
 - Test `inbox_polled_every_other_tick_and_weights_respected`: over 400 ticks with weights 3 and 1, the inbox gets exactly 200 polls and the others 150 and 50.
 
-Not implemented yet: the `MORE` flag steering the next poll to the same mailbox, overlap-week polling, a per-group floor of one poll per 60 s, and decoy re-fetches.
+**As implemented in the client** (`Rpc::poll`, `Client::sync_round_every`, `client/inbox.rs`):
+
+- **`MORE` steers.** A poll that finds an envelope is followed by another poll of the same mailbox only when the reply set `MORE`; otherwise the mailbox is read to the end and the next poll slot goes elsewhere. `MORE` also opens a disclosed bulk window (§6.4).
+- **Overlap weeks.** The account inbox's previous week's address is read one inbox round in four (§3.1).
+- **Groups.** Group rounds pick a group by smooth weighted round robin, a group's weight being 1 plus what its recent reads brought (halved at each read, capped at 7); a group not read for 60 s goes first (`GROUP_FLOOR_SECS`), the longest waiting first. With many groups in Background the floor is a priority, not a promise.
+- **Decoy re-fetches.** One account-inbox poll in eight starts one envelope back, so the server returns an envelope already read (and the client drops it by sequence number): whether a poll brings something says nothing about whether it is new.
 
 ## 6. Cover-traffic scheduler (D10)
 
@@ -311,5 +338,5 @@ Not implemented yet: `BLOB_ALLOC` with Privacy Pass quotas, client-side chunk se
 1. **Resolved:** PLAN §9.3 polls the inbox in slot 1 and rotates groups in slot 2. Strict alternation put the Background median at ≈140 s with other mailboxes; Background now gives the other mailboxes every 4th tick (median ≈112 s, within "≤2 min"); Foreground and Maximum alternate (`math/cover-traffic.md` §7.3).
 2. **Resolved:** PLAN §9.2's replay cache of request ciphertexts per key is built (§2.3).
 3. PLAN §9.2 says old daily keys are deleted; the implementation keeps the previous day's key until the next rotation rather than for a short grace window. Deleting it after a grace period needs a timer in the server.
-4. Read credentials are static and inbox addresses do not rotate (§3.1). PLAN §9.3 derives weekly addresses and daily credentials from an inbox seed; the implementation intentionally starts simpler. This needs to be implemented before a server can be prevented from linking a device's polls across weeks.
+4. **Resolved:** account-inbox addresses rotate weekly, each with its own owner secret, and read credentials are daily and bound to the address, all from the inbox seed (§3.1), so the server can't link a device's polls across weeks by address or credential.
 5. **Resolved:** every unit goes one way over the mixnet. Writes and cover need no answer, and delivery is confirmed by receipts. Requests that need an answer are marked `DEFER`, and their answers are fetched by poll-sized `Status` requests (§6.1). So a unit carries no reply blocks, whatever it is.

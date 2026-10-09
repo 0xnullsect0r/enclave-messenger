@@ -39,9 +39,12 @@ pub fn write_token(k_contact: &[u8; 32], i: u64) -> Token {
     kmac256(k_contact, &i.to_be_bytes(), TOKEN_LABEL)
 }
 
-/// Hash a token for registration with the server.
-pub fn token_hash(t: &Token) -> [u8; 32] {
-    kmac256(t, b"", TOKEN_HASH_LABEL)
+/// Hash a token for registration at the inbox `mailbox`. The hash is bound
+/// to the address, so the same token registered at two of an owner's
+/// addresses (weekly rotation, `docs/09-transport.md` §3) gives the server
+/// two unrelated values.
+pub fn token_hash(t: &Token, mailbox: &[u8; 32]) -> [u8; 32] {
+    kmac256(t, mailbox, TOKEN_HASH_LABEL)
 }
 
 /// Owner-side token issuer for one contact.
@@ -80,25 +83,25 @@ impl TokenIssuer {
     }
 
     /// Issue `n` tokens: returns the tokens (for the contact) and their hashes
-    /// (for the server).
-    pub fn issue(&mut self, n: usize) -> (Vec<Token>, Vec<[u8; 32]>) {
+    /// at `mailbox` (for the server).
+    pub fn issue(&mut self, n: usize, mailbox: &[u8; 32]) -> (Vec<Token>, Vec<[u8; 32]>) {
         let mut toks = Vec::with_capacity(n);
         let mut hashes = Vec::with_capacity(n);
         for _ in 0..n {
             let t = write_token(&self.k_contact, self.next);
             self.next += 1;
-            hashes.push(token_hash(&t));
+            hashes.push(token_hash(&t, mailbox));
             toks.push(t);
         }
         (toks, hashes)
     }
 
-    /// Hashes of the last `n` tokens issued (fewer if fewer were), to
-    /// revoke them at the server when the contact is blocked.
-    pub fn recent_hashes(&self, n: usize) -> Vec<[u8; 32]> {
+    /// Hashes at `mailbox` of the last `n` tokens issued (fewer if fewer
+    /// were), to revoke them at the server when the contact is blocked.
+    pub fn recent_hashes(&self, n: usize, mailbox: &[u8; 32]) -> Vec<[u8; 32]> {
         let from = self.next.saturating_sub(n as u64);
         (from..self.next)
-            .map(|i| token_hash(&write_token(&self.k_contact, i)))
+            .map(|i| token_hash(&write_token(&self.k_contact, i), mailbox))
             .collect()
     }
 }
@@ -189,9 +192,11 @@ mod tests {
     fn tokens_are_distinct_and_hash_consistently() {
         let mut rng = HedgedRng::new().unwrap();
         let mut iss = TokenIssuer::new(&mut rng).unwrap();
-        let (t, h) = iss.issue(10);
+        let mb = [7u8; 32];
+        let (t, h) = iss.issue(10, &mb);
         for i in 0..10 {
-            assert_eq!(token_hash(&t[i]), h[i]);
+            assert_eq!(token_hash(&t[i], &mb), h[i]);
+            assert_ne!(token_hash(&t[i], &[8; 32]), h[i], "bound to the address");
         }
         let mut u = t.clone();
         u.sort_unstable();
@@ -200,8 +205,8 @@ mod tests {
         let batch = registration_batch(&h, 22, &mut rng).unwrap();
         assert_eq!(batch.len(), 32);
         assert!(h.iter().all(|x| batch.contains(x)));
-        assert_eq!(iss.recent_hashes(4), h[6..].to_vec());
-        assert_eq!(iss.recent_hashes(50), h, "no more than were issued");
+        assert_eq!(iss.recent_hashes(4, &mb), h[6..].to_vec());
+        assert_eq!(iss.recent_hashes(50, &mb), h, "no more than were issued");
     }
 
     #[test]

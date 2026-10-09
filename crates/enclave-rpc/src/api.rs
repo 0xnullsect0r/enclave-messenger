@@ -448,6 +448,101 @@ pub fn read_credential(owner_secret: &[u8; 32]) -> [u8; 24] {
     out
 }
 
+/// Seconds in an inbox week: account-inbox addresses rotate every week
+/// (`docs/09-transport.md` §3.1).
+pub const WEEK_SECS: u64 = 7 * 86_400;
+
+/// Most daily read credentials registered with one inbox (three weeks:
+/// created early in the week before its own, polled through the week
+/// after).
+pub const MAX_READ_DAYS: usize = 21;
+
+/// The week of `now` (Unix seconds).
+pub fn week_of(now: u64) -> u32 {
+    u32::try_from(now / WEEK_SECS).unwrap_or(u32::MAX)
+}
+
+/// The day of `now` (Unix seconds).
+pub fn day_of(now: u64) -> u32 {
+    u32::try_from(now / 86_400).unwrap_or(u32::MAX)
+}
+
+/// The account's address seed, from its inbox seed: what contacts are
+/// given, so they can follow the weekly addresses without being able to
+/// read the inbox or act as its owner.
+pub fn inbox_addr_seed(inbox_seed: &[u8; 32]) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(inbox_seed, b"", "enclave/v1/net/inbox-addr-seed")
+}
+
+/// The account inbox's address for `week`.
+pub fn inbox_addr(addr_seed: &[u8; 32], week: u32) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(addr_seed, &week.to_be_bytes(), "enclave/v1/net/inbox-addr")
+}
+
+/// The owner secret of one weekly address (a different one per address,
+/// so the server can't link an owner's weeks by it).
+pub fn inbox_owner(inbox_seed: &[u8; 32], addr: &[u8; 32]) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(inbox_seed, addr, "enclave/v1/net/inbox-owner")
+}
+
+/// The inbox read key, from the inbox seed.
+pub fn inbox_read_key(inbox_seed: &[u8; 32]) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(inbox_seed, b"", "enclave/v1/net/inbox-read-key")
+}
+
+/// The read credential for `addr` on `day`: valid that day only (the
+/// server accepts a day either side for clocks that disagree).
+pub fn daily_read_credential(read_key: &[u8; 32], addr: &[u8; 32], day: u32) -> [u8; 24] {
+    let k: [u8; 32] = enclave_crypto::kmac::kmac256(
+        read_key,
+        &[addr.as_slice(), &day.to_be_bytes()].concat(),
+        "enclave/v1/net/read-cred",
+    );
+    let mut out = [0u8; 24];
+    out.copy_from_slice(&k[..24]);
+    out
+}
+
+/// Daily read credentials registered with an inbox: `(day, hash)`.
+pub type ReadDays = Vec<(u32, [u8; 32])>;
+
+/// The payload of a `RegisterTokens` that creates an inbox: the proof of
+/// work, then each daily read credential's day and hash (none: the
+/// credential is the static one derived from the owner secret).
+pub fn create_payload(proof: &[u8; 32], days: &[(u32, [u8; 32])]) -> Vec<u8> {
+    let mut v = proof.to_vec();
+    for (d, h) in days {
+        v.extend_from_slice(&d.to_be_bytes());
+        v.extend_from_slice(h);
+    }
+    v
+}
+
+/// Inverse of [`create_payload`].
+pub fn parse_create_payload(p: &[u8]) -> Option<([u8; 32], ReadDays)> {
+    let proof: [u8; 32] = p.get(..32)?.try_into().ok()?;
+    let rest = &p[32..];
+    if !rest.len().is_multiple_of(36) || rest.len() / 36 > MAX_READ_DAYS {
+        return None;
+    }
+    let days = rest
+        .chunks_exact(36)
+        .filter_map(|c| {
+            Some((
+                u32::from_be_bytes(c[..4].try_into().ok()?),
+                c[4..].try_into().ok()?,
+            ))
+        })
+        .collect();
+    Some((proof, days))
+}
+
+/// What a request inbox's server stores for an invite capability: bound
+/// to the inbox, so a capability says nothing at another address.
+pub fn cap_hash(cap: &[u8; 32], mailbox: &[u8; 32]) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(cap, mailbox, "enclave/v1/net/cap-hash")
+}
+
 /// Server-side hash of an owner secret or read credential.
 pub fn credential_hash(secret: &[u8]) -> [u8; 32] {
     enclave_crypto::kmac::kmac256(secret, b"", "enclave/v1/rpc/credential-hash")

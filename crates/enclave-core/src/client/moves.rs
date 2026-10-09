@@ -29,7 +29,8 @@ use enclave_crypto::seal::SealKey;
 use enclave_proto::manifest::{MAX_VALIDITY_SECS, Manifest, SignedManifest};
 use enclave_proto::server_move::ServerMove;
 use enclave_rpc::api::{
-    DirAction, DirKind, FLAG_CREATE, FLAG_REQUEST_INBOX, Status, device_key, manifest_key,
+    self as api, DirAction, DirKind, FLAG_CREATE, FLAG_REQUEST_INBOX, Status, device_key,
+    manifest_key,
 };
 
 /// How long the old server's inboxes are still read after a move (the
@@ -77,14 +78,13 @@ impl Client {
         }
         let next = Profile {
             server: to,
-            inbox: self.rng.array("core/inbox")?,
-            inbox_owner: self.rng.array("core/inbox-owner")?,
+            inbox_seed: self.rng.array("core/inbox-seed")?,
             request_inbox: self.rng.array("core/request-inbox")?,
             request_owner: self.rng.array("core/request-owner")?,
             vault_locator: self.rng.array("core/vault-locator")?,
             vault_key: self.profile.vault_key,
             name: self.profile.name.clone(),
-            cursor: 0,
+            weeks: Vec::new(),
             request_cursor: 0,
             created_at: self.profile.created_at,
         };
@@ -165,6 +165,10 @@ impl Client {
         let old = std::mem::replace(&mut self.profile, next);
         self.set_old_home(&old, now + DRAIN_SECS)?;
         self.save_profile()?;
+        // Tokens handed out were registered at the old home's addresses.
+        for (k, _) in self.store.scan(crate::persist::NS_ISSUERS)? {
+            self.store.delete(crate::persist::NS_ISSUERS, &k)?;
+        }
         self.clear_pool()
     }
 
@@ -176,7 +180,7 @@ impl Client {
             return self.tell_move(now).await;
         }
         // Before the switch the new home is staged; after it, it's ours.
-        let next = match self.store.get(NS_SECRETS, KEY_NEXT)? {
+        let mut next = match self.store.get(NS_SECRETS, KEY_NEXT)? {
             Some(b) => Profile::decode(&b)?,
             None => Profile::decode(&self.profile.encode())?,
         };
@@ -188,19 +192,26 @@ impl Client {
             Err(e) => Err(e),
         };
         if step & M_INBOXES == 0 {
-            for (addr, owner, flags) in [
-                (next.inbox, next.inbox_owner, FLAG_CREATE),
-                (
-                    next.request_inbox,
-                    next.request_owner,
-                    FLAG_CREATE | FLAG_REQUEST_INBOX,
-                ),
-            ] {
-                done(
-                    self.rpc
-                        .create_inbox(&to, addr, owner, flags, now, &mut self.rng)
-                        .await,
-                )?;
+            done(
+                self.rpc
+                    .create_inbox(
+                        &to,
+                        next.request_inbox,
+                        next.request_owner,
+                        FLAG_CREATE | FLAG_REQUEST_INBOX,
+                        &[],
+                        now,
+                        &mut self.rng,
+                    )
+                    .await,
+            )?;
+            let week = api::week_of(now);
+            for w in [week, week + 1] {
+                self.create_week(&mut next, w, now).await?;
+            }
+            if self.store.get(NS_SECRETS, KEY_NEXT)?.is_some() {
+                self.store
+                    .put(NS_SECRETS, KEY_NEXT, &next.encode(), &mut self.rng)?;
             }
             step |= M_INBOXES;
             save(self, step)?;
@@ -293,8 +304,7 @@ impl Client {
             // Written to the old account inbox, where they still read.
             let c = Content::HomeMoved {
                 server: next.server,
-                inbox: next.inbox,
-                inbox_owner: next.inbox_owner,
+                inbox_seed: next.inbox_seed,
                 request_inbox: next.request_inbox,
                 request_owner: next.request_owner,
                 vault_locator: next.vault_locator,
@@ -369,7 +379,7 @@ impl Client {
             let tokens = self.issue_tokens(&root, super::HELLO_TOKENS, now).await?;
             let c = Content::ServerMoved {
                 server: self.profile.server,
-                inbox: self.profile.inbox,
+                inbox: self.profile.addr_seed(),
                 request_inbox: self.profile.request_inbox,
                 vault_locator: self.profile.vault_locator,
                 tokens,
@@ -423,24 +433,24 @@ impl Client {
         if let Some(b) = self.store.get(NS_PROFILE, KEY_IN)? {
             if let Ok(Content::HomeMoved {
                 server,
-                inbox,
-                inbox_owner,
+                inbox_seed,
                 request_inbox,
                 request_owner,
                 vault_locator,
             }) = Content::decode(&b)
                 && server != self.profile.server
             {
+                // The weekly addresses the moving device made are found
+                // (and given our tokens) by the next upkeep.
                 let next = Profile {
                     server,
-                    inbox,
-                    inbox_owner,
+                    inbox_seed,
                     request_inbox,
                     request_owner,
                     vault_locator,
                     vault_key: self.profile.vault_key,
                     name: self.profile.name.clone(),
-                    cursor: 0,
+                    weeks: Vec::new(),
                     request_cursor: 0,
                     created_at: self.profile.created_at,
                 };
@@ -491,14 +501,14 @@ impl Client {
             .poll(
                 &old.server,
                 old.request_inbox,
-                &old.request_owner,
+                api::read_credential(&old.request_owner),
                 old.request_cursor,
                 now,
                 &mut self.rng,
             )
             .await?;
-        for (env, cursor) in reqs {
-            match self.handle_request(&env, now).await {
+        for polled in reqs {
+            match self.handle_request(&polled.envelope, now).await {
                 Ok(Some(e)) => events.push(e),
                 Err(e @ CoreError::Net(_)) => {
                     self.set_old_home(&old, until)?;
@@ -506,26 +516,15 @@ impl Client {
                 }
                 _ => {}
             }
-            old.request_cursor = cursor;
+            old.request_cursor = polled.cursor;
             self.set_old_home(&old, until)?;
         }
-        let msgs = self
-            .rpc
-            .poll(
-                &old.server,
-                old.inbox,
-                &old.inbox_owner,
-                old.cursor,
-                now,
-                &mut self.rng,
-            )
-            .await?;
-        for (env, cursor) in msgs {
-            if let Ok(mut e) = self.handle_direct(&env, now) {
-                events.append(&mut e);
-            }
-            old.cursor = cursor;
-            self.set_old_home(&old, until)?;
+        let weeks: Vec<u32> = old.weeks.iter().map(|(w, _)| *w).collect();
+        for week in weeks {
+            let mut got = self
+                .read_week(&mut old, week, now, |c, p| c.set_old_home(p, until))
+                .await?;
+            events.append(&mut got);
         }
         Ok(events)
     }

@@ -90,7 +90,10 @@ fn state_survives_a_restart_on(d: &Path, store: &Store) {
         };
         let empty = api::frame(&[], &mut rng).unwrap();
         assert_eq!(call(&mut s, &key, create, &empty, &mut rng).0, Status::Ok);
-        let hashes: Vec<u8> = tokens.iter().flat_map(enclave_tokens::token_hash).collect();
+        let hashes: Vec<u8> = tokens
+            .iter()
+            .flat_map(|t| enclave_tokens::token_hash(t, &mailbox))
+            .collect();
         let reg = RequestHeader {
             op: Op::RegisterTokens,
             flags: 0,

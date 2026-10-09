@@ -10,7 +10,7 @@ Source: PLAN.md §3 (D3, D4, D12). Crate: `enclave-proto` (manifest, linking), `
 2. It generates the device keys (§3.2), the account IK, the vault key and `vbs`, the inbox seed, the request-inbox address, and the first prekey batch.
 3. While the user types a display name, it solves an Equi-X proof-of-work for account creation (target 20 to 30 s on a median phone, `02-cryptography.md` §10) against the chosen server's daily seed. The UI shows one line: "Setting up your private address…". The PoW is presented with the first directory publish.
 4. The server is chosen automatically, weighted by capacity from the foundation's signed server list (`12-servers.md` §4). The user can change it.
-5. The client builds manifest version 1 (§3), root-signs it, and publishes the manifest, the account bundle object (`04-eqxdh.md` §2), the vault-key blob, and the OPK batch to the directory. It registers the inbox (first week's address, read-credential hashes for the next 14 days) and the request inbox.
+5. The client builds manifest version 1 (§3), root-signs it, and publishes the manifest, the account bundle object (`04-eqxdh.md` §2), the vault-key blob, and the OPK batch to the directory. It registers the inbox (this week's and next week's addresses, each with read-credential hashes through the end of the week after its own, `09-transport.md` §3.1) and the request inbox.
 6. The recovery words are not shown yet. They are shown as a persistent card after the first conversation or after 24 hours, whichever comes first (`17-design.md` §6.1). The words MUST be saved (the 3-word check passed) before the user can link a device or claim a username.
 
 Account creation MUST NOT require a phone number, email, or any other identifier.

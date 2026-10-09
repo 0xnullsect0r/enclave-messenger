@@ -84,7 +84,7 @@ A storage failure answers `Unavailable` (status 7) and applies nothing; the clie
 
 | Store | Key | Value | Retention |
 |---|---|---|---|
-| Inbox | 32 B address | owner-secret hash, read-credential hash, request flag, unspent token hashes, envelopes with sequence numbers and receive time | Envelopes: until acknowledged or 30 days |
+| Inbox | 32 B address | owner-secret hash, read-credential hash (or one per day for a weekly account-inbox address), request flag, last credential day, unspent token hashes (bound to the address), envelopes with sequence numbers and receive time, each with the first 24 B of the token hash its write burned (the session hint) | Envelopes: until acknowledged or 30 days; a weekly address: 30 days after its last credential day |
 | Manifest | manifest key (§2.1) | latest version and signed manifest bytes | Until replaced by a higher version |
 | Prekey publication | 16 B device ID | publication and the index of the next unserved one-time prekey | Until replaced |
 | Claim | 32 B random claim ID | encoded bundle | 600 s |

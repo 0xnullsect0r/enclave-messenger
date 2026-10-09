@@ -195,7 +195,13 @@ impl Client {
                 continue;
             }
             let content = Content::decode(&e.content)?;
-            match self.send_content(&root, &content, now).await {
+            // Every other re-send (the second, the fourth) goes to the week
+            // before's address, in case they weren't online to make this
+            // week's; the first is for a write lost on the way.
+            self.fallback_week = e.tries % 2 == 1;
+            let sent = self.send_content(&root, &content, now).await;
+            self.fallback_week = false;
+            match sent {
                 Ok(()) => {
                     // A held message has left at last.
                     if let Ok(mut m) = self.find(&root, &id)

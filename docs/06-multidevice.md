@@ -82,7 +82,7 @@ Implemented at the server (`12-servers.md` §1.2):
 - `Ack` with a watermark `W` deletes every envelope with sequence number `≤ W`.
 - The server deletes envelopes 30 days after they were written regardless of the watermark (`Server::expire`).
 
-Not implemented yet: devices reporting their positions to each other through own-device sync, and the rule that a device advances the watermark only after every device in the manifest has reported at least `W`. Decoy re-fetches by caught-up devices are also not implemented.
+Not implemented yet: devices reporting their positions to each other through own-device sync, and the rule that a device advances the watermark only after every device in the manifest has reported at least `W`. Decoy re-fetches are built: a device's account-inbox poll starts one envelope back one time in eight (`09-transport.md` §5), so a caught-up device's polls still bring envelopes.
 
 ## 7. Device-list changes (not yet implemented)
 
