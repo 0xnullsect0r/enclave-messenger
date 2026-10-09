@@ -31,8 +31,8 @@ pub mod witness;
 pub use descriptor::{KtKeys, Policy, ServerDescriptor};
 pub use keycert::{KeyBundle, KeyCert};
 pub use list::{
-    FoundationKey, FoundationPublic, ListedRelay, ListedServer, ListedWitness, PushRelayEntry,
-    ServerList,
+    CredGateEntry, FoundationKey, FoundationPublic, ListedRelay, ListedServer, ListedWitness,
+    PushRelayEntry, ServerList,
 };
 pub use relay::{RelayDescriptor, relay_id};
 pub use witness::{WitnessDescriptor, witness_id};

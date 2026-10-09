@@ -7,15 +7,25 @@
 //! services themselves, signed by the identity keys listed here.
 //!
 //! ```text
-//! list    = u8(1) ‖ u64(seq) ‖ u64(issued) ‖ u64(expires) ‖ u8(witness threshold)
+//! list    = u8(2) ‖ u64(seq) ‖ u64(issued) ‖ u64(expires) ‖ u8(witness threshold)
 //!         ‖ u32(n) ‖ n × server   ‖ u32(n) ‖ n × witness
 //!         ‖ u32(n) ‖ n × relay    ‖ u32(n) ‖ n × push relay
+//!         ‖ u32(n) ‖ n × credential gate
 //!         ‖ SLH-DSA-SHAKE-256s signature (29,792) ‖ composite signature (4,741)
 //! server  = identity pk (2,649) ‖ bytes(domain) ‖ bytes(operator) ‖ bytes(family)
 //!         ‖ bytes(Nym address) ‖ u32(weight) ‖ u8(has kt) [‖ head key (2,649) ‖ bytes(VRF public key)]
 //! witness = key (2,649) ‖ bytes(operator) ‖ bytes(family) ‖ bytes(url)
 //! relay   = identity pk (2,649) ‖ bytes(operator) ‖ bytes(family) ‖ bytes(addr) ‖ link key (56)
 //! push    = bytes(Nym address) ‖ u8(n) ‖ n × (u32 epoch ‖ X448 (56) ‖ ML-KEM-1024 (1,568))
+//! gate    = bytes(url) ‖ bytes(issuer name) ‖ u8(n) ‖ n × (u32 epoch ‖ P-384 key (49))
+//! ```
+//!
+//! A credential gate (`enclave-credgate`, `docs/09-transport.md` §7) is
+//! listed with its Privacy Pass issuer keys for the epochs the list covers:
+//! a device blinds its token requests to the listed key, so the gate can't
+//! hand one device a key of its own to tell its tokens apart later.
+//!
+//! ```text
 //! ```
 //!
 //! Both signatures are under context `enclave/v1/update/server-list` and
@@ -37,11 +47,15 @@ use zeroize::Zeroizing;
 pub const CTX_SERVER_LIST: &str = "enclave/v1/update/server-list";
 /// KMAC label deriving the foundation's SLH-DSA key from its seed.
 pub const FOUNDATION_KEYGEN: &str = "enclave/v1/update/foundation-keygen";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 /// Most entries of each kind.
 pub const MAX_ENTRIES: usize = 1024;
 const MAX_VRF: usize = 64;
 const PUSH_KEY_LEN: usize = 4 + 56 + 1568;
+/// Bytes of a Privacy Pass issuer key (compressed P-384).
+pub const ISSUER_KEY_LEN: usize = 49;
+/// Most issuer keys a gate lists (epochs are 30 days, lists last 90 at most).
+pub const MAX_GATE_KEYS: usize = 8;
 
 /// A listed server.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,6 +129,38 @@ pub struct PushRelayEntry {
     pub keys: Vec<Vec<u8>>,
 }
 
+/// A credential gate: where devices reach it and its issuer key per epoch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CredGateEntry {
+    /// Where it answers: `https://HOST`, under `/credgate/v1/`.
+    pub url: String,
+    /// The issuer name its token challenges carry.
+    pub issuer_name: String,
+    /// `(epoch, issuer key)`, epochs increasing.
+    pub keys: Vec<(u32, [u8; ISSUER_KEY_LEN])>,
+}
+
+impl CredGateEntry {
+    /// The issuer key of `epoch`.
+    pub fn key(&self, epoch: u32) -> Option<&[u8; ISSUER_KEY_LEN]> {
+        self.keys.iter().find(|(e, _)| *e == epoch).map(|(_, k)| k)
+    }
+
+    fn check(&self) -> Result<()> {
+        if !self.url.starts_with("https://")
+            || self.url.len() > MAX_ADDRESS
+            || self.issuer_name.is_empty()
+            || self.issuer_name.len() > MAX_DOMAIN
+            || self.keys.is_empty()
+            || self.keys.len() > MAX_GATE_KEYS
+            || self.keys.windows(2).any(|w| w[0].0 >= w[1].0)
+        {
+            return Err(FedError::Malformed);
+        }
+        Ok(())
+    }
+}
+
 /// The foundation's list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerList {
@@ -134,6 +180,8 @@ pub struct ServerList {
     pub relays: Vec<ListedRelay>,
     /// Push relays.
     pub push: Vec<PushRelayEntry>,
+    /// Credential gates.
+    pub credgates: Vec<CredGateEntry>,
 }
 
 /// The foundation's list-signing key: SLH-DSA-SHAKE-256s and composite
@@ -235,6 +283,7 @@ impl ServerList {
             self.witnesses.len(),
             self.relays.len(),
             self.push.len(),
+            self.credgates.len(),
         ] {
             check_len(n)?;
         }
@@ -305,6 +354,16 @@ impl ServerList {
             w.bytes(p.nym_address.as_bytes()).u8(p.keys.len() as u8);
             for k in &p.keys {
                 w.fixed(k);
+            }
+        }
+        w.u32(self.credgates.len() as u32);
+        for g in &self.credgates {
+            g.check()?;
+            w.bytes(g.url.as_bytes())
+                .bytes(g.issuer_name.as_bytes())
+                .u8(g.keys.len() as u8);
+            for (e, k) in &g.keys {
+                w.u32(*e).fixed(k);
             }
         }
         Ok(w.finish())
@@ -410,6 +469,27 @@ impl ServerList {
                 .collect::<Result<Vec<_>>>()?;
             push.push(PushRelayEntry { nym_address, keys });
         }
+        let n = r.u32()? as usize;
+        check_len(n)?;
+        let mut credgates = Vec::with_capacity(n);
+        for _ in 0..n {
+            let url = utf8(r.bytes(MAX_ADDRESS)?)?;
+            let issuer_name = utf8(r.bytes(MAX_DOMAIN)?)?;
+            let k = usize::from(r.u8()?);
+            if k > MAX_GATE_KEYS {
+                return Err(FedError::Malformed);
+            }
+            let keys = (0..k)
+                .map(|_| Ok((r.u32()?, r.array::<ISSUER_KEY_LEN>()?)))
+                .collect::<Result<Vec<_>>>()?;
+            let g = CredGateEntry {
+                url,
+                issuer_name,
+                keys,
+            };
+            g.check()?;
+            credgates.push(g);
+        }
         let body_len = b.len() - r.remaining();
         Ok((
             Self {
@@ -421,6 +501,7 @@ impl ServerList {
                 witnesses,
                 relays,
                 push,
+                credgates,
             },
             body_len,
         ))

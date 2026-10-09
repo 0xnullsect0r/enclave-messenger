@@ -131,6 +131,7 @@ mod stickers;
 mod tokens;
 mod typing;
 mod usernames;
+mod wallet;
 
 pub use crate::rpc::Sending;
 pub use gossip::{GossipItem, KtAlert};
@@ -152,6 +153,7 @@ pub use social::{MAX_HOLDERS, words_from_shares};
 pub use stickers::{InstalledPack, MAX_STICKERS, PACK_MIME, StickerPack};
 pub use typing::{TYPING_RESERVE, TYPING_SHOW_SECS};
 pub use usernames::AUDIT_EVERY_SECS;
+pub use wallet::{BOOK_LIFETIME, REFILL_BELOW, TOKENS_PER_PROOF, TicketWallet};
 
 /// Something the UI should show.
 #[derive(Clone, Debug, PartialEq, Eq)]

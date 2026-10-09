@@ -39,6 +39,7 @@ fn list(
         witnesses: witnesses.to_vec(),
         relays: Vec::new(),
         push: Vec::new(),
+        credgates: Vec::new(),
     }
 }
 

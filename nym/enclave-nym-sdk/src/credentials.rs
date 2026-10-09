@@ -32,6 +32,9 @@ use nym_credentials_interface::{
 /// The serialization revision of the stored [`ImportableTicketBook`].
 const REVISION: u8 = <ImportableTicketBook as VersionedSerialise>::CURRENT_SERIALISATION_REVISION;
 
+/// Extra roots for a local mixnet's tests: a PEM file.
+pub const TEST_CA_VAR: &str = "ENCLAVE_NYM_TEST_CA";
+
 /// HTTP for the credential gate: Enclave TLS, through the environment's
 /// proxy (`ALL_PROXY`, set by netd to tord's SOCKS5 port).
 pub struct Fetcher {
@@ -43,6 +46,24 @@ impl Fetcher {
     pub fn new() -> Result<Self> {
         let mut roots = rustls::RootCertStore::empty();
         roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        Self::with_roots(roots)
+    }
+
+    /// The client for `network`: the web PKI roots, and on a local mixnet
+    /// also those in the PEM file [`TEST_CA_VAR`] names (the test stacks'
+    /// own CA; never on Nym's networks).
+    pub fn for_network(network: &crate::Network) -> Result<Self> {
+        use rustls::pki_types::CertificateDer;
+        use rustls::pki_types::pem::PemObject;
+        let mut roots = rustls::RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        if matches!(network, crate::Network::Local { .. })
+            && let Some(path) = std::env::var_os(TEST_CA_VAR)
+        {
+            for c in CertificateDer::pem_file_iter(&path).map_err(client_error)? {
+                roots.add(c.map_err(client_error)?).map_err(client_error)?;
+            }
+        }
         Self::with_roots(roots)
     }
 
@@ -205,41 +226,42 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded> {
     Ok(Decoded(importable.try_unpack_full().map_err(client_error)?))
 }
 
-/// Import what is left of a held ticketbook into a device's (ephemeral)
-/// client before it connects.
-pub async fn import(
-    client: &nym_sdk::mixnet::DisconnectedMixnetClient<nym_sdk::mixnet::Ephemeral>,
-    held: &enclave_nym::Held,
-) -> Result<()> {
+/// The ticket store of a device's (ephemeral) client: kept from before it
+/// connects, so books bought later go into the running client too.
+pub type TicketStore = nym_credential_storage::ephemeral_storage::EphemeralStorage;
+
+/// Import what is left of a held ticketbook into a device's ticket store.
+/// The store spends books in the order they were imported.
+pub async fn import(store: &TicketStore, held: &enclave_nym::Held) -> Result<()> {
+    use nym_credential_storage::storage::Storage;
     if held.left() == 0 {
         return Ok(());
     }
     let ticketbook = decode(&held.book)?;
-    let importer = client.begin_bandwidth_import();
     let d = &ticketbook.0;
     if let Some(k) = &d.master_verification_key {
-        importer
-            .import_master_verification_key(k)
+        store
+            .insert_master_verification_key(k)
             .await
             .map_err(client_error)?;
     }
     if let Some(s) = &d.coin_index_signatures {
-        importer
-            .import_coin_index_signatures(s)
+        store
+            .insert_coin_index_signatures(s)
             .await
             .map_err(client_error)?;
     }
     if let Some(s) = &d.expiration_date_signatures {
-        importer
-            .import_expiration_date_signatures(s)
+        store
+            .insert_expiration_date_signatures(s)
             .await
             .map_err(client_error)?;
     }
     if held.spent == 0 {
-        importer.import_ticketbook(&d.ticketbook).await
+        store.insert_issued_ticketbook(&d.ticketbook).await
     } else {
-        importer
-            .import_partial_ticketbook(&d.ticketbook, held.spent, held.total - 1)
+        store
+            .insert_partial_issued_ticketbook(&d.ticketbook, held.spent, held.total - 1)
             .await
     }
     .map_err(client_error)

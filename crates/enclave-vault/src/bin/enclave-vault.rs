@@ -163,6 +163,14 @@ fn start_netd(
         extra.push("--tor".into());
         extra.push(profile.join("tor").to_string_lossy().into_owned());
     }
+    // The mixnet client waits for its zk-nym tickets, which the vault
+    // gives it once it can read its wallet (`docs/09-transport.md` §7).
+    if std::iter::once(route)
+        .chain(others.iter().map(|(_, r)| r))
+        .any(|r| matches!(r, enclave_net::transport::Route::Nym(_)))
+    {
+        extra.push("--await-tickets".into());
+    }
     match enclave_vault::netd::PipeTransport::spawn(&bin, &servers, &extra) {
         Ok(t) => Some(std::sync::Arc::new(t)),
         Err(e) => {

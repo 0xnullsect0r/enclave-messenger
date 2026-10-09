@@ -21,6 +21,7 @@ enclave-slip39 = { path = "../enclave-slip39" }
 enclave-proto = { path = "../enclave-proto" }
 enclave-tokens = { path = "../enclave-tokens" }
 enclave-net = { path = "../enclave-net" }
+enclave-nym = { path = "../enclave-nym" }
 enclave-store = { path = "../enclave-store" }
 enclave-kt = { path = "../enclave-kt" }
 enclave-federation = { path = "../enclave-federation" }
@@ -29,6 +30,7 @@ zeroize = "1"
 
 [dev-dependencies]
 enclave-sim = { path = "../enclave-sim" }
+enclave-credgate = { path = "../enclave-credgate", features = ["dev-tickets"] }
 async-trait = "0.1"
 enclave-server = { path = "../enclave-server", features = ["test-hooks"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

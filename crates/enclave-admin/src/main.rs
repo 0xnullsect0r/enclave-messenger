@@ -48,13 +48,22 @@
 //! [[push]]
 //! nym_address = "…"
 //! keys = "push/push-relay-keys.bin"
+//!
+//! [[credgate]]
+//! url = "https://enclave.example"
+//! issuer_name = "enclave.example"
+//! keys = "credgate/keys.txt"   # `enclave-credgate show-key --epochs 4`
 //! ```
+//!
+//! A gate's key file holds one `EPOCH HEX` line per epoch; list the
+//! epochs the list will be valid for (and the one after, for clients that
+//! keep a list until a newer one arrives).
 #![forbid(unsafe_code)]
 
 use enclave_crypto::rng::HedgedRng;
 use enclave_federation::{
-    FoundationKey, FoundationPublic, ListedRelay, ListedServer, ListedWitness, PushRelayEntry,
-    RelayDescriptor, ServerDescriptor, ServerList, WitnessDescriptor,
+    CredGateEntry, FoundationKey, FoundationPublic, ListedRelay, ListedServer, ListedWitness,
+    PushRelayEntry, RelayDescriptor, ServerDescriptor, ServerList, WitnessDescriptor,
 };
 use enclave_service::config::{flag, hex, unhex};
 use enclave_service::keyfile;
@@ -79,6 +88,32 @@ struct Spec {
     relay: Vec<FileSpec>,
     #[serde(default)]
     push: Vec<PushSpec>,
+    #[serde(default)]
+    credgate: Vec<GateSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GateSpec {
+    url: String,
+    issuer_name: String,
+    keys: PathBuf,
+}
+
+/// A gate's key file: `EPOCH HEX` per line (`enclave-credgate show-key`).
+fn gate_keys(text: &str) -> Result<Vec<(u32, [u8; 49])>, String> {
+    let mut keys = Vec::new();
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let (e, k) = line
+            .split_once(' ')
+            .ok_or_else(|| format!("{line:?}: expected EPOCH HEX"))?;
+        let e: u32 = e.parse().map_err(|_| format!("{e:?}: not an epoch"))?;
+        let k: [u8; 49] = unhex(k.trim())
+            .and_then(|b| b.try_into().ok())
+            .ok_or_else(|| format!("epoch {e}: not a 49-byte key"))?;
+        keys.push((e, k));
+    }
+    Ok(keys)
 }
 
 #[derive(Debug, Deserialize)]
@@ -315,6 +350,21 @@ fn build(args: &[String]) -> Result<(), String> {
             keys: b.chunks(PUSH_KEY_LEN).map(<[u8]>::to_vec).collect(),
         });
     }
+    let mut credgates = Vec::new();
+    for g in &spec.credgate {
+        let p = base.join(&g.keys);
+        let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+        let keys = gate_keys(&text).map_err(|e| format!("{}: {e}", p.display()))?;
+        let epoch = (now / (30 * 86_400)) as u32;
+        if !keys.iter().any(|(e, _)| *e == epoch) {
+            return Err(format!("{}: no key for this epoch ({epoch})", p.display()));
+        }
+        credgates.push(CredGateEntry {
+            url: g.url.clone(),
+            issuer_name: g.issuer_name.clone(),
+            keys,
+        });
+    }
     let list = ServerList {
         seq: spec.seq,
         issued: now,
@@ -324,6 +374,7 @@ fn build(args: &[String]) -> Result<(), String> {
         witnesses,
         relays,
         push,
+        credgates,
     };
     let out = need(args, "--out")?;
     match key {
@@ -511,6 +562,15 @@ fn print_list(l: &ServerList) {
     }
     for p in &l.push {
         println!("push    {}  {} keys", p.nym_address, p.keys.len());
+    }
+    for g in &l.credgates {
+        let epochs: Vec<String> = g.keys.iter().map(|(e, _)| e.to_string()).collect();
+        println!(
+            "gate    {}  {}  epochs {}",
+            g.url,
+            g.issuer_name,
+            epochs.join(",")
+        );
     }
 }
 

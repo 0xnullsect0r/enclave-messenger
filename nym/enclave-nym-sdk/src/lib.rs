@@ -162,9 +162,11 @@ pub struct NymDriver {
     /// replaced by a gateway switch until its replies have had time).
     readers: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
     switching: Mutex<()>,
-    /// Ticketbooks bought while connected: spent from the next client
-    /// (a gateway switch).
+    /// Ticketbooks bought while connected: imported into the running
+    /// client at once, and into the next one (a gateway switch).
     bought: std::sync::Mutex<Vec<Vec<u8>>>,
+    /// The running client's ticket store (a device's; empty otherwise).
+    store: std::sync::Mutex<credentials::TicketStore>,
     /// HTTP through Tor, made when first needed.
     fetcher: std::sync::OnceLock<credentials::Fetcher>,
 }
@@ -176,8 +178,10 @@ fn gateway_of(address: &str) -> Option<&str> {
     address.split_once('@').map(|(_, g)| g)
 }
 
-/// Build and connect a nym-sdk client for `opts`.
-async fn build(opts: &Options) -> Result<nym_sdk::mixnet::MixnetClient> {
+/// Build and connect a nym-sdk client for `opts`, and its ticket store.
+async fn build(
+    opts: &Options,
+) -> Result<(nym_sdk::mixnet::MixnetClient, credentials::TicketStore)> {
     let mut debug = nym_sdk::DebugConfig::default();
     debug.traffic.disable_main_poisson_packet_distribution = true;
     debug.stats_reporting.enabled = false;
@@ -225,15 +229,28 @@ async fn build(opts: &Options) -> Result<nym_sdk::mixnet::MixnetClient> {
             if let Some(p) = topology {
                 b = b.custom_topology_provider(Box::new(p));
             }
-            b.build()
+            let client = b
+                .build()
                 .map_err(client_error)?
                 .connect_to_mixnet()
                 .await
-                .map_err(client_error)
+                .map_err(client_error)?;
+            Ok((client, credentials::TicketStore::default()))
         }
         Role::Client => {
+            // Spending is on where gateways check: Nym's networks, not a
+            // local mixnet (the books are still imported, so the same path
+            // runs).
             let paid = !opts.tickets.is_empty() && !matches!(opts.network, Network::Local { .. });
-            let mut b = MixnetClientBuilder::new_ephemeral()
+            let storage = nym_sdk::mixnet::Ephemeral::default();
+            let store = {
+                use nym_sdk::mixnet::MixnetClientStorage;
+                storage.credential_store().clone()
+            };
+            for t in &opts.tickets {
+                credentials::import(&store, &enclave_nym::Held::decode(t)?).await?;
+            }
+            let mut b = MixnetClientBuilder::new_with_storage(storage)
                 .network_details(network)
                 .debug_config(debug)
                 .credentials_mode(paid);
@@ -243,13 +260,13 @@ async fn build(opts: &Options) -> Result<nym_sdk::mixnet::MixnetClient> {
             if let Some(p) = topology {
                 b = b.custom_topology_provider(Box::new(p));
             }
-            let client = b.build().map_err(client_error)?;
-            if paid {
-                for t in &opts.tickets {
-                    credentials::import(&client, &enclave_nym::Held::decode(t)?).await?;
-                }
-            }
-            client.connect_to_mixnet().await.map_err(client_error)
+            let client = b
+                .build()
+                .map_err(client_error)?
+                .connect_to_mixnet()
+                .await
+                .map_err(client_error)?;
+            Ok((client, store))
         }
     }
 }
@@ -281,7 +298,7 @@ fn attach(
 impl NymDriver {
     /// Connect to the mixnet.
     pub async fn connect(opts: Options) -> Result<Self> {
-        let client = build(&opts).await?;
+        let (client, store) = build(&opts).await?;
         let (tx, rx) = mpsc::unbounded_channel();
         let (sender, address, reader) = attach(client, tx.clone());
         Ok(Self {
@@ -292,6 +309,7 @@ impl NymDriver {
             readers: std::sync::Mutex::new(vec![reader]),
             switching: Mutex::new(()),
             bought: std::sync::Mutex::new(Vec::new()),
+            store: std::sync::Mutex::new(store),
             fetcher: std::sync::OnceLock::new(),
         })
     }
@@ -300,7 +318,7 @@ impl NymDriver {
         if let Some(f) = self.fetcher.get() {
             return Ok(f);
         }
-        let f = credentials::Fetcher::new()?;
+        let f = credentials::Fetcher::for_network(&self.opts.network)?;
         Ok(self.fetcher.get_or_init(|| f))
     }
 
@@ -391,7 +409,7 @@ impl MixnetDriver for NymDriver {
         // nym-sdk picks a gateway uniformly at random: with two to choose
         // from, eight tries all landing on the old one is 1 in 256.
         for _ in 0..8 {
-            let client = build(&opts).await?;
+            let (client, store) = build(&opts).await?;
             let address = client.nym_address().to_string();
             let Some(gateway) = gateway_of(&address).map(str::to_string) else {
                 continue;
@@ -403,6 +421,9 @@ impl MixnetDriver for NymDriver {
             let (sender, address, reader) = attach(client, self.tx.clone());
             if let Ok(mut c) = self.current.write() {
                 *c = (sender, address);
+            }
+            if let Ok(mut s) = self.store.lock() {
+                *s = store;
             }
             let retired = {
                 let Ok(mut readers) = self.readers.lock() else {
@@ -438,6 +459,11 @@ impl MixnetDriver for NymDriver {
 
     async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
         let book = credentials::buy(self.fetcher()?, gate, token).await?;
+        // Into the running client, after what it already has.
+        let store = self.store.lock().map(|s| s.clone()).ok();
+        if let Some(store) = store {
+            credentials::import(&store, &enclave_nym::Held::decode(&book)?).await?;
+        }
         if let Ok(mut b) = self.bought.lock() {
             b.push(book.clone());
         }

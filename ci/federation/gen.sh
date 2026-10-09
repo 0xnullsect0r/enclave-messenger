@@ -28,7 +28,11 @@
 # only at their ingresses' Nym addresses through $NYMD (enclave-nymd from
 # the nym/ workspace), and stack b's push wakes cross the mixnet from its
 # push egress to the push relay's ingress. Needs $NYM_IMAGE (the
-# ops/docker/Dockerfile `nym` target) too.
+# ops/docker/Dockerfile `nym` target) too. Stack a then also runs the
+# foundation's credential gate (profile `foundation`), its proxy being
+# $DEVPROXY (enclave-dev-proxy, signers of its own) on this host; the list
+# names the gate, so enclave-e2e buys its zk-nym tickets there through
+# nymd before connecting, trusting the test CA ($ENCLAVE_NYM_TEST_CA).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -45,6 +49,8 @@ NYMD=${NYMD:-$ROOT/nym/target/release/enclave-nymd}
 # enclave-tord (a dev-direct build): nymd dials its gateway and nym-api
 # through its SOCKS5 port, as a device does through Tor. Empty: directly.
 TORD=${TORD:-}
+DEVPROXY=${DEVPROXY:-$ROOT/nym/target/release/enclave-dev-proxy}
+DEVPROXY_PORT=${DEVPROXY_PORT:-7449}
 LOCALNET=$WORK/localnet
 NYM_API=http://10.77.0.2:8000/
 
@@ -58,6 +64,7 @@ profiles() {
   local s=$1 p=()
   [ "$s" = b ] && p+=(--profile push)
   [ "$TRANSPORT" = nym ] && p+=(--profile nym)
+  [ "$s" = a ] && [ "$TRANSPORT" = nym ] && p+=(--profile foundation)
   echo "${p[@]}"
 }
 
@@ -122,6 +129,14 @@ up() {
   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes -days 2 \
     -subj "/CN=enclave e2e CA" -keyout "$WORK/tls/ca.key" -out "$WORK/tls/ca.pem" 2>/dev/null
 
+  if [ "$TRANSPORT" = nym ]; then
+    echo "== the credential proxy stand-in (enclave-dev-proxy)"
+    openssl rand -hex 24 > "$WORK/credgate-proxy-token"
+    "$DEVPROXY" --listen "0.0.0.0:$DEVPROXY_PORT" --token-file "$WORK/credgate-proxy-token" \
+      > "$WORK/dev-proxy.log" 2>&1 &
+    echo $! > "$WORK/dev-proxy.pid"
+  fi
+
   for s in "${STACKS[@]}"; do
     local n d others=() o
     n=$(n_of "$s")
@@ -173,6 +188,18 @@ ENCLAVE_NYM_IMAGE=${NYM_IMAGE%:*}
 LOCALNET_DIR=$LOCALNET
 EOF
     cp "$WORK/foundation/foundation.pub" "$d/foundation/"
+    if [ "$s" = a ] && [ "$TRANSPORT" = nym ]; then
+      # The foundation's credential gate, served by a's front; little work
+      # per challenge, for CI.
+      mkdir -p "$d/secrets"
+      cp "$WORK/credgate-proxy-token" "$d/secrets/credgate-proxy-token"
+      chmod 0444 "$d/secrets/credgate-proxy-token"
+      sed -i 's/^effort = .*/effort = 50/' "$d/config/credgate.toml"
+      cat >> "$d/.env" <<EOF
+CREDGATE_PROXY_URL=http://host.docker.internal:$DEVPROXY_PORT
+CREDGATE_UPSTREAM=http://credgate:7448
+EOF
+    fi
     if [ "$s" = c ]; then
       cp "$ROOT"/ops/compose/compose.postgres.yml "$d/"
       mkdir -p "$d/secrets"
@@ -191,6 +218,14 @@ EOF
     dc "$s" run --rm -T -v "$d/out:/out" relay descriptor /out/relay.bin --config /etc/enclave/relay.toml >/dev/null
     echo "   server $(cat "$d/server.id")"
   done
+
+  if [ "$TRANSPORT" = nym ]; then
+    echo "== stack a: the credential gate's issuer keys"
+    dc a run --rm -T credgate init --config /etc/enclave/credgate.toml >/dev/null
+    dc a run --rm -T credgate show-key --config /etc/enclave/credgate.toml --epochs 2 \
+      > "$WORK/credgate-keys.txt"
+    cat "$WORK/credgate-keys.txt"
+  fi
 
   echo "== push relay (stack b)"
   dc b run --rm -T push-relay init >/dev/null
@@ -231,6 +266,14 @@ EOF
 nym_address = "e2e-push-relay"
 keys = "push-relay-keys.bin"
 EOF
+  if [ "$TRANSPORT" = nym ]; then
+    cat >> "$WORK/spec.toml" <<EOF
+[[credgate]]
+url = "https://127.0.0.1:8441"
+issuer_name = "a.test"
+keys = "credgate-keys.txt"
+EOF
+  fi
   "$ADMIN" server-list build "$WORK/spec.toml" --key "$WORK/foundation.key" \
     --out "$WORK/foundation/server-list.bin"
   "$ADMIN" server-list verify "$WORK/foundation/server-list.bin" \
@@ -285,6 +328,9 @@ common_args() {
     COMMON+=(--nymd "$NYMD")
     if [ -n "$TORD" ]; then COMMON+=(--tord "$TORD"); fi
     export ENCLAVE_NYM_TOPOLOGY=$LOCALNET/network.json ENCLAVE_NYM_API=$NYM_API
+    # nymd reaches the gate at a's front, under the test CA (taken on a
+    # local mixnet only).
+    export ENCLAVE_NYM_TEST_CA=$WORK/tls/ca.pem
   fi
 }
 
@@ -338,8 +384,12 @@ shape() {
 
 down() {
   for s in "${STACKS[@]}"; do
-    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym down -v --remove-orphans || true
+    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym --profile foundation down -v --remove-orphans || true
   done
+  if [ -f "$WORK/dev-proxy.pid" ]; then
+    kill "$(cat "$WORK/dev-proxy.pid")" 2>/dev/null || true
+    rm -f "$WORK/dev-proxy.pid"
+  fi
   docker network rm enclave-federation >/dev/null 2>&1 || true
   if [ "$TRANSPORT" = nym ]; then
     ln_dc down -v --remove-orphans || true
@@ -349,8 +399,9 @@ down() {
 
 logs() {
   for s in "${STACKS[@]}"; do
-    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym logs --no-color --tail 200 || true
+    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym --profile foundation logs --no-color --tail 200 || true
   done
+  [ -f "$WORK/dev-proxy.log" ] && cat "$WORK/dev-proxy.log" || true
   [ "$TRANSPORT" = nym ] && ln_dc logs --no-color --tail 100 || true
 }
 

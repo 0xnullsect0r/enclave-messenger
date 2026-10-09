@@ -3,7 +3,9 @@
 //! ```text
 //! enclave-credgate init        [--config FILE]   create the issuer seed
 //! enclave-credgate run         [--config FILE]   serve plain HTTP for enclave-front
-//! enclave-credgate show-key    [--config FILE]   print the current epoch and issuer key
+//! enclave-credgate show-key    [--config FILE] [--epochs N]
+//!                                                print `EPOCH HEX` for this epoch and the N-1 after
+//!                                                (the file `enclave-admin server-list build` lists)
 //! enclave-credgate healthcheck [--config FILE]   exit 0 if the gate answers
 //! ```
 //!
@@ -11,9 +13,9 @@
 //! `listen`, `keys_dir`, `data_dir`, `effort`, `tokens_per_proof`,
 //! `issuer_name` (the public host clients name in their token challenge),
 //! `proxy_url` and `proxy_token_file` (the upstream `nym-credential-proxy`
-//! and its bearer token). `dev_tickets = true` answers without a proxy
-//! (builds with the `dev-tickets` feature only: tests and the local
-//! mixnet, whose gateways don't check tickets).
+//! and its bearer token). Tests and the local mixnet point `proxy_url` at
+//! `enclave-dev-proxy` (`nym/enclave-dev-proxy`), whose signers are its
+//! own, so the gate runs the same code everywhere.
 
 use enclave_credgate::{Config, CredentialProxy, Gate, TicketSource};
 use enclave_crypto::rng::HedgedRng;
@@ -43,7 +45,6 @@ struct Section {
     issuer_name: String,
     proxy_url: Option<String>,
     proxy_token_file: Option<PathBuf>,
-    dev_tickets: bool,
 }
 
 impl Default for Section {
@@ -58,7 +59,6 @@ impl Default for Section {
             issuer_name: d.issuer_name,
             proxy_url: None,
             proxy_token_file: None,
-            dev_tickets: false,
         }
     }
 }
@@ -108,12 +108,6 @@ fn init(args: &[String]) -> Result<(), String> {
 }
 
 fn source(cfg: &Section) -> Result<Arc<dyn TicketSource>, String> {
-    if cfg.dev_tickets {
-        #[cfg(feature = "dev-tickets")]
-        return Ok(Arc::new(enclave_credgate::DevTickets));
-        #[cfg(not(feature = "dev-tickets"))]
-        return Err("dev_tickets needs a build with the dev-tickets feature".into());
-    }
     let url = cfg
         .proxy_url
         .as_deref()
@@ -155,10 +149,20 @@ fn show_key(args: &[String]) -> Result<(), String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let epoch = enclave_credgate::epoch_of(now);
-    let key =
-        enclave_tokens::privpass::IssuerKey::derive(&seed, epoch).map_err(|e| e.to_string())?;
-    println!("{epoch} {}", hex(&key.public().0));
+    let n: u32 = match flag(args, "--epochs") {
+        Some(n) => n
+            .parse()
+            .ok()
+            .filter(|n| (1..=8).contains(n))
+            .ok_or("--epochs is 1 to 8")?,
+        None => 1,
+    };
+    let first = enclave_credgate::epoch_of(now);
+    for epoch in first..first + n {
+        let key =
+            enclave_tokens::privpass::IssuerKey::derive(&seed, epoch).map_err(|e| e.to_string())?;
+        println!("{epoch} {}", hex(&key.public().0));
+    }
     Ok(())
 }
 

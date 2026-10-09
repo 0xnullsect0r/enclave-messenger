@@ -4,7 +4,7 @@
 # anyway (docs/09-transport.md §1, docs/spikes/m4-network.md).
 [workspace]
 resolver = "3"
-members = ["enclave-nym-sdk", "enclave-ingress-bin", "enclave-nymd"]
+members = ["enclave-nym-sdk", "enclave-ingress-bin", "enclave-nymd", "enclave-dev-proxy"]
 
 [workspace.package]
 version = "0.1.0"

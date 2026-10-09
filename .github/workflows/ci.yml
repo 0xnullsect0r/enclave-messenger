@@ -277,7 +277,7 @@ jobs:
           # The SOCKS5 front a device puts Tor behind, dialling directly
           # here (no Tor network in CI).
           cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
-          (cd nym && cargo build --release --locked -p enclave-nymd)
+          (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-dev-proxy)
       - name: Three stacks and a mixnet, one foundation
         run: TRANSPORT=nym ci/federation/gen.sh up
       - name: End to end over the mixnet through tord, with a restart of one stack

@@ -20,6 +20,8 @@ enclave-net = { path = "../enclave-net", features = ["nym"] }
 enclave-nym = { path = "../enclave-nym" }
 enclave-tord = { path = "../enclave-tord", default-features = false, features = ["launch"] }
 enclave-push-relay = { path = "../enclave-push-relay" }
+enclave-rpc = { path = "../enclave-rpc" }
+async-trait = "0.1"
 enclave-service = { path = "../enclave-service" }
 enclave-store = { path = "../enclave-store" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "process"] }

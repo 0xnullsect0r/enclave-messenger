@@ -126,6 +126,7 @@ async fn two_remote_witnesses_meet_threshold_two() {
         witnesses: Vec::new(),
         relays: Vec::new(),
         push: Vec::new(),
+        credgates: Vec::new(),
     };
     let (u1, w1) = start_witness(&dir, "witness-one", &list, Arc::clone(&tls_cfg)).await;
     let (u2, w2) = start_witness(&dir, "witness-two", &list, Arc::clone(&tls_cfg)).await;

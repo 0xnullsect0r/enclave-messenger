@@ -1992,6 +1992,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "enclave-dev-proxy"
+version = "0.1.0"
+dependencies = [
+ "nym-compact-ecash",
+ "nym-credential-proxy-requests",
+ "nym-credentials-interface",
+ "nym-ecash-time",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "enclave-ingress"
 version = "0.1.0"
 dependencies = [
@@ -2033,6 +2045,7 @@ dependencies = [
  "nym-client-core-gateways-storage",
  "nym-compact-ecash",
  "nym-credential-proxy-requests",
+ "nym-credential-storage",
  "nym-credentials",
  "nym-credentials-interface",
  "nym-crypto",

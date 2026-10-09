@@ -34,7 +34,7 @@ pub use client::{
     ConvPrefs, Hit, Location, MAX_PINNED_CONVERSATIONS, MAX_PINS, MeetMatch, Place, RecoveryAlert,
     words_from_shares,
 };
-pub use client::{ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS};
+pub use client::{ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS, TicketWallet};
 pub use enclave_kt::KtPolicy;
 
 use enclave_rpc::api::Status;
@@ -89,6 +89,10 @@ pub enum CoreError {
     /// Not allowed in Maximum privacy (push, `docs/10-push.md`).
     #[error("not available in Maximum privacy")]
     MaximumPrivacy,
+    /// zk-nym tickets for the mixnet couldn't be bought
+    /// (`docs/09-transport.md` §7).
+    #[error("mixnet tickets: {0}")]
+    Tickets(String),
 }
 
 /// Why a username operation failed, in terms the UI can explain.

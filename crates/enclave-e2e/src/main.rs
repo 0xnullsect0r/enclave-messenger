@@ -41,6 +41,14 @@
 //! Profiles are kept in `--state` between the runs. Any failure exits
 //! non-zero with what went wrong.
 //!
+//! When the list names a credential gate (`--nymd` only), nymd starts
+//! waiting for zk-nym tickets, as netd starts it on a device: before any
+//! client connects, the run buys a ticketbook through the gate (Equi-X
+//! work, Privacy Pass tokens blinded to the listed key, the book from the
+//! gate's proxy, all through nymd's Tor) and connects the mixnet client
+//! with it. The wallet is kept in `--state`, so later runs connect with what
+//! is left of the book instead of buying another.
+//!
 //! `shape`, after those two, is the traffic-shape check
 //! (`ci/federation/pcap-check.py`, `docs/09-transport.md` §6.7): Ada's
 //! client runs shaped in the Foreground (or Maximum) profile, as the vault
@@ -55,7 +63,7 @@
 //! gateway in both. Ben and Cyrus, idle meanwhile, then check every message
 //! arrived.
 
-use enclave_core::{Client, ContactCard, Event, Options};
+use enclave_core::{Client, ContactCard, Event, Options, TicketWallet};
 use enclave_crypto::pwhash::PwParams;
 use enclave_federation::{FoundationPublic, ServerList};
 use enclave_net::transport::{NymTransport, Route, TcpTransport, Transport, parse_route};
@@ -129,10 +137,118 @@ fn main() -> ExitCode {
     }
 }
 
-/// The mixnet client, driven over its stdin and stdout.
+type Pipe = (tokio::process::ChildStdout, tokio::process::ChildStdin);
+
+/// A mixnet client waiting for its tickets (nymd `--await-tickets`), as
+/// netd holds one: fetches and purchases go through it, and connecting
+/// hands over the books.
+struct Waiting {
+    starting: tokio::sync::Mutex<
+        Option<
+            enclave_nym::pipe::Starting<tokio::process::ChildStdout, tokio::process::ChildStdin>,
+        >,
+    >,
+    driver: std::sync::Mutex<Option<enclave_nym::pipe::PipeDriver>>,
+}
+
+#[async_trait::async_trait]
+impl Transport for Waiting {
+    async fn exchange(&self, _: &[u8; 16], _: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+        Err(enclave_net::NetError::Unavailable("waiting for tickets"))
+    }
+    async fn server_key(&self, _: &[u8; 16]) -> enclave_net::Result<enclave_rpc::ServerKey> {
+        Err(enclave_net::NetError::Unavailable("waiting for tickets"))
+    }
+    async fn fetch(
+        &self,
+        method: &str,
+        url: &str,
+        body: Vec<u8>,
+    ) -> enclave_net::Result<(u16, Vec<u8>)> {
+        let mut s = self.starting.lock().await;
+        let s = s
+            .as_mut()
+            .ok_or(enclave_net::NetError::Unavailable("connected"))?;
+        s.fetch(method, url, &body)
+            .await
+            .map_err(|x| enclave_net::NetError::Unreachable(x.to_string()))
+    }
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> enclave_net::Result<Vec<u8>> {
+        let mut s = self.starting.lock().await;
+        let s = s
+            .as_mut()
+            .ok_or(enclave_net::NetError::Unavailable("connected"))?;
+        s.buy(gate, token)
+            .await
+            .map_err(|x| enclave_net::NetError::Unreachable(x.to_string()))
+    }
+    async fn connect_mixnet(&self, tickets: Vec<Vec<u8>>) -> enclave_net::Result<()> {
+        let s = self
+            .starting
+            .lock()
+            .await
+            .take()
+            .ok_or(enclave_net::NetError::Unavailable("connected"))?;
+        let d = match tokio::time::timeout(PATIENCE, s.connect(&tickets)).await {
+            Ok(Ok(d)) => d,
+            Ok(Err(x)) => return Err(enclave_net::NetError::Unreachable(x.to_string())),
+            Err(_) => return Err(enclave_net::NetError::Unavailable("nymd didn't connect")),
+        };
+        if let Ok(mut x) = self.driver.lock() {
+            *x = Some(d);
+        }
+        Ok(())
+    }
+}
+
+/// Buy what the wallet in `state` lacks from `gate` through the waiting
+/// nymd, then connect it with the books.
+async fn connect_with_tickets(
+    pipe: Pipe,
+    gate: &enclave_federation::CredGateEntry,
+    state: &Path,
+) -> R<enclave_nym::pipe::PipeDriver> {
+    let file = state.join("tickets.bin");
+    let mut wallet = std::fs::read(&file)
+        .ok()
+        .and_then(|b| TicketWallet::decode_from(&b))
+        .unwrap_or_default();
+    let now = unix_ms()? / 1000;
+    let before = wallet.tickets_left(now);
+    let waiting = Waiting {
+        starting: tokio::sync::Mutex::new(Some(enclave_nym::pipe::Starting::new(pipe.0, pipe.1))),
+        driver: std::sync::Mutex::new(None),
+    };
+    let mut rng = enclave_crypto::rng::HedgedRng::new().map_err(e)?;
+    wallet
+        .start(&waiting, Some(gate), now, &mut rng)
+        .await
+        .map_err(|x| format!("tickets from {}: {x}", gate.url))?;
+    std::fs::write(&file, wallet.encode()).map_err(e)?;
+    let after = wallet.tickets_left(now);
+    if after == 0 {
+        return Err("no tickets after buying".into());
+    }
+    eprintln!(
+        "enclave-e2e: {after} zk-nym tickets in hand ({} bought through {})",
+        after.saturating_sub(before),
+        gate.url
+    );
+    waiting
+        .driver
+        .lock()
+        .ok()
+        .and_then(|mut d| d.take())
+        .ok_or_else(|| "nymd didn't connect".to_string())
+}
+
+/// The mixnet client, driven over its stdin and stdout; with `gate`, it
+/// waits for tickets bought there first.
 async fn start_nymd(
     bin: &str,
     tor: Option<&enclave_tord::launch::Running>,
+    gate: Option<&enclave_federation::CredGateEntry>,
+    state: &Path,
 ) -> R<(enclave_nym::pipe::PipeDriver, tokio::process::Child)> {
     let mut cmd = tokio::process::Command::new(bin);
     if let Some(t) = tor {
@@ -140,6 +256,9 @@ async fn start_nymd(
         for v in enclave_tord::launch::Running::NYMD_ENV_REMOVE {
             cmd.env_remove(v);
         }
+    }
+    if gate.is_some() {
+        cmd.arg("--await-tickets");
     }
     let mut child = cmd
         .arg("--env")
@@ -151,6 +270,12 @@ async fn start_nymd(
     let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
         return Err("no pipes to enclave-nymd".into());
     };
+    if let Some(g) = gate {
+        return Ok((
+            connect_with_tickets((stdout, stdin), g, state).await?,
+            child,
+        ));
+    }
     // Connecting to the mixnet can take a while.
     let driver = tokio::time::timeout(PATIENCE, enclave_nym::pipe::PipeDriver::new(stdout, stdin))
         .await
@@ -229,7 +354,8 @@ async fn world(args: &[String]) -> R<World> {
     let (transport, nymd): (Arc<dyn Transport>, _) = if nym.is_empty() {
         (Arc::new(TcpTransport::new(tcp)), None)
     } else {
-        let (driver, child) = start_nymd(&need("--nymd")?, tord.as_ref()).await?;
+        let gate = parsed.credgates.first();
+        let (driver, child) = start_nymd(&need("--nymd")?, tord.as_ref(), gate, &state).await?;
         eprintln!("enclave-e2e: on the mixnet as {}", {
             use enclave_nym::MixnetDriver;
             driver.address()

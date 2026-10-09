@@ -8,8 +8,7 @@
 # `server` holds every service an operator's stack runs except the Nym
 # sidecar: enclave-server, enclave-witness, enclave-front, enclave-relay,
 # enclave-push-relay, enclave-admin and enclave-credgate (the foundation's
-# credential gate, compose profile `foundation`; built without its
-# dev-tickets feature). The compose file picks the binary
+# credential gate, compose profile `foundation`). The compose file picks the binary
 # per service. The runtime is distroless (no shell, no package manager) and
 # runs as the unprivileged `nonroot` user.
 #

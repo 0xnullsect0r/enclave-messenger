@@ -289,15 +289,15 @@ Other crates:
 
 #### N3: credentials
 
-- New `crates/enclave-credgate` (Equi-X → Privacy Pass → ticketbook via `nym-credential-proxy`; quotas, no logs; issuer key rotated monthly, published in the server list). Done for the gate (`09` §7): `enclave-tokens::privpass`, `enclave-credgate`, the front's proxy, compose profile `foundation`, image binary. Server-list publication of the issuer key still to do.
-- Client: a sealed ticketbook wallet in the vault, auto-refill, `netd FetchCredential` over Tor, `ImportTickets`.
+- New `crates/enclave-credgate` (Equi-X → Privacy Pass → ticketbook via `nym-credential-proxy`; quotas, no logs; issuer key rotated monthly, published in the server list). Done (`09` §7): `enclave-tokens::privpass`, `enclave-credgate`, the front's proxy, compose profile `foundation`, image binary, and the issuer keys in the server list (`CredGateEntry`, list format 2, `enclave-admin` `[[credgate]]`, `enclave-credgate show-key --epochs N`).
+- Client: a sealed ticketbook wallet in the vault, auto-refill, `netd FetchCredential` over Tor, `ImportTickets`. Done (`09` §7): `enclave_core::TicketWallet` (sealed in the profile, never backed up; refill below 10 tickets from kept tokens or new Equi-X work; spending followed from nymd's counter), netd/nymd fetch, buy and connect (pipe frames 6–10, IPC tags 7–10), books bought while connected imported into the running client, the vault starting netd with `--await-tickets` and buying a new device's first book before it has a profile. Localnet CI buys the e2e's book through stack a's gate from `enclave-dev-proxy`. Spending against checking gateways runs in the sandbox nightly (N4, G7).
 - Ingress: mnemonic-funded auto top-up with a low-balance alert.
 - Compose: a `foundation` profile.
 - **Privacy Pass is also used for blob quotas (`BLOB_ALLOC`) and relay tickets** (P4, C2).
 
 **Exit:**
 - On the sandbox, install → first message needs no manual step.
-- A cost model is recorded, and ≤$1/user/month is checked.
+- A cost model is recorded, and ≤$1/user/month is checked. Recorded (`math/cover-traffic.md` §11): expiry, not traffic, decides, so a typical device buys 5 books a month and the target holds while a book costs the proxy ≤ $0.20; the nightly checks it at the day's price (G7).
 
 #### N4: fallback, measurement, gate report
 

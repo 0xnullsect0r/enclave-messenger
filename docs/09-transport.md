@@ -245,7 +245,7 @@ Tests (`crates/enclave-net/tests/shaped.rs`, paused tokio clock): every tick is 
 
 Residuals: the sequence of real requests in a bulk window is visible as a burst (the app discloses that); the development TCP transport is not packet-paced (only the Nym client paces, §6.3).
 
-## 7. Nym access, fallback, censorship (not yet implemented)
+## 7. Nym access, fallback, censorship
 
 - zk-nym credentials through a credential proxy gated by Equi-X plus Privacy Pass.
   **As implemented, the gate side** (`crates/enclave-credgate`, RFC 0001):
@@ -254,7 +254,16 @@ Residuals: the sequence of real requests in a bulk window is visible as a burst 
   - **What the gate sees.** The request is the device's own withdrawal request, so its ecash keys never leave it, and the answer is the wallet shares it aggregates itself. Reached over Tor, the gate learns neither the device's address nor which tokens came from which proof of work, and it logs nothing about requests.
   - **Where it runs.** The front proxies `/credgate/v1/*` to it when `credgate` is set. Compose runs it in the foundation's stack (profile `foundation`).
   - **Tests.** `work_buys_tokens_and_a_token_buys_one_ticketbook`, `bad_work_and_too_many_tokens_are_refused`, `a_device_gets_a_ticketbook_over_http`.
-  - **Not implemented yet:** the device side (fetching through tord, the vault's wallet, importing into nymd), the issuer key in the server list, and the ingress's own top-up.
+  - **The issuer key in the server list.** The list names each gate (`CredGateEntry`: its `https://` origin, the issuer name its token challenges carry, and its key for each 30-day epoch the list covers, from `enclave-credgate show-key --epochs N`). A device blinds its token requests to the listed key and checks the DLEQ proofs against it, so a gate can't give one device a key of its own to recognise its tokens at redemption.
+  **As implemented, the device side** (`enclave_core::TicketWallet`, `nym/enclave-nym-sdk/src/credentials.rs`):
+  - **Waiting for tickets.** netd starts nymd with `--await-tickets` whenever a route is Nym. Before connecting, nymd answers only fetches (pipe frame 8) and purchases (frame 9), both over Tor through tord (`ALL_PROXY`), with the Enclave TLS profile.
+  - **Buying.** When fewer than 10 tickets are left (`REFILL_BELOW`; a ticket is 200 MB of mixnet traffic), the wallet takes a token it already has, or does the gate's work (at most effort 20,000, `MAX_EFFORT`) for 4 more (`TOKENS_PER_PROOF`), and spends one on a book: nymd makes the ecash key pair and withdrawal request, sends them with the token, unblinds and aggregates the signers' shares, and returns the book with its spent count (`Held`).
+  - **Connecting.** The vault gives nymd every book with tickets left (`Connect`, frame 7), in order. nymd imports what is left of each into its client's ticket store, and keeps the store, so a book bought later goes into the running client at once (and into the next one after a gateway switch).
+  - **Following what is spent.** Every 5 minutes the vault reads nymd's spent-ticket counter (frame 10) and marks the tickets spent in the wallet, in the order the client spends them. The wallet is sealed in the profile and never backed up. A book is dropped a day before it expires (books last 7 days), and tokens once their key is two epochs old.
+  - **A new device.** Setting up, restoring or linking needs the mixnet before there is a profile, so the vault buys the first book into a wallet it holds, and hands it to the profile once one exists (`Client::adopt_tickets`).
+  - **Spending.** On Nym's networks the client runs in credentials mode; a local mixnet's gateways don't check tickets, so there it only imports them.
+  - **Tests.** `tickets_from_the_listed_gate` (core: the listed key, a book, spending followed, the next book from a kept token, a restart, a wrong key refused), `wallet_round_trips_and_tracks_spending`, `shares_from_signers_become_a_ticketbook`, `tickets_before_connecting` (pipe), `the_mixnet_client_waits_for_its_tickets` (netd). CI `federation-e2e-localnet` buys the e2e's book through stack a's gate, front and Tor, from `enclave-dev-proxy` (a stand-in for `nym-credential-proxy` with signers of its own).
+  - **Not implemented yet:** the ingress's own top-up (an operator's mnemonic), and spending against the sandbox's gateways (`nym-live.yml`, External Gate G7).
 - M4 go/no-go (`roadmap.md`): nym-sdk ≤150 MB RAM on Android and iOS; cold connect ≤5 s; bulk ≥200 KB/s of nym-sdk raw throughput (the Bulk profile itself is capped at 40 packets/s, at most ≈82 KB/s of payload; `00-overview.md` §9, I-12); the credential path works; cost ≤ $1 per user per month; the Tor → gateway path works. The spike report is `spikes/m4-network.md`.
 - Fallback transport: Tor onion services (`TorTransport`) with the same scheduler and objects, only with user consent and never in Maximum mode.
 - Censorship: obfs4 bridges in process; Snowflake and WebTunnel as declared exceptions, only in censorship mode.

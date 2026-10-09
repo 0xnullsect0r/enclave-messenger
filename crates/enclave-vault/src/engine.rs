@@ -3,7 +3,7 @@
 //! UI resets ([`Out`]); nothing secret crosses to the UI.
 
 use enclave_core::{
-    Client, ContactCard, ContactState, CoreError, Event, LinkError, Options, Place,
+    Client, ContactCard, ContactState, CoreError, Event, LinkError, Options, Place, TicketWallet,
 };
 use enclave_crypto::pwhash::PwParams;
 use enclave_ipc::{Cmd, Device, Effect, Msg, Out, Pick, Row, Snapshot, tint_for};
@@ -20,6 +20,10 @@ use tokio::sync::mpsc;
 
 /// Foreground tick (docs/09-transport.md §9.4).
 const TICK: Duration = Duration::from_secs(3);
+/// Sync rounds between looks at the mixnet tickets (about 5 minutes).
+const TICKET_UPKEEP_ROUNDS: u64 = 100;
+/// After a failed start of the mixnet client, wait this long to try again.
+const MIXNET_RETRY: u64 = 60;
 
 /// Where the account lives.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -280,6 +284,13 @@ struct Engine {
     renamed: HashMap<String, String>,
     /// The contact whose recovery share is on screen (only while shown).
     reveal_share: Option<[u8; 64]>,
+    /// The mixnet client has been given its tickets (or told there are
+    /// none to wait for).
+    mixnet_up: bool,
+    /// When to try starting it again after a failure.
+    mixnet_retry_at: u64,
+    /// Tickets bought before there was a profile to keep them in.
+    prewallet: Option<TicketWallet>,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -701,6 +712,9 @@ pub async fn run_with(
         renamed: HashMap::new(),
         clips: HashMap::new(),
         reveal_share: None,
+        mixnet_up: false,
+        mixnet_retry_at: 0,
+        prewallet: None,
         out,
     };
     // Reopen an existing profile.
@@ -719,6 +733,7 @@ pub async fn run_with(
         e.apply_privacy();
         e.push();
     }
+    e.ensure_mixnet().await;
     let mut tick = tokio::time::interval(TICK);
     loop {
         tokio::select! {
@@ -733,6 +748,7 @@ pub async fn run_with(
                 }
             }
             _ = tick.tick() => {
+                e.ensure_mixnet().await;
                 if e.client.is_some() {
                     e.sync().await;
                     e.push();
@@ -970,6 +986,10 @@ impl Engine {
     }
 
     async fn handle(&mut self, cmd: Cmd) {
+        // Setting up, restoring and linking need the mixnet.
+        if matches!(cmd, Cmd::Create(..) | Cmd::Restore(..)) || self.client.is_some() {
+            self.ensure_mixnet().await;
+        }
         // Transfers the spec counts as bulk (account setup, files, history,
         // joins, restore): disclosed bursts, except in Maximum.
         let bulk = matches!(
@@ -2317,6 +2337,58 @@ impl Engine {
         }
     }
 
+    /// Give the mixnet client its zk-nym tickets (`docs/09-transport.md`
+    /// §7): netd starts it waiting for them. With a profile open, from the
+    /// profile's wallet (buying a book first if it has none worth using);
+    /// before there is one (a new device setting up, restoring or linking),
+    /// from a wallet held here and handed to the profile once it exists. A
+    /// locked profile waits for its passphrase. Without a credential gate
+    /// in the server list it connects without tickets.
+    async fn ensure_mixnet(&mut self) {
+        if !matches!(self.mode, Mode::Server { .. }) {
+            return;
+        }
+        if let (Some(c), Some(w)) = (self.client.as_mut(), self.prewallet.take())
+            && let Err(e) = c.adopt_tickets(w)
+        {
+            eprintln!("enclave-vault: mixnet tickets: {e}");
+        }
+        let now = self.transport.now();
+        if self.mixnet_up || self.locked || now < self.mixnet_retry_at {
+            return;
+        }
+        let result = match self.client.as_mut() {
+            Some(c) => c.start_mixnet().await,
+            None => {
+                let gate = self
+                    .foundation
+                    .as_ref()
+                    .zip(self.list.as_ref())
+                    .and_then(|(k, b)| enclave_federation::ServerList::verify(b, k, now, 0).ok())
+                    .and_then(|l| l.credgates.first().cloned());
+                let mut w = self.prewallet.take().unwrap_or_default();
+                let r = match enclave_crypto::rng::HedgedRng::new() {
+                    Ok(mut rng) => {
+                        w.start(self.transport.as_ref(), gate.as_ref(), now, &mut rng)
+                            .await
+                    }
+                    Err(_) => Err(CoreError::Crypto),
+                };
+                self.prewallet = Some(w);
+                r
+            }
+        };
+        match result {
+            Ok(()) => self.mixnet_up = true,
+            Err(e) => {
+                eprintln!("enclave-vault: mixnet: {e}");
+                self.status =
+                    "Couldn't connect to the private network yet. Trying again in a minute.".into();
+                self.mixnet_retry_at = now + MIXNET_RETRY;
+            }
+        }
+    }
+
     /// Start or end a bulk transfer (files, account setup, previews): the
     /// shaper may then skip its clock, except in Maximum.
     fn bulk(&self, on: bool) {
@@ -2344,6 +2416,15 @@ impl Engine {
         let shaped = self.shaper.is_some();
         let round = self.round;
         self.round = self.round.wrapping_add(1);
+        // Now and then: what the mixnet client spent, and the next book
+        // before the last runs out.
+        if self.mixnet_up
+            && round % TICKET_UPKEEP_ROUNDS == TICKET_UPKEEP_ROUNDS - 1
+            && let Some(c) = self.client.as_mut()
+            && let Err(e) = c.upkeep_tickets().await
+        {
+            eprintln!("enclave-vault: mixnet tickets: {e}");
+        }
         if let Some(c) = self.client.as_mut() {
             let result = if shaped {
                 c.sync_round_every(round, period).await

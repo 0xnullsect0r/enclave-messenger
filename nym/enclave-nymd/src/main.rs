@@ -51,9 +51,14 @@ fn main() -> ExitCode {
         .iter()
         .map(std::path::PathBuf::from)
         .chain(
-            ["SSL_CERT_FILE", "SSL_CERT_DIR", "ENCLAVE_NYM_TOPOLOGY"]
-                .iter()
-                .filter_map(|v| std::env::var_os(v).map(std::path::PathBuf::from)),
+            [
+                "SSL_CERT_FILE",
+                "SSL_CERT_DIR",
+                "ENCLAVE_NYM_TOPOLOGY",
+                enclave_nym_sdk::credentials::TEST_CA_VAR,
+            ]
+            .iter()
+            .filter_map(|v| std::env::var_os(v).map(std::path::PathBuf::from)),
         )
         .filter(|p| p.exists())
         .collect();
@@ -85,8 +90,9 @@ fn main() -> ExitCode {
     rt.block_on(async move {
         let mut stdin = tokio::io::stdin();
         let mut stdout = tokio::io::stdout();
+        let network = Network::from_env(args.iter().any(|a| a == "--env"));
         let tickets = if args.iter().any(|a| a == "--await-tickets") {
-            let shop = match Fetcher::new() {
+            let shop = match Fetcher::for_network(&network) {
                 Ok(f) => Shop(f),
                 Err(e) => {
                     eprintln!("enclave-nymd: {e}");
@@ -103,7 +109,7 @@ fn main() -> ExitCode {
         let driver = match NymDriver::connect(Options {
             role: Role::Client,
             gateway,
-            network: Network::from_env(args.iter().any(|a| a == "--env")),
+            network,
             tickets,
         })
         .await

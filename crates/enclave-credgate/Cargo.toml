@@ -13,8 +13,8 @@ publish.workspace = true
 workspace = true
 
 [features]
-# A ticket source that answers without a Nym credential proxy: tests and
-# the local mixnet only. Never in a release build.
+# A ticket source that answers without a Nym credential proxy, for tests
+# of the token flow (its answers aren't ticketbooks). Never in a build.
 dev-tickets = []
 
 [[bin]]

@@ -226,6 +226,37 @@ If any measured data rate falls outside ±20% of §3 to §5, the tick length is 
 
 With TCP/IP headers (≈3.5%) and Tor's cells (≈6.5%, §2.2) on top, Foreground comes to ≈80 MB/h: above PLAN's 60–70 MB/h, inside its ±20% band (≤ 84 MB/h), so the tick stays at 3 s (§9). The extra comes from `p`: a poll carries the 12 reply blocks its 16 KB answer needs (open question 1). Down is smaller than up because the gateway delivers a packet's payload, not the whole Sphinx packet. The same tick, pacing and loop cover make Maximum's figures equal Foreground's; Background's (one tick per 120 s on average) scale by 3/120. CI repeats this on every run with the real client (`09-transport.md` §6.7): Ada's shaped Foreground client, through `enclave-tord` and `enclave-nymd`, in a group, syncing on the vault's clock, 90 s idle and 90 s busy. First green run (37847951558, commit eca9fc0): **16.23 packets up a tick idle (−0.4% of the model) and 16.57 busy (+1.6%)**, 150 ms apart, busy within 2.1% of idle up and 9.3% down, the largest 15 s window 87 packets against a median of 81; **72.7 MB/h idle and 76.0 MB/h busy** at the WebSocket level. The run before it (81b23b5) measured 29.5 packets a tick and 173 MB/h, because group reads then skipped the clock in a bulk window; reading them in poll slots fixed it (`09-transport.md` §6.7).
 
+## 11. What the mixnet costs a user (zk-nym tickets)
+
+Nym's gateways take a device's traffic against zk-nym tickets (`09-transport.md` §7). The units, from nym-network-defaults 1.21.5: a mixnet-entry ticket is 200 MB of traffic through one gateway (`MIXNET_ENTRY_TICKET_SIZE`), a ticketbook holds 50 tickets (`TICKETBOOK_SIZE`, 10 GB) and is valid for 7 days (`TICKETBOOK_VALIDITY_DAYS`). The wallet lets a book go after 6 days (`BOOK_LIFETIME`).
+
+A device spends tickets three ways:
+
+```
+by traffic      bytes / 200 MB
+by connection   one ticket each time it connects to a gateway: every start of the
+                mixnet client (a fresh identity) and every gateway switch (RT-02)
+by expiry       whatever is left in a book after 6 days is lost
+```
+
+A day of 4 h in Foreground and 20 h in Background, with the measured Foreground rate (§10, ≈80 MB/h with Tor) and Background at 3/120 of it (≈2 MB/h):
+
+```
+traffic per day   = 4 × 80 + 20 × 2  = 360 MB  → 1.8 tickets
+starts per day    ≈ 3 (app launches after the OS stopped it; a phone, more)
+tickets per week  ≈ 7 × (1.8 + 3) ≈ 34   < 50 in a book
+books per month   = 30 / 6 = 5          (expiry decides, not traffic)
+```
+
+So a typical device buys **one book every 6 days, 5 a month**, and pays for a book's worth of capacity it doesn't use. A heavy user (all day in Foreground: 24 × 80 MB = 1.9 GB, ≈10 tickets a day) needs about 1.4 books a week, ≈7 a month. With `P` the price the foundation's credential proxy pays for one book:
+
+```
+cost per user per month ≈ 5 × P      (typical)    ≈ 7 × P   (all-day Foreground)
+target ≤ $1                       →   P ≤ $0.20             P ≤ $0.14
+```
+
+The work a device does for its tokens (Equi-X, 4 tokens a proof) and the gate's own costs are small next to that. `P` isn't fixed by the protocol: it is the deposit the proxy makes per ticketbook on the Nyx chain, priced in NYM, so it moves with the token. The nightly sandbox job (`nym-live.yml`, N4) records the deposit nym-api asks and checks `5 × P ≤ $1` at the day's price; until a funded proxy exists that check is External Gate G7. Ways to lower the cost if it fails: fewer starts (keep the mixnet client running in Background, which costs tickets by traffic only), books that last longer if Nym adds a validity option, or a smaller book type.
+
 ## Open questions
 
 1. ~~The Nym SURB size is not known.~~ Answered (§10): a poll with the 12 reply blocks its answer needs is 5 packets, not PLAN's 1 to 2. Foreground still lands inside the ±20% band.

@@ -41,7 +41,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use enclave_crypto::rng::HedgedRng;
 use enclave_tokens::privpass::{
-    self, IssuerKey, IssuerPublic, REQUEST_LEN, RESPONSE_LEN, TOKEN_LEN, Token, TokenChallenge,
+    self, IssuerKey, IssuerPublic, REQUEST_LEN, RESPONSE_LEN, TOKEN_LEN, Token,
 };
 use enclave_tokens::{PowProof, verify};
 use redb::{ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
@@ -51,16 +51,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
-/// Length of an issuer epoch.
-pub const EPOCH_SECS: u64 = 30 * 86_400;
-/// Most tokens one proof of work buys.
-pub const MAX_TOKENS_PER_PROOF: usize = 32;
 /// Largest ticketbook request passed on.
 pub const MAX_TICKET_REQUEST: usize = 64 * 1024;
-/// The `origin_info` of the token challenge a ticketbook redeems.
-pub const TICKETBOOK_ORIGIN: &str = "ticketbook";
 /// Challenges kept at once (oldest dropped first).
 const MAX_CHALLENGES: usize = 100_000;
+
+pub use enclave_tokens::gate::{
+    EPOCH_SECS, MAX_TOKENS_PER_PROOF, TICKETBOOK_ORIGIN, epoch_of, pow_context,
+    ticketbook_challenge, tokens_finish, tokens_request,
+};
 
 const SPENT: TableDefinition<'static, &[u8], u32> = TableDefinition::new("spent");
 
@@ -175,8 +174,8 @@ impl CredentialProxy {
     }
 }
 
-/// A ticket source for tests and the local mixnet, whose gateways don't
-/// check tickets: the answer is `enclave-dev-ticketbook ‖ SHA-256(request)`.
+/// A ticket source for tests of the token flow: the answer is
+/// `enclave-dev-ticketbook ‖ SHA-256(request)`, not a ticketbook.
 #[cfg(any(test, feature = "dev-tickets"))]
 pub struct DevTickets;
 
@@ -217,25 +216,6 @@ impl Default for Config {
             challenge_ttl: Duration::from_secs(600),
         }
     }
-}
-
-/// The token challenge every ticketbook token answers.
-pub fn ticketbook_challenge(issuer_name: &str) -> TokenChallenge {
-    TokenChallenge {
-        issuer_name: issuer_name.to_string(),
-        redemption_context: Vec::new(),
-        origin_info: TICKETBOOK_ORIGIN.into(),
-    }
-}
-
-/// The Equi-X context of a challenge.
-pub fn pow_context(nonce: &[u8; 32]) -> Vec<u8> {
-    [b"credgate".as_slice(), nonce].concat()
-}
-
-/// The epoch of Unix time `now`.
-pub fn epoch_of(now: u64) -> u32 {
-    (now / EPOCH_SECS) as u32
 }
 
 /// The gate.
@@ -492,48 +472,6 @@ async fn ticketbook(State(g): State<Arc<Gate>>, body: Bytes) -> Response {
         Ok(b) => octets(b),
         Err(s) => s.into_response(),
     }
-}
-
-/// The client side, for a device (through `FetchCredential`) and tests:
-/// build the tokens request for `challenge` (from `/challenge`) and `n`
-/// tokens, solving the puzzle.
-pub fn tokens_request(
-    challenge: &[u8],
-    public: IssuerPublic,
-    issuer_name: &str,
-    n: usize,
-    rng: &mut HedgedRng,
-) -> Option<(Vec<u8>, Vec<privpass::Pending>)> {
-    if challenge.len() != 36 || n == 0 || n > MAX_TOKENS_PER_PROOF {
-        return None;
-    }
-    let mut nonce = [0u8; 32];
-    nonce.copy_from_slice(&challenge[..32]);
-    let effort = u32::from_be_bytes(challenge[32..36].try_into().ok()?);
-    let proof = enclave_tokens::solve(&pow_context(&nonce), effort, rng).ok()?;
-    let digest = ticketbook_challenge(issuer_name).digest().ok()?;
-    let mut body = nonce.to_vec();
-    body.extend_from_slice(&proof.0);
-    body.push(n as u8);
-    let mut pending = Vec::with_capacity(n);
-    for _ in 0..n {
-        let (req, p) = privpass::Pending::begin(public, digest, rng).ok()?;
-        body.extend_from_slice(&req);
-        pending.push(p);
-    }
-    Some((body, pending))
-}
-
-/// Finish the tokens from a `/tokens` answer.
-pub fn tokens_finish(pending: Vec<privpass::Pending>, answer: &[u8]) -> Option<Vec<Token>> {
-    if answer.len() != pending.len() * RESPONSE_LEN {
-        return None;
-    }
-    pending
-        .into_iter()
-        .zip(answer.chunks(RESPONSE_LEN))
-        .map(|(p, r)| p.finish(r).ok())
-        .collect()
 }
 
 #[cfg(test)]

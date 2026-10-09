@@ -2451,10 +2451,12 @@ name = "enclave-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "enclave-credgate",
  "enclave-crypto",
  "enclave-federation",
  "enclave-kt",
  "enclave-net",
+ "enclave-nym",
  "enclave-proto",
  "enclave-push-relay",
  "enclave-rpc",
@@ -2533,12 +2535,14 @@ dependencies = [
 name = "enclave-e2e"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "enclave-core",
  "enclave-crypto",
  "enclave-federation",
  "enclave-net",
  "enclave-nym",
  "enclave-push-relay",
+ "enclave-rpc",
  "enclave-service",
  "enclave-store",
  "enclave-tord",

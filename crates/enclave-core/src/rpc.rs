@@ -49,6 +49,12 @@ impl Rpc {
         self.transport.set_route(server, route);
     }
 
+    /// The transport, for what isn't a server request (the credential
+    /// gate, the mixnet client's tickets).
+    pub fn transport(&self) -> &Arc<dyn Transport> {
+        &self.transport
+    }
+
     /// Current time, from the transport (simulations move it).
     pub fn now(&self) -> u64 {
         self.transport.now()

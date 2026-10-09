@@ -233,7 +233,33 @@ fn server_lists_need_both_signatures_and_only_move_forward() {
             nym_address: "nym-address".into(),
             keys: vec![vec![0; 4 + 56 + 1568]],
         }],
+        credgates: vec![CredGateEntry {
+            url: "https://a.example".into(),
+            issuer_name: "a.example".into(),
+            keys: vec![(700, [2; 49]), (701, [3; 49])],
+        }],
     };
+    // A gate must be HTTPS and list its epochs in order.
+    for bad in [
+        CredGateEntry {
+            url: "http://a.example".into(),
+            ..list.credgates[0].clone()
+        },
+        CredGateEntry {
+            keys: vec![(701, [3; 49]), (700, [2; 49])],
+            ..list.credgates[0].clone()
+        },
+        CredGateEntry {
+            keys: Vec::new(),
+            ..list.credgates[0].clone()
+        },
+    ] {
+        let l = ServerList {
+            credgates: vec![bad],
+            ..list.clone()
+        };
+        assert_eq!(l.encode_unsigned(), Err(FedError::Malformed));
+    }
     let signed = list.sign(&foundation, &mut rng).unwrap();
     let got = ServerList::verify(&signed, &public, NOW, 6).unwrap();
     assert_eq!(got, list);
@@ -250,6 +276,8 @@ fn server_lists_need_both_signatures_and_only_move_forward() {
         "b.example"
     );
     assert_eq!(got.by_domain("A.EXAMPLE").unwrap().operator, "A");
+    assert_eq!(got.credgates[0].key(701), Some(&[3; 49]));
+    assert_eq!(got.credgates[0].key(702), None);
     // Weighted pick: draws 0 → a, 1..3 → b.
     assert_eq!(got.pick(0).unwrap().domain, "a.example");
     assert_eq!(got.pick(1).unwrap().domain, "b.example");
