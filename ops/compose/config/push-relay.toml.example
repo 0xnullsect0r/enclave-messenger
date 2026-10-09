@@ -5,3 +5,18 @@
 listen = "0.0.0.0:7445"
 keys_dir = "/var/lib/enclave/push-keys"
 public_dir = "/var/lib/enclave/public"
+
+# Delivery to Apple and Google needs the project's credentials, in
+# secrets/push/ (operator-kit/deployment.md, "Running the push relay").
+# Without these sections only UnifiedPush endpoints are delivered to.
+#
+# [apns]
+# team_id = "TEAMID1234"
+# key_id = "KEYID12345"
+# key_file = "/run/secrets/push/apns.p8"
+# topic = "io.github.enclavechat.enclave"
+# endpoint = "https://api.push.apple.com"
+#
+# [fcm]
+# service_account_file = "/run/secrets/push/fcm.json"
+# endpoint = "https://fcm.googleapis.com"

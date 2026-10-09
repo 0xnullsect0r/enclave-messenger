@@ -18,9 +18,10 @@
 //! stays for 7 days so tokens sealed just before a rotation still open; the
 //! next epoch's key is published ahead of time.
 //!
-//! Delivery: UnifiedPush (an HTTP POST to the device's endpoint) is here;
-//! APNs and FCM need the project's credentials and are not. Plain `http://`
-//! endpoints only for now (development distributors); TLS is future work.
+//! Delivery ([`deliver::Deliverer`]): APNs (HTTP/2, an ES256 provider
+//! token), FCM (HTTP v1, an OAuth token from the service account) and
+//! UnifiedPush (a content-free `POST` to the device's endpoint, over TLS).
+//! The project's APNs and FCM credentials are an External Gate (G6).
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
@@ -47,6 +48,7 @@ pub const EPOCH_DAYS: u32 = 30;
 /// Days into a new epoch that the previous epoch's key is still accepted.
 pub const OVERLAP_DAYS: u32 = 7;
 
+pub mod deliver;
 pub mod keys;
 
 /// Longest platform token (a UnifiedPush endpoint URL, an APNs or FCM
@@ -376,35 +378,5 @@ impl Relay {
         self.last.retain(|_, w| *w + 2 >= window);
         self.forwarded += 1;
         Some(d)
-    }
-}
-
-/// POST an empty-bodied wake to a UnifiedPush endpoint (`http://host[:port]/path`).
-pub async fn deliver_unified_push(endpoint: &str) -> std::io::Result<()> {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let rest = endpoint
-        .strip_prefix("http://")
-        .ok_or_else(|| std::io::Error::other("only http:// endpoints are supported yet"))?;
-    let (host, path) = rest
-        .split_once('/')
-        .map_or((rest, "/".to_string()), |(h, p)| (h, format!("/{p}")));
-    let addr = if host.contains(':') {
-        host.to_string()
-    } else {
-        format!("{host}:80")
-    };
-    let mut s = tokio::net::TcpStream::connect(&addr).await?;
-    // Content-free: the wake itself is the message.
-    let req = format!(
-        "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Length: 0\r\nTTL: 60\r\nUrgency: normal\r\nConnection: close\r\n\r\n"
-    );
-    s.write_all(req.as_bytes()).await?;
-    let mut status = [0u8; 12];
-    s.read_exact(&mut status).await?;
-    // "HTTP/1.1 2xx"
-    if status[9] == b'2' {
-        Ok(())
-    } else {
-        Err(std::io::Error::other("the endpoint refused the wake"))
     }
 }

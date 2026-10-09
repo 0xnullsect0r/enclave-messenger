@@ -1,9 +1,8 @@
-//! Sealed tokens, window shaping and UnifiedPush delivery.
+//! Sealed tokens, window shaping and key rotation (delivery: `deliver/tests.rs`).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use enclave_crypto::rng::HedgedRng;
 use enclave_push_relay::*;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[test]
 fn tokens_seal_open_and_look_unrelated() {
@@ -56,38 +55,6 @@ fn one_wake_per_token_per_window() {
     assert!(relay.wake(&b, t + WINDOW_SECS + 1).is_some(), "next window");
     assert_eq!((relay.forwarded, relay.shaped), (3, 1));
     assert!(relay.wake(b"garbage", t).is_none());
-}
-
-async fn endpoint(status: &'static str) -> (String, tokio::task::JoinHandle<String>) {
-    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = l.local_addr().unwrap();
-    let h = tokio::spawn(async move {
-        let (mut s, _) = l.accept().await.unwrap();
-        let mut buf = vec![0u8; 1024];
-        let n = s.read(&mut buf).await.unwrap();
-        s.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n").as_bytes())
-            .await
-            .unwrap();
-        String::from_utf8_lossy(&buf[..n]).into_owned()
-    });
-    (format!("http://{addr}/up/AbC123"), h)
-}
-
-#[tokio::test]
-async fn unified_push_delivery() {
-    let (url, req) = endpoint("201 Created").await;
-    deliver_unified_push(&url).await.unwrap();
-    let req = req.await.unwrap();
-    assert!(req.starts_with("POST /up/AbC123 HTTP/1.1\r\n"), "{req}");
-    assert!(req.contains("Content-Length: 0"), "content-free");
-
-    let (url, _) = endpoint("404 Not Found").await;
-    assert!(deliver_unified_push(&url).await.is_err());
-    assert!(
-        deliver_unified_push("https://push.example/x")
-            .await
-            .is_err()
-    );
 }
 
 #[test]

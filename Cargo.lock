@@ -2928,9 +2928,17 @@ version = "0.1.0"
 dependencies = [
  "enclave-crypto",
  "enclave-service",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rcgen 0.13.2",
+ "ring",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
+ "webpki-roots",
  "zeroize",
 ]
 

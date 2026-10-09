@@ -188,6 +188,13 @@ foundation's credential gate.
   also runs `push-ingress` (profile `push`), whose Nym address
   (`public/push-ingress.addr`) goes into the foundation's list with the
   keys.
+- **Call relay ticket keys** rotate daily.
+- **Identity keys** (server, witness, relay) don't rotate: they are what
+  the foundation's list names. Replacing one is leaving the list and
+  joining again with a new descriptor.
+- **TLS**: the front renews its certificate from Let's Encrypt when 30
+  days are left (`TLS_MODE=acme`), or re-reads your files hourly
+  (`TLS_MODE=files`).
 
 ## Backup route (onion service)
 
@@ -215,13 +222,37 @@ Nym address from the foundation's list, and in `config/server.toml`:
 [push]
 forward = "push-egress:7446"
 ```
-- **Call relay ticket keys** rotate daily.
-- **Identity keys** (server, witness, relay) don't rotate: they are what
-  the foundation's list names. Replacing one is leaving the list and
-  joining again with a new descriptor.
-- **TLS**: the front renews its certificate from Let's Encrypt when 30
-  days are left (`TLS_MODE=acme`), or re-reads your files hourly
-  (`TLS_MODE=files`).
+
+### Running the push relay
+
+Only the operator the foundation names runs `push-relay` and
+`push-ingress` (profile `push`). UnifiedPush endpoints need nothing
+more; APNs and FCM need the project's credentials (External Gate G6),
+kept in `secrets/push/` and named in `config/push-relay.toml`:
+
+```sh
+mkdir -p secrets/push
+cp AuthKey_KEYID.p8 secrets/push/apns.p8          # Apple: the .p8 provider key
+cp service-account.json secrets/push/fcm.json     # Google: the FCM service account
+chmod 0444 secrets/push/*
+```
+
+```toml
+[apns]
+team_id = "TEAMID1234"
+key_id = "KEYID12345"
+key_file = "/run/secrets/push/apns.p8"
+topic = "io.github.enclavechat.enclave"
+# endpoint = "https://api.sandbox.push.apple.com"   # development builds
+
+[fcm]
+service_account_file = "/run/secrets/push/fcm.json"
+```
+
+The relay logs the platforms it delivers to when it starts. It keeps no
+logs of wakes, only counts. APNs gets the generic alert "New message"
+with the 1,024-byte capsule for the notification extension; FCM and
+UnifiedPush get content-free wakes.
 
 ## Descriptor publishing
 

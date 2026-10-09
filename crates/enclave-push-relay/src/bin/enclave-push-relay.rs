@@ -13,11 +13,14 @@
 //! `run` rotates keys at 30-day epochs (the previous epoch's key is kept 7
 //! days) and writes the current and next public keys to
 //! `public_dir/push-relay-keys.bin` for the foundation's list.
+//!
+//! Delivery to APNs needs an `[apns]` section (team id, key id, the `.p8`
+//! key file, the app's bundle id) and to FCM an `[fcm]` section (the
+//! service-account JSON file); without them only UnifiedPush is delivered.
 
+use enclave_push_relay::deliver::{ApnsConfig, Deliverer, FcmConfig};
 use enclave_push_relay::keys::RelayKeys;
-use enclave_push_relay::{
-    Platform, Relay, RelaySecret, SEALED_LEN, WAKE_LEN, deliver_unified_push,
-};
+use enclave_push_relay::{Relay, RelaySecret, SEALED_LEN, WAKE_LEN};
 use enclave_service::config::{ConfigError, flag, hex};
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -32,6 +35,63 @@ use tokio::sync::Mutex;
 #[serde(deny_unknown_fields, default)]
 struct FileConfig {
     relay: RelaySection,
+    apns: Option<ApnsSection>,
+    fcm: Option<FcmSection>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApnsSection {
+    team_id: String,
+    key_id: String,
+    /// The `.p8` key.
+    key_file: PathBuf,
+    /// The app's bundle id.
+    topic: String,
+    /// `https://api.push.apple.com`, or the sandbox for development builds.
+    #[serde(default = "apns_endpoint")]
+    endpoint: String,
+}
+
+fn apns_endpoint() -> String {
+    "https://api.push.apple.com".into()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FcmSection {
+    /// The service account's JSON key file.
+    service_account_file: PathBuf,
+    #[serde(default = "fcm_endpoint")]
+    endpoint: String,
+}
+
+fn fcm_endpoint() -> String {
+    "https://fcm.googleapis.com".into()
+}
+
+fn deliverer(cfg: &FileConfig) -> Result<Deliverer, String> {
+    let read = |p: &Path| std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()));
+    let apns = match &cfg.apns {
+        Some(a) => Some(ApnsConfig {
+            team_id: a.team_id.clone(),
+            key_id: a.key_id.clone(),
+            key: read(&a.key_file)?,
+            topic: a.topic.clone(),
+            endpoint: a.endpoint.clone(),
+        }),
+        None => None,
+    };
+    let fcm = match &cfg.fcm {
+        Some(f) => {
+            let mut c = FcmConfig::from_service_account(&read(&f.service_account_file)?)
+                .map_err(|e| e.to_string())?;
+            c.endpoint = f.endpoint.clone();
+            Some(c)
+        }
+        None => None,
+    };
+    Deliverer::new(apns, fcm).map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -160,10 +220,12 @@ async fn run(args: &[String]) -> Result<(), String> {
     let mut keys = RelayKeys::load(&cfg.relay.keys_dir).map_err(|e| e.to_string())?;
     keys.advance(today()).map_err(|e| e.to_string())?;
     publish(&keys, &cfg.relay.public_dir)?;
+    let out = Arc::new(deliverer(&cfg)?);
     let relay = Arc::new(Mutex::new(Relay::new(keys.secrets())));
     eprintln!(
-        "enclave-push-relay (key epochs {:?}) listening on {}",
+        "enclave-push-relay (key epochs {:?}, delivering to {:?}) listening on {}",
         relay.lock().await.epochs(),
+        out.platforms(),
         cfg.relay.listen
     );
     // Once a minute: rotate at epoch boundaries, drop the old key when the
@@ -192,7 +254,7 @@ async fn run(args: &[String]) -> Result<(), String> {
         .await
         .map_err(|e| format!("can't listen on {}: {e}", cfg.relay.listen))?;
     tokio::select! {
-        r = serve(listener, relay) => r,
+        r = serve(listener, relay, out) => r,
         _ = shutdown_signal() => {
             eprintln!("enclave-push-relay: stopped");
             Ok(())
@@ -224,18 +286,24 @@ async fn dev(args: &[String]) -> Result<(), String> {
     let key = RelaySecret::generate(epoch, &mut rng).map_err(|e| e.to_string())?;
     println!("relay key: {}", hex(&key.public().encode()));
     let relay = Arc::new(Mutex::new(Relay::new(vec![key])));
+    let out = Arc::new(Deliverer::new(None, None).map_err(|e| e.to_string())?);
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .map_err(|e| format!("can't listen on {listen}: {e}"))?;
-    serve(listener, relay).await
+    serve(listener, relay, out).await
 }
 
-async fn serve(listener: tokio::net::TcpListener, relay: Arc<Mutex<Relay>>) -> Result<(), String> {
+async fn serve(
+    listener: tokio::net::TcpListener,
+    relay: Arc<Mutex<Relay>>,
+    out: Arc<Deliverer>,
+) -> Result<(), String> {
     loop {
         let Ok((mut sock, _)) = listener.accept().await else {
             continue;
         };
         let relay = Arc::clone(&relay);
+        let out = Arc::clone(&out);
         tokio::spawn(async move {
             loop {
                 let mut len = [0u8; 4];
@@ -251,11 +319,13 @@ async fn serve(listener: tokio::net::TcpListener, relay: Arc<Mutex<Relay>>) -> R
                     return;
                 }
                 let d = relay.lock().await.wake(&sealed, now());
-                if let Some(d) = d
-                    && d.platform == Platform::UnifiedPush
-                    && let Ok(url) = String::from_utf8(d.token)
-                {
-                    let _ = deliver_unified_push(&url).await;
+                if let Some(d) = d {
+                    // Each on its own, so a slow service holds up no other
+                    // wake. Failures are only counted (no logs).
+                    let out = Arc::clone(&out);
+                    tokio::spawn(async move {
+                        let _ = out.deliver(&d).await;
+                    });
                 }
             }
         });

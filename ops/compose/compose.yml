@@ -194,6 +194,8 @@ services:
     command: ["run", "--config", "/etc/enclave/push-relay.toml"]
     volumes:
       - ./config/push-relay.toml:/etc/enclave/push-relay.toml:ro
+      # APNs and FCM credentials (apns.p8, fcm.json), named in the config.
+      - ./secrets/push:/run/secrets/push:ro
       - push-keys:/var/lib/enclave/push-keys
       - public:/var/lib/enclave/public
     networks: [backend, egress]
