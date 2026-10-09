@@ -60,17 +60,16 @@ impl Transport for Gated {
     ) -> enclave_net::Result<(u16, Vec<u8>)> {
         assert_eq!(method, "POST");
         let mut rng = HedgedRng::new().unwrap();
-        let answer = match url {
+        Ok(match url {
             "https://gate.test/credgate/v1/challenge" => {
                 self.challenges.fetch_add(1, SeqCst);
-                Ok(self.gate.challenge(&mut rng).unwrap())
+                (200, self.gate.challenge(&mut rng).unwrap())
             }
-            "https://gate.test/credgate/v1/tokens" => self.gate.tokens(&body, &mut rng),
-            _ => panic!("{url}"),
-        };
-        Ok(match answer {
-            Ok(b) => (200, b),
-            Err(s) => (s.as_u16(), Vec::new()),
+            "https://gate.test/credgate/v1/tokens" => match self.gate.tokens(&body, &mut rng) {
+                Ok(b) => (200, b),
+                Err(s) => (s.as_u16(), Vec::new()),
+            },
+            _ => (404, Vec::new()),
         })
     }
     async fn buy_tickets(&self, gate: &str, token: &[u8]) -> enclave_net::Result<Vec<u8>> {
