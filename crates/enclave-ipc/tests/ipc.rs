@@ -132,6 +132,10 @@ fn snapshot() -> Snapshot {
         words_pending: true,
         moved: 2,
         route: 1,
+        tor_blocked: true,
+        bridges: "builtin".into(),
+        bridges_error: String::new(),
+        bridges_restart: true,
     }
 }
 
@@ -171,6 +175,7 @@ fn cmds() -> Vec<Cmd> {
         Cmd::ChangeWords,
         Cmd::BackupRoute(true),
         Cmd::BackupRoute(false),
+        Cmd::SetBridges("obfs4 192.0.2.1:443 AA cert=x iat-mode=0".into()),
         Cmd::Select(String::new()),
         Cmd::Send("id".into(), "text ✓".into()),
         Cmd::Accept("a".into()),
@@ -350,6 +355,7 @@ fn net_messages_round_trip_and_refuse_garbage() {
         NetRequest::TicketsSpent { id: 14 },
         NetRequest::UseFallback { on: true },
         NetRequest::UseFallback { on: false },
+        NetRequest::TorStatus { id: 15 },
         NetRequest::SetPacing {
             pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },

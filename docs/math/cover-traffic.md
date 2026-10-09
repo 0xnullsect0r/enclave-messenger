@@ -126,7 +126,7 @@ loop per day  = 8,640 × 4,826 = 41.7 MB
 | 10, 1 | 1.459 GB | 1.501 GB | 1.65 GB/day |
 | 10, 2 | 1.529 GB | 1.571 GB | 1.73 GB/day |
 
-PLAN's **≈1.5–1.7 GB/day** matches. The UI states "about 1.5 GB a day".
+PLAN's **≈1.5–1.7 GB/day** matches the model. Measured (§10), Maximum runs Foreground's tick around the clock: ≈80 MB/h with Tor, ≈1.9 GB/day, so the UI states "about 2 GB a day" (and "about 80 MB an hour" and "about 50 MB a day in the background" for Standard).
 
 ## 6. Bulk mode and media
 

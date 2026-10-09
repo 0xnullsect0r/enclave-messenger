@@ -309,6 +309,10 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_username_problem(s.username_problem.clone().into());
     ui.set_kt_split(s.kt_split.clone().into());
     ui.set_route(i32::from(s.route));
+    ui.set_tor_blocked(s.tor_blocked);
+    ui.set_bridges(s.bridges.clone().into());
+    ui.set_bridges_error(s.bridges_error.clone().into());
+    ui.set_bridges_restart(s.bridges_restart);
     ui.set_clock_skew(s.clock_skew.clone().into());
     ui.set_joining(s.joining.join(", ").into());
     ui.set_restore_error(s.restore_error.clone().into());

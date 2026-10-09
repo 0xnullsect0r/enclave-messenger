@@ -105,6 +105,12 @@ pub enum NetRequest {
         /// On or off.
         on: bool,
     },
+    /// How Tor is doing: the reply is one byte, 0 not used, 1 up, 2 it
+    /// didn't come up (the network may be blocking it; bridges may help).
+    TorStatus {
+        /// Request number.
+        id: u32,
+    },
 }
 
 /// netd → vault.
@@ -161,6 +167,9 @@ impl NetRequest {
             }
             NetRequest::UseFallback { on } => {
                 w.u8(11).u8(u8::from(*on));
+            }
+            NetRequest::TorStatus { id } => {
+                w.u8(12).u32(*id);
             }
         }
         w.0
@@ -223,6 +232,7 @@ impl NetRequest {
                 NetRequest::Connect { id, tickets }
             }
             10 => NetRequest::TicketsSpent { id: r.u32()? },
+            12 => NetRequest::TorStatus { id: r.u32()? },
             11 => NetRequest::UseFallback {
                 on: match r.u8()? {
                     0 => false,

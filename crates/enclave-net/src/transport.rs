@@ -87,6 +87,12 @@ pub trait Transport: Send + Sync {
     /// only ever with the user's consent, and ignored in Maximum privacy
     /// (`docs/09-transport.md` §7). Transports without one ignore it.
     fn use_fallback(&self, _on: bool) {}
+    /// How Tor in front of the mixnet is doing: 0 not used, 1 up, 2 it
+    /// didn't come up (the network may be blocking it; bridges may help,
+    /// `docs/09-transport.md` §7).
+    async fn tor_status(&self) -> Result<u8> {
+        Ok(0)
+    }
     /// Wait, for at most `within`, until everything sent so far has left
     /// this device (over the mixnet: reached the far gateway). Called
     /// before exiting, since a one-way send still queued is lost with the

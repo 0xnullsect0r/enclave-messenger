@@ -277,6 +277,15 @@ pub struct Snapshot {
     /// mixnet, 1 the mixnet is unreachable and the backup route (Tor to the
     /// server's onion service) can be offered, 2 on the backup route.
     pub route: u8,
+    /// Tor didn't come up: the network may be blocking it.
+    pub tor_blocked: bool,
+    /// Tor bridges set here: empty, `builtin`, or bridge lines.
+    pub bridges: String,
+    /// Why the bridges given weren't taken.
+    pub bridges_error: String,
+    /// The bridges changed since Enclave started: they apply after a
+    /// restart.
+    pub bridges_restart: bool,
 }
 
 /// UI → vault.
@@ -416,6 +425,8 @@ pub enum Cmd {
     /// Use the backup route (true), or the mixnet again (false: "Keep
     /// waiting", "Back to the private route").
     BackupRoute(bool),
+    /// Tor bridges: empty (none), `builtin`, or bridge lines.
+    SetBridges(String),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -671,7 +682,11 @@ impl Snapshot {
             .bool(self.can_change_words)
             .bool(self.words_pending)
             .u8(self.moved)
-            .u8(self.route);
+            .u8(self.route)
+            .bool(self.tor_blocked)
+            .str(&self.bridges)
+            .str(&self.bridges_error)
+            .bool(self.bridges_restart);
         w.0
     }
 
@@ -860,6 +875,10 @@ impl Snapshot {
             words_pending: r.bool()?,
             moved: r.u8()?,
             route: r.u8()?,
+            tor_blocked: r.bool()?,
+            bridges: r.str()?,
+            bridges_error: r.str()?,
+            bridges_restart: r.bool()?,
         };
         r.end()?;
         Ok(s)
@@ -940,6 +959,7 @@ impl Cmd {
             Cmd::ChangeWords => w.u8(61),
             Cmd::PlayClip(c, s) => w.u8(62).str(c).u64(*s),
             Cmd::BackupRoute(on) => w.u8(63).bool(*on),
+            Cmd::SetBridges(b) => w.u8(64).str(b),
         };
         w.0
     }
@@ -1015,6 +1035,7 @@ impl Cmd {
             61 => Cmd::ChangeWords,
             62 => Cmd::PlayClip(r.str()?, r.u64()?),
             63 => Cmd::BackupRoute(r.bool()?),
+            64 => Cmd::SetBridges(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

@@ -687,6 +687,14 @@ export component AppWindow inherits Window {
     in property <string> clock-skew;
     // 0 the mixnet, 1 offer the backup route, 2 on the backup route.
     in property <int> route;
+    // Censorship mode: Tor didn't come up; the bridges set (empty,
+    // "builtin" or lines), why some weren't taken, and whether they wait
+    // for a restart.
+    in property <bool> tor-blocked;
+    in property <string> bridges;
+    in property <string> bridges-error;
+    in property <bool> bridges-restart;
+    in-out property <string> bridges-input;
     in property <string> joining;
     in property <string> restore-error;
     in property <[PickRow]> friends;
@@ -709,6 +717,7 @@ export component AppWindow inherits Window {
     callback new-group-invite(string);
     callback stop-recovery();
     callback backup-route(bool);
+    callback set-bridges(string);
     callback meet-scan(string);
     callback search(string);
     callback add-members(string);
@@ -1039,6 +1048,22 @@ export component AppWindow inherits Window {
                     title: "Waiting to join " + root.joining;
                     text: "An admin needs to let you in. You'll see the group here when they do.";
                     kind: 0;
+                }
+                if root.tor-blocked && !root.bridges-restart: Notice {
+                    title: "This network seems to block Tor";
+                    text: "Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block.";
+                    kind: 2;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: Tokens.space-s;
+                        PrimaryButton { text: "Use a bridge"; clicked => { root.set-bridges("builtin"); } }
+                        QuietButton { text: "Enter my own"; clicked => { root.open-sheet(Sheet.settings); } }
+                    }
+                }
+                if root.bridges-restart: Notice {
+                    title: "Restart Enclave to use the new bridge settings";
+                    text: "Tor picks up bridges when it starts.";
+                    kind: 1;
                 }
                 if root.route == 1: Notice {
                     title: "Backup route: slower to hide who you talk to";
@@ -2157,8 +2182,8 @@ export component AppWindow inherits Window {
         title: "Settings";
         close => { root.sheet = Sheet.none; }
         for option[i] in [
-            { title: "Standard", text: "Hides who you talk to. Uses about 60 MB an hour while Enclave is open, and about 40 MB a day in the background." },
-            { title: "Maximum", text: "Also hides when you're using Enclave. Uses about 1.5 GB a day. Large files send slowly." },
+            { title: "Standard", text: "Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background." },
+            { title: "Maximum", text: "Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly." },
         ]: Rectangle {
             min-height: row.preferred-height;
             border-radius: Tokens.radius-control;
@@ -2190,6 +2215,30 @@ export component AppWindow inherits Window {
                 }
             }
         }
+        Rectangle { height: 1px; background: Tokens.hairline; }
+        Body { text: "Tor bridges"; font-weight: 600; }
+        Secondary {
+            text: root.bridges == ""
+                ? "Off. If your network blocks Tor, a bridge gets around it. Use Tor's built-in bridges, or paste obfs4 bridge lines from bridges.torproject.org."
+                : root.bridges == "builtin"
+                    ? "Using Tor's built-in bridges."
+                    : "Using your own bridges.";
+        }
+        Field { placeholder: "obfs4 … cert=… iat-mode=0"; mono: true; multiline: true; text <=> root.bridges-input; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            alignment: start;
+            PrimaryButton { text: "Save"; enabled: root.bridges-input != ""; clicked => { root.set-bridges(root.bridges-input); } }
+            QuietButton { text: "Built-in"; clicked => { root.set-bridges("builtin"); } }
+            if root.bridges != "": QuietButton { text: "Turn off"; clicked => { root.set-bridges(""); } }
+        }
+        if root.bridges-error != "": Text {
+            text: root.bridges-error;
+            color: Tokens.danger;
+            font-size: Tokens.type-secondary;
+            wrap: word-wrap;
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
         SwitchRow {
             label: "Typing indicators";
             detail: "Show people when you're typing, and see when they are. They only replace cover traffic, so they never use more data, and some may not arrive.";

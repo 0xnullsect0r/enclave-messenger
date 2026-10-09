@@ -231,6 +231,10 @@ fn fixture() -> Snapshot {
         words_pending: false,
         moved: 0,
         route: 0,
+        tor_blocked: false,
+        bridges: String::new(),
+        bridges_error: String::new(),
+        bridges_restart: false,
     }
 }
 
@@ -402,6 +406,11 @@ fn main() -> Result<(), slint::PlatformError> {
         offline.route = 2;
         view::apply(&ui, &offline);
         shot("26-on-backup-route-phone", phone);
+        // Tor blocked: bridges offered.
+        offline.route = 0;
+        offline.tor_blocked = true;
+        view::apply(&ui, &offline);
+        shot("27-tor-blocked-phone", phone);
         view::apply(&ui, &data);
 
         // A picture from Sam, with its preview (as mediad would send it).

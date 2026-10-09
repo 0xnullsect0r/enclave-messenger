@@ -301,6 +301,12 @@ struct Engine {
     /// The user said "Keep waiting": not offered again until the mixnet
     /// has worked once more.
     backup_declined: bool,
+    /// Tor didn't come up (netd says so).
+    tor_blocked: bool,
+    /// The bridges netd started with, and what is set now.
+    bridges_at_start: String,
+    bridges: String,
+    bridges_error: String,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -730,6 +736,10 @@ pub async fn run_with(
         net_failures: 0,
         backup_route: false,
         backup_declined: false,
+        tor_blocked: false,
+        bridges_at_start: String::new(),
+        bridges: String::new(),
+        bridges_error: String::new(),
         out,
     };
     // Reopen an existing profile.
@@ -748,8 +758,18 @@ pub async fn run_with(
         e.apply_privacy();
         e.push();
     }
+    if let Mode::Server { profile, .. } = &e.mode {
+        let b = std::fs::read_to_string(profile.join(crate::netd::BRIDGES_FILE))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        e.bridges_at_start = b.clone();
+        e.bridges = b;
+    }
+    e.check_tor().await;
     e.ensure_mixnet().await;
     let mut tick = tokio::time::interval(TICK);
+    let mut ticks: u64 = 0;
     loop {
         tokio::select! {
             cmd = rx.recv() => {
@@ -763,6 +783,12 @@ pub async fn run_with(
                 }
             }
             _ = tick.tick() => {
+                ticks += 1;
+                // Now and then: is Tor up (or blocked, so bridges may help)?
+                if ticks.is_multiple_of(20) {
+                    e.check_tor().await;
+                    e.push();
+                }
                 e.ensure_mixnet().await;
                 if e.client.is_some() {
                     e.sync().await;
@@ -2177,6 +2203,32 @@ impl Engine {
                     });
                 }
             }
+            Cmd::SetBridges(text) => {
+                self.bridges_error.clear();
+                if let Mode::Server { profile, .. } = &self.mode {
+                    match crate::netd::normalize_bridges(&text) {
+                        Ok(b) => {
+                            let file = profile.join(crate::netd::BRIDGES_FILE);
+                            let saved = if b.is_empty() {
+                                std::fs::remove_file(&file).or_else(|e| {
+                                    if e.kind() == std::io::ErrorKind::NotFound {
+                                        Ok(())
+                                    } else {
+                                        Err(e)
+                                    }
+                                })
+                            } else {
+                                std::fs::write(&file, &b)
+                            };
+                            match saved {
+                                Ok(()) => self.bridges = b,
+                                Err(e) => self.bridges_error = format!("Couldn't save them: {e}"),
+                            }
+                        }
+                        Err(why) => self.bridges_error = why,
+                    }
+                }
+            }
             Cmd::BackupRoute(on) => {
                 let maximum = self
                     .client
@@ -2366,6 +2418,14 @@ impl Engine {
         }
         if let Some(p) = self.kt.clone() {
             c.set_kt_policy(p);
+        }
+    }
+
+    /// Ask netd whether Tor came up (censorship mode,
+    /// `docs/09-transport.md` §7).
+    async fn check_tor(&mut self) {
+        if matches!(self.mode, Mode::Server { .. }) {
+            self.tor_blocked = matches!(self.transport.tor_status().await, Ok(2));
         }
     }
 
@@ -2575,6 +2635,10 @@ impl Engine {
             meet_done: self.meet_done.clone(),
             restore_error: self.restore_error.clone(),
             busy: self.busy,
+            tor_blocked: self.tor_blocked,
+            bridges: self.bridges.clone(),
+            bridges_error: self.bridges_error.clone(),
+            bridges_restart: self.bridges != self.bridges_at_start,
             ..Default::default()
         };
         let Some(c) = self.client.as_ref() else {

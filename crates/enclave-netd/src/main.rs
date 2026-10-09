@@ -1,4 +1,4 @@
-//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct]] [--report]`
+//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--bridge LINE]… [--builtin-bridges]] [--report]`
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
@@ -82,6 +82,9 @@ struct Routed {
     onion: std::sync::RwLock<HashMap<ServerId, String>>,
     /// The user chose the fallback route (`Transport::use_fallback`).
     fallback: std::sync::atomic::AtomicBool,
+    /// Tor didn't come up (the network may be blocking it): no mixnet
+    /// client was started.
+    tor_blocked: bool,
 }
 
 impl Routed {
@@ -168,6 +171,16 @@ impl Transport for Routed {
 
     fn use_fallback(&self, on: bool) {
         self.fallback.store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    async fn tor_status(&self) -> enclave_net::Result<u8> {
+        Ok(if self.tor_blocked {
+            2
+        } else if self.tor {
+            1
+        } else {
+            0
+        })
     }
 
     fn set_pacing(&self, pacing: enclave_net::transport::Pacing) {
@@ -295,6 +308,7 @@ async fn start_tord(
     bin: &std::path::Path,
     state: &str,
     direct: bool,
+    bridges: &[String],
 ) -> Result<enclave_tord::launch::Running, String> {
     let secret: String = enclave_crypto::rng::HedgedRng::new()
         .and_then(|mut r| r.array::<32>("netd/tor-secret"))
@@ -308,6 +322,7 @@ async fn start_tord(
         secret,
         direct,
         false,
+        bridges,
         TOR_BOOTSTRAP,
     )
     .await
@@ -386,6 +401,16 @@ fn main() -> ExitCode {
             .and_then(|i| args.get(i + 1))
             .cloned()
     };
+    // Bridges for Tor (censorship mode): bridge lines, or the built-in ones.
+    let mut bridges: Vec<String> = args
+        .windows(2)
+        .filter(|p| p[0] == "--bridge")
+        .flat_map(|p| ["--bridge".to_string(), p[1].clone()])
+        .collect();
+    if args.iter().any(|a| a == "--builtin-bridges") {
+        bridges.push("--builtin-bridges".into());
+    }
+    let mut tor_blocked = false;
     let tor = match flag("--tor") {
         Some(state) if !over_nym.is_empty() => {
             let bin = flag("--tord").map(std::path::PathBuf::from).or_else(|| {
@@ -398,11 +423,19 @@ fn main() -> ExitCode {
                     &bin,
                     &state,
                     args.iter().any(|a| a == "--tor-direct"),
+                    &bridges,
                 )),
                 None => Err("no enclave-tord".into()),
             };
             match started {
                 Ok(t) => Some(t),
+                // Tor is blocked here: stay up to say so (the vault offers
+                // bridges), without a mixnet client.
+                Err(e) if e == enclave_tord::launch::BLOCKED => {
+                    eprintln!("enclave-netd: {e}");
+                    tor_blocked = true;
+                    None
+                }
                 Err(e) => {
                     // Without Tor the mixnet client doesn't start: the
                     // entry gateway would see this device's address.
@@ -413,7 +446,7 @@ fn main() -> ExitCode {
         }
         _ => None,
     };
-    let nymd = if over_nym.is_empty() {
+    let nymd = if over_nym.is_empty() || tor_blocked {
         None
     } else {
         let bin = args
@@ -477,6 +510,7 @@ fn main() -> ExitCode {
         private: std::sync::atomic::AtomicBool::new(false),
         onion: std::sync::RwLock::new(if has_nym { onion } else { HashMap::new() }),
         fallback: std::sync::atomic::AtomicBool::new(false),
+        tor_blocked,
         over_nym: std::sync::RwLock::new(if has_nym {
             over_nym.keys().copied().collect()
         } else {
@@ -590,6 +624,13 @@ fn main() -> ExitCode {
                     | NetRequest::SetPacing { .. }
                     | NetRequest::RequirePrivate { .. }
                     | NetRequest::UseFallback { .. } => return,
+                    NetRequest::TorStatus { id } => (
+                        id,
+                        t.tor_status()
+                            .await
+                            .map(|s| vec![s])
+                            .map_err(|e| e.to_string()),
+                    ),
                 };
                 let _ = tx.send(NetReply { id, result }.encode());
             };
@@ -638,6 +679,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
+            tor_blocked: false,
         };
         (r, over_nym, over_tcp)
     }
@@ -695,6 +737,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
+            tor_blocked: false,
         };
         r.set_route(id, Route::Nym("ingress".into()));
         r.set_route(id, Route::Onion("stack.onion".into()));
@@ -760,6 +803,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
+            tor_blocked: false,
         };
         r.set_route(id, Route::Nym("ingress".into()));
         assert!(matches!(

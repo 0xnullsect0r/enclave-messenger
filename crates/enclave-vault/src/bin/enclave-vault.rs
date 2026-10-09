@@ -162,6 +162,8 @@ fn start_netd(
     if tord.exists() {
         extra.push("--tor".into());
         extra.push(profile.join("tor").to_string_lossy().into_owned());
+        // Bridges the user set (censorship mode).
+        extra.extend(enclave_vault::netd::bridge_args(profile));
     }
     // The mixnet client waits for its zk-nym tickets, which the vault
     // gives it once it can read its wallet (`docs/09-transport.md` §7).

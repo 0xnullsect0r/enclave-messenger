@@ -45,20 +45,26 @@ impl Running {
     pub const NYMD_ENV_REMOVE: [&'static str; 2] = ["NO_PROXY", "no_proxy"];
 }
 
+/// What [`start`] fails with when Tor didn't come up in time: the network
+/// may be blocking Tor (bridges may help).
+pub const BLOCKED: &str = "enclave-tord: Tor didn't come up; the network may be blocking it";
+
 /// Start `bin` keeping Tor's state under `state`, give it `secret` (at
 /// least 32 characters, from the caller's own randomness), and wait up to
 /// `within` for Tor to be up. `direct` (a `dev-direct` build) dials without
-/// Tor; `report` logs each connection's destination.
+/// Tor; `report` logs each connection's destination; `extra` are more
+/// arguments (`--bridge LINE`, `--builtin-bridges`).
 pub async fn start(
     bin: &std::path::Path,
     state: &std::path::Path,
     secret: String,
     direct: bool,
     report: bool,
+    extra: &[String],
     within: std::time::Duration,
 ) -> Result<Running, String> {
     let mut cmd = tokio::process::Command::new(bin);
-    cmd.arg("--state").arg(state);
+    cmd.arg("--state").arg(state).args(extra);
     if direct {
         cmd.arg("--direct");
     }
@@ -84,8 +90,11 @@ pub async fn start(
         tokio::io::BufReader::new(stdout).read_line(&mut line),
     )
     .await
-    .map_err(|_| "enclave-tord: Tor didn't start in time".to_string())?
+    .map_err(|_| BLOCKED.to_string())?
     .map_err(|e| format!("enclave-tord: {e}"))?;
+    if line.trim() == "blocked" {
+        return Err(BLOCKED.into());
+    }
     let port = line
         .trim()
         .strip_prefix("ready ")

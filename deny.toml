@@ -88,6 +88,7 @@ allow-build-scripts = [
     "ash",
     "async-io",
     "async_executors",
+    "atomic-polyfill",  # target-atomics cfg; obfs4 bridges (enclave-tord)
     "av-scenechange",  # rav1e scene detection; asm off
     "bindgen",
     "borsh",
@@ -100,8 +101,10 @@ allow-build-scripts = [
     "crossbeam-utils",
     "crunchy",
     "curve25519-dalek",
+    "curve25519-elligator2",  # backend cfg, as curve25519-dalek; obfs4 bridges
     "defmt",
     "defmt-macros",
+    "derive-adhoc-macros",  # empty build script; obfs4 bridges (old tor-* crates)
     "derive-deftly-macros",
     "drm-fourcc",  # Linux KMS backend
     "drm-sys",  # Linux KMS backend (Slint, unused on desktop)
@@ -115,6 +118,7 @@ allow-build-scripts = [
     "glutin_egl_sys",
     "glutin_glx_sys",
     "glutin_wgl_sys",
+    "heapless",  # target cfg; obfs4 bridges (enclave-tord)
     "hax-lib",
     "httparse",
     "i-slint-backend-linuxkms",

@@ -1,9 +1,14 @@
-//! `enclave-tord --state DIR [--direct] [--report]`
+//! `enclave-tord --state DIR [--bridge LINE]… [--builtin-bridges] [--direct] [--report]`
 //!
 //! Reads the SOCKS5 secret from its stdin (one line), confines itself
 //! (IP sockets only; the filesystem limited to `DIR` and what TLS needs),
 //! bootstraps Tor keeping its state in `DIR`, listens on a loopback port,
 //! and prints `ready PORT`. It exits when its stdin closes (netd went away).
+//! If Tor isn't up within [`BOOTSTRAP`], it prints `blocked` and exits: the
+//! network may be blocking Tor, and bridges may get through. `--bridge`
+//! (obfs4 bridge lines, from bridges.torproject.org) and
+//! `--builtin-bridges` (the Tor Project's built-in ones) reach Tor through
+//! obfs4 bridges, run in this process (`docs/09-transport.md` §7).
 //! `--direct` dials without Tor, in a `dev-direct` build only (tests and
 //! the local mixnet).
 
@@ -34,6 +39,15 @@ fn main() -> ExitCode {
             .and_then(|i| args.get(i + 1).cloned())
     };
     let direct = args.iter().any(|a| a == "--direct");
+    let mut bridges: Vec<String> = args
+        .windows(2)
+        .filter(|p| p[0] == "--bridge")
+        .map(|p| p[1].trim().to_string())
+        .collect();
+    #[cfg(feature = "tor")]
+    if args.iter().any(|a| a == "--builtin-bridges") {
+        bridges.extend(enclave_tord::obfs4pt::builtin());
+    }
     let Some(state) = flag("--state").map(std::path::PathBuf::from) else {
         eprintln!("enclave-tord: --state DIR is required");
         return ExitCode::FAILURE;
@@ -67,13 +81,19 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
         let secret = Arc::new(secret.trim().to_string());
-        let dialer: Arc<dyn enclave_tord::Dialer> = match dialer(direct, &state).await {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("enclave-tord: {e}");
-                return ExitCode::FAILURE;
-            }
-        };
+        let dialer: Arc<dyn enclave_tord::Dialer> =
+            match tokio::time::timeout(BOOTSTRAP, dialer(direct, &state, &bridges)).await {
+                Ok(Ok(d)) => d,
+                Ok(Err(e)) => {
+                    eprintln!("enclave-tord: {e}");
+                    return ExitCode::FAILURE;
+                }
+                Err(_) => {
+                    eprintln!("enclave-tord: Tor isn't up after {BOOTSTRAP:?}");
+                    println!("blocked");
+                    return ExitCode::FAILURE;
+                }
+            };
         let Ok(listener) = tokio::net::TcpListener::bind("127.0.0.1:0").await else {
             return ExitCode::FAILURE;
         };
@@ -90,9 +110,14 @@ fn main() -> ExitCode {
     })
 }
 
+/// How long Tor may take to come up before this says the network may be
+/// blocking it.
+const BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(150);
+
 async fn dialer(
     direct: bool,
     state: &std::path::Path,
+    bridges: &[String],
 ) -> std::io::Result<Arc<dyn enclave_tord::Dialer>> {
     if direct {
         #[cfg(feature = "dev-direct")]
@@ -102,12 +127,12 @@ async fn dialer(
     }
     #[cfg(feature = "tor")]
     {
-        let d = enclave_tord::ArtiDialer::bootstrap(state).await?;
+        let d = enclave_tord::ArtiDialer::bootstrap(state, bridges).await?;
         Ok(Arc::new(d))
     }
     #[cfg(not(feature = "tor"))]
     {
-        let _ = state;
+        let _ = (state, bridges);
         Err(std::io::Error::other("built without Tor"))
     }
 }

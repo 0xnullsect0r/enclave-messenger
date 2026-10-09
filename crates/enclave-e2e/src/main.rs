@@ -344,6 +344,7 @@ async fn world(args: &[String]) -> R<World> {
                 secret,
                 true,
                 true,
+                &[],
                 Duration::from_secs(30),
             )
             .await?;

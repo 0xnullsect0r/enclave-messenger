@@ -512,6 +512,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::BackupRoute(on));
     });
     let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_set_bridges(move |b| {
+        let _ = t.send(Cmd::SetBridges(b.to_string()));
+        if let Some(ui) = w.upgrade() {
+            ui.set_bridges_input("".into());
+        }
+    });
+    let t = tx.clone();
     ui.on_approve_recovery(move || {
         let _ = t.send(Cmd::ApproveRecovery);
     });

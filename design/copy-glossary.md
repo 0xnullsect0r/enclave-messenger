@@ -9,7 +9,7 @@ Source: PLAN.md §15.4 to §15.6. Design system: `docs/17-design.md`. Every user
 - A calm, exact friend who has done this before.
 - Second person, sentence case, one idea per sentence.
 - Say what happened, what it means, and what to do.
-- Use concrete numbers ("about 60 MB an hour"). Never fear, never brag, never blame.
+- Use concrete numbers ("about 80 MB an hour"). Never fear, never brag, never blame.
 - Grade 6 to 8 reading level.
 - Keys and algorithm names appear only in the "Advanced details" sheet.
 - No exclamation marks in system copy.
@@ -73,7 +73,7 @@ Behavior copy is also banned: confirm-shaming ("No thanks, I don't care about pr
 | On the record chip | Your messages carry your signature. Anyone who gets a copy can prove you wrote them. |
 | Delivery, first time | Private delivery takes a few seconds. That pause is part of what hides who you talk to. |
 | Call route | Private route (hides where you are) / Direct (clearer, but Sam can see your internet address) |
-| Maximum | Maximum (hides even when you're using Enclave; uses about 1.5 GB a day) |
+| Maximum | Maximum (hides even when you're using Enclave; uses about 2 GB a day) |
 | Maximum on iPhone | iPhone pauses apps in the background, so Maximum only works while Enclave is open. |
 | Wrong-place link code | This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one. |
 | New device banner | New device linked: *{device}*, {date} {time}. Not you? Remove it |

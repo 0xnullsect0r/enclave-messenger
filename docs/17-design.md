@@ -176,7 +176,7 @@ Buttons: **Check now** and **Later**. The first send after a change needs a tap-
 - The mode chip reads **"Off the record"**: "Nobody can prove to others who wrote these messages." Or **"On the record"**: "Your messages carry your signature. Anyone who gets a copy can prove you wrote them."
 - Delivery shapes: hollow dot "Sending privately…", half dot "On its way" (sent one way), full dot "Delivered" (the recipient's receipt came), ring "Read", and a hollow dot in the warning color "Not delivered yet" (no receipt after every re-send, `09-transport.md` §6.1). The first time only: "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
 - The pre-call sheet offers **"Private route (hides where you are)"** or **"Direct (clearer, but Sam can see your internet address)"**.
-- Settings → Privacy: "Standard" or "Maximum (hides even when you're using Enclave; uses about 1.5 GB a day)". On iPhone it adds: "iPhone pauses apps in the background, so Maximum only works while Enclave is open."
+- Settings → Privacy: "Standard" or "Maximum (hides even when you're using Enclave; uses about 2 GB a day)". On iPhone it adds: "iPhone pauses apps in the background, so Maximum only works while Enclave is open."
 - "Extra protection: finishing…" (the McEliece braid) and "Backup route" appear only on the contact-info and settings screens.
 
 ### 6.6 Wrong-place link code
@@ -196,7 +196,7 @@ Contact art is key-derived (`art_seed`, `02b-key-schedule.md` §4.3) so that a l
 - A calm, exact friend who has done this before.
 - Second person, sentence case, one idea per sentence.
 - Say what happened, what it means, and what to do.
-- Use concrete numbers ("about 60 MB an hour"). Never fear, never brag, never blame.
+- Use concrete numbers ("about 80 MB an hour"). Never fear, never brag, never blame.
 - Aim for a grade 6 to 8 reading level.
 - **Keys and algorithms appear only in an "Advanced details" sheet.**
 - Example error: "Couldn't send yet. Your phone is offline. We'll send it when you're back."

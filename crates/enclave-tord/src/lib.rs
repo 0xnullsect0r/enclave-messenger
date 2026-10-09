@@ -13,6 +13,9 @@
 
 pub mod socks;
 
+#[cfg(feature = "tor")]
+pub mod obfs4pt;
+
 #[cfg(feature = "launch")]
 pub mod launch;
 
@@ -31,14 +34,34 @@ mod arti {
     use crate::socks::{Dialer, Stream};
 
     impl ArtiDialer {
-        /// Bootstrap a Tor client keeping its state and cache under `dir`.
-        pub async fn bootstrap(dir: &std::path::Path) -> std::io::Result<Self> {
-            let cfg = arti_client::config::TorClientConfigBuilder::from_directories(
+        /// Bootstrap a Tor client keeping its state and cache under `dir`,
+        /// through `bridges` (bridge lines; obfs4 only) if any are given:
+        /// obfs4 runs in this process ([`crate::obfs4pt`]).
+        pub async fn bootstrap(dir: &std::path::Path, bridges: &[String]) -> std::io::Result<Self> {
+            let mut b = arti_client::config::TorClientConfigBuilder::from_directories(
                 dir.join("state"),
                 dir.join("cache"),
-            )
-            .build()
-            .map_err(std::io::Error::other)?;
+            );
+            if !bridges.is_empty() {
+                let pt = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+                let addr = pt.local_addr()?;
+                tokio::spawn(crate::obfs4pt::serve(pt));
+                for line in bridges {
+                    if !line.starts_with("obfs4 ") {
+                        return Err(std::io::Error::other(format!(
+                            "only obfs4 bridges are supported: {line}"
+                        )));
+                    }
+                    let bridge: arti_client::config::BridgeConfigBuilder =
+                        line.parse().map_err(std::io::Error::other)?;
+                    b.bridges().bridges().push(bridge);
+                }
+                let mut t = arti_client::config::pt::TransportConfigBuilder::default();
+                t.protocols(vec!["obfs4".parse().map_err(std::io::Error::other)?])
+                    .proxy_addr(addr);
+                b.bridges().transports().push(t);
+            }
+            let cfg = b.build().map_err(std::io::Error::other)?;
             let client = arti_client::TorClient::create_bootstrapped(cfg)
                 .await
                 .map_err(std::io::Error::other)?;

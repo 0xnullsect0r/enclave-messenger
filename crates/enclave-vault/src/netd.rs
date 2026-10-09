@@ -19,6 +19,52 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 
 type Pending = Arc<Mutex<HashMap<u32, oneshot::Sender<Result<Vec<u8>, String>>>>>;
 
+/// Tor bridges for this profile (censorship mode, `docs/09-transport.md`
+/// §7), in the profile directory: `builtin`, or obfs4 bridge lines. Kept
+/// outside the sealed profile because netd starts Tor before the profile is
+/// unlocked (Tor Browser keeps its bridges unencrypted too).
+pub const BRIDGES_FILE: &str = "tor-bridges.txt";
+
+/// netd's arguments for the bridges in `profile` (none without the file).
+pub fn bridge_args(profile: &std::path::Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(profile.join(BRIDGES_FILE)) else {
+        return Vec::new();
+    };
+    if text.trim() == "builtin" {
+        return vec!["--builtin-bridges".into()];
+    }
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .flat_map(|l| ["--bridge".to_string(), l.to_string()])
+        .collect()
+}
+
+/// Check what someone typed as bridges: empty (none), `builtin`, or obfs4
+/// bridge lines (`Bridge ` prefixes dropped, as bridges.torproject.org
+/// gives them). The text to keep, or why not.
+pub fn normalize_bridges(text: &str) -> Result<String, String> {
+    let t = text.trim();
+    if t.is_empty() || t == "builtin" {
+        return Ok(t.into());
+    }
+    let mut lines = Vec::new();
+    for l in t.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let l = l.strip_prefix("Bridge ").unwrap_or(l).trim();
+        let fields: Vec<&str> = l.split_whitespace().collect();
+        if fields.first() != Some(&"obfs4") {
+            return Err("Only obfs4 bridges work here. Get some at bridges.torproject.org.".into());
+        }
+        if fields.len() < 4 || !fields.iter().any(|f| f.starts_with("cert=")) {
+            return Err(
+                "That doesn't look like a whole bridge line. Copy each line in full.".into(),
+            );
+        }
+        lines.push(fields.join(" "));
+    }
+    Ok(lines.join("\n"))
+}
+
 /// Spare netd processes started with the first. The confined vault can't
 /// start programs, so if netd dies the next request goes to a spare that is
 /// already running; when all are gone, the network is down until restart.
@@ -255,6 +301,11 @@ impl Transport for PipeTransport {
         .map(|_| ())
     }
 
+    async fn tor_status(&self) -> enclave_net::Result<u8> {
+        let b = self.call(|id| NetRequest::TorStatus { id }).await?;
+        b.first().copied().ok_or(NetError::BadReply)
+    }
+
     async fn tickets_spent(&self) -> enclave_net::Result<u64> {
         let b = self.call(|id| NetRequest::TicketsSpent { id }).await?;
         Ok(u64::from_be_bytes(
@@ -298,5 +349,33 @@ impl Transport for PipeTransport {
         for l in &self.links {
             let _ = l.out.send(body.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bridges_are_checked_and_become_arguments() {
+        assert_eq!(normalize_bridges("  ").as_deref(), Ok(""));
+        assert_eq!(normalize_bridges("builtin").as_deref(), Ok("builtin"));
+        let line =
+            "obfs4 192.0.2.1:443 0123456789ABCDEF0123456789ABCDEF01234567 cert=abc iat-mode=0";
+        assert_eq!(
+            normalize_bridges(&format!("Bridge {line}\n\n{line}  ")).as_deref(),
+            Ok(format!("{line}\n{line}").as_str())
+        );
+        assert!(normalize_bridges("snowflake 192.0.2.3:80 AAAA").is_err());
+        assert!(normalize_bridges("obfs4 192.0.2.1:443").is_err());
+
+        let dir = std::env::temp_dir().join(format!("enclave-bridges-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(bridge_args(&dir).is_empty());
+        std::fs::write(dir.join(BRIDGES_FILE), "builtin").unwrap();
+        assert_eq!(bridge_args(&dir), ["--builtin-bridges"]);
+        std::fs::write(dir.join(BRIDGES_FILE), format!("{line}\n{line}")).unwrap();
+        assert_eq!(bridge_args(&dir), ["--bridge", line, "--bridge", line]);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
