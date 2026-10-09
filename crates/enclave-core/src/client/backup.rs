@@ -29,11 +29,8 @@ impl Client {
     /// Export an encrypted backup (primary device only: it needs the
     /// recovery secret).
     pub fn export_backup(&mut self) -> Result<Vec<u8>> {
-        let rs = self
-            .store
-            .get(NS_SECRETS, b"recovery")?
-            .ok_or(CoreError::NotAccepted)?;
-        let rs: [u8; 32] = rs.as_slice().try_into().map_err(|_| CoreError::NotFound)?;
+        let rs = *self.recovery_secret()?.as_bytes();
+        let rs = Zeroizing::new(rs);
         // Only the shared account keys from "secrets", never device or prekey
         // state; the export below skips excluded namespaces as well.
         let tmp_ns = "backup-secrets";
@@ -176,7 +173,13 @@ impl Client {
         )
         .await?;
 
-        store.put(NS_SECRETS, b"recovery", rs.as_bytes(), &mut rng)?;
+        let wrapped = super::root_wrap::initial(&store, &rs, &mut rng)?;
+        store.put(
+            NS_SECRETS,
+            super::root_wrap::KEY_ROOT_WRAP,
+            &wrapped,
+            &mut rng,
+        )?;
         store.put(NS_SECRETS, b"account", &account.export_shared(), &mut rng)?;
         store.put(NS_SECRETS, b"device", &device.export(), &mut rng)?;
         store.put(NS_SECRETS, b"prekeys", &prekeys.export(), &mut rng)?;
@@ -232,6 +235,7 @@ impl Client {
             late_unit: false,
             metered: false,
             root_unlocked: 0,
+            root_kek: None,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: std::collections::HashMap::new(),

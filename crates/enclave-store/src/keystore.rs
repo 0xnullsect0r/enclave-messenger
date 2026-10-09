@@ -24,6 +24,12 @@ pub trait Keystore: Send + Sync {
     fn destroy(&self, name: &str) -> Result<()>;
 }
 
+/// Keystore name of the secret that wraps the recovery secret on the device
+/// that holds it (`docs/14-storage.md` §1.3). Platform keystores give it a
+/// policy of its own: it needs the device unlocked, and biometrics alone
+/// can't release it.
+pub const ROOT_SECRET: &str = "enclave-root-secret";
+
 /// Keystore name of the device's hedge secret (`docs/02-cryptography.md`
 /// §6.1).
 pub const HEDGE_SECRET: &str = "enclave-hedge-secret";

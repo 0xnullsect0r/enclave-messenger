@@ -467,6 +467,7 @@ impl LinkingDevice {
             late_unit: false,
             metered: false,
             root_unlocked: 0,
+            root_kek: None,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: std::collections::HashMap::new(),
@@ -737,6 +738,7 @@ impl Client {
         change: impl FnOnce(&mut Manifest),
         now: u64,
     ) -> Result<SignedManifest> {
+        self.load_root()?;
         let prev = self.current_signed_manifest(now).await?;
         let mut m = self.manifest.clone();
         m.version += 1;

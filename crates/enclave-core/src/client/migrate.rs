@@ -42,6 +42,7 @@ use enclave_proto::migration::{MIGRATION_LEN, Migration};
 use enclave_proto::recovery::RecoverySecret;
 use enclave_rpc::api::{DirKind, Status, manifest_key};
 use enclave_store::Store;
+use zeroize::Zeroizing;
 
 /// Verified migrations: old root → new root ‖ cross-signed ‖ time.
 const NS_MIGRATIONS: &str = "migrations";
@@ -99,7 +100,12 @@ pub(crate) fn finish_staged(store: &Store, rng: &mut HedgedRng) -> Result<()> {
     let get = |k: &[u8]| store.get(NS_SECRETS, k)?.ok_or(CoreError::NotFound);
     let record = get(b"mig/record")?;
     let mig = Migration::decode(&record)?;
-    store.put(NS_SECRETS, b"recovery", &get(b"mig/recovery")?, rng)?;
+    store.put(
+        NS_SECRETS,
+        super::root_wrap::KEY_ROOT_WRAP,
+        &get(b"mig/root-wrap")?,
+        rng,
+    )?;
     store.put(NS_SECRETS, b"account", &get(b"mig/account")?, rng)?;
     store.put(NS_PROFILE, b"manifest", &get(b"mig/manifest")?, rng)?;
     store.put(NS_PROFILE, b"signed-manifest", &get(b"mig/signed")?, rng)?;
@@ -116,7 +122,8 @@ pub(crate) fn finish_staged(store: &Store, rng: &mut HedgedRng) -> Result<()> {
         store.delete(NS_MIG_TOLD, &k)?;
     }
     for k in [
-        &b"mig/recovery"[..],
+        &b"mig/root-wrap"[..],
+        b"recovery",
         b"mig/account",
         b"mig/manifest",
         b"mig/signed",
@@ -161,7 +168,7 @@ impl Client {
     /// secret. Contacts, groups and our other devices are told as the
     /// network allows; [`Client::migration_pending`] says when that's done.
     pub async fn change_recovery_words(&mut self) -> Result<Vec<String>> {
-        if self.account.root.is_none() {
+        if !self.holds_recovery_words() {
             return Err(CoreError::NotAccepted);
         }
         self.migrate_root().await
@@ -176,7 +183,7 @@ impl Client {
     /// the username stays with the old root. This device becomes the
     /// primary. Only on a device that doesn't hold the words.
     pub async fn replace_lost_root(&mut self) -> Result<Vec<String>> {
-        if self.account.root.is_some() {
+        if self.holds_recovery_words() {
             return Err(CoreError::NotAccepted);
         }
         self.migrate_root().await
@@ -187,10 +194,15 @@ impl Client {
         if self.migration_pending() {
             return Err(CoreError::NotAccepted);
         }
+        if self.holds_recovery_words() {
+            self.load_root()?;
+        }
         let now = self.now();
         let prev = self.current_signed_manifest(now).await?;
         let old_public = self.account.root_public;
         let rs = RecoverySecret::generate(&mut self.rng)?;
+        // The new words wrapped as the old ones are (under the PIN, if any).
+        let wrapped = Zeroizing::new(self.wrap_recovery(&rs)?);
         let words = rs.to_words()?;
         let old_key = self.account.root.take();
         let new_key = RootSigningKey::from_recovery_secret(rs.as_bytes());
@@ -237,7 +249,7 @@ impl Client {
         // Stage everything, then flag it: the commit point.
         let account = self.account.export_shared();
         let s = &self.store;
-        s.put(NS_SECRETS, b"mig/recovery", rs.as_bytes(), &mut self.rng)?;
+        s.put(NS_SECRETS, b"mig/root-wrap", &wrapped, &mut self.rng)?;
         s.put(NS_SECRETS, b"mig/account", &account, &mut self.rng)?;
         s.put(NS_SECRETS, b"mig/manifest", &m.encode()?, &mut self.rng)?;
         s.put(NS_SECRETS, b"mig/signed", &signed.to_bytes(), &mut self.rng)?;
@@ -258,11 +270,6 @@ impl Client {
             return Err(e);
         }
         Ok(words)
-    }
-
-    /// This device holds the recovery words, so it can change them.
-    pub fn holds_recovery_words(&self) -> bool {
-        self.account.root.is_some()
     }
 
     /// Our change of recovery words hasn't reached everything yet (the
@@ -630,7 +637,7 @@ impl Client {
         }
         // Our own: only a device without the words adopts it (one holding
         // them made it, or keeps the account under the old words).
-        if own && self.account.root.is_some() {
+        if own && self.holds_recovery_words() {
             return Err(CoreError::NotAccepted);
         }
         // A migration the old root signed is in the directory and the old

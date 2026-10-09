@@ -33,9 +33,25 @@ The `meta` table holds `salt`, the Argon2id parameters (`u32(memory_kib) ‖ u32
 
 **Changing the passphrase** (`Store::change_passphrase`) keeps the master key and so every record, blinded index and verifier: it derives `kek = KMAC256(device_secret, LABEL_MASTER, framed(Argon2id(new, pwsalt)))` (or with nothing framed to remove the passphrase) from a fresh 32 B `pwsalt`, and stores `wrapped = seal(kek, "wrapped-master", master)`, `pwsalt` and the new parameters in `meta` in one transaction. `Store::open` then derives `kek` the same way (with `pwsalt`) and unwraps; stores never changed keep deriving the master key directly. The record salt `salt` never changes.
 
-### 1.3 Root wrap (not yet implemented)
+### 1.3 Root wrap
 
-On the primary device the recovery secret is to be wrapped under `KMAC256(hw_root_secret, Argon2id(PIN), 256, "enclave/v1/store/root-wrap")`, where `hw_root_secret` is a separate hardware-wrapped secret that requires device unlock and that biometrics cannot unlock. The label is reserved.
+On the device that holds the recovery words, the recovery secret (from which the account root is derived) is never stored as it is (`client/root_wrap.rs`). It is sealed under
+
+```
+kek = KMAC256(root_secret, Argon2id(PIN, salt) or "", 256, "enclave/v1/store/root-wrap")
+record = u8 version (1) ‖ u8 pin (0/1) ‖ u32 memory ‖ u32 iterations ‖ u32 parallelism ‖ salt (32)
+         ‖ Seal(kek, "enclave/v1/store/ad-root" ‖ header, recovery secret (32))
+```
+
+and kept as the store record `("secrets", "root-wrap")`. `root_secret` is a keystore secret of its own, `enclave-root-secret` (32 random bytes, purpose `store/root-secret`), separate from the device secret: the platform keystore adapters (`enclave-platform`, D1/A1/I1) give it a policy that needs the device unlocked and that biometrics alone can't satisfy. A copy of the database and the device secret without it can't unwrap the root, PIN or no PIN.
+
+- **Without a PIN** the kek is the keystore secret's alone: the device unwraps the root when it needs it.
+- **With a PIN** (`Client::set_root_pin`, Argon2id with the profile's parameters), only `Client::unlock_root` can: it unwraps the root, which stays in memory (locked pages) with the kek for 120 s and is then dropped (`lock_root`, and every sync once the unlock lapses). The PIN is needed to *have* the root, not just to use it. A wrong PIN simply fails to unwrap; after three wrong tries each further try waits 30 s, doubling up to an hour (open question 2). Everything the root signs for a server move is signed when the move starts, while it is unlocked, so a move never waits for the PIN.
+- **New words** (changing them, or a device making new ones) are wrapped the way the old ones were, under the same PIN; the staged migration carries the wrapped record.
+- **Upgrade**: a profile from before the wrap kept the recovery secret only under the store's sealing; `Client::open` wraps it (without a PIN) and deletes the old record. A PIN set before the wrap left a check value (`enclave/v1/store/pin-check`); its next good unlock wraps the root under it and deletes the check value.
+- A crypto-erase destroys `enclave-root-secret` with the device secret, so the wrapped root goes with the profile.
+
+Tests: `the_pin_wraps_the_root` (`client/pin.rs`), `the_root_stays_wrapped_on_disk` (`tests/root_wrap.rs`: restart, new words under the same PIN, a copied database without the root secret).
 
 ## 2. Database
 
@@ -149,11 +165,11 @@ Not implemented yet: an archive header (magic, version, sequence number), server
 ## Open questions
 
 1. PLAN §13 describes the Apple master key as a Keychain secret "combined with" a Secure Enclave P-256 unwrap. This spec reads "combined" as two nested wraps of the device secret (both must be removed). An alternative is to feed two independent secrets into the master-key KMAC.
-2. The PIN attempt limit and wipe behavior for the wrapped root secret are not in PLAN.md.
+2. ~~The PIN attempt limit and wipe behavior for the wrapped root secret.~~ Decided (§1.3): no wipe on wrong PINs (that would hand anyone holding the phone a way to destroy the account); three free tries, then 30 s doubling to an hour between tries, kept in the profile. Wiping is the emergency PIN's job (§5).
 3. A shred rewrap writes the keyring and the generation in two separate database transactions after creating the new keystore entry, and destroys the old entry last. A crash between the two writes leaves a keyring sealed under generation `g + 1` while the stored generation is still `g`, so the keyring cannot be opened. The two writes should be one transaction.
 4. The reference backup format has no header or version. PLAN's "Enclave Backup v1" needs one before backups leave the device.
 
 
 ## Implementation status: backup and restore (M5 follow-up)
 
-`Client::export_backup` (primary only) seals, under `KMAC256(recovery, "", 256, "enclave/v1/backup/key")`, the profile, the shared account keys, contacts, message history (the `m/…` and `mid/…` namespaces) and settings. It never includes sessions, prekeys, the device keys, the shred keyring or group state. `Client::restore(words, archive, …)` re-derives the root from the words, imports the archive, creates a new device, signs and publishes the next manifest listing only that device as primary, publishes its prekeys, and opens fresh sessions with every contact that shared a card. Disappearing messages are not recoverable (their keys were never backed up) and groups are not restored. Token issuers start fresh, and a contact who sees a known account talk from a new device sends it fresh write tokens, so stale tokens in the archive do no harm. Not implemented: the 72 h pending period for root actions without an existing device (RT-22), backups to a server blob, and a restore test in the UI.
+`Client::export_backup` (primary only) seals, under `KMAC256(recovery, "", 256, "enclave/v1/backup/key")`, the profile, the shared account keys, contacts, message history (the `m/…` and `mid/…` namespaces) and settings. It never includes sessions, prekeys, the device keys, the shred keyring or group state. `Client::restore(words, archive, …)` re-derives the root from the words, imports the archive, creates a new device, signs and publishes the next manifest listing only that device as primary, publishes its prekeys, and opens fresh sessions with every contact that shared a card. Disappearing messages are not recoverable (their keys were never backed up) and groups are not restored. Token issuers start fresh, and a contact who sees a known account talk from a new device sends it fresh write tokens, so stale tokens in the archive do no harm. The 72 h pending period for root actions without an existing device (RT-22) is `client/guard.rs` (`03-identity.md` §8.1). Server-stored backups and the restore test are §4.

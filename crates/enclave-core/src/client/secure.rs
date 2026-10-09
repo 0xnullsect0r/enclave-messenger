@@ -30,7 +30,6 @@ use crate::{CoreError, Result};
 use enclave_crypto::kem::{McElieceSecret, X448Secret};
 use enclave_proto::group::FLAG_STATE_UPDATE;
 use enclave_proto::identity::AccountKeys;
-use enclave_proto::recovery::RecoverySecret;
 use zeroize::Zeroizing;
 
 /// Setting: the steps after the move still to do (present while securing).
@@ -41,7 +40,7 @@ impl Client {
     /// the recovery words; needs the PIN if one is set.
     pub async fn secure_account(&mut self) -> Result<()> {
         self.require_root_unlocked()?;
-        if self.account.root.is_none()
+        if !self.holds_recovery_words()
             || self.migration_pending()
             || self.move_pending()
             || self.securing()
@@ -95,12 +94,8 @@ impl Client {
     /// Take new shared account keys (from our own securing move, or another
     /// device's), keeping the root if this device holds the words.
     pub(crate) fn adopt_account_keys(&mut self, shared: &[u8]) -> Result<()> {
-        let rs = self
-            .store
-            .get(NS_SECRETS, b"recovery")?
-            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
-            .map(RecoverySecret::from_bytes);
-        let keys = AccountKeys::import_shared(shared, rs.as_ref())?;
+        // The root comes back from the wrapped words when it's next needed.
+        let keys = AccountKeys::import_shared(shared, None)?;
         if keys.root_public != self.account.root_public {
             return Err(CoreError::NotAccepted);
         }

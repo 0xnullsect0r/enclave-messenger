@@ -381,7 +381,7 @@ RootVerify(root_pk, ctx, M, sig):
 
 - `ctx` is a CTX-R label. The only one implemented is `enclave/v1/ctx/manifest`.
 - Signing takes about a second on a desktop and several seconds on a phone. It MUST run off the UI thread.
-- Wrapping and unwrapping the root secret on the primary device (`03-identity.md` §2) is not implemented yet; `RootSigningKey` is derived from the recovery secret when needed.
+- On the device that holds the words the recovery secret is wrapped under a keystore secret and the PIN (`14-storage.md` §1.3); `RootSigningKey` is derived from it when needed and, behind a PIN, dropped when the unlock lapses.
 
 ## 9. Password KDF
 

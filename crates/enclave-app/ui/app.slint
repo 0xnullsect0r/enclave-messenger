@@ -2910,6 +2910,25 @@ export component AppWindow inherits Window {
                 clicked => { root.choose-words-language(l.code); }
             }
         }
+        // Behind a PIN the words are wrapped: they show for two minutes
+        // after it is entered.
+        if root.can-change-words && root.has-root-pin && root.recovery-words.length == 0 && !root.busy: Secondary {
+            text: "Your words are locked with your PIN.";
+        }
+        if root.can-change-words && root.has-root-pin && root.recovery-words.length == 0 && !root.busy: HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; horizontal-stretch: 1; }
+            PrimaryButton {
+                text: "Show";
+                clicked => { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; }
+            }
+        }
+        if root.can-change-words && root.has-root-pin && root.recovery-words.length == 0 && root.pin-error != "": Text {
+            text: root.pin-error;
+            color: Tokens.danger;
+            font-size: Tokens.type-secondary;
+            wrap: word-wrap;
+        }
         GridLayout {
             spacing-horizontal: Tokens.space-m;
             spacing-vertical: Tokens.space-xs;

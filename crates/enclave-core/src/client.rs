@@ -142,6 +142,7 @@ mod prefs;
 mod push;
 mod record;
 mod reports;
+mod root_wrap;
 mod search;
 mod secure;
 mod servers;
@@ -457,6 +458,9 @@ pub struct Client {
     metered: bool,
     /// Root actions are unlocked until then (`pin.rs`).
     root_unlocked: u64,
+    /// While unlocked with a PIN: the key that unwraps the recovery
+    /// secret (`root_wrap.rs`).
+    root_kek: Option<enclave_crypto::seal::SealKey>,
     /// The envelope being handled was personal content in a conversation
     /// on the record, or signed: its verified signature, if any
     /// (`Message::signed`).
@@ -675,7 +679,8 @@ impl Client {
             .as_ref()
             .map(|p| (p.as_slice(), opts.pw_params));
         let store = Store::create(opts.path.as_deref(), opts.keystore, pw, &mut rng)?;
-        store.put(NS_SECRETS, b"recovery", recovery.as_bytes(), &mut rng)?;
+        let wrapped = root_wrap::initial(&store, &recovery, &mut rng)?;
+        store.put(NS_SECRETS, root_wrap::KEY_ROOT_WRAP, &wrapped, &mut rng)?;
         store.put(NS_SECRETS, b"account", &account.export_shared(), &mut rng)?;
         store.put(NS_SECRETS, b"device", &device.export(), &mut rng)?;
         store.put(NS_SECRETS, b"prekeys", &prekeys.export(), &mut rng)?;
@@ -715,6 +720,7 @@ impl Client {
             late_unit: false,
             metered: false,
             root_unlocked: 0,
+            root_kek: None,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: HashMap::new(),
@@ -735,16 +741,13 @@ impl Client {
         let mut rng = enclave_store::device_rng(store.keystore().as_ref())?;
         // A change of recovery words interrupted after its commit point.
         migrate::finish_staged(&store, &mut rng)?;
+        root_wrap::upgrade(&store, &mut rng)?;
         let get = |ns: &str, k: &[u8]| -> Result<Vec<u8>> {
             store.get(ns, k)?.ok_or(CoreError::NotFound)
         };
-        // Linked devices have no recovery secret and so no root.
-        let recovery = match store.get(NS_SECRETS, b"recovery")? {
-            Some(b) => Some(RecoverySecret::from_bytes(
-                b.as_slice().try_into().map_err(|_| CoreError::NotFound)?,
-            )),
-            None => None,
-        };
+        // Linked devices have no recovery secret and so no root; behind a
+        // PIN it waits for `unlock_root`.
+        let recovery = root_wrap::without_pin(&store)?;
         let account = AccountKeys::import_shared(
             &Zeroizing::new(get(NS_SECRETS, b"account")?),
             recovery.as_ref(),
@@ -803,6 +806,7 @@ impl Client {
             late_unit: false,
             metered: false,
             root_unlocked: 0,
+            root_kek: None,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: HashMap::new(),
@@ -854,13 +858,7 @@ impl Client {
 
     /// The 24 recovery words (for the deferred "save your recovery words" card).
     pub fn recovery_words(&self) -> Result<Vec<String>> {
-        let b = Zeroizing::new(
-            self.store
-                .get(NS_SECRETS, b"recovery")?
-                .ok_or(CoreError::NotFound)?,
-        );
-        let arr: [u8; 32] = b.as_slice().try_into().map_err(|_| CoreError::NotFound)?;
-        Ok(RecoverySecret::from_bytes(arr).to_words()?)
+        Ok(self.recovery_secret()?.to_words()?)
     }
 
     /// The spoken security code with `root`: 10 words in the BIP-39 list
@@ -878,13 +876,7 @@ impl Client {
     /// codes). They stand for the same secret.
     pub fn recovery_words_in(&self, language: &str) -> Result<Vec<String>> {
         let lang = enclave_proto::recovery::language(language).ok_or(CoreError::NotFound)?;
-        let b = Zeroizing::new(
-            self.store
-                .get(NS_SECRETS, b"recovery")?
-                .ok_or(CoreError::NotFound)?,
-        );
-        let arr: [u8; 32] = b.as_slice().try_into().map_err(|_| CoreError::NotFound)?;
-        Ok(RecoverySecret::from_bytes(arr).to_words_in(lang)?)
+        Ok(self.recovery_secret()?.to_words_in(lang)?)
     }
 
     /// All contacts.
@@ -1521,6 +1513,8 @@ impl Client {
     /// Everything but reading mailboxes: manifests, history, refills,
     /// expiry, invites.
     async fn sync_upkeep(&mut self, now: u64) -> Result<Vec<Event>> {
+        // A PIN unlock that has lapsed takes the unwrapped root with it.
+        self.relock_root_if_due();
         let mut events = Vec::new();
         match self.check_clock(now).await {
             Ok(mut e) => events.append(&mut e),

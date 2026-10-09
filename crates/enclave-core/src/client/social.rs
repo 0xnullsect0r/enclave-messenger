@@ -82,11 +82,8 @@ impl Client {
                 return Err(CoreError::NotAccepted);
             }
         }
-        let secret = Zeroizing::new(
-            self.store
-                .get(super::NS_SECRETS, b"recovery")?
-                .ok_or(CoreError::NotFound)?,
-        );
+        let rs = self.recovery_secret()?;
+        let secret = Zeroizing::new(rs.as_bytes().to_vec());
         let rng = &mut self.rng;
         let mut fill = |b: &mut [u8]| {
             if rng.fill("core/slip39", b).is_err() {

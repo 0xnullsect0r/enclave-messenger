@@ -42,6 +42,9 @@ const NS_MOVE_TOLD: &str = "home-move-told";
 const KEY_NEXT: &[u8] = b"move/next";
 /// The staged new manifest (signed), until both servers hold it.
 const KEY_MANIFEST: &[u8] = b"move/manifest";
+/// The [`ServerMove`] record for the old server, signed when the move
+/// starts (the root may be locked again by the time it is posted).
+const KEY_RECORD: &[u8] = b"move/record";
 /// When the move started (contacts added since need no telling).
 const KEY_AT: &str = "home-move-at";
 /// The home we left: encoded [`Profile`] ‖ u64 until.
@@ -75,7 +78,7 @@ impl Client {
     /// recovery words. The move goes on from `sync` until it reached
     /// everything ([`Client::move_pending`]).
     pub async fn move_home(&mut self, to: [u8; 16]) -> Result<()> {
-        if self.account.root.is_none() || self.migration_pending() || self.move_pending() {
+        if !self.holds_recovery_words() || self.migration_pending() || self.move_pending() {
             return Err(CoreError::NotAccepted);
         }
         if to == self.profile.server {
@@ -105,12 +108,22 @@ impl Client {
             request_cursor: 0,
             created_at: self.profile.created_at,
         };
+        // Everything the root signs for the move, signed now, while it is
+        // unlocked: the steps after this may run when it isn't.
+        let now = self.now();
+        self.load_root()?;
+        self.store.delete(NS_SECRETS, KEY_MANIFEST)?;
+        self.store.delete(NS_SECRETS, KEY_RECORD)?;
+        self.move_manifest(&next, now).await?;
+        if to != self.profile.server {
+            let from = self.profile.server;
+            self.move_record(from, &next, now)?;
+        }
         self.store
             .put(NS_SECRETS, KEY_NEXT, &next.encode(), &mut self.rng)?;
         for (k, _) in self.store.scan(NS_MOVE_TOLD)? {
             self.store.delete(NS_MOVE_TOLD, &k)?;
         }
-        let now = self.now();
         self.set_setting(KEY_AT, &now.to_be_bytes())?;
         self.set_setting(STEP, &[0])?;
         match self.push_home_move(now).await {
@@ -237,30 +250,7 @@ impl Client {
             // A new version naming the new request inbox, signed once (a
             // retry posts the very same one), on both servers: contacts who
             // look at the old home until they're told see it too.
-            let (m, signed) = match self.store.get(NS_SECRETS, KEY_MANIFEST)? {
-                Some(b) => {
-                    let signed = SignedManifest::from_bytes(&b)?;
-                    (Manifest::decode(&signed.body)?, signed)
-                }
-                None => {
-                    let prev = self.current_signed_manifest(now).await?;
-                    let mut m = self.manifest.clone();
-                    m.version += 1;
-                    m.prev_hash = prev.hash();
-                    m.issued_at = now;
-                    m.expires_at = now + MAX_VALIDITY_SECS;
-                    m.request_inbox = next.request_inbox.to_vec();
-                    // Securing: the new identity and vault keys.
-                    if let Some(k) = self.staged_keys()? {
-                        m.identity = k.identity_public;
-                        m.vault_hash = k.vault_hash();
-                    }
-                    let signed = m.sign(&self.account, &mut self.rng)?;
-                    self.store
-                        .put(NS_SECRETS, KEY_MANIFEST, &signed.to_bytes(), &mut self.rng)?;
-                    (m, signed)
-                }
-            };
+            let (m, signed) = self.move_manifest(&next, now).await?;
             let key = manifest_key(&self.account.root_public.0);
             let from = self.profile.server;
             for server in [to, from] {
@@ -401,17 +391,8 @@ impl Client {
         }
         if step & M_RECORD == 0 {
             let (old, _) = self.old_home()?.ok_or(CoreError::NotFound)?;
-            let root = self.account.root.as_ref().ok_or(CoreError::NotAccepted)?;
-            let record = ServerMove::sign(
-                root,
-                old.server,
-                self.profile.server,
-                &self.server_domain(&self.profile.server).unwrap_or_default(),
-                self.profile.request_inbox,
-                self.profile.vault_locator,
-                now,
-                &mut self.rng,
-            )?;
+            let here = Profile::decode(&self.profile.encode())?;
+            let record = self.move_record(old.server, &here, now)?;
             done(
                 self.rpc
                     .dir_put(
@@ -425,6 +406,7 @@ impl Client {
                     )
                     .await,
             )?;
+            self.store.delete(NS_SECRETS, KEY_RECORD)?;
             step |= M_RECORD;
             save(self, step)?;
         }
@@ -447,6 +429,61 @@ impl Client {
             save(self, step)?;
         }
         self.tell_move(now).await
+    }
+
+    /// The move's new manifest version (naming the new request inbox and,
+    /// when securing, the new keys): the staged one, or signed now and
+    /// staged.
+    async fn move_manifest(
+        &mut self,
+        next: &Profile,
+        now: u64,
+    ) -> Result<(Manifest, SignedManifest)> {
+        if let Some(b) = self.store.get(NS_SECRETS, KEY_MANIFEST)? {
+            let signed = SignedManifest::from_bytes(&b)?;
+            return Ok((Manifest::decode(&signed.body)?, signed));
+        }
+        let prev = self.current_signed_manifest(now).await?;
+        let mut m = self.manifest.clone();
+        m.version += 1;
+        m.prev_hash = prev.hash();
+        m.issued_at = now;
+        m.expires_at = now + MAX_VALIDITY_SECS;
+        m.request_inbox = next.request_inbox.to_vec();
+        // Securing: the new identity and vault keys.
+        if let Some(k) = self.staged_keys()? {
+            m.identity = k.identity_public;
+            m.vault_hash = k.vault_hash();
+        }
+        self.load_root()?;
+        let signed = m.sign(&self.account, &mut self.rng)?;
+        self.store
+            .put(NS_SECRETS, KEY_MANIFEST, &signed.to_bytes(), &mut self.rng)?;
+        Ok((m, signed))
+    }
+
+    /// The record pointing the old server `from` at the new home `to`: the
+    /// staged one, or signed now and staged.
+    fn move_record(&mut self, from: [u8; 16], to: &Profile, now: u64) -> Result<ServerMove> {
+        if let Some(b) = self.store.get(NS_SECRETS, KEY_RECORD)? {
+            return Ok(ServerMove::decode(&b)?);
+        }
+        let domain = self.server_domain(&to.server).unwrap_or_default();
+        self.load_root()?;
+        let root = self.account.root.as_ref().ok_or(CoreError::NotAccepted)?;
+        let record = ServerMove::sign(
+            root,
+            from,
+            to.server,
+            &domain,
+            to.request_inbox,
+            to.vault_locator,
+            now,
+            &mut self.rng,
+        )?;
+        self.store
+            .put(NS_SECRETS, KEY_RECORD, &record.encode(), &mut self.rng)?;
+        Ok(record)
     }
 
     /// Tell every contact we have a session with where to write now.

@@ -238,6 +238,7 @@ impl Client {
     /// recovery words.
     pub async fn publish_tombstone(&mut self) -> Result<()> {
         let now = self.now();
+        self.load_root()?;
         let root = self.account.root.as_ref().ok_or(CoreError::NotAccepted)?;
         let t = enclave_proto::tombstone::Tombstone::sign(root, now, &mut self.rng)?;
         let server = self.profile.server;

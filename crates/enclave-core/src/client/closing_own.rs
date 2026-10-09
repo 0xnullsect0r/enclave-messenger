@@ -29,10 +29,11 @@ impl Client {
     /// Delete this account everywhere (see the module docs). Only on a
     /// device holding the recovery words; erase the device afterwards.
     pub async fn delete_account(&mut self) -> Result<()> {
-        if self.account.root.is_none() {
+        if !self.holds_recovery_words() {
             return Err(CoreError::NotAccepted);
         }
         self.require_root_unlocked()?;
+        self.load_root()?;
         let now = self.now();
         let fail = |e: CoreError| -> Result<()> {
             match e {
