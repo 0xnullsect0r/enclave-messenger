@@ -262,6 +262,8 @@ fn fixture() -> Snapshot {
         can_change_words: true,
         words_pending: false,
         removed: false,
+        has_root_pin: false,
+        pin_error: String::new(),
         moved: 0,
         held_moves: Vec::new(),
         route: 0,

@@ -32,6 +32,7 @@ impl Client {
         if self.account.root.is_none() {
             return Err(CoreError::NotAccepted);
         }
+        self.require_root_unlocked()?;
         let now = self.now();
         let fail = |e: CoreError| -> Result<()> {
             match e {

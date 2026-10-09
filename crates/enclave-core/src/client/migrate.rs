@@ -183,6 +183,7 @@ impl Client {
     }
 
     async fn migrate_root(&mut self) -> Result<Vec<String>> {
+        self.require_root_unlocked()?;
         if self.migration_pending() {
             return Err(CoreError::NotAccepted);
         }
@@ -386,7 +387,7 @@ impl Client {
         }
         if step & S_SHARES == 0 {
             if let Some((threshold, holders)) = self.recovery_holders() {
-                self.give_recovery_shares(&holders, threshold).await?;
+                self.split_recovery(&holders, threshold).await?;
             }
             step |= S_SHARES;
             save(self, step)?;

@@ -466,6 +466,7 @@ impl LinkingDevice {
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
             metered: false,
+            root_unlocked: 0,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: std::collections::HashMap::new(),

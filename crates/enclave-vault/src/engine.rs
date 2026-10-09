@@ -299,6 +299,8 @@ struct Engine {
     mixnet_up: bool,
     /// This device was removed from the account.
     removed: bool,
+    /// Why the PIN wasn't taken.
+    pin_error: String,
     /// When to try starting it again after a failure.
     mixnet_retry_at: u64,
     /// Tickets bought before there was a profile to keep them in.
@@ -757,6 +759,7 @@ pub async fn run_with(
         share_request: None,
         mixnet_up: false,
         removed: false,
+        pin_error: String::new(),
         mixnet_retry_at: 0,
         prewallet: None,
         net_failures: 0,
@@ -1213,6 +1216,9 @@ impl Engine {
                             self.reveal_words = true;
                             self.status = "Your recovery words changed, so the share you took back stops working. Write the new words down.".into();
                         }
+                        Err(CoreError::PinRequired) => {
+                            self.status = "Enter your PIN to share your recovery.".into();
+                        }
                         Err(_) => {
                             self.status = "Couldn't share your recovery. Choose at least two people you talk to, and check your connection.".into();
                         }
@@ -1253,12 +1259,49 @@ impl Engine {
                         Err(CoreError::NotAccepted) => {
                             self.status = "Only the device that holds your recovery words can delete your account.".into();
                         }
+                        Err(CoreError::PinRequired) => {
+                            self.status = "Enter your PIN to delete your account.".into();
+                        }
                         Err(_) => {
                             self.status = "Couldn't finish deleting your account. Check your connection and try again: what's done stays done.".into();
                         }
                     }
                 }
                 self.busy = false;
+            }
+            Cmd::SetRootPin(pin) => {
+                let params = self.options(None).pw_params;
+                if let Some(c) = self.client.as_mut() {
+                    self.pin_error = match c.set_root_pin(&pin, params) {
+                        Ok(()) => {
+                            self.status = "Your PIN is set. Enclave asks for it before anything that acts for your whole account.".into();
+                            String::new()
+                        }
+                        Err(CoreError::TooLong) => format!(
+                            "Use at least {} digits or letters.",
+                            enclave_core::client::MIN_PIN_LEN
+                        ),
+                        Err(CoreError::PinRequired) => "Enter your current PIN first.".into(),
+                        Err(_) => "Couldn't set your PIN. Try again.".into(),
+                    };
+                }
+            }
+            Cmd::UnlockRoot(pin) => {
+                if let Some(c) = self.client.as_mut() {
+                    self.pin_error = match c.unlock_root(&pin) {
+                        Ok(()) => String::new(),
+                        Err(CoreError::PinWait(until)) => {
+                            use chrono::TimeZone;
+                            let at = chrono::Local
+                                .timestamp_opt(until as i64, 0)
+                                .single()
+                                .map(|t| t.format("%H:%M:%S").to_string())
+                                .unwrap_or_default();
+                            format!("Too many wrong PINs. Try again at {at}.")
+                        }
+                        Err(_) => "That PIN isn't right.".into(),
+                    };
+                }
             }
             Cmd::EraseDevice => {
                 if self.client.is_some() {
@@ -2006,7 +2049,8 @@ impl Engine {
                         });
                     self.link_status = match id {
                         Some(id) => match c.remove_device(&id).await {
-                            Ok(()) => "Removed. Your contacts will stop sending to it.".into(),
+                            Ok(()) => "Removed. Your contacts will stop sending to it. If it may be in someone else's hands, secure your account next.".into(),
+                            Err(CoreError::PinRequired) => "Enter your PIN to remove a device.".into(),
                             Err(CoreError::Net(_)) => {
                                 "Couldn't reach your server. Try again in a moment.".into()
                             }
@@ -2308,6 +2352,9 @@ impl Engine {
                         Ok(_) => {
                             self.reveal_words = true;
                             self.status.clear();
+                        }
+                        Err(CoreError::PinRequired) => {
+                            self.status = "Enter your PIN to change your recovery words.".into();
                         }
                         Err(_) => {
                             self.status = "Couldn't change your recovery words. Your old words still work. Check your connection and try again.".into();
@@ -2931,6 +2978,8 @@ impl Engine {
         s.typing_setting = c.typing_enabled();
         s.can_change_words = c.holds_recovery_words();
         s.removed = self.removed;
+        s.has_root_pin = c.has_root_pin();
+        s.pin_error = self.pin_error.clone();
         s.words_pending = c.migration_pending();
         s.moved = self
             .selected

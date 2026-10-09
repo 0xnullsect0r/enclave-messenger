@@ -13,6 +13,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+subtle = "2.6.1"
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-wire = { path = "../enclave-wire" }
 enclave-rpc = { path = "../enclave-rpc" }

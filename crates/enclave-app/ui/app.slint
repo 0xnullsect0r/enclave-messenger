@@ -744,6 +744,12 @@ export component AppWindow inherits Window {
     callback reveal-share(string);
     callback release-share(string);
     callback delete-account();
+    callback set-root-pin(string);
+    callback unlock-root(string);
+    in property <bool> has-root-pin;
+    in property <string> pin-error;
+    in-out property <string> root-pin-input;
+    in-out property <string> new-pin-input;
     callback erase-device();
     in property <bool> removed;
     in-out property <string> delete-confirm;
@@ -2470,6 +2476,24 @@ export component AppWindow inherits Window {
             alignment: start;
             QuietButton { text: "Save a backup"; outlined: true; clicked => { root.save-backup(); } }
         }
+        Body { text: "PIN"; font-weight: 600; }
+        Secondary { text: root.has-root-pin ? "Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account." : "Set a PIN, and Enclave asks for it before removing a device, changing your recovery words or deleting your account. Someone who picks up your unlocked phone can't do those."; }
+        if root.has-root-pin: Field { placeholder: "Current PIN"; secret: true; text <=> root.root-pin-input; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: root.has-root-pin ? "New PIN" : "PIN (at least 6)"; secret: true; text <=> root.new-pin-input; horizontal-stretch: 1; }
+            QuietButton {
+                text: root.has-root-pin ? "Change PIN" : "Set PIN";
+                outlined: true;
+                clicked => {
+                    if root.has-root-pin { root.unlock-root(root.root-pin-input); }
+                    root.set-root-pin(root.new-pin-input);
+                    root.new-pin-input = "";
+                    root.root-pin-input = "";
+                }
+            }
+        }
+        if root.pin-error != "": Text { text: root.pin-error; color: Tokens.danger; font-size: Tokens.type-secondary; wrap: word-wrap; }
         Body { text: "Delete"; font-weight: 600; }
         Secondary { text: root.can-change-words ? "Delete your account for everyone, or only erase this device." : "Erase this device. Deleting the account is done on the device that holds your recovery words."; }
         HorizontalLayout {
@@ -2513,12 +2537,13 @@ export component AppWindow inherits Window {
             }
         }
         if root.friends.length < 2: Secondary { text: "You need at least two conversations with people you trust first."; }
+        if root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? "Sharing…" : (chosen >= 2 ? "Share with " + chosen + " (" + (floor(chosen / 2) + 1) + " needed)" : "Share");
                 enabled: chosen >= 2 && !root.busy;
-                clicked => { root.give-shares(floor(chosen / 2) + 1); root.sheet = Sheet.none; }
+                clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.give-shares(floor(chosen / 2) + 1); root.sheet = Sheet.none; }
             }
         }
     }
@@ -2796,6 +2821,7 @@ export component AppWindow inherits Window {
                     spacing: Tokens.space-s;
                     Body { text: "Remove this device?"; font-weight: 600; }
                     Secondary { text: "It stops getting new messages, and your contacts stop sending to it. Messages already on it stay there until it's erased."; }
+                    if root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
@@ -2803,7 +2829,7 @@ export component AppWindow inherits Window {
                             text: root.busy ? "Removing…" : "Remove device";
                             danger: true;
                             enabled: !root.busy;
-                            clicked => { root.remove-device(d.id); }
+                            clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.remove-device(d.id); }
                         }
                         QuietButton { text: "Keep it"; clicked => { root.confirm-remove = ""; } }
                     }
@@ -2955,6 +2981,7 @@ export component AppWindow inherits Window {
             wrap: word-wrap;
         }
         Field { placeholder: "Type delete to confirm"; text <=> root.delete-confirm; }
+        if root.has-root-pin && root.can-change-words: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
@@ -2962,7 +2989,7 @@ export component AppWindow inherits Window {
                 text: root.busy ? "Deleting…" : (root.can-change-words ? "Delete my account" : "Erase this device");
                 danger: true;
                 enabled: root.delete-confirm == "delete" && !root.busy;
-                clicked => { if root.can-change-words { root.delete-account(); } else { root.erase-device(); } }
+                clicked => { if root.can-change-words { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.delete-account(); } else { root.erase-device(); } }
             }
             QuietButton { text: "Keep it"; clicked => { root.sheet = Sheet.none; } }
         }
@@ -2993,12 +3020,13 @@ export component AppWindow inherits Window {
                 ? "Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards."
                 : "Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards.";
         }
+        if root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             spacing: Tokens.space-s;
             alignment: start;
             PrimaryButton {
                 text: root.can-change-words ? "Change my words" : "Make new words";
-                clicked => { root.change-words(); root.open-sheet(Sheet.recovery); }
+                clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.change-words(); root.open-sheet(Sheet.recovery); }
             }
             QuietButton { text: "Not now"; clicked => { root.sheet = Sheet.recovery; } }
         }

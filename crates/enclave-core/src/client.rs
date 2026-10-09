@@ -134,6 +134,7 @@ mod notes;
 pub mod outbox;
 mod own_sync;
 mod parts;
+mod pin;
 mod pins;
 mod polls;
 mod prefs;
@@ -165,6 +166,7 @@ pub use messages::{EDIT_WINDOW, Message, Reaction};
 pub use migrate::{HELD_MOVE_NOTICE_SECS, Moved};
 use own_sync::NS_CARD_OWED;
 pub use own_sync::{INACTIVE_SECS, NEW_DEVICE_SECS, OwnDeviceState};
+pub use pin::{FREE_TRIES, MIN_PIN_LEN, UNLOCK_SECS};
 pub use pins::MAX_PINS;
 pub use polls::{MAX_OPTIONS, PollView};
 pub use prefs::{ConvPrefs, MAX_PINNED_CONVERSATIONS};
@@ -451,6 +453,8 @@ pub struct Client {
     late_unit: bool,
     /// The network is metered: braids wait (`braid.rs`).
     metered: bool,
+    /// Root actions are unlocked until then (`pin.rs`).
+    root_unlocked: u64,
     /// The envelope being handled was personal content in a conversation
     /// on the record, or signed: its verified signature, if any
     /// (`Message::signed`).
@@ -708,6 +712,7 @@ impl Client {
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
             metered: false,
+            root_unlocked: 0,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: HashMap::new(),
@@ -794,6 +799,7 @@ impl Client {
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
             metered: false,
+            root_unlocked: 0,
             unit_signature: None,
             group_unit_signed: None,
             group_polls: HashMap::new(),

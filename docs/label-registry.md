@@ -170,6 +170,7 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | Label | Kind | Output | Where | Purpose |
 |---|---|---|---|---|
 | `enclave/v1/proto/link-transcript` | TR | — | `enclave-core/src/client/link.rs` | Device-link transcript prefix (spec: 02b §11) |
+| `enclave/v1/store/pin-check` | KMAC | 256 | `enclave-core/src/client/pin.rs` | Check value of the PIN for root actions, keyed by Argon2id(PIN, salt) (spec: 03 §5) |
 | `enclave/v1/net/vault-owner` | KMAC | 256 | `enclave-rpc/src/api.rs` `vault_owner` | Owner secret of the account's vault-key blob, from the key it's sealed under, so the account can replace or delete it (spec: 03 §8.5) |
 | `enclave/v1/proto/share-release` | KMAC | 256 | `enclave-core/src/client/social.rs` `release_key` | Seal key for a recovery share given back in person, from the X448 and ML-KEM-1024 secrets to the request code, combined over both codes (spec: 03 §8.3) |
 | `enclave/v1/proto/share-words` | KMAC | 256 | `enclave-core/src/client/social.rs` `check_words` | Three check words from a share request, shown on both screens; key SHA3-512 of the request (spec: 03 §8.3) |

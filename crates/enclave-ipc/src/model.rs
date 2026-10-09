@@ -308,6 +308,10 @@ pub struct Snapshot {
     /// This device was removed from the account: it can't get new
     /// messages, and may be erased.
     pub removed: bool,
+    /// Root actions need the PIN.
+    pub has_root_pin: bool,
+    /// Why the PIN wasn't taken, or empty.
+    pub pin_error: String,
     /// The open conversation's contact changed their recovery words:
     /// 0 no, 1 confirmed by their old key, 2 not confirmed.
     pub moved: u8,
@@ -490,6 +494,11 @@ pub enum Cmd {
     /// Erase this device's copy of the account (it was removed, or the
     /// person wants it gone from here).
     EraseDevice,
+    /// Set (or, after `UnlockRoot` with the old one, change) the PIN for
+    /// root actions.
+    SetRootPin(String),
+    /// Enter the PIN before a root action (sent just before it).
+    UnlockRoot(String),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -763,6 +772,8 @@ impl Snapshot {
             .bool(self.can_change_words)
             .bool(self.words_pending)
             .bool(self.removed)
+            .bool(self.has_root_pin)
+            .str(&self.pin_error)
             .u8(self.moved)
             .strs(&self.held_moves)
             .u8(self.route)
@@ -975,6 +986,8 @@ impl Snapshot {
             can_change_words: r.bool()?,
             words_pending: r.bool()?,
             removed: r.bool()?,
+            has_root_pin: r.bool()?,
+            pin_error: r.str()?,
             moved: r.u8()?,
             held_moves: r.strs()?,
             route: r.u8()?,
@@ -1071,6 +1084,8 @@ impl Cmd {
             Cmd::AskShares => w.u8(70),
             Cmd::DeleteAccount => w.u8(71),
             Cmd::EraseDevice => w.u8(72),
+            Cmd::SetRootPin(p) => w.u8(73).str(p),
+            Cmd::UnlockRoot(p) => w.u8(74).str(p),
         };
         w.0
     }
@@ -1155,6 +1170,8 @@ impl Cmd {
             70 => Cmd::AskShares,
             71 => Cmd::DeleteAccount,
             72 => Cmd::EraseDevice,
+            73 => Cmd::SetRootPin(r.str()?),
+            74 => Cmd::UnlockRoot(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

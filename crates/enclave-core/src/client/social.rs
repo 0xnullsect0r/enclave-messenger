@@ -60,6 +60,18 @@ impl Client {
         holders: &[[u8; 64]],
         threshold: u8,
     ) -> Result<()> {
+        self.require_root_unlocked()?;
+        self.split_recovery(holders, threshold).await
+    }
+
+    /// [`Client::give_recovery_shares`] without the PIN (the last step of
+    /// a change of words the person already unlocked, carried on from
+    /// `sync`).
+    pub(crate) async fn split_recovery(
+        &mut self,
+        holders: &[[u8; 64]],
+        threshold: u8,
+    ) -> Result<()> {
         let n = holders.len();
         if !(2..=MAX_HOLDERS).contains(&n) || threshold < 2 || usize::from(threshold) > n {
             return Err(CoreError::TooLong);
@@ -294,6 +306,7 @@ impl Client {
         holders: &[[u8; 64]],
         threshold: u8,
     ) -> Result<Option<Vec<String>>> {
+        self.require_root_unlocked()?;
         let current = self.recovery_holders().map(|(_, h)| h).unwrap_or_default();
         let dropped: Vec<[u8; 64]> = current
             .iter()

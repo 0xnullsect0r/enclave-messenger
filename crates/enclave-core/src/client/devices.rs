@@ -25,6 +25,7 @@ impl Client {
     /// manifest is published; contacts that are offline catch up when they
     /// next sync.
     pub async fn remove_device(&mut self, id: &[u8; 16]) -> Result<()> {
+        self.require_root_unlocked()?;
         if !self.can_link() {
             return Err(CoreError::NotAccepted);
         }

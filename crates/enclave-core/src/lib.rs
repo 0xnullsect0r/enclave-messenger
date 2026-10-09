@@ -92,6 +92,15 @@ pub enum CoreError {
     /// up to 72 hours (`03-identity.md` §8.1): what it sent would be lost.
     #[error("your account is still being set up on this device")]
     RecoveryHeld,
+    /// A root action needs the PIN first (`Client::unlock_root`).
+    #[error("enter your PIN first")]
+    PinRequired,
+    /// The PIN was wrong.
+    #[error("that PIN isn't right")]
+    PinWrong,
+    /// Too many wrong PINs: the next try is allowed at this time.
+    #[error("too many wrong PINs; try again later")]
+    PinWait(u64),
     /// Not allowed in Maximum privacy (push, `docs/10-push.md`).
     #[error("not available in Maximum privacy")]
     MaximumPrivacy,
