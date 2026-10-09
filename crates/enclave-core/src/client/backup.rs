@@ -264,6 +264,8 @@ impl Client {
                 .initiate_to(&card, &peer_manifest, Some(&vault), &hello, None, now, None)
                 .await?;
         }
+        client.ensure_search_index()?;
+        client.store.set_schema(super::SCHEMA)?;
         Ok(client)
     }
 }

@@ -144,6 +144,7 @@ mod record;
 mod reports;
 mod root_wrap;
 mod search;
+mod search_index;
 mod secure;
 mod servers;
 mod sharing;
@@ -388,6 +389,10 @@ pub enum Event {
     /// (`own_sync.rs`).
     Synced,
 }
+
+/// The profile schema this version writes (`Store::schema`): 1 the wrapped
+/// recovery secret, 2 the search index.
+pub(crate) const SCHEMA: u32 = 2;
 
 /// Where and how to keep the profile.
 pub struct Options {
@@ -732,21 +737,56 @@ impl Client {
             #[cfg(test)]
             two_kem_for_tests: false,
         };
+        let mut client = client;
+        client.search_index_new()?;
+        client.store.set_schema(SCHEMA)?;
         Ok((client, words))
     }
 
-    /// Open an existing profile.
+    /// Open an existing profile, migrating it to this version's schema
+    /// first if it is older (`docs/14-storage.md` §2.4): the database is
+    /// copied to `profile.redb.pre-migration` before anything changes, put
+    /// back if the migration fails, and deleted once it is done.
     pub fn open(opts: Options, transport: Arc<dyn Transport>) -> Result<Self> {
+        let path = opts.path.clone().ok_or(CoreError::NotFound)?;
+        let snapshot = path.with_extension("redb.pre-migration");
+        match Self::open_and_migrate(opts, transport, &snapshot) {
+            Ok(c) => {
+                let _ = std::fs::remove_file(&snapshot);
+                Ok(c)
+            }
+            Err(e) => {
+                // The client (and the database) are closed by now.
+                if snapshot.exists() {
+                    let _ = std::fs::rename(&snapshot, &path);
+                }
+                Err(e)
+            }
+        }
+    }
+
+    fn open_and_migrate(
+        opts: Options,
+        transport: Arc<dyn Transport>,
+        snapshot: &std::path::Path,
+    ) -> Result<Self> {
         let path = opts.path.as_deref().ok_or(CoreError::NotFound)?;
         let store = Store::open(
             path,
             opts.keystore,
             opts.passphrase.as_ref().map(|p| p.as_slice()),
         )?;
+        let schema = store.schema()?;
+        if schema < SCHEMA {
+            store.snapshot(snapshot)?;
+        }
         let mut rng = enclave_store::device_rng(store.keystore().as_ref())?;
         // A change of recovery words interrupted after its commit point.
         migrate::finish_staged(&store, &mut rng)?;
-        root_wrap::upgrade(&store, &mut rng)?;
+        // Schema 1: the recovery secret wrapped (`root_wrap.rs`).
+        if schema < 1 {
+            root_wrap::upgrade(&store, &mut rng)?;
+        }
         let get = |ns: &str, k: &[u8]| -> Result<Vec<u8>> {
             store.get(ns, k)?.ok_or(CoreError::NotFound)
         };
@@ -819,6 +859,12 @@ impl Client {
             two_kem_for_tests: false,
         };
         client.resume_rename()?;
+        // Schema 2: the search index (also built for a restored or linked
+        // profile that has none yet).
+        client.ensure_search_index()?;
+        if schema < SCHEMA {
+            client.store.set_schema(SCHEMA)?;
+        }
         Ok(client)
     }
 
@@ -1285,6 +1331,7 @@ impl Client {
         for (k, _) in self.store.scan(&ns)? {
             self.store.delete(&ns, &k)?;
         }
+        self.drop_index(search_index::Conv::Contact(*root))?;
         self.forget_record(root)?;
         self.forget_closed(root)?;
         self.forget_shared_contacts(root)

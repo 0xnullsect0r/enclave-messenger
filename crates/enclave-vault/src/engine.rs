@@ -874,6 +874,9 @@ impl Engine {
             },
             Mode::Server { profile, .. } => {
                 let _ = std::fs::create_dir_all(profile);
+                // Useless without this device's keystore, and outliving
+                // shredding if copied: left out of OS backups.
+                let _ = enclave_platform::backup::exclude(profile);
                 let keystore: Arc<dyn enclave_store::Keystore> =
                     match FileKeystore::new(profile.join("keys")) {
                         Ok(k) => Arc::new(k),
@@ -3215,6 +3218,9 @@ impl Engine {
                 .into_iter()
                 .map(|h| {
                     let (id, kind, tint, art) = match h.place {
+                        enclave_core::Place::Contact(r) if r == c.root() => {
+                            (NOTES_ID.to_string(), 2, 0, 0)
+                        }
                         enclave_core::Place::Contact(r) => {
                             (hex_id(&r), 0, tint_for(&r), art_of(&r))
                         }

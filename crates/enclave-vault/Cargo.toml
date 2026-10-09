@@ -23,6 +23,7 @@ dev-transport = ["enclave-net/dev-transport"]
 
 [dependencies]
 subtle = "2"
+enclave-platform = { path = "../enclave-platform" }
 enclave-core = { path = "../enclave-core" }
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-ipc = { path = "../enclave-ipc" }

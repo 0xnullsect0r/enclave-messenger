@@ -13,6 +13,7 @@
 use super::location::Location;
 use super::record::Evidence;
 use super::search::Place;
+use super::search_index::Conv;
 use super::{Client, ContactState, Event};
 use crate::content::{Content, MAX_TEXT, MsgId};
 use crate::files::{self, Attachment};
@@ -253,6 +254,24 @@ impl Message {
         })
     }
 
+    /// What search looks at: the text and an attachment's name (nothing,
+    /// once deleted).
+    pub(crate) fn search_text(&self) -> String {
+        if self.deleted {
+            return String::new();
+        }
+        match &self.attachment {
+            Some(a) if self.text.is_empty() => a.name.clone(),
+            Some(a) => format!("{} {}", a.name, self.text),
+            None => self.text.clone(),
+        }
+    }
+
+    /// The shred day the record is sealed under, if it disappears.
+    pub(crate) fn sealed_day(&self) -> Option<u64> {
+        (self.expires_secs > 0).then(|| self.shred_day())
+    }
+
     /// The shred day this message's record is sealed under.
     fn shred_day(&self) -> u64 {
         match self.expires_at {
@@ -310,6 +329,14 @@ impl Client {
     }
 
     pub(crate) fn put_message(&mut self, root: &[u8; 64], m: &Message) -> Result<()> {
+        // The version it replaces, for the search index.
+        let old = match self.store.get(&msg_ns(root), &m.seq.to_be_bytes())? {
+            Some(b) => {
+                let shred = Shredder::open(&self.store, &mut self.rng)?;
+                Self::decode_record(&shred, root, &b)
+            }
+            None => None,
+        };
         let rec = if m.expires_secs > 0 {
             let day = m.shred_day();
             let mut shred = Shredder::open(&self.store, &mut self.rng)?;
@@ -322,7 +349,26 @@ impl Client {
             .put(&msg_ns(root), &m.seq.to_be_bytes(), &rec, &mut self.rng)?;
         self.store
             .put(&id_ns(root), &m.id, &m.seq.to_be_bytes(), &mut self.rng)?;
+        let before = old.map(|o| (o.search_text(), o.sealed_day()));
+        let (old_text, old_day) = before.unwrap_or_default();
+        self.index_message(
+            Conv::Contact(*root),
+            m.seq,
+            (&old_text, old_day),
+            (&m.search_text(), m.sealed_day()),
+        )?;
         Ok(())
+    }
+
+    /// The message at `seq` with `root`, if it is there and hasn't expired.
+    pub(crate) fn message_at(&self, root: &[u8; 64], seq: u64) -> Result<Option<Message>> {
+        let Some(b) = self.store.get(&msg_ns(root), &seq.to_be_bytes())? else {
+            return Ok(None);
+        };
+        let mut rng = HedgedRng::new()?;
+        let shred = Shredder::open(&self.store, &mut rng)?;
+        let now = self.now();
+        Ok(Self::decode_record(&shred, root, &b).filter(|m| m.expires_at.is_none_or(|t| t > now)))
     }
 
     pub(crate) fn get_message(&mut self, root: &[u8; 64], seq: u64) -> Result<Message> {
@@ -410,20 +456,27 @@ impl Client {
                     }
                     match Self::decode_record(&shred, &root, &b) {
                         Some(m) if m.expires_at.is_none_or(|t| t > now) => {}
-                        Some(m) => dead.push((k, Some(m.id))),
+                        Some(m) => dead.push((k, Some(m))),
                         None => dead.push((k, None)),
                     }
                 }
             }
-            for (k, id) in dead {
+            for (k, m) in dead {
                 self.store.delete(&ns, &k)?;
-                if let Some(id) = id {
-                    self.store.delete(&id_ns(&root), &id)?;
+                if let Some(m) = m {
+                    self.store.delete(&id_ns(&root), &m.id)?;
+                    self.index_message(
+                        Conv::Contact(root),
+                        m.seq,
+                        (&m.search_text(), m.sealed_day()),
+                        ("", None),
+                    )?;
                 }
                 removed += 1;
             }
             let mut shred = Shredder::open(&self.store, &mut self.rng)?;
             shred.shred(conv(&root), today, &mut self.rng)?;
+            self.drop_index_days(Conv::Contact(root), today)?;
         }
         Ok(removed)
     }

@@ -104,3 +104,65 @@ async fn the_root_stays_wrapped_on_disk() {
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&copy);
 }
+
+/// A profile from before the wrap (schema 0, the recovery secret only
+/// under the store's sealing) is migrated when it opens, a snapshot first;
+/// a migration that fails puts the snapshot back.
+#[tokio::test(flavor = "multi_thread")]
+async fn old_profiles_migrate_with_a_snapshot_first() {
+    use enclave_proto::recovery::RecoverySecret;
+    use enclave_store::Store;
+    let net = network();
+    let dir = tmp("m");
+    let keys: Arc<dyn Keystore> = Arc::new(FileKeystore::new(dir.join("keys")).unwrap());
+    let (ada, words) = Client::create(
+        on_disk(&dir, Arc::clone(&keys)),
+        Arc::new(net.clone()),
+        S1,
+        "Ada",
+    )
+    .await
+    .unwrap();
+    drop(ada);
+    let db = dir.join("profile.redb");
+    let rs = RecoverySecret::from_words(&words.join(" ")).unwrap();
+    let make_old = |recovery: &[u8]| {
+        let store = Store::open(&db, Arc::clone(&keys), None).unwrap();
+        let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+        store.delete("secrets", b"root-wrap").unwrap();
+        store
+            .put("secrets", b"recovery", recovery, &mut rng)
+            .unwrap();
+        store.set_schema(0).unwrap();
+    };
+
+    // A recovery record that can't be right: the migration fails, and
+    // the profile is as it was, schema and all.
+    make_old(&rs.as_bytes()[..31]);
+    assert!(Client::open(on_disk(&dir, Arc::clone(&keys)), Arc::new(net.clone())).is_err());
+    assert!(!dir.join("profile.redb.pre-migration").exists(), "put back");
+    {
+        let store = Store::open(&db, Arc::clone(&keys), None).unwrap();
+        assert_eq!(store.schema().unwrap(), 0);
+        assert_eq!(
+            store.get("secrets", b"recovery").unwrap().unwrap().len(),
+            31
+        );
+    }
+
+    // The real one: wrapped, the old record gone, schema 2.
+    make_old(rs.as_bytes());
+    let ada = Client::open(on_disk(&dir, Arc::clone(&keys)), Arc::new(net.clone())).unwrap();
+    assert!(
+        !dir.join("profile.redb.pre-migration").exists(),
+        "done with"
+    );
+    assert!(ada.holds_recovery_words());
+    assert_eq!(ada.recovery_words().unwrap(), words);
+    drop(ada);
+    let store = Store::open(&db, Arc::clone(&keys), None).unwrap();
+    assert_eq!(store.schema().unwrap(), 2);
+    assert!(store.get("secrets", b"recovery").unwrap().is_none());
+    drop(store);
+    let _ = std::fs::remove_dir_all(&dir);
+}

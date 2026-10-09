@@ -520,6 +520,8 @@ impl LinkingDevice {
                 None,
             )
             .await?;
+        client.ensure_search_index()?;
+        client.store.set_schema(super::SCHEMA)?;
         Ok(client)
     }
 }

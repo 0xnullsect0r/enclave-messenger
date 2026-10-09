@@ -130,6 +130,19 @@ fn get_who(r: &mut Reader<'_>) -> enclave_proto::Result<Option<[u8; 64]>> {
 }
 
 impl GroupMessage {
+    /// What search looks at: the text and an attachment's name (nothing,
+    /// once deleted).
+    pub(crate) fn search_text(&self) -> String {
+        if self.deleted {
+            return String::new();
+        }
+        match &self.attachment {
+            Some(a) if self.text.is_empty() => a.name.clone(),
+            Some(a) => format!("{} {}", a.name, self.text),
+            None => self.text.clone(),
+        }
+    }
+
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
         w.u8(7).u64(self.seq);
@@ -385,6 +398,18 @@ impl Client {
         Ok(v)
     }
 
+    /// The group message at `seq`, if there is one.
+    pub(crate) fn find_group_message(
+        &self,
+        gid: &[u8; 32],
+        seq: u64,
+    ) -> Result<Option<GroupMessage>> {
+        Ok(self
+            .store
+            .get(&msg_ns(gid), &seq.to_be_bytes())?
+            .and_then(|b| GroupMessage::decode(&b).ok()))
+    }
+
     /// Mark a group as read.
     pub fn mark_group_read(&mut self, gid: &[u8; 32]) -> Result<()> {
         if let Some(e) = self.groups.get_mut(gid) {
@@ -521,12 +546,7 @@ impl Client {
         let content = [&id[..], text.as_bytes()].concat();
         self.post_group(gid, &content, 0, now).await?;
         msg.delivered = true;
-        self.store.put(
-            &msg_ns(gid),
-            &msg.seq.to_be_bytes(),
-            &msg.encode(),
-            &mut self.rng,
-        )?;
+        self.put_group_message(gid, &msg)?;
         Ok(msg)
     }
 
@@ -1345,13 +1365,24 @@ impl Client {
 
     /// Save a changed group message.
     pub(crate) fn put_group_message(&mut self, gid: &[u8; 32], m: &GroupMessage) -> Result<()> {
+        let old = self
+            .store
+            .get(&msg_ns(gid), &m.seq.to_be_bytes())?
+            .and_then(|b| GroupMessage::decode(&b).ok())
+            .map(|o| o.search_text())
+            .unwrap_or_default();
         self.store.put(
             &msg_ns(gid),
             &m.seq.to_be_bytes(),
             &m.encode(),
             &mut self.rng,
         )?;
-        Ok(())
+        self.index_message(
+            super::search_index::Conv::Group(*gid),
+            m.seq,
+            (&old, None),
+            (&m.search_text(), None),
+        )
     }
 
     /// Someone else's message in `gid`: one more unread, and back from the
@@ -1414,8 +1445,7 @@ impl Client {
                 on_record.then_some(true)
             },
         };
-        self.store
-            .put(&msg_ns(gid), &seq.to_be_bytes(), &m.encode(), &mut self.rng)?;
+        self.put_group_message(gid, &m)?;
         self.save_group(gid)?;
         Ok(m)
     }

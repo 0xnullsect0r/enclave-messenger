@@ -6,7 +6,7 @@ use enclave_crypto::kmac::{Kmac256, kmac256};
 use enclave_crypto::pwhash::{self, PwParams};
 use enclave_crypto::rng::HedgedRng;
 use enclave_crypto::seal::{self, SealKey};
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::Path;
 use std::sync::Arc;
 use zeroize::Zeroizing;
@@ -175,6 +175,110 @@ impl Store {
         let n = u32::from_be_bytes([pt[0], pt[1], pt[2], pt[3]]) as usize;
         let key = pt.get(4..4 + n).ok_or(StoreError::Malformed)?.to_vec();
         Ok((key, pt[4 + n..].to_vec()))
+    }
+
+    /// The profile's schema version (`meta["schema"]`; 0 before versions),
+    /// which the owner moves on as it migrates (`docs/14-storage.md` §2.4).
+    pub fn schema(&self) -> Result<u32> {
+        let r = self.db.begin_read()?;
+        let t = r.open_table(META)?;
+        Ok(t.get("schema")?
+            .and_then(|v| <[u8; 4]>::try_from(v.value()).ok())
+            .map_or(0, u32::from_be_bytes))
+    }
+
+    /// Record the schema version.
+    pub fn set_schema(&self, v: u32) -> Result<()> {
+        let w = self.db.begin_write()?;
+        {
+            let mut t = w.open_table(META)?;
+            t.insert("schema", v.to_be_bytes().as_slice())?;
+        }
+        w.commit()?;
+        Ok(())
+    }
+
+    /// Copy the whole database (sealed records and metadata, as they are)
+    /// into a new file at `path`, in one read transaction: the snapshot
+    /// taken before a migration.
+    pub fn snapshot(&self, path: &Path) -> Result<()> {
+        let out = Database::create(path)?;
+        let r = self.db.begin_read()?;
+        let w = out.begin_write()?;
+        {
+            let src = r.open_table(META)?;
+            let mut dst = w.open_table(META)?;
+            for item in src.iter()? {
+                let (k, v) = item?;
+                dst.insert(k.value(), v.value())?;
+            }
+        }
+        {
+            let mut dst = w.open_table(RECORDS)?;
+            match r.open_table(RECORDS) {
+                Ok(src) => {
+                    for item in src.iter()? {
+                        let (k, v) = item?;
+                        dst.insert(k.value(), v.value())?;
+                    }
+                }
+                Err(redb::TableError::TableDoesNotExist(_)) => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        w.commit()?;
+        Ok(())
+    }
+
+    /// Put (`Some`) and delete (`None`) several records of `ns` in one
+    /// transaction.
+    pub fn write_batch(
+        &self,
+        ns: &str,
+        items: &[(Vec<u8>, Option<Vec<u8>>)],
+        rng: &mut HedgedRng,
+    ) -> Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        let mut sealed = Vec::with_capacity(items.len());
+        for (key, value) in items {
+            let bk = self.blind(ns, key);
+            let v = match value {
+                Some(value) => {
+                    let rk = seal::record_key(&self.master, &self.salt, &bk);
+                    let mut pt = Zeroizing::new(Vec::with_capacity(4 + key.len() + value.len()));
+                    pt.extend_from_slice(&(key.len() as u32).to_be_bytes());
+                    pt.extend_from_slice(key);
+                    pt.extend_from_slice(value);
+                    Some(seal_chunked(&rk, &bk, &pt, rng)?)
+                }
+                None => None,
+            };
+            sealed.push((bk, v));
+        }
+        let w = self.db.begin_write()?;
+        {
+            let mut t = w.open_table(RECORDS)?;
+            for (bk, v) in &sealed {
+                match v {
+                    Some(v) => {
+                        t.insert(bk.as_slice(), v.as_slice())?;
+                    }
+                    None => {
+                        t.remove(bk.as_slice())?;
+                    }
+                }
+            }
+        }
+        w.commit()?;
+        Ok(())
+    }
+
+    /// A key for one purpose, derived from the master key:
+    /// `KMAC256(master, "", 256, label)` (the search index's key, say).
+    pub fn derive_key(&self, label: &str) -> Zeroizing<[u8; 32]> {
+        Zeroizing::new(kmac256(self.master.as_bytes(), b"", label))
     }
 
     /// Delete a record.

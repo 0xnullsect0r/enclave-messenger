@@ -3111,6 +3111,7 @@ dependencies = [
  "enclave-ipc",
  "enclave-media",
  "enclave-net",
+ "enclave-platform",
  "enclave-rpc",
  "enclave-sandbox",
  "enclave-server",

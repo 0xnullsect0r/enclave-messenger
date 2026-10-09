@@ -93,9 +93,15 @@ open_chunked(K, AD, S):
 
 The segment index and the last flag are in each segment's AD, so reordering, dropping a final segment (the new final segment was sealed with `last = 0`), and appending all fail. The blinded key is the AD of every record, so records cannot be swapped.
 
-### 2.4 Not implemented yet
+### 2.4 Search index, migrations, OS backups
 
-Blinded full-text search tokens (labels `enclave/v1/store/search-key`, `enclave/v1/store/search-token` reserved); excluding the data directory from OS backups (`NSURLIsExcludedFromBackupKey`, `allowBackup="false"`); versioned migrations. As PLAN §13 says, there is no monotonic rollback counter on mobile; hedged nonces keep a rolled-back state from reusing a keystream (RT-08).
+**Blinded search index** (`client/search_index.rs`). Every word of a message (its text, and an attachment's name) is indexed by its prefixes of 3 to 8 characters, lowercased, as `token = KMAC256(search_key, prefix, 256, "enclave/v1/store/search-token")[0..16]` with `search_key = KMAC256(master, "", 256, "enclave/v1/store/search-key")`. A conversation's index is the namespace `sx/…`: token → the positions of the messages that have it (so the index holds no word, only tokens, under the store's sealing like everything else). A disappearing message's positions are kept apart under `token ‖ day`, sealed with the shred key of its day like the message, and dropped when the day is shredded, so shredding takes them too; an edit or a deletion takes the old words out at once. A query looks up its words of 3 characters or more (cut to 8), intersects the positions, reads only those messages, and checks each against the message as it is: every word of the query must start a word of the message (a word inside another isn't found; words shorter than 3 characters only narrow). Notes are searched too. A profile without the index (from before it, restored, linked) builds it when it opens. Test: `the_index_follows_the_messages`.
+
+**Versioned migrations.** The store keeps a schema version (`meta["schema"]`, `Store::schema`); this version writes 2 (1: the recovery secret wrapped, §1.3; 2: the search index). `Client::open` on an older profile first copies the whole database to `profile.redb.pre-migration` (`Store::snapshot`, one read transaction), then migrates and records the version; if a step fails the copy is put back over the half-migrated file, and once the profile is open it is deleted. A new, restored or linked profile starts at the current version. Test: `old_profiles_migrate_with_a_snapshot_first`.
+
+**Out of OS backups.** A profile is useless without this device's keystore, and a copy in a backup outlives shredding and erasing, so the vault marks the profile directory when it makes it (`enclave_platform::backup::exclude`): the sticky Time Machine exclusion on macOS (the attribute `tmutil addexclusion` writes) and a `CACHEDIR.TAG` everywhere (restic, borg, tar `--exclude-caches` and others skip it). Android's `allowBackup="false"` and iOS's `NSURLIsExcludedFromBackupKey` are set in the app shells (A1, I1); Windows has no per-folder exclusion for File History, and the profile stays in local, not roaming, AppData (D1). Enclave's own backups (§4) are the way to keep a copy.
+
+As PLAN §13 says, there is no monotonic rollback counter on mobile; hedged nonces keep a rolled-back state from reusing a keystream (RT-08).
 
 ## 3. Crypto-shredding
 
