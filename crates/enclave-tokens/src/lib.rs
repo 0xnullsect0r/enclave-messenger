@@ -11,8 +11,13 @@
 //!   anonymous actions: first contact through a request inbox, claiming a
 //!   one-time prekey, registering a username. The proof is 32 bytes: a 16-byte
 //!   nonce and a 16-byte Equi-X solution, bound to a context string.
+//! * **Privacy Pass** ([`privpass`]): RFC 9578 tokens of type `0x0001`
+//!   (VOPRF over P-384), for credentials an issuer hands out after a proof
+//!   of work and later recognises without linking.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+
+pub mod privpass;
 
 use enclave_crypto::hash::shake256;
 use enclave_crypto::kmac::kmac256;
