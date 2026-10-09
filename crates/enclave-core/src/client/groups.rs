@@ -57,6 +57,10 @@ pub struct GroupInfo {
     pub left: bool,
     /// On the record (`group_record.rs`).
     pub on_record: bool,
+    /// The server its mailboxes are on now (`group_hosts.rs`).
+    pub host: [u8; 16],
+    /// Its admins.
+    pub admins: Vec<[u8; 64]>,
 }
 
 /// A reaction to a group message.
@@ -354,6 +358,12 @@ impl Client {
                     unread: e.unread,
                     left: e.left,
                     on_record: st.on_record,
+                    host: st.host_for(day(self.now())),
+                    admins: st
+                        .active()
+                        .filter(|(_, m)| m.admin)
+                        .map(|(_, m)| m.root)
+                        .collect(),
                 }
             })
             .collect()
@@ -705,7 +715,7 @@ impl Client {
             let epoch = e.group.epoch();
             let addr = e.group.mailbox(day(now))?;
             let secret = e.group.mailbox_secret(epoch, &addr)?;
-            (unit, e.group.state.host, addr, secret)
+            (unit, e.group.state.host_for(day(now)), addr, secret)
         };
         // The chain advanced: persist before the unit leaves.
         self.save_group(gid)?;
@@ -801,7 +811,7 @@ impl Client {
                 }
             }
             let units = e.group.rotate(&targets, new_epoch, now, &mut self.rng)?;
-            (units, e.group.state.host, keyed)
+            (units, e.group.state.host_for(day(now)), keyed)
         };
         if let Some(e) = self.groups.get_mut(gid) {
             e.keyed = keyed;
@@ -898,7 +908,7 @@ impl Client {
         let mut events = Vec::new();
         self.connect_members(&gid).await;
 
-        let (host, polls) = {
+        let polls = {
             let e = self.groups.get(&gid).ok_or(CoreError::NotFound)?;
             let mut polls = Vec::new();
             let today = day(now);
@@ -909,9 +919,11 @@ impl Client {
             };
             for epoch in e.group.epochs() {
                 for &d in days {
+                    // A day's mailboxes are where the group was that day.
+                    let host = e.group.state.host_for(d);
                     for b in 0..BUCKETS as u8 {
                         let addr = e.group.rekey_mailbox(epoch, d, b)?;
-                        polls.push((addr, e.group.mailbox_secret(epoch, &addr)?));
+                        polls.push((host, addr, e.group.mailbox_secret(epoch, &addr)?));
                     }
                     let addr = e
                         .group
@@ -920,17 +932,17 @@ impl Client {
                         .find(|(x, _)| *x == epoch)
                         .map(|(_, a)| a);
                     if let Some(addr) = addr {
-                        polls.push((addr, e.group.mailbox_secret(epoch, &addr)?));
+                        polls.push((host, addr, e.group.mailbox_secret(epoch, &addr)?));
                     }
                 }
             }
-            (e.group.state.host, polls)
+            polls
         };
         // Each poll takes its slot like any other: how many a group needs
         // depends on the epochs held, but a burst of them every few
         // seconds would cost more than the whole Foreground budget.
         let mut units = Vec::new();
-        for (addr, secret) in polls {
+        for (host, addr, secret) in polls {
             units.extend(self.poll_group(&gid, host, addr, secret, now).await?);
         }
         // Forget cursors of mailboxes we no longer poll.
@@ -966,7 +978,7 @@ impl Client {
         let mut rest = units;
         for _ in 0..2 {
             let mut held = Vec::new();
-            rest.sort_by_key(|u| u[2] == 0); // subkind 1 (rekey) before 0 (message)
+            rest.sort_by_key(|u| !enclave_proto::group::is_rekey(u)); // rekeys first
             for u in rest {
                 match self.process_group_unit(&gid, &u, now) {
                     Ok(Some(ev)) => events.push(ev),
@@ -1047,7 +1059,7 @@ impl Client {
         if unit.len() != enclave_wire::ENVELOPE_LEN {
             return Ok(None);
         }
-        if unit[2] == 1 {
+        if enclave_proto::group::is_rekey(unit) {
             let (sender, _) = self
                 .groups
                 .get(gid)
@@ -1141,6 +1153,7 @@ impl Client {
             let next = GroupState::decode(&msg.content)?;
             if !prev_state.accepts(&next, msg.member)
                 || (prev_state.on_record && signed != Some(true))
+                || !self.accepts_host_change(gid, &prev_state, &next, now)?
             {
                 return Ok(None);
             }

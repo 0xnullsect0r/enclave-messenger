@@ -315,6 +315,10 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::RemoveMember(id.to_string(), member.to_string()));
     });
     let t = tx.clone();
+    ui.on_set_group_admin(move |id, member, on| {
+        let _ = t.send(Cmd::SetGroupAdmin(id.to_string(), member.to_string(), on));
+    });
+    let t = tx.clone();
     ui.on_leave_group(move |id| {
         let _ = t.send(Cmd::LeaveGroup(id.to_string()));
     });

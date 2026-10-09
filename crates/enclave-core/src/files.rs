@@ -32,6 +32,20 @@ pub const BUCKETS: [usize; 7] = [
 
 const L_CHUNK_KEY: &str = "enclave/v1/wire/chunk-key";
 const L_CHUNK_ID: &str = "enclave/v1/wire/chunk-id";
+const L_AD_CHUNK: &str = "enclave/v1/wire/ad-chunk";
+
+/// A chunk's associated data: `"enclave/v1/wire/ad-chunk" ‖ header ‖ u32 i
+/// ‖ u32 n`, so a chunk can't be moved to another position or blob, nor
+/// opened as anything but a chunk.
+fn chunk_ad(i: u32, n: u32) -> Vec<u8> {
+    [
+        L_AD_CHUNK.as_bytes(),
+        &header()[..],
+        &i.to_be_bytes(),
+        &n.to_be_bytes(),
+    ]
+    .concat()
+}
 
 /// Reference to an uploaded file, carried in a message.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,12 +170,7 @@ pub fn seal_file(
             }
         };
         let framed = pad_content(part, BLOB_CHUNK_CAPACITY, &mut fill)?;
-        let ad = [
-            &hdr[..],
-            &(i as u32).to_be_bytes(),
-            &(n as u32).to_be_bytes(),
-        ]
-        .concat();
+        let ad = chunk_ad(i as u32, n as u32);
         let sealed = seal::seal(&key, &ad, &framed, rng)?;
         let chunk = [&hdr[..], &sealed].concat();
         if chunk.len() != ENVELOPE_LEN {
@@ -186,8 +195,13 @@ pub fn open_chunk(a: &Attachment, i: u32, chunk: &[u8]) -> Result<Vec<u8>> {
     if chunk.len() != ENVELOPE_LEN || chunk[..ENV_HEADER_LEN] != header() {
         return Err(ProtoError::Decode);
     }
-    let ad = [&header()[..], &i.to_be_bytes(), &a.chunks.to_be_bytes()].concat();
-    let framed = seal::open(&chunk_key(&a.secret), &ad, &chunk[ENV_HEADER_LEN..])?;
+    let key = chunk_key(&a.secret);
+    let body = &chunk[ENV_HEADER_LEN..];
+    // Chunks sealed before the label was added had no prefix.
+    let framed = seal::open(&key, &chunk_ad(i, a.chunks), body).or_else(|_| {
+        let legacy = [&header()[..], &i.to_be_bytes(), &a.chunks.to_be_bytes()].concat();
+        seal::open(&key, &legacy, body)
+    })?;
     Ok(unpad_content(&framed)?.to_vec())
 }
 
@@ -238,5 +252,48 @@ mod tests {
         let mut b = a.clone();
         b.hash[0] ^= 1;
         assert!(finish(&b, &parts).is_err());
+    }
+
+    /// Files of different sizes in one bucket upload the same: as many
+    /// chunks, each exactly one stored envelope long (RT-17).
+    #[test]
+    fn rt17_attachment_padded_to_bucket() {
+        let mut rng = HedgedRng::new().unwrap();
+        let (_, small) = seal_file(&[1; 70_000], "a", "", [1; 16], &mut rng).unwrap();
+        let (_, large) = seal_file(&[2; 250_000], "b", "", [1; 16], &mut rng).unwrap();
+        assert_eq!(small.len(), large.len());
+        assert!(
+            small
+                .iter()
+                .chain(&large)
+                .all(|(_, c)| c.len() == ENVELOPE_LEN)
+        );
+    }
+
+    /// Blob secrets and chunk IDs are random: the same file sealed twice
+    /// shares nothing the server could match (RT-17).
+    #[test]
+    fn rt17_blob_ids_not_content_derived() {
+        let mut rng = HedgedRng::new().unwrap();
+        let data = vec![9u8; 5_000];
+        let (a, x) = seal_file(&data, "f", "", [1; 16], &mut rng).unwrap();
+        let (b, y) = seal_file(&data, "f", "", [1; 16], &mut rng).unwrap();
+        assert_ne!(a.secret, b.secret);
+        for ((i, c), (j, d)) in x.iter().zip(&y) {
+            assert_ne!(i, j);
+            assert_ne!(c, d);
+        }
+    }
+
+    /// A chunk sealed before the `wire/ad-chunk` prefix still opens.
+    #[test]
+    fn legacy_chunks_open() {
+        let mut rng = HedgedRng::new().unwrap();
+        let (a, _) = seal_file(b"old", "f", "", [1; 16], &mut rng).unwrap();
+        let framed = pad_content(b"old", BLOB_CHUNK_CAPACITY, &mut |b| b.fill(0)).unwrap();
+        let legacy = [&header()[..], &0u32.to_be_bytes(), &a.chunks.to_be_bytes()].concat();
+        let sealed = seal::seal(&chunk_key(&a.secret), &legacy, &framed, &mut rng).unwrap();
+        let chunk = [&header()[..], &sealed].concat();
+        assert_eq!(open_chunk(&a, 0, &chunk).unwrap(), b"old");
     }
 }

@@ -317,6 +317,7 @@ async fn run(args: &[String]) -> Result<(), String> {
     let mut server =
         Server::open(cfg.policy(id), db, keys.chain.keys()).map_err(|e| e.to_string())?;
     server.set_key_bundle(chain_bundle(&keys)?);
+    server.set_blob_seed(keys.blob_seed());
     // The username log: its own file, the same head key and VRF secret
     // every run, so what clients pin stays valid. Witnesses are other
     // operators' services (`docs/12-servers.md` §3.3); until they are
@@ -558,6 +559,7 @@ fn sign_descriptor(
             keys.chain.keys()[0].public().clone(),
             keys.chain.next_key().public().clone(),
         ],
+        &enclave_server::blob_issuers(&keys.blob_seed(), t),
         t,
         t + 2 * 86_400,
         &mut rng,

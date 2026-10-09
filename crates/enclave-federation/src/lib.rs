@@ -28,7 +28,7 @@ pub mod list;
 pub mod relay;
 pub mod witness;
 
-pub use descriptor::{KtKeys, Policy, ServerDescriptor};
+pub use descriptor::{BlobIssuer, KtKeys, Policy, ServerDescriptor};
 pub use keycert::{KeyBundle, KeyCert};
 pub use list::{
     CredGateEntry, FoundationKey, FoundationPublic, ListedRelay, ListedServer, ListedWitness,

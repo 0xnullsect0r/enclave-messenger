@@ -25,7 +25,19 @@ use enclave_rpc::ServerKey;
 
 /// Signature context of a server descriptor.
 pub const CTX_SERVER_DESCRIPTOR: &str = "enclave/v1/net/server-descriptor";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
+/// Most blob-token issuer keys a descriptor lists (this month's, next).
+pub const MAX_BLOB_ISSUERS: usize = 2;
+
+/// A blob-upload token issuer key (`docs/09-transport.md` §9): the public
+/// key Privacy Pass tokens of one month are issued under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BlobIssuer {
+    /// The issuer-key epoch (`enclave_rpc::api::issuer_epoch`).
+    pub epoch: u32,
+    /// The compressed P-384 public key.
+    pub public: [u8; 49],
+}
 /// Longest VRF public key.
 const MAX_VRF: usize = 64;
 /// Longest a descriptor may stay valid.
@@ -38,8 +50,8 @@ pub struct Policy {
     pub effort_request: u32,
     /// Equi-X effort for a bundle claim.
     pub effort_claim: u32,
-    /// Equi-X effort for blob uploads.
-    pub effort_blob: u32,
+    /// Blob-upload tokens one inbox may be issued a day (`BlobAlloc`).
+    pub blob_tokens_per_day: u32,
     /// Equi-X effort for a username claim.
     pub effort_username: u32,
     /// Equi-X effort for creating an inbox.
@@ -84,10 +96,14 @@ pub struct ServerDescriptor {
     pub kt: Option<KtKeys>,
     /// Request-key certificates (current and next).
     pub certs: Vec<KeyCert>,
+    /// Blob-upload token issuer keys (this month's and next).
+    pub blob_issuers: Vec<BlobIssuer>,
     /// When signed.
     pub published: u64,
     /// Valid until.
     pub expires: u64,
+    /// Encoding version (a version-1 descriptor has no blob issuers).
+    version: u8,
     signature: Vec<u8>,
 }
 
@@ -99,7 +115,7 @@ impl ServerDescriptor {
 
     fn body(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(VERSION)
+        w.u8(self.version)
             .fixed(&self.identity.to_bytes())
             .bytes(self.domain.as_bytes())
             .bytes(self.operator.as_bytes())
@@ -110,7 +126,7 @@ impl ServerDescriptor {
         for v in [
             p.effort_request,
             p.effort_claim,
-            p.effort_blob,
+            p.blob_tokens_per_day,
             p.effort_username,
             p.effort_inbox,
             p.inbox_quota,
@@ -133,6 +149,13 @@ impl ServerDescriptor {
         for c in &self.certs {
             b.extend_from_slice(&c.encode());
         }
+        if self.version >= 2 {
+            b.push(self.blob_issuers.len() as u8);
+            for i in &self.blob_issuers {
+                b.extend_from_slice(&i.epoch.to_be_bytes());
+                b.extend_from_slice(&i.public);
+            }
+        }
         b.extend_from_slice(&self.published.to_be_bytes());
         b.extend_from_slice(&self.expires.to_be_bytes());
         b
@@ -151,6 +174,7 @@ impl ServerDescriptor {
         policy: Policy,
         kt: Option<KtKeys>,
         keys: &[ServerKey],
+        blob_issuers: &[BlobIssuer],
         published: u64,
         expires: u64,
         rng: &mut HedgedRng,
@@ -163,6 +187,7 @@ impl ServerDescriptor {
             || onion.len() > MAX_ADDRESS
             || keys.is_empty()
             || keys.len() > MAX_CERTS
+            || blob_issuers.len() > MAX_BLOB_ISSUERS
             || expires <= published
             || expires - published > MAX_VALIDITY_SECS
         {
@@ -182,8 +207,10 @@ impl ServerDescriptor {
             policy,
             kt,
             certs,
+            blob_issuers: blob_issuers.to_vec(),
             published,
             expires,
+            version: VERSION,
             signature: Vec::new(),
         };
         d.signature = identity
@@ -202,7 +229,8 @@ impl ServerDescriptor {
     /// Decode (without checking signatures).
     pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);
-        if r.u8()? != VERSION {
+        let version = r.u8()?;
+        if !(1..=VERSION).contains(&version) {
             return Err(FedError::Malformed);
         }
         let identity = read_composite(&mut r)?;
@@ -218,7 +246,7 @@ impl ServerDescriptor {
         let policy = Policy {
             effort_request: v[0],
             effort_claim: v[1],
-            effort_blob: v[2],
+            blob_tokens_per_day: v[2],
             effort_username: v[3],
             effort_inbox: v[4],
             inbox_quota: v[5],
@@ -242,6 +270,20 @@ impl ServerDescriptor {
         for _ in 0..n {
             certs.push(KeyCert::decode(r.fixed(crate::keycert::CERT_LEN)?)?);
         }
+        // Version 1 had none.
+        let mut blob_issuers = Vec::new();
+        if version >= 2 {
+            let n = usize::from(r.u8()?);
+            if n > MAX_BLOB_ISSUERS {
+                return Err(FedError::Malformed);
+            }
+            for _ in 0..n {
+                blob_issuers.push(BlobIssuer {
+                    epoch: r.u32()?,
+                    public: r.fixed(49)?.try_into().map_err(|_| FedError::Malformed)?,
+                });
+            }
+        }
         let published = r.u64()?;
         let expires = r.u64()?;
         let signature = read_sig(&mut r)?.to_vec();
@@ -256,8 +298,10 @@ impl ServerDescriptor {
             policy,
             kt,
             certs,
+            blob_issuers,
             published,
             expires,
+            version,
             signature,
         })
     }
@@ -288,6 +332,14 @@ impl ServerDescriptor {
             .filter(|c| c.valid_at(now))
             .max_by_key(|c| c.not_before)
             .map(|c| &c.key)
+    }
+
+    /// The blob-token issuer key for `epoch`, if listed.
+    pub fn blob_issuer(&self, epoch: u32) -> Option<[u8; 49]> {
+        self.blob_issuers
+            .iter()
+            .find(|i| i.epoch == epoch)
+            .map(|i| i.public)
     }
 
     /// SHA3-512 of the encoding (committed to the key-transparency log).

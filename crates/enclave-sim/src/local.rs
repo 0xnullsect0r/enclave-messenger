@@ -62,7 +62,7 @@ impl LocalTransport {
             id,
             effort_request: 4,
             effort_claim: 1,
-            effort_blob: 1,
+            blob_tokens_per_day: 64,
             effort_username: 1,
             effort_inbox: 1,
             ..Default::default()
@@ -141,6 +141,7 @@ impl LocalTransport {
                 enclave_federation::Policy::default(),
                 kt,
                 &[s.public_key()?],
+                &s.blob_issuers(now),
                 now,
                 now + 2 * 86_400,
                 &mut rng,

@@ -231,9 +231,7 @@ impl Client {
                     &mut self.rng,
                 )?;
                 for (id, chunk) in &chunks {
-                    self.rpc
-                        .blob_put(&host, *id, chunk, now, &mut self.rng)
-                        .await?;
+                    self.put_chunk(&host, *id, chunk, now).await?;
                 }
                 let item = SyncItem::Group {
                     device: *dev,

@@ -174,7 +174,7 @@ async fn dev_server() -> (std::net::SocketAddr, [u8; 16]) {
             id,
             effort_request: 4,
             effort_claim: 1,
-            effort_blob: 1,
+            blob_tokens_per_day: 64,
             ..Default::default()
         },
         (now() / 86_400) as u32,

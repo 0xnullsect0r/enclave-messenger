@@ -117,6 +117,18 @@ impl TokenChallenge {
     }
 }
 
+/// The challenge of blob-upload tokens issued by server `id` (`BlobAlloc`,
+/// `docs/09-transport.md` §9): issuer `blob.<server id in hex>`, no
+/// redemption context (tokens are interchangeable), no origin.
+pub fn blob_challenge(id: &[u8; 16]) -> TokenChallenge {
+    let hex: String = id.iter().map(|b| format!("{b:02x}")).collect();
+    TokenChallenge {
+        issuer_name: format!("blob.{hex}"),
+        redemption_context: Vec::new(),
+        origin_info: String::new(),
+    }
+}
+
 /// An issuer's public key (`pkI`, compressed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct IssuerPublic(pub [u8; NE]);

@@ -193,6 +193,13 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/net/loop-probe` | KMAC | 256 | `enclave-net/src/transport.rs` `GatewayPath::probe_forever` | Self-loop probe id: `KMAC256(probe secret, u64 counter, label)`, first 16 B (RT-02; spec: 09 §6.3) |
 | `enclave/v1/wire/chunk-key` | KMAC | 256 | `enclave-core/src/files.rs` | Blob chunk seal key (spec: 08 §9) |
 | `enclave/v1/wire/chunk-id` | KMAC | 256 | `enclave-core/src/files.rs` | Blob chunk ID (spec: 08 §9) |
+| `enclave/v1/wire/ad-chunk` | AD | — | `enclave-core/src/files.rs` `chunk_ad` | Blob chunk AD prefix (spec: 08 §9.1) |
+| `enclave/v1/proto/grp-rekey-outer` | KMAC | 256 | `enclave-proto/src/group.rs` `outer_key` | Outer seal key of a rekey unit, from the announcing epoch's secret (spec: 08 §8) |
+| `enclave/v1/wire/ad-rekey` | AD | — | `group.rs` `rotate`, `apply_rekey` | Rekey unit outer-seal AD prefix (spec: 08 §8) |
+| `enclave/v1/wire/ad-rekey-common` | AD | — | `group.rs` `rotate`, `apply_rekey` | Rekey common-blob AD prefix (spec: 08 §8) |
+| `enclave/v1/wire/ad-grp-header` | AD | — | `group.rs` `mac_input` | Prefix of what a group message's MAC vector covers (spec: 08 §7) |
+| `enclave/v1/wire/ad-grp-body` | AD | — | `group.rs` `body_ad` | Group message body AD prefix (spec: 08 §7) |
+| `enclave/v1/tokens/blob-issuer-seed` | KMAC | 256 | `enclave-server/src/keys.rs` `ServerKeys::blob_seed` | Seed of a server's blob-token issuer keys, from its identity seed (spec: 09 §9) |
 | `enclave/v1/wire/ad-link` | AD | — | `enclave-core/src/client/link.rs` | Device-link channel AD prefix (spec: 03 §4) |
 | `enclave/v1/wire/ad-push-token` | AD | — | `enclave-push-relay/src/lib.rs` | Sealed push token AD prefix (spec: 10 §2) |
 | `enclave/v1/push/relay-key` | KMAC | 960 | `enclave-push-relay/src/lib.rs` `RelaySecret::from_seed` | A key epoch's X448 secret (56 B) and ML-KEM-1024 seed (64 B) from that epoch's chain seed; data is the epoch (spec: 10 §7) |
@@ -237,22 +244,14 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/proto/grp-rekey-outer` | KMAC | 256 | Outer seal key of rekey units | 07 §5 |
 | `enclave/v1/proto/grp-notify` | KMAC | 256 | Daily group notification key | 10 §4 |
 | `enclave/v1/proto/grp-invite-cap` | KMAC | 256 | Group invite capability | 07 §9 |
-| `enclave/v1/net/grp-read-key` | KMAC | 256 | Group read-credential key | 07 §4 |
-| `enclave/v1/net/grp-read-cred` | KMAC | 256 | Group read credential for one address | 07 §4 |
 
 ### 3.3 Transport, push, servers
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
 | `enclave/v1/wire/ad-capsule` | AD | — | Notification capsule AD prefix | 08 §5.4 |
-| `enclave/v1/wire/ad-grp-header` | AD | — | Group routing-header AD prefix | 08 §7 |
-| `enclave/v1/wire/ad-grp-body` | AD | — | Group body AD prefix | 08 §7 |
-| `enclave/v1/wire/ad-rekey` | AD | — | Rekey unit outer AD prefix | 08 §8 |
-| `enclave/v1/wire/ad-rekey-common` | AD | — | Rekey common-blob AD prefix | 08 §8 |
-| `enclave/v1/wire/ad-chunk` | AD | — | Blob chunk AD prefix | 08 §9 |
 
 ### 3.4 KT, releases, storage, calls
 
@@ -273,6 +272,7 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 
 | Retired label | Replaced by |
 |---|---|
+| `enclave/v1/net/grp-read-key`, `enclave/v1/net/grp-read-cred` | `enclave/v1/rpc/read-credential` of the mailbox's write token (`grp-write-token`): the server derives the read credential's hash from the first write, so a group mailbox is created and readable in one unit. A separate read key would need a registration request per mailbox per day (four per epoch) and protects against nobody: only members and the server ever hold the write token |
 | `enclave/v1/proto/msg-id` | None: a 1:1 message id is 16 random bytes its sender picks (`core/msg-id`), which a re-send keeps; a derived id would need a counter both sides agree on and add nothing |
 | `enclave/v1/proto/bond-reroot` | None: meeting again replaces the sessions with new bonded ones (an EQXDH greeting with the new bond PSK, `client/meet.rs`), which heals more than mixing a PSK into the old root would |
 | `enclave/v1/net/token-key` | Write tokens from a shared, per-device pool of hedged random values (`core/write-token`, 09 §3.3): per-contact keys let the server group writes by registration batch |
@@ -353,7 +353,7 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 
 Purpose strings are framed inputs to `enclave/v1/rng/hedge`, not labels. They are listed so that reviewers can check that no purpose is reused for a different kind of value. Purposes used by the code today:
 
-`api/padding`, `app/vault-dir`, `app/vault-token`, `blob/padding`, `blob/secret`, `calls/id`, `core/group-msg-id`, `core/inbox`, `core/inbox-owner`, `core/invite`, `core/meet`, `core/msg-id`, `core/poll-id`, `core/request-inbox`, `core/request-owner`, `core/slip39`, `core/vault-key`, `core/vault-locator`, `core/vault-owner`, `core/write-token`, `device/id`, `envelope/body-key`, `envelope/capsule`, `envelope/dummy-pq`, `envelope/dummy-slot`, `envelope/padding`, `envelope/shuffle`, `group/capsule`, `group/chain-seed`, `group/epoch-secret`, `group/id`, `group/mac-fill`, `group/mac-key`, `group/nonce`, `group/padding`, `group/rekey-fill`, `group/rekey-kb`, `group/rekey-padding`, `group/shuffle`, `kt/dev-twin-seed`, `kt/dev-vrf`, `link/choice`, `link/decoy`, `link/mailbox`, `link/owner`, `link/secret`, `mlkem/encaps`, `mlkem/keygen`, `net/loop-probe-delay`, `net/loop-probe-secret`, `net/nym-request-id`, `push/relay-chain`, `rand_core`, `recovery/secret`, `relay/id`, `relay/link-key`, `relay/session`, `relay/ticket-chain`, `rpc/poll-padding`, `rpc/reply-padding`, `rpc/unit-padding`, `schedule/delay`, `seal/key`, `seal/nonce`, `server/claim-id`, `server/garbage-reply`, `server/kt-reply-id`, `server/kt-vrf`, `server/push-jitter`, `server/request-chain`, `sig/composite/keygen`, `sig/composite/sign`, `sig/mldsa44/sign`, `sig/root/sign`, `store/device-secret`, `store/pw-salt`, `store/salt`, `store/shred-key`, `store/shred-wrap`, `tokens/contact-key`, `tokens/dummy`, `tokens/pow-nonce`, `tokens/pp-nonce`, `tokens/shuffle`, `update/foundation-key`, `x448/keygen`. (`rand_core` is McEliece key generation and encapsulation through the `rand_core` adapter.) The simulator (`enclave-sim`) uses `sim` for test-only values.
+`api/padding`, `app/vault-dir`, `app/vault-token`, `blob/padding`, `blob/secret`, `calls/id`, `core/blob-redeem`, `core/decoy`, `core/group-msg-id`, `core/held-id`, `core/inbox`, `core/inbox-owner`, `core/inbox-seed`, `core/invite`, `core/meet`, `core/migration-in`, `core/msg-id`, `core/part-id`, `core/poll-id`, `core/request-inbox`, `core/request-owner`, `core/slip39`, `core/vault-key`, `core/vault-locator`, `core/vault-owner`, `core/write-token`, `device/id`, `envelope/body-key`, `envelope/capsule`, `envelope/dummy-pq`, `envelope/dummy-slot`, `envelope/padding`, `envelope/shuffle`, `group/capsule`, `group/chain-seed`, `group/epoch-secret`, `group/id`, `group/mac-fill`, `group/mac-key`, `group/nonce`, `group/padding`, `group/rekey-fill`, `group/rekey-kb`, `group/rekey-padding`, `group/shuffle`, `kt/dev-twin-seed`, `kt/dev-vrf`, `link/choice`, `link/decoy`, `link/mailbox`, `link/owner`, `link/secret`, `mlkem/encaps`, `mlkem/keygen`, `net/loop-probe-delay`, `net/loop-probe-secret`, `net/nym-request-id`, `push/relay-chain`, `rand_core`, `recovery/secret`, `relay/id`, `relay/link-key`, `relay/session`, `relay/ticket-chain`, `rpc/poll-padding`, `rpc/reply-padding`, `rpc/status-token`, `rpc/unit-padding`, `schedule/delay`, `seal/key`, `seal/nonce`, `server/blob-alloc`, `server/blob-seed`, `server/claim-id`, `server/garbage-reply`, `server/kt-reply-id`, `server/kt-vrf`, `server/push-jitter`, `server/request-chain`, `sig/composite/keygen`, `sig/composite/sign`, `sig/mldsa44/sign`, `sig/root/sign`, `store/device-secret`, `store/pw-salt`, `store/salt`, `store/shred-key`, `store/shred-wrap`, `tokens/contact-key`, `tokens/dummy`, `tokens/pow-nonce`, `tokens/pp-nonce`, `tokens/shuffle`, `update/foundation-key`, `x448/keygen`. (`rand_core` is McEliece key generation and encapsulation through the `rand_core` adapter.) The simulator (`enclave-sim`) uses `sim` for test-only values.
 
 ## Open questions
 

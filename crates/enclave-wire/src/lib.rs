@@ -137,6 +137,9 @@ pub enum Op {
     /// `FLAG_DEFER` (poll-sized; `mailbox` is the request's status id,
     /// `docs/09-transport.md` §6.1).
     Status = 12,
+    /// Privacy Pass tokens for blob uploads, and allocations bought with
+    /// them (`docs/09-transport.md` §9).
+    BlobAlloc = 13,
 }
 
 impl Op {
@@ -155,6 +158,7 @@ impl Op {
             10 => Op::PushRegister,
             11 => Op::Report,
             12 => Op::Status,
+            13 => Op::BlobAlloc,
             _ => return Err(WireError::Malformed),
         })
     }

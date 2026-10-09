@@ -79,8 +79,9 @@ pub struct Config {
     pub effort_request: u32,
     /// Proof-of-work effort for claiming a bundle.
     pub effort_claim: u32,
-    /// Proof-of-work effort for blob uploads.
-    pub effort_blob: u32,
+    /// Blob-upload Privacy Pass tokens one inbox may be issued a day
+    /// (`BlobAlloc`).
+    pub blob_tokens_per_day: u32,
     /// Proof-of-work effort for claiming a username.
     pub effort_username: u32,
     /// Proof-of-work effort for creating an inbox (0: none, development).
@@ -101,7 +102,7 @@ impl Default for Config {
             id: [0; 16],
             effort_request: 64,
             effort_claim: 8,
-            effort_blob: 1,
+            blob_tokens_per_day: 64,
             effort_username: 64,
             effort_inbox: 16,
             inbox_quota: 5_000,
@@ -166,6 +167,15 @@ impl Inbox {
             until: u32_at(77..81),
         })
     }
+}
+
+/// Where an allocation (or a spent token) is kept: a hash of it, so the
+/// database never holds a secret that uploads.
+fn alloc_key(secret: &[u8]) -> [u8; 32] {
+    let h = sha3_512(secret);
+    let mut k = [0u8; 32];
+    k.copy_from_slice(&h[..32]);
+    k
 }
 
 fn cat(a: &[u8], b: &[u8]) -> Vec<u8> {
@@ -307,6 +317,10 @@ pub struct Server {
     /// registration batch, and each burned hash in order.
     #[cfg(feature = "test-hooks")]
     token_log: (Vec<Vec<[u8; 32]>>, Vec<[u8; 32]>),
+    /// What a curious server could log about downloads (test hook): each
+    /// blob chunk id fetched, in order.
+    #[cfg(feature = "test-hooks")]
+    blob_gets: Vec<[u8; 32]>,
     /// Chunked lookup replies by reply id.
     kt_replies: HashMap<[u8; 32], (Vec<u8>, u64)>,
     /// The day rotating inboxes were last swept for expiry.
@@ -331,7 +345,25 @@ pub struct Server {
     listed_witnesses: Vec<String>,
     /// Equivocation proofs accepted and not yet passed on to witnesses.
     equivocations_out: Vec<enclave_kt::Equivocation>,
+    /// Seed of the blob-token issuer keys (`blob_issuers`).
+    blob_seed: zeroize::Zeroizing<[u8; 32]>,
     rng: HedgedRng,
+}
+
+/// The blob-token issuer keys at `now` (`docs/09-transport.md` §9): this
+/// month's and next month's, derived from `seed`.
+pub fn blob_issuers(seed: &[u8; 32], now: u64) -> Vec<enclave_federation::BlobIssuer> {
+    let e = api::issuer_epoch(now);
+    [e, e.saturating_add(1)]
+        .into_iter()
+        .filter_map(|epoch| {
+            let k = enclave_tokens::privpass::IssuerKey::derive(seed, epoch).ok()?;
+            Some(enclave_federation::BlobIssuer {
+                epoch,
+                public: k.public().0,
+            })
+        })
+        .collect()
 }
 
 pub use enclave_rpc::api::{device_key, manifest_key};
@@ -378,8 +410,10 @@ impl Server {
         cfg: Config,
         db: Db,
         keys: Vec<ServerSecret>,
-        rng: HedgedRng,
+        mut rng: HedgedRng,
     ) -> Result<Self, ServerError> {
+        // Random until the persisted one is set (`set_blob_seed`).
+        let blob_seed = zeroize::Zeroizing::new(rng.array("server/blob-seed")?);
         Ok(Self {
             cfg,
             keys: keys.into_iter().collect(),
@@ -394,6 +428,8 @@ impl Server {
             kt_serve_fork: false,
             #[cfg(feature = "test-hooks")]
             token_log: (Vec::new(), Vec::new()),
+            #[cfg(feature = "test-hooks")]
+            blob_gets: Vec::new(),
             kt_replies: HashMap::new(),
             swept: 0,
             deferred: HashMap::new(),
@@ -406,6 +442,7 @@ impl Server {
             listed_logs: HashMap::new(),
             listed_witnesses: Vec::new(),
             equivocations_out: Vec::new(),
+            blob_seed,
             rng,
         })
         .inspect(|s| {
@@ -670,6 +707,24 @@ impl Server {
             t.remove_where(db::ENVELOPES, b"", |_, v| now > head_u64(v) + ttl)?;
             t.remove_where(db::HINTS, b"", |_, v| now > head_u64(v) + ttl)?;
             t.remove_where(db::BLOBS, b"", |_, v| now > head_u64(v) + ttl)?;
+            // Allocations past their day; issue counts of days before
+            // yesterday; spent tokens of keys that no longer verify.
+            t.remove_where(db::ALLOCS, b"", |_, v| now > head_u64(v))?;
+            if sweep {
+                t.remove_where(db::BLOB_ISSUED, b"", |k, _| {
+                    k.get(32..36)
+                        .and_then(|b| b.try_into().ok())
+                        .map(u32::from_be_bytes)
+                        .is_none_or(|d| d.saturating_add(1) < today)
+                })?;
+                let epoch = api::issuer_epoch(now);
+                t.remove_where(db::BLOB_SPENT, b"", |_, v| {
+                    v.get(..4)
+                        .and_then(|b| b.try_into().ok())
+                        .map(u32::from_be_bytes)
+                        .is_some_and(|e| e.saturating_add(1) < epoch)
+                })?;
+            }
             t.remove_where(db::POW_SPENT, b"", |k, _| {
                 k.get(..4)
                     .and_then(|b| b.try_into().ok())
@@ -682,6 +737,23 @@ impl Server {
         self.expire_deferred(now);
         self.uploads
             .retain(|_, u| now <= u.started + UPLOAD_TTL_SECS);
+    }
+
+    /// Set the seed of the blob-token issuer keys (derived from the
+    /// identity key, `keys::ServerKeys::blob_seed`, so it survives restarts).
+    pub fn set_blob_seed(&mut self, seed: [u8; 32]) {
+        self.blob_seed = zeroize::Zeroizing::new(seed);
+    }
+
+    /// The blob-token issuer keys at `now`, for the descriptor.
+    pub fn blob_issuers(&self, now: u64) -> Vec<enclave_federation::BlobIssuer> {
+        blob_issuers(&self.blob_seed, now)
+    }
+
+    /// **Test hook**: the blob chunk ids fetched since the last call.
+    #[cfg(feature = "test-hooks")]
+    pub fn take_blob_gets(&mut self) -> Vec<[u8; 32]> {
+        std::mem::take(&mut self.blob_gets)
     }
 
     /// Attach a key-transparency log, enabling usernames.
@@ -853,14 +925,22 @@ impl Server {
             Op::Poll => self.poll(h, now),
             Op::Ack => (self.ack(h, now), 0, none, Reply::Empty),
             Op::BlobPut => (self.blob_put(h, env, now), 0, none, Reply::Empty),
-            Op::BlobGet => match self.db.read(|r| r.get(db::BLOBS, &h.mailbox)) {
-                Ok(Some(v)) => (Status::Ok, 0, none, Reply::Envelope(tail(&v).to_vec())),
-                Ok(None) => (Status::NotFound, 0, none, Reply::Empty),
-                Err(e) => {
-                    log_db_error(&e);
-                    (Status::Unavailable, 0, none, Reply::Empty)
+            Op::BlobAlloc => {
+                let (s, p) = self.blob_alloc(h, env, now);
+                (s, 0, none, p)
+            }
+            Op::BlobGet => {
+                #[cfg(feature = "test-hooks")]
+                self.blob_gets.push(h.mailbox);
+                match self.db.read(|r| r.get(db::BLOBS, &h.mailbox)) {
+                    Ok(Some(v)) => (Status::Ok, 0, none, Reply::Envelope(tail(&v).to_vec())),
+                    Ok(None) => (Status::NotFound, 0, none, Reply::Empty),
+                    Err(e) => {
+                        log_db_error(&e);
+                        (Status::Unavailable, 0, none, Reply::Empty)
+                    }
                 }
-            },
+            }
             Op::Directory => match api::unframe(env).and_then(DirRequest::decode) {
                 Ok(req) => {
                     let (s, p) = self.directory(req, now);
@@ -1459,18 +1539,37 @@ impl Server {
         .unwrap_or_else(|s| s)
     }
 
+    /// Upload a chunk under an allocation (`BlobAlloc`): the token field
+    /// is the allocation's secret, good for [`api::ALLOC_CHUNKS`] uploads
+    /// for a day.
     fn blob_put(&mut self, h: &RequestHeader, env: &[u8], now: u64) -> Status {
-        let ctx = api::pow_context_blob(&h.mailbox, &sha3_512(env));
-        if !enclave_tokens::verify(&ctx, self.cfg.effort_blob, &PowProof(h.token)) {
-            return Status::Pow;
-        }
+        let alloc = alloc_key(&h.token);
         let id = h.mailbox;
         let s = self
             .tx(|t| {
+                // No allocation, or a used-up one: `Quota` (`Denied` means
+                // the chunk id is taken).
+                let Some(a) = t.get(db::ALLOCS, &alloc)? else {
+                    return Ok(Status::Quota);
+                };
+                let (expires, left) = (
+                    head_u64(&a),
+                    a.get(8..12)
+                        .map_or(0, |b| u32::from_be_bytes(b.try_into().unwrap_or_default())),
+                );
+                if expires < now || left == 0 {
+                    t.del(db::ALLOCS, &alloc)?;
+                    return Ok(Status::Quota);
+                }
                 if t.has(db::BLOBS, &id)? {
                     return Ok(Status::Denied);
                 }
                 t.put(db::BLOBS, &id, &cat(&be(now), env))?;
+                t.put(
+                    db::ALLOCS,
+                    &alloc,
+                    &cat(&be(expires), &(left - 1).to_be_bytes()),
+                )?;
                 Ok(Status::Ok)
             })
             .unwrap_or_else(|s| s);
@@ -1478,6 +1577,120 @@ impl Server {
             self.stored_lengths.insert(env.len());
         }
         s
+    }
+
+    /// Issue blob tokens to an inbox's owner, or turn one into an
+    /// allocation (`docs/09-transport.md` §9).
+    fn blob_alloc(&mut self, h: &RequestHeader, env: &[u8], now: u64) -> (Status, Reply) {
+        use enclave_tokens::privpass::{IssuerKey, Token, blob_challenge};
+        let Ok(req) = api::unframe(env).and_then(api::BlobAlloc::decode) else {
+            return (Status::Malformed, Reply::Empty);
+        };
+        match req {
+            api::BlobAlloc::Key => {
+                let epoch = api::issuer_epoch(now);
+                match IssuerKey::derive(&self.blob_seed, epoch) {
+                    Ok(key) => {
+                        let reply = api::BlobAllocReply::Issued {
+                            epoch,
+                            public: key.public().0,
+                            responses: Vec::new(),
+                        };
+                        (Status::Ok, Reply::Payload(reply.encode()))
+                    }
+                    Err(_) => (Status::Unavailable, Reply::Empty),
+                }
+            }
+            api::BlobAlloc::Issue(reqs) => {
+                let epoch = api::issuer_epoch(now);
+                let Ok(key) = IssuerKey::derive(&self.blob_seed, epoch) else {
+                    return (Status::Unavailable, Reply::Empty);
+                };
+                let mut responses = Vec::with_capacity(reqs.len());
+                for q in &reqs {
+                    match key.issue(q, &mut self.rng) {
+                        Ok(r) => match r.try_into() {
+                            Ok(r) => responses.push(r),
+                            Err(_) => return (Status::Malformed, Reply::Empty),
+                        },
+                        Err(_) => return (Status::Malformed, Reply::Empty),
+                    }
+                }
+                // Counted against the inbox only once every request is good.
+                let owner = api::credential_hash(&h.token);
+                let mb = h.mailbox;
+                let n = reqs.len() as u32;
+                let quota = self.cfg.blob_tokens_per_day;
+                let key_day = cat(&mb, &api::day_of(now).to_be_bytes());
+                let s = self
+                    .tx(|t| {
+                        match get_inbox(t, &mb)? {
+                            Some(ib) if ib.owner == owner && !ib.group => {}
+                            Some(_) => return Ok(Status::Denied),
+                            None => return Ok(Status::NotFound),
+                        }
+                        let used = t
+                            .get(db::BLOB_ISSUED, &key_day)?
+                            .and_then(|v| v.try_into().ok())
+                            .map_or(0, u32::from_be_bytes);
+                        if used.saturating_add(n) > quota {
+                            return Ok(Status::Quota);
+                        }
+                        t.put(db::BLOB_ISSUED, &key_day, &(used + n).to_be_bytes())?;
+                        Ok(Status::Ok)
+                    })
+                    .unwrap_or_else(|s| s);
+                if s != Status::Ok {
+                    return (s, Reply::Empty);
+                }
+                let reply = api::BlobAllocReply::Issued {
+                    epoch,
+                    public: key.public().0,
+                    responses,
+                };
+                (Status::Ok, Reply::Payload(reply.encode()))
+            }
+            api::BlobAlloc::Redeem(b) => {
+                let Ok(token) = Token::decode(&b) else {
+                    return (Status::Malformed, Reply::Empty);
+                };
+                let Ok(digest) = blob_challenge(&self.cfg.id).digest() else {
+                    return (Status::Unavailable, Reply::Empty);
+                };
+                // This month's key, or last month's for a token kept over.
+                let e = api::issuer_epoch(now);
+                let good = [e, e.saturating_sub(1)].into_iter().find(|&epoch| {
+                    IssuerKey::derive(&self.blob_seed, epoch)
+                        .is_ok_and(|k| k.verify(&token, &digest))
+                });
+                let Some(epoch) = good else {
+                    return (Status::Denied, Reply::Empty);
+                };
+                let spent = alloc_key(&cat(&token.nonce, &token.key_id));
+                let Ok(alloc) = self.rng.array::<32>("server/blob-alloc") else {
+                    return (Status::Unavailable, Reply::Empty);
+                };
+                let s = self
+                    .tx(|t| {
+                        if t.has(db::BLOB_SPENT, &spent)? {
+                            return Ok(Status::Denied);
+                        }
+                        t.put(db::BLOB_SPENT, &spent, &epoch.to_be_bytes())?;
+                        let v = cat(&be(now + api::ALLOC_SECS), &api::ALLOC_CHUNKS.to_be_bytes());
+                        t.put(db::ALLOCS, &alloc_key(&alloc), &v)?;
+                        Ok(Status::Ok)
+                    })
+                    .unwrap_or_else(|s| s);
+                if s != Status::Ok {
+                    return (s, Reply::Empty);
+                }
+                let reply = api::BlobAllocReply::Allocated {
+                    alloc,
+                    chunks: api::ALLOC_CHUNKS,
+                };
+                (Status::Ok, Reply::Payload(reply.encode()))
+            }
+        }
     }
 
     fn directory(&mut self, req: DirRequest, now: u64) -> (Status, Reply) {

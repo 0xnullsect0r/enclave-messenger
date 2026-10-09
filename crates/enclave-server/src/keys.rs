@@ -125,6 +125,17 @@ impl ServerKeys {
         })
     }
 
+    /// Seed of the blob-token issuer keys:
+    /// `KMAC256(identity seed, "", "enclave/v1/tokens/blob-issuer-seed")`,
+    /// so it needs no file of its own and lasts as long as the identity.
+    pub fn blob_seed(&self) -> [u8; 32] {
+        enclave_crypto::kmac::kmac256(
+            self.identity.seed().as_slice(),
+            b"",
+            "enclave/v1/tokens/blob-issuer-seed",
+        )
+    }
+
     /// A copy of the head-signing key (the log runs on its own thread).
     pub fn kt_head_copy(&self) -> Result<CompositeSigningKey, KeyError> {
         CompositeSigningKey::from_seed(self.kt_head.seed()).map_err(|_| KeyError::Crypto)

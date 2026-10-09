@@ -33,6 +33,14 @@ pub const READ_CREDS: Bytes = TableDefinition::new("read-creds");
 /// Session hints: `mailbox ‖ u64 seq` → `u64 time ‖` the first 24 bytes of
 /// the token hash the envelope's write burned.
 pub const HINTS: Bytes = TableDefinition::new("hints");
+/// Blob tokens issued: `mailbox ‖ u32 day` → `u32` count.
+pub const BLOB_ISSUED: Bytes = TableDefinition::new("blob-issued");
+/// Blob tokens redeemed: SHA3-512 of the token's nonce (first 32 bytes) →
+/// `u32` issuer epoch.
+pub const BLOB_SPENT: Bytes = TableDefinition::new("blob-spent");
+/// Blob allocations: hash of the allocation secret → `u64 expires ‖ u32
+/// uploads left`.
+pub const ALLOCS: Bytes = TableDefinition::new("allocs");
 /// Registered write tokens: `mailbox ‖ token hash` → empty.
 pub const TOKENS: Bytes = TableDefinition::new("tokens");
 /// Stored envelopes: `mailbox ‖ seq` → `time ‖ envelope`.
@@ -80,7 +88,7 @@ pub const REPORTS: Bytes = TableDefinition::new("reports");
 pub const META: Bytes = TableDefinition::new("meta");
 
 /// The schema this code writes. Older files are migrated on open.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// Storage failure. The server answers `Status::Internal` and logs it.
 #[derive(Debug, thiserror::Error)]
@@ -179,7 +187,8 @@ impl Db {
             // Every table is created at each start: 0 → 1 made them all,
             // 1 → 2 added `server-moves`, 2 → 3 `tombstones`, 3 → 4
             // `replays`, 4 → 5 `pow-spent`, 5 → 6 `equivocations`, 6 → 7
-            // `read-creds` and `hints`.
+            // `read-creds` and `hints`, 7 → 8 `blob-issued`, `blob-spent`
+            // and `allocs`.
             t.create_tables()?;
             t.put(META, b"schema", &SCHEMA_VERSION.to_be_bytes())
         })
@@ -280,10 +289,13 @@ impl Db {
 type Rows = Vec<(Vec<u8>, Vec<u8>)>;
 
 /// Every table, for snapshots.
-const ALL: [Bytes; 24] = [
+const ALL: [Bytes; 27] = [
     INBOXES,
     READ_CREDS,
     HINTS,
+    BLOB_ISSUED,
+    BLOB_SPENT,
+    ALLOCS,
     TOKENS,
     ENVELOPES,
     MANIFESTS,

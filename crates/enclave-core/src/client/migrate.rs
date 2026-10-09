@@ -308,9 +308,7 @@ impl Client {
                 &mut self.rng,
             )?;
             for (id, chunk) in &chunks {
-                self.rpc
-                    .blob_put(&server, *id, chunk, now, &mut self.rng)
-                    .await?;
+                self.put_chunk(&server, *id, chunk, now).await?;
             }
             self.store
                 .put(NS_PROFILE, b"migration-ref", &att.encode(), &mut self.rng)?;

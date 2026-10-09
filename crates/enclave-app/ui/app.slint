@@ -33,6 +33,8 @@ export struct ContactRow {
     muted: bool,
     archived: bool,
     blocked: bool,
+    // A group member who is an admin (members sheet).
+    admin: bool,
 }
 
 export struct PickRow {
@@ -739,6 +741,7 @@ export component AppWindow inherits Window {
     in-out property <string> passphrase-input;
     in-out property <string> new-passphrase;
     callback remove-member(string, string);
+    callback set-group-admin(string, string, bool);
     callback leave-group(string);
     in property <[ContactRow]> members;
     in property <[PickRow]> addable;
@@ -2488,7 +2491,17 @@ export component AppWindow inherits Window {
                 alignment: center;
                 horizontal-stretch: 1;
                 Body { text: m.name; overflow: elide; }
-                if m.met || m.verified: Caption { text: m.met ? "Met in person" : "Checked"; }
+                if m.met || m.verified || m.admin: Caption {
+                    text: (m.admin ? "Admin" : "") + (m.admin && (m.met || m.verified) ? " · " : "") + (m.met ? "Met in person" : m.verified ? "Checked" : "");
+                }
+            }
+            if root.group-admin: VerticalLayout {
+                alignment: center;
+                QuietButton {
+                    text: m.admin ? "Not admin" : "Make admin";
+                    accessible-label: (m.admin ? "Stop " + m.name + " being an admin" : "Make " + m.name + " an admin");
+                    clicked => { root.set-group-admin(root.current-id, m.id, !m.admin); }
+                }
             }
             if root.group-admin: VerticalLayout {
                 alignment: center;

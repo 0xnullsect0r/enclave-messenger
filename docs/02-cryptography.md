@@ -413,7 +413,7 @@ The M0 draft's Tor onion-service challenge format (40 B with a seed head and an 
 
 ## 11. Privacy Pass
 
-Reserved (not yet implemented). RFC 9578 publicly verifiable tokens, type 0x0002 (blind RSA-2048), for relay tickets, blob quotas and the credential faucet.
+RFC 9578 privately verifiable tokens, type 0x0001 (VOPRF over P-384 with SHA-384, RFC 9497), not PLAN's type 0x0002 (blind RSA, which would need the `rsa` crate and its timing advisory): `docs/rfcs/0001-privacy-pass-voprf.md`. Each issuer redeems its own tokens: the credential gate (`09-transport.md` §7), each server's blob uploads (`09-transport.md` §9) and, with calls, each relay's tickets. `enclave-tokens::privpass`, with the RFC 9497 test vectors.
 
 ## 12. Side-channel and hygiene requirements
 

@@ -48,6 +48,7 @@ fn server_descriptor(domain: &str, rng: &mut HedgedRng) -> (ServerDescriptor, [u
             vrf_public: vec![9; 32],
         }),
         &keys,
+        &[],
         NOW - 10,
         NOW + 86_400,
         rng,

@@ -554,9 +554,7 @@ impl Client {
         let host = self.profile.server;
         let (att, chunks) = files::seal_file(data, name, mime, host, &mut self.rng)?;
         for (id, chunk) in &chunks {
-            self.rpc
-                .blob_put(&host, *id, chunk, now, &mut self.rng)
-                .await?;
+            self.put_chunk(&host, *id, chunk, now).await?;
         }
         let id: MsgId = self.rng.array("core/msg-id")?;
         let mut m = self.new_message(root, id, true, caption, timer, now)?;
@@ -594,14 +592,7 @@ impl Client {
             return Ok(b);
         }
         let now = self.now();
-        let mut parts = Vec::with_capacity(att.chunks as usize);
-        for i in 0..att.chunks {
-            let chunk = self
-                .rpc
-                .blob_get(&att.host, att.chunk_id(i), now, &mut self.rng)
-                .await?;
-            parts.push(files::open_chunk(att, i, &chunk)?);
-        }
+        let parts = self.fetch_chunks(att, now).await?;
         let data = files::finish(att, &parts)?;
         self.store
             .put(NS_FILES, &att.hash[..32], &data, &mut self.rng)?;
@@ -926,31 +917,52 @@ pub(crate) fn wipe(m: &mut Message) {
 }
 
 impl crate::rpc::Rpc {
-    /// Upload one blob chunk, escalating proof of work as the server asks.
+    /// Upload one blob chunk under an allocation (`client/blobs.rs`).
     pub(crate) async fn blob_put(
         &mut self,
         server: &[u8; 16],
         id: [u8; 32],
         chunk: &[u8],
+        alloc: [u8; 32],
         now: u64,
         rng: &mut HedgedRng,
     ) -> Result<()> {
-        let ctx = enclave_rpc::api::pow_context_blob(&id, &enclave_crypto::hash::sha3_512(chunk));
-        for effort in [1u32, 8, 64, 512, 4096] {
-            let proof = enclave_tokens::solve(&ctx, effort, rng)?;
-            let h = RequestHeader {
-                op: Op::BlobPut,
-                flags: 0,
-                mailbox: id,
-                token: proof.0,
-            };
-            match self.call(server, h, chunk, now, rng).await?.status {
-                Status::Ok => return Ok(()),
-                Status::Pow => continue,
-                s => return Err(CoreError::Server(s)),
-            }
+        let h = RequestHeader {
+            op: Op::BlobPut,
+            flags: 0,
+            mailbox: id,
+            token: alloc,
+        };
+        match self.call(server, h, chunk, now, rng).await?.status {
+            Status::Ok => Ok(()),
+            s => Err(CoreError::Server(s)),
         }
-        Err(CoreError::Server(Status::Pow))
+    }
+
+    /// A `BlobAlloc` request: issue (`mailbox` and `token` an inbox here
+    /// and its owner secret), redeem or ask the key (random ones).
+    pub(crate) async fn blob_alloc(
+        &mut self,
+        server: &[u8; 16],
+        mailbox: [u8; 32],
+        token: [u8; 32],
+        req: &enclave_rpc::api::BlobAlloc,
+        now: u64,
+        rng: &mut HedgedRng,
+    ) -> Result<enclave_rpc::api::BlobAllocReply> {
+        let env = enclave_rpc::api::frame(&req.encode(), rng)?;
+        let h = RequestHeader {
+            op: Op::BlobAlloc,
+            flags: 0,
+            mailbox,
+            token,
+        };
+        let r = self.call(server, h, &env, now, rng).await?;
+        if r.status != Status::Ok {
+            return Err(CoreError::Server(r.status));
+        }
+        let p = enclave_rpc::api::unframe(&r.envelope)?;
+        Ok(enclave_rpc::api::BlobAllocReply::decode(p)?)
     }
 
     /// Download one blob chunk.

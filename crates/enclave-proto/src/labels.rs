@@ -120,6 +120,18 @@ pub const GRP_BUCKET_INDEX: &str = "enclave/v1/proto/grp-bucket-index";
 pub const GRP_REKEY_PAD: &str = "enclave/v1/proto/grp-rekey-pad";
 /// Group: rekey entry check value.
 pub const GRP_REKEY_CHECK: &str = "enclave/v1/proto/grp-rekey-check";
+/// Group: outer seal key of a rekey unit (from the announcing epoch's
+/// secret).
+pub const GRP_REKEY_OUTER: &str = "enclave/v1/proto/grp-rekey-outer";
+/// AD prefix of a rekey unit's outer seal.
+pub const WIRE_AD_REKEY: &str = "enclave/v1/wire/ad-rekey";
+/// AD prefix of a rekey unit's common blob.
+pub const WIRE_AD_REKEY_COMMON: &str = "enclave/v1/wire/ad-rekey-common";
+/// Prefix of what a group message's MAC vector covers (its routing header
+/// and sealed body).
+pub const WIRE_AD_GRP_HEADER: &str = "enclave/v1/wire/ad-grp-header";
+/// AD prefix of a group message's body seal.
+pub const WIRE_AD_GRP_BODY: &str = "enclave/v1/wire/ad-grp-body";
 /// Group: state hash chain.
 pub const GRP_STATE: &str = "enclave/v1/proto/grp-state";
 /// Group: message identifier.

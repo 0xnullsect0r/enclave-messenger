@@ -64,7 +64,7 @@ Sum: 1 + 1 + 6 + 32 + 32 = **72**.
 | 2 | `WriteRequest` | unit | request-inbox address | proof of work (`nonce 16 ‖ solution 16`) | request envelope (§6), stored as is | status only |
 | 3 | `Poll` | poll | inbox address | read credential (24) ‖ `u64` cursor | — | one stored envelope, or empty |
 | 4 | `Ack` | poll | inbox address | read credential (24) ‖ `u64` watermark | — | status only |
-| 5 | `BlobPut` | unit | chunk ID | proof of work | blob chunk (§9), stored as is | status only |
+| 5 | `BlobPut` | unit | chunk ID | allocation secret (`BlobAlloc`) | blob chunk (§9), stored as is | status only |
 | 6 | `BlobGet` | unit or poll | chunk ID | unused | — | the chunk |
 | 7 | `Directory` | unit | unused (zero) | unused (zero) | API payload: `DirRequest` (§9.3) | API payload: `DirReply` |
 | 8 | `RegisterTokens` | unit | inbox address | owner secret | API payload: concatenated 32 B token hashes (ignored on create) | status only |
@@ -72,6 +72,7 @@ Sum: 1 + 1 + 6 + 32 + 32 = **72**.
 | 10 | `PushRegister` | unit | inbox address | owner secret | API payload: sealed push token (empty removes it) | status only |
 | 11 | `Report` | unit | the reported account's request inbox | proof of work | API payload: `ReportBody` (`13-operators.md` §2) | status only |
 | 12 | `Status` | poll | status id of an earlier `DEFER` request | random | — | that request's reply (its op, status and payload), or `Status` with `NotFound` while it hasn't arrived |
+| 13 | `BlobAlloc` | unit | issue: an inbox here; else random | issue: its owner secret; else random | API payload: `1 ‖ u8 n ‖ n × TokenRequest (52)` issue, `2 ‖ Token (146)` redeem, `3` key | API payload: `1 ‖ u32 epoch ‖ key (49) ‖ u8 n ‖ n × TokenResponse (145)`, or `2 ‖ allocation (32) ‖ u32 uploads` (`09-transport.md` §9) |
 
 `flags` for `RegisterTokens`: bit 0 (`0x01`) `CREATE` creates the inbox; bit 1 (`0x02`) `REQUEST_INBOX` makes the new inbox a request inbox. Other ops ignore the low bits.
 
@@ -258,7 +259,7 @@ Sum: 1 + 1 + 1 + 1 + 4 + 1 + 8 + 56 + 1,568 + 208 + 1,568 + 5,120 = **8,537** (`
 
 ## 7. Group stored envelope: 14,336 B
 
-Implemented in `enclave-proto::group` (M7). The sender header (bytes 16–88), state hash and frontier are encrypted under the epoch header key and authenticated by the MAC vector (`07-groups.md`, implementation note 3). Layout from `enclave_wire::group`:
+Implemented in `enclave-proto::group` (M7). The sender header (bytes 16–88), state hash and frontier are encrypted under the epoch header key and authenticated by the MAC vector (`07-groups.md`, implementation note 3). Byte 2 is the subkind: 2 a message, 3 a rekey unit (§8). Each MAC-vector tag covers `H512("enclave/v1/wire/ad-grp-header" ‖ bytes 0–920 ‖ bytes 2,504–14,336)` and the body is sealed with AD `"enclave/v1/wire/ad-grp-body" ‖ bytes 0–920`. Subkinds 0 and 1 are the first versions of both, without the label prefixes (and a rekey unit without its outer seal); clients still read them, so units already stored when a client updates open. Layout from `enclave_wire::group`:
 
 | Offset | Length | Field |
 |---|---|---|
@@ -276,9 +277,20 @@ Sum: 88 + 32 + 800 + 1,584 + 1,024 + 32 + 8 + 10,736 + 32 = **14,336**. Body off
 
 This is PLAN §8's field order. The contents of the 88 B sender header and the protection of the state hash and frontier (which reveal group structure if left in the clear) are decided when groups are implemented (`07-groups.md`; `00-overview.md` §9, I-14).
 
-## 8. Rekey unit (reserved, not implemented)
+## 8. Rekey unit: 14,336 B
 
-The M0 draft's dedicated rekey layout, re-derived for the 64 B seal overhead: routing header 88 + seal overhead 64 + payload 14,184 = 14,336. Payload: state hash 32 + common blob (64 + 128) 192 + bucket info 8 + 174 entries × 80 B 13,920 + zero 32 = 14,184. Nothing in the code defines this layout yet.
+**As implemented** (`enclave-proto::group`, `Group::rotate`, `apply_rekey`; `07-groups.md` §5.4):
+
+| Offset | Length | Field |
+|---|---|---|
+| 0 | 16 | clear: version 1, kind `Group`, subkind 3, bucket, announcing epoch `u32`, 0^8 |
+| 16 | 32 | nonce |
+| 48 | 40 | encrypted under the epoch's header key: member, device, generation, flags, target epoch `u32`, 0^32 |
+| 88 | 32 | outer seal `N` |
+| 120 | 14,184 | sealed payload: common blob 192 (128 + 64) ‖ 174 entries × 80 (`u32 e ‖ check (12) ‖ ct (64)`) ‖ 72 random |
+| 14,304 | 32 | outer seal `T` |
+
+Sum: 88 + 32 + 14,184 + 32 = **14,336**. The outer seal key is `KMAC256(epoch secret, "", "enclave/v1/proto/grp-rekey-outer")` of the announcing epoch and its AD is `"enclave/v1/wire/ad-rekey" ‖ bytes 0–88`; the common blob's AD is `"enclave/v1/wire/ad-rekey-common" ‖ bytes 0–88` with the bucket byte zeroed (the same blob is in all three units). Unused entry positions are random, and entries are shuffled. A rotation is always three units, one per bucket. Test `old_formats_still_open` (`group.rs`): a unit the server changed fails the outer seal, and subkind-1 units (no outer seal) still apply.
 
 ## 9. Blobs and directory objects
 
@@ -296,7 +308,7 @@ The M0 draft's dedicated rekey layout, re-derived for the 64 B seal overhead: ro
 
 Sum: 16 + 32 + 8 + 14,248 + 32 = **14,336**.
 
-The server stores a `BlobPut` envelope region as is under its 32 B chunk ID and returns it on `BlobGet`. Client-side blob sealing (chunk keys and IDs from a blob secret, `02b-key-schedule.md` §9) is not implemented yet; the labels are reserved.
+The server stores a `BlobPut` envelope region as is under its 32 B chunk ID and returns it on `BlobGet`. The client seals it (`enclave-core/src/files.rs`, `02b-key-schedule.md` §9): a random blob secret per file gives the chunk key and each chunk's ID, the body is sealed under that key with AD `"enclave/v1/wire/ad-chunk" ‖ header ‖ u32 i ‖ u32 n` (so a chunk can't be moved to another position or file; chunks sealed before the prefix existed open without it), and the message carries the secret, size, chunk count and SHA3-512 of the file.
 
 ### 9.2 Attachment buckets
 

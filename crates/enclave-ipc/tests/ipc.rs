@@ -21,6 +21,7 @@ fn snapshot() -> Snapshot {
         muted: true,
         archived: false,
         blocked: true,
+        admin: true,
     };
     Snapshot {
         my_name: "Robin".into(),
@@ -181,6 +182,7 @@ fn cmds() -> Vec<Cmd> {
         Cmd::BackupRoute(false),
         Cmd::SetBridges("obfs4 192.0.2.1:443 AA cert=x iat-mode=0".into()),
         Cmd::SetOnRecord(true),
+        Cmd::SetGroupAdmin("g".into(), "m".into(), true),
         Cmd::SetOnRecord(false),
         Cmd::Select(String::new()),
         Cmd::Send("id".into(), "text ✓".into()),

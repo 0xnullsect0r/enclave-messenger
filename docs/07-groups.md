@@ -50,10 +50,12 @@ Every group message carries a MAC vector of **99 entries × 16 B = 1,584 B**, al
 
 - **Mailbox address:** `gmbox(d) = KMAC256(epoch_secret, u32(d), 256, "enclave/v1/net/grp-mailbox")` for day `d` (PLAN: `KMAC(epoch_secret, "gmbox"‖day)`). A sender writes to the address for the current trusted day. Readers poll today's and yesterday's address.
 - **Write authorization (epoch MAC tokens):** `grp_write_tok(a) = KMAC256(k_gw, a, 256, "enclave/v1/net/grp-write-token")`. The first write to an address that does not exist yet carries the `CREATE` flag; the server stores `KMAC256(a, token, 256, "enclave/v1/net/token-hash")` and accepts later writes that present the same token. Group write tokens are multi-use for one address; the server can already link writes to one mailbox.
-- **Read authorization:** `grp_read_cred(a) = KMAC256(k_gr, a, 256, "enclave/v1/net/grp-read-cred")`, registered the same way with `cred-hash`.
+- **Read authorization:** the read credential is `read_credential(grp_write_tok(a))` (`enclave/v1/rpc/read-credential`), whose hash the server stores when the first write creates the mailbox, so the mailbox is created and readable in one unit. PLAN's separate read key (`net/grp-read-key`, `grp-read-cred`) is retired (`label-registry.md` §4): only members and the server ever hold the write token, so a second key would protect against nobody and cost a registration request per mailbox per day.
 - **Routing header:** the 88 B header is sealed under `HKg = KMAC256(epoch_secret, "", 256, "enclave/v1/proto/grp-header")` and carries epoch, sender member index, sender device index, generation, flags, and counter (`08-envelope.md` §7.1).
 - **Cost:** 1 unit per group message. No self-copy (own devices read the mailbox).
 - **Hosting move:** admins may move the mailbox host to another server by an admin vote (a state update naming the new host, applied by a majority of admins). The new host takes effect from the next day's address.
+
+  **As implemented** (`enclave-core/src/client/group_hosts.rs`): an admin votes with a `FLAG_RICH` message of kind 10, `host (16)` (`Client::vote_group_host`). Votes from admins are kept for 7 days. The admin whose vote makes a majority (more than half of the current admins for the same server) posts the state update: `prev_host` becomes the host of today, `host` the new server and `host_since` tomorrow (state encoding version 3; a group that never moved keeps version 1 or 2, so its state hashes don't change). A day's mailboxes are on `host_for(day)`: today's stay where they were, so nothing already written is stranded, and from tomorrow every member writes, reads and posts rekeys on the new server, which creates the mailboxes on their first write like any server. Every member refuses an update that changes the host unless it has itself seen a majority of admins vote for that server, with `host_since` today to two days ahead; the votes precede the update in the mailbox. An admin makes others admins, or steps down, with a state update (`Client::set_group_admin`). `GroupInfo` shows the host and the admins. Test `group_moves_by_admin_vote`.
 
 ## 5. Rekey (DCGKA-style exporter broadcast)
 
@@ -97,6 +99,8 @@ for each recipient device r (every device of every other member, and this accoun
 ```
 
 Each entry is about 72 B of key material plus 8 B of indexing (PLAN: "about 72 B per device").
+
+**As implemented** (`enclave-proto::group`, `08-envelope.md` §8): the common blob is sealed under `kb` with AD `"enclave/v1/wire/ad-rekey-common" ‖ the 88-byte header` (bucket byte zeroed), not with the fields listed above; the header carries the sender, generation, flags and target epoch encrypted under the epoch's header key. Each entry is `u32 e ‖ chk (12) ‖ ct (64)`: the exporter now needs only the PQ epoch (`Session::export_for_peer`, §5.3), so there is no chain index. The common blob and the 174 entry positions then go under the unit's **outer seal**, `KMAC256(epoch secret, "", "enclave/v1/proto/grp-rekey-outer")` of the epoch the rekey is announced under, with AD `"enclave/v1/wire/ad-rekey" ‖ header` (bucket byte included), so a server can't change, move or swap any part of a unit; every member can open it and then looks for its entry.
 
 ### 5.5 Buckets
 
@@ -230,7 +234,7 @@ Photos and files (`client/group_files.rs`) work as in 1:1 conversations (`08-env
 8. **Adding members** (`Client::add_group_members`, admins only): a new epoch first, so newcomers can't open anything sent before they joined; a rotation announced under the previous epoch keys current members; the state update is posted in the new epoch; each newcomer gets a welcome and every member's card pairwise; existing members get the newcomers' cards. A card from an admin is kept even when the state update that adds its owner hasn't been read yet (the inbox is read before group mailboxes); introductions only ever go to active members.
 9. **App:** create a group from accepted contacts, a members sheet (who's in it, checked or met in person), admins add and remove people, and anyone can leave with an inline confirmation.
 10. **Our other devices** (`client/group_devices.rs`, `06-multidevice.md` §5): each device uses its index in our manifest as its group device index. A device that holds a group hands it to each of our other active devices that lacks it (a newly linked one, or after this device created or joined it): its whole view (epoch secrets, receiving chains, member cards, mailbox positions) with its own sending chain turned into one the other device receives (`Group::hand_over`), as a sealed file whose reference goes in an own-sync item naming that device. The other device starts a chain of its own at its first send, and every rotation keys our other active devices too (rekeys between our own devices carry no MAC key). Group history is not handed over. Test `groups_on_every_device`.
-11. **Not implemented yet:** hosting moves. (The pre-rekey PQ step, polls, invite links, join requests and On-the-record groups have since been built: §3, §5.2, §7.5, §9.)
+11. Hosting moves (§4), the pre-rekey PQ step (§5.2), polls (§7.5), invite links and join requests (§9) and On-the-record groups (§3) have since been built.
 
 ## Open questions
 

@@ -105,8 +105,8 @@ pub struct PolicySection {
     pub effort_request: u32,
     /// Proof-of-work effort for claiming a bundle.
     pub effort_claim: u32,
-    /// Proof-of-work effort for blob uploads.
-    pub effort_blob: u32,
+    /// Blob-upload tokens one inbox may be issued a day.
+    pub blob_tokens_per_day: u32,
     /// Proof-of-work effort for claiming a username.
     pub effort_username: u32,
     /// Proof-of-work effort for creating an inbox.
@@ -127,7 +127,7 @@ impl Default for PolicySection {
         Self {
             effort_request: c.effort_request,
             effort_claim: c.effort_claim,
-            effort_blob: c.effort_blob,
+            blob_tokens_per_day: c.blob_tokens_per_day,
             effort_username: c.effort_username,
             effort_inbox: c.effort_inbox,
             inbox_quota: c.inbox_quota,
@@ -237,7 +237,7 @@ impl FileConfig {
         enclave_federation::Policy {
             effort_request: p.effort_request,
             effort_claim: p.effort_claim,
-            effort_blob: p.effort_blob,
+            blob_tokens_per_day: p.blob_tokens_per_day,
             effort_username: p.effort_username,
             effort_inbox: p.effort_inbox,
             inbox_quota: n(p.inbox_quota),
@@ -254,7 +254,7 @@ impl FileConfig {
             id,
             effort_request: p.effort_request,
             effort_claim: p.effort_claim,
-            effort_blob: p.effort_blob,
+            blob_tokens_per_day: p.blob_tokens_per_day,
             effort_username: p.effort_username,
             effort_inbox: p.effort_inbox,
             inbox_quota: p.inbox_quota,

@@ -33,9 +33,7 @@ impl Client {
         let host = self.profile.server;
         let (att, chunks) = files::seal_file(data, name, mime, host, &mut self.rng)?;
         for (id, chunk) in &chunks {
-            self.rpc
-                .blob_put(&host, *id, chunk, now, &mut self.rng)
-                .await?;
+            self.put_chunk(&host, *id, chunk, now).await?;
         }
         // Keep our own copy so we never download what we sent.
         self.store

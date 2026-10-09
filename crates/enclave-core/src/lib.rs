@@ -35,7 +35,7 @@ pub use client::{
     ConvPrefs, Hit, Location, MAX_PINNED_CONVERSATIONS, MAX_PINS, MeetMatch, Place, RecoveryAlert,
     words_from_shares,
 };
-pub use client::{ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS, TicketWallet};
+pub use client::{ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS, TicketWallet, fetch_due};
 pub use enclave_kt::KtPolicy;
 
 use enclave_rpc::api::Status;

@@ -64,7 +64,7 @@ impl Network {
             id,
             effort_request,
             effort_claim: 1,
-            effort_blob: 1,
+            blob_tokens_per_day: 64,
             effort_inbox: INBOX_EFFORT,
             ..Default::default()
         };

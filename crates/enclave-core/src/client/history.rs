@@ -149,9 +149,7 @@ impl Client {
             &mut self.rng,
         )?;
         for (id, chunk) in &chunks {
-            self.rpc
-                .blob_put(&host, *id, chunk, now, &mut self.rng)
-                .await?;
+            self.put_chunk(&host, *id, chunk, now).await?;
         }
         self.send_own(&Content::History(att.encode()).encode()?, now)
             .await?;

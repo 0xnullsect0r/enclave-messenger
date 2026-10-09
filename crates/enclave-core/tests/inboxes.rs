@@ -22,7 +22,7 @@ fn network() -> LocalTransport {
             id,
             effort_request: 1,
             effort_claim: 1,
-            effort_blob: 1,
+            blob_tokens_per_day: 64,
             effort_username: 1,
             effort_inbox: 1,
             ..Default::default()

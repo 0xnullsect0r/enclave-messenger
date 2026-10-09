@@ -632,7 +632,7 @@ pub async fn run_with(
                 id: DEMO_SERVER,
                 effort_request: 4,
                 effort_claim: 1,
-                effort_blob: 1,
+                blob_tokens_per_day: 64,
                 effort_username: 4,
                 effort_inbox: 1,
                 ..Default::default()
@@ -877,6 +877,7 @@ impl Engine {
         let Some(c) = self.client.as_mut() else {
             return false;
         };
+        let now = c.now();
         let (conv, notes): (String, Vec<(u64, enclave_core::files::Attachment)>) =
             if let Some(gid) = self.selected_group {
                 (
@@ -885,6 +886,7 @@ impl Engine {
                         .unwrap_or_default()
                         .into_iter()
                         .filter(|m| !m.deleted)
+                        .filter(|m| m.from.is_none() || enclave_core::fetch_due(&m.id, m.at, now))
                         .filter_map(|m| m.attachment.filter(is_voice).map(|a| (m.seq, a)))
                         .collect(),
                 )
@@ -898,6 +900,7 @@ impl Engine {
                         .unwrap_or_default()
                         .into_iter()
                         .filter(|m| !m.deleted)
+                        .filter(|m| m.outgoing || enclave_core::fetch_due(&m.id, m.at, now))
                         .filter_map(|m| m.attachment.filter(is_voice).map(|a| (m.seq, a)))
                         .collect(),
                 )
@@ -961,6 +964,7 @@ impl Engine {
             return;
         }
         let id = hex_id(&root);
+        let now = c.now();
         let Ok(msgs) = c.messages(&root) else {
             return;
         };
@@ -970,6 +974,9 @@ impl Engine {
             .filter(|m| {
                 !m.deleted && (m.sticker.is_some() || m.attachment.as_ref().is_some_and(is_picture))
             })
+            // Not the moment it arrives: a fetch that follows an upload at
+            // once would tie them together (RT-17).
+            .filter(|m| m.outgoing || enclave_core::fetch_due(&m.id, m.at, now))
             .map(|m| {
                 (
                     m.seq,
@@ -1001,6 +1008,7 @@ impl Engine {
             return;
         };
         let id = group_id_str(&gid);
+        let now = c.now();
         let Ok(msgs) = c.group_messages(&gid) else {
             return;
         };
@@ -1010,6 +1018,7 @@ impl Engine {
             .filter(|m| {
                 !m.deleted && (m.sticker.is_some() || m.attachment.as_ref().is_some_and(is_picture))
             })
+            .filter(|m| m.from.is_none() || enclave_core::fetch_due(&m.id, m.at, now))
             .map(|m| {
                 (
                     m.seq,
@@ -2026,6 +2035,22 @@ impl Engine {
                 }
                 self.busy = false;
             }
+            Cmd::SetGroupAdmin(id, member, on) => {
+                if let (Some(gid), Some(c)) = (self.group_of(&id), self.client.as_mut()) {
+                    let root = c
+                        .groups()
+                        .into_iter()
+                        .find(|g| g.id == gid)
+                        .and_then(|g| g.members.into_iter().find(|(r, _)| hex_id(r) == member))
+                        .map(|(r, _)| r);
+                    if let Some(root) = root
+                        && c.set_group_admin(&gid, &root, on).await.is_err()
+                    {
+                        self.status =
+                            "Couldn't change who is an admin. Check your connection.".into();
+                    }
+                }
+            }
             Cmd::RemoveMember(id, member) => {
                 self.busy = true;
                 self.push();
@@ -3014,6 +3039,7 @@ impl Engine {
                         verified: c.contact(r).is_some_and(|ct| ct.verified),
                         met: c.met_in_person(r),
                         tint: tint_for(r),
+                        admin: g.admins.contains(r),
                         ..Default::default()
                     })
                     .collect();

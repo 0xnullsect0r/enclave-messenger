@@ -183,10 +183,9 @@ The M0 derivations are kept for M7 with their reserved labels (`label-registry.m
 gmbox(d)         = KMAC256(epoch_secret, u32(d), 256, "enclave/v1/net/grp-mailbox")
 k_gw             = KMAC256(epoch_secret, "", 256, "enclave/v1/net/grp-write-key")
 grp_write_tok(a) = KMAC256(k_gw, a, 256, "enclave/v1/net/grp-write-token")
-k_gr             = KMAC256(epoch_secret, "", 256, "enclave/v1/net/grp-read-key")
-grp_read_cred(a) = KMAC256(k_gr, a, 256, "enclave/v1/net/grp-read-cred")
+grp_read_cred(a) = read_credential(grp_write_tok(a))                        # rpc/read-credential; grp-read-key retired
 HKg              = KMAC256(epoch_secret, "", 256, "enclave/v1/proto/grp-header")
-k_rekey_outer    = KMAC256(epoch_secret, "", 256, "enclave/v1/proto/grp-rekey-outer")
+k_rekey_outer    = KMAC256(epoch_secret, "", 256, "enclave/v1/proto/grp-rekey-outer")   # the announcing epoch's
 k_bucket         = KMAC256(epoch_secret, "", 256, "enclave/v1/proto/grp-bucket")
 gnk(d)           = KMAC256(epoch_secret, u32(d), 256, "enclave/v1/proto/grp-notify")
 (cs_{n+1}, gmk_n) = split32( KMAC256(cs_n, "", 512, "enclave/v1/proto/grp-chain") )
@@ -205,12 +204,14 @@ tally_hash       = SHA3-512("enclave/v1/proto/poll-tally-hash" ‖ poll_id ‖ c
 
 `P ‖ RK` in `K_exp` assumed the M0 draft's PQ epoch secrets and root-key snapshots, which the implemented ratchet does not keep (`05-ratchet.md`). The exporter must be re-specified against the implemented ratchet before M7.
 
-## 9. Blobs (reserved)
+## 9. Blobs
 
 ```
-blob_secret = HedgedRng.fill("blob", 32)
+blob_secret = HedgedRng.fill("blob/secret", 32)
 k_chunk     = KMAC256(blob_secret, "", 256, "enclave/v1/wire/chunk-key")
 chunk_id_i  = KMAC256(blob_secret, u32(i), 256, "enclave/v1/wire/chunk-id")
+ad_i        = "enclave/v1/wire/ad-chunk" ‖ header (16) ‖ u32(i) ‖ u32(n)
+blob_issuer_seed = KMAC256(identity_seed, "", 256, "enclave/v1/tokens/blob-issuer-seed")   # server side
 backup_blob_secret = KMAC256(backup_key, u64(archive_seq), 256, "enclave/v1/store/backup-blob-id")
 ```
 

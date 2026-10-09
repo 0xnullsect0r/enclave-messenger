@@ -21,10 +21,11 @@ nym_address = ""
 # forward = "push-egress:7446"
 
 [policy]
-# Proof-of-work efforts (Equi-X work factor) and quotas. The defaults:
+# Proof-of-work efforts (Equi-X work factor) and quotas (blob_tokens_per_day:
+# blob-upload tokens an inbox may be issued a day). The defaults:
 # effort_request = 64
 # effort_claim = 8
-# effort_blob = 1
+# blob_tokens_per_day = 64
 # effort_username = 64
 # effort_inbox = 16
 # inbox_quota = 5000

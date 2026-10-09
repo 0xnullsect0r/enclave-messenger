@@ -127,6 +127,7 @@ fn row(r: &Row) -> ContactRow {
         muted: r.muted,
         archived: r.archived,
         blocked: r.blocked,
+        admin: r.admin,
     }
 }
 

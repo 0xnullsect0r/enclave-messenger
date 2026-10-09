@@ -310,6 +310,161 @@ pub fn pow_context_report(mailbox: &[u8; 32], day: u64, envelope_hash: &[u8]) ->
     .concat()
 }
 
+/// Privacy Pass `TokenRequest` length (RFC 9578, token type 0x0001).
+pub const PP_REQUEST_LEN: usize = 52;
+/// Privacy Pass `TokenResponse` length.
+pub const PP_RESPONSE_LEN: usize = 145;
+/// Privacy Pass `Token` length.
+pub const PP_TOKEN_LEN: usize = 146;
+/// An issuer public key (compressed P-384 point).
+pub const PP_PUBLIC_LEN: usize = 49;
+/// Most tokens one `BlobAlloc` issue asks for.
+pub const BLOB_ISSUE_MAX: usize = 8;
+/// Chunk uploads one allocation (one token) allows.
+pub const ALLOC_CHUNKS: u32 = 512;
+/// How long an allocation lasts.
+pub const ALLOC_SECS: u64 = 86_400;
+/// Length of an issuer-key epoch (a month of 30 days).
+pub const ISSUER_EPOCH_SECS: u64 = 30 * 86_400;
+
+/// The issuer-key epoch at `now`.
+pub fn issuer_epoch(now: u64) -> u32 {
+    (now / ISSUER_EPOCH_SECS) as u32
+}
+
+/// A `BlobAlloc` request (`docs/09-transport.md` §9). An issue proves an
+/// inbox on the server (mailbox and owner secret in the header) and asks
+/// for blind tokens; a redemption spends one, unlinkably, for an
+/// allocation of [`ALLOC_CHUNKS`] chunk uploads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BlobAlloc {
+    /// `1 ‖ u8 n ‖ n × TokenRequest`.
+    Issue(Vec<[u8; PP_REQUEST_LEN]>),
+    /// `2 ‖ Token`.
+    Redeem([u8; PP_TOKEN_LEN]),
+    /// `3`: this month's issuer key (answered as an `Issued` with no
+    /// responses), for a client that holds no descriptor of the server.
+    Key,
+}
+
+impl BlobAlloc {
+    /// Encode.
+    pub fn encode(&self) -> Vec<u8> {
+        match self {
+            BlobAlloc::Issue(reqs) => {
+                let mut b = vec![1, reqs.len().min(BLOB_ISSUE_MAX) as u8];
+                for r in reqs.iter().take(BLOB_ISSUE_MAX) {
+                    b.extend_from_slice(r);
+                }
+                b
+            }
+            BlobAlloc::Redeem(t) => [&[2u8][..], t].concat(),
+            BlobAlloc::Key => vec![3],
+        }
+    }
+
+    /// Decode (strict).
+    pub fn decode(b: &[u8]) -> Result<Self> {
+        let m = RpcError::Malformed;
+        match b.split_first() {
+            Some((1, rest)) => {
+                let (&n, rest) = rest.split_first().ok_or(m)?;
+                let n = usize::from(n);
+                if n == 0 || n > BLOB_ISSUE_MAX || rest.len() != n * PP_REQUEST_LEN {
+                    return Err(m);
+                }
+                Ok(BlobAlloc::Issue(
+                    rest.chunks(PP_REQUEST_LEN)
+                        .map(|c| c.try_into().map_err(|_| m))
+                        .collect::<Result<_>>()?,
+                ))
+            }
+            Some((2, rest)) => Ok(BlobAlloc::Redeem(rest.try_into().map_err(|_| m)?)),
+            Some((3, [])) => Ok(BlobAlloc::Key),
+            _ => Err(m),
+        }
+    }
+}
+
+/// The answer to a [`BlobAlloc`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BlobAllocReply {
+    /// `1 ‖ u32 epoch ‖ issuer public key ‖ u8 n ‖ n × TokenResponse`.
+    Issued {
+        /// The issuer-key epoch.
+        epoch: u32,
+        /// The issuer key the responses were made with.
+        public: [u8; PP_PUBLIC_LEN],
+        /// One response per request.
+        responses: Vec<[u8; PP_RESPONSE_LEN]>,
+    },
+    /// `2 ‖ alloc (32) ‖ u32 chunks`: put this in a `BlobPut`'s token field.
+    Allocated {
+        /// The allocation's secret.
+        alloc: [u8; 32],
+        /// Chunk uploads it allows.
+        chunks: u32,
+    },
+}
+
+impl BlobAllocReply {
+    /// Encode.
+    pub fn encode(&self) -> Vec<u8> {
+        match self {
+            BlobAllocReply::Issued {
+                epoch,
+                public,
+                responses,
+            } => {
+                let mut b = vec![1];
+                b.extend_from_slice(&epoch.to_be_bytes());
+                b.extend_from_slice(public);
+                b.push(responses.len().min(BLOB_ISSUE_MAX) as u8);
+                for r in responses.iter().take(BLOB_ISSUE_MAX) {
+                    b.extend_from_slice(r);
+                }
+                b
+            }
+            BlobAllocReply::Allocated { alloc, chunks } => {
+                [&[2u8][..], alloc, &chunks.to_be_bytes()].concat()
+            }
+        }
+    }
+
+    /// Decode (strict).
+    pub fn decode(b: &[u8]) -> Result<Self> {
+        let m = RpcError::Malformed;
+        match b.split_first() {
+            Some((1, rest)) => {
+                let (epoch, rest) = rest.split_first_chunk::<4>().ok_or(m)?;
+                let (public, rest) = rest.split_first_chunk::<PP_PUBLIC_LEN>().ok_or(m)?;
+                let (&n, rest) = rest.split_first().ok_or(m)?;
+                let n = usize::from(n);
+                if n > BLOB_ISSUE_MAX || rest.len() != n * PP_RESPONSE_LEN {
+                    return Err(m);
+                }
+                Ok(BlobAllocReply::Issued {
+                    epoch: u32::from_be_bytes(*epoch),
+                    public: *public,
+                    responses: rest
+                        .chunks(PP_RESPONSE_LEN)
+                        .map(|c| c.try_into().map_err(|_| m))
+                        .collect::<Result<_>>()?,
+                })
+            }
+            Some((2, rest)) => {
+                let (alloc, rest) = rest.split_first_chunk::<32>().ok_or(m)?;
+                let chunks = u32::from_be_bytes(rest.try_into().map_err(|_| m)?);
+                Ok(BlobAllocReply::Allocated {
+                    alloc: *alloc,
+                    chunks,
+                })
+            }
+            _ => Err(m),
+        }
+    }
+}
+
 /// Most messages one report may quote.
 pub const MAX_REPORT_MESSAGES: usize = 10;
 /// Longest quoted message in a report, in bytes.
@@ -599,11 +754,6 @@ pub fn key_name(key: &[u8; 32]) -> Option<String> {
     String::from_utf8(key[..n].to_vec()).ok()
 }
 
-/// Context string for a blob-upload proof of work.
-pub fn pow_context_blob(id: &[u8; 32], chunk_hash: &[u8]) -> Vec<u8> {
-    [b"blob-put".as_slice(), id, chunk_hash].concat()
-}
-
 /// Read credential for an inbox, derived from the owner secret.
 pub fn read_credential(owner_secret: &[u8; 32]) -> [u8; 24] {
     let k: [u8; 32] =
@@ -728,6 +878,31 @@ pub fn device_key(device: &[u8; 16]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blob_alloc_codec() {
+        let issue = BlobAlloc::Issue(vec![[7; PP_REQUEST_LEN]; 3]);
+        assert_eq!(BlobAlloc::decode(&issue.encode()).unwrap(), issue);
+        let redeem = BlobAlloc::Redeem([9; PP_TOKEN_LEN]);
+        assert_eq!(BlobAlloc::decode(&redeem.encode()).unwrap(), redeem);
+        assert_eq!(BlobAlloc::decode(&[3]).unwrap(), BlobAlloc::Key);
+        for bad in [vec![1, 0], vec![1, 9], vec![2, 1, 2], vec![3, 0], vec![4]] {
+            assert!(BlobAlloc::decode(&bad).is_err(), "{bad:?}");
+        }
+        let issued = BlobAllocReply::Issued {
+            epoch: 700,
+            public: [2; PP_PUBLIC_LEN],
+            responses: vec![[3; PP_RESPONSE_LEN]; 2],
+        };
+        assert_eq!(BlobAllocReply::decode(&issued.encode()).unwrap(), issued);
+        let got = BlobAllocReply::Allocated {
+            alloc: [4; 32],
+            chunks: ALLOC_CHUNKS,
+        };
+        assert_eq!(BlobAllocReply::decode(&got.encode()).unwrap(), got);
+        assert!(BlobAllocReply::decode(&[2, 1]).is_err());
+        assert_eq!(issuer_epoch(ISSUER_EPOCH_SECS * 3 + 5), 3);
+    }
 
     #[test]
     fn signed_report_codec() {

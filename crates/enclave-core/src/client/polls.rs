@@ -37,6 +37,7 @@ const K_EDIT: u8 = 6;
 const K_DELETE: u8 = 7;
 const K_ATTACHMENT: u8 = 8;
 const K_STICKER: u8 = 9;
+const K_HOST_VOTE: u8 = 10;
 
 pub(crate) enum Rich {
     Poll {
@@ -82,6 +83,11 @@ pub(crate) enum Rich {
         id: [u8; 16],
         pack: Vec<u8>,
         index: u8,
+    },
+    /// An admin's vote to move the group's mailboxes to `host`
+    /// (`group_hosts.rs`).
+    HostVote {
+        host: [u8; 16],
     },
 }
 
@@ -137,6 +143,9 @@ impl Rich {
             Rich::Sticker { id, pack, index } => {
                 w.u8(K_STICKER).fixed(id).bytes(pack).u8(*index);
             }
+            Rich::HostVote { host } => {
+                w.u8(K_HOST_VOTE).fixed(host);
+            }
         }
         w.finish()
     }
@@ -187,6 +196,7 @@ impl Rich {
                 attachment: r.bytes(MAX_ATTACHMENT_REF)?.to_vec(),
                 caption: get_str(&mut r, MAX_TEXT)?,
             },
+            K_HOST_VOTE => Rich::HostVote { host: r.array()? },
             K_PIN => Rich::Pin {
                 id: r.array()?,
                 on: match r.u8()? {
@@ -537,6 +547,10 @@ impl Client {
                 let known = self.group_messages(gid)?.iter().any(|m| m.id == id);
                 Ok((known && self.apply_pin(&place, &id, on)?)
                     .then_some(Event::PinsChanged { place }))
+            }
+            Rich::HostVote { host } => {
+                self.on_host_vote(gid, from, host, now)?;
+                Ok(None)
             }
         }
     }

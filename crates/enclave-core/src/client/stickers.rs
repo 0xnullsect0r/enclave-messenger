@@ -150,9 +150,7 @@ impl Client {
         let host = self.profile.server;
         let (att, chunks) = files::seal_file(&data, "stickers", PACK_MIME, host, &mut self.rng)?;
         for (id, chunk) in &chunks {
-            self.rpc
-                .blob_put(&host, *id, chunk, now, &mut self.rng)
-                .await?;
+            self.put_chunk(&host, *id, chunk, now).await?;
         }
         self.store
             .put(NS_FILES, &att.hash[..32], &data, &mut self.rng)?;

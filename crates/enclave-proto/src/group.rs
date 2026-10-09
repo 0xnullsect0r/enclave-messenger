@@ -15,15 +15,24 @@
 //! Group envelope (14,336 B, offsets from `enclave_wire::group`):
 //!
 //! ```text
-//!   0  16  clear: version, kind=Group, subkind 0, 0, epoch u32, 0^8
+//!   0  16  clear: version, kind=Group, subkind 2, 0, epoch u32, 0^8
 //!  16  32  nonce
 //!  48  40  enc: member, device, generation, flags, counter u32, 0^32
 //!  88  32  enc: state hash
 //! 120 800  enc: causal frontier (100 × 8)
-//! 920 1584 MAC vector (99 × 16) over H512(unit[0..920] ‖ unit[2504..])
+//! 920 1584 MAC vector (99 × 16) over
+//!          H512("enclave/v1/wire/ad-grp-header" ‖ unit[0..920] ‖ unit[2504..])
 //! 2504 1024 capsule (random)
-//! 3528 ... body: EnclaveSeal(gmk, AD = unit[0..920], padded content)
+//! 3528 ... body: EnclaveSeal(gmk, AD = "enclave/v1/wire/ad-grp-body" ‖
+//!          unit[0..920], padded content)
 //! ```
+//!
+//! Rekey unit (subkind 3): the same 88-byte header (bucket in byte 3,
+//! sender, generation, flags and target epoch encrypted), then
+//! `EnclaveSeal(KMAC256(epoch secret, "", "enclave/v1/proto/grp-rekey-outer"),
+//! AD = "enclave/v1/wire/ad-rekey" ‖ header, common (192) ‖ 174 entries × 80
+//! ‖ random)`. Subkinds 0 and 1 are the first versions of both (no labels,
+//! no outer seal), still read.
 
 use crate::codec::{Reader, Writer};
 use crate::error::{ProtoError, Result};
@@ -66,16 +75,69 @@ pub const FLAG_SIGNED: u8 = 0x04;
 const REKEY_NEW_EPOCH: u8 = 0x01;
 
 const VERSION: u8 = 1;
-const SUB_MESSAGE: u8 = 0;
-const SUB_REKEY: u8 = 1;
+/// Subtypes (byte 2). 0 and 1 are the first formats, without label
+/// prefixes and without a rekey unit's outer seal; they are still read, so
+/// units already stored when a client updates open.
+const SUB_MESSAGE_V1: u8 = 0;
+const SUB_REKEY_V1: u8 = 1;
+const SUB_MESSAGE: u8 = 2;
+const SUB_REKEY: u8 = 3;
+
+#[cfg(test)]
+thread_local! {
+    /// Tests: write the first formats (subkinds 0 and 1).
+    static LEGACY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn legacy() -> bool {
+    #[cfg(test)]
+    return LEGACY.with(|l| l.get());
+    #[cfg(not(test))]
+    false
+}
+
+/// Whether `unit` is a rekey unit (else a message).
+pub fn is_rekey(unit: &[u8]) -> bool {
+    matches!(unit.get(2), Some(&SUB_REKEY) | Some(&SUB_REKEY_V1))
+}
+
+/// What a message's MAC vector covers: `H512(label ‖ unit[0..920] ‖
+/// unit[2504..])` (version 1 had no label).
+fn mac_input(unit: &[u8], v1: bool) -> [u8; 64] {
+    if v1 {
+        sha3_512_parts(&[&unit[..off::MACS], &unit[off::CAPSULE..]])
+    } else {
+        sha3_512_parts(&[
+            labels::WIRE_AD_GRP_HEADER.as_bytes(),
+            &unit[..off::MACS],
+            &unit[off::CAPSULE..],
+        ])
+    }
+}
+
+/// A message body's AD: `label ‖ unit[0..920]` (version 1: no label).
+fn body_ad(unit: &[u8], v1: bool) -> Vec<u8> {
+    if v1 {
+        unit[..off::MACS].to_vec()
+    } else {
+        [labels::WIRE_AD_GRP_BODY.as_bytes(), &unit[..off::MACS]].concat()
+    }
+}
+
+/// A rekey unit's payload inside its outer seal: the common blob, the
+/// entries, then random filler.
+const REKEY_PAYLOAD: usize = ENVELOPE_LEN - COMMON - seal::OVERHEAD;
+const _: () = assert!(COMMON_LEN + ENTRIES_PER_BUCKET * ENTRY_LEN <= REKEY_PAYLOAD);
+
+fn outer_key(es: &Key) -> SealKey {
+    SealKey::from_bytes(kmac256(es, b"", labels::GRP_REKEY_OUTER))
+}
 const NONCE: usize = 16;
 const ENC: usize = 48;
 const SENDER_ENC_LEN: usize = 40;
 const COMMON: usize = 88;
 const COMMON_PT_LEN: usize = 128;
 const COMMON_LEN: usize = COMMON_PT_LEN + seal::OVERHEAD;
-const ENTRIES: usize = COMMON + COMMON_LEN;
-const _: () = assert!(ENTRIES + ENTRIES_PER_BUCKET * ENTRY_LEN <= ENVELOPE_LEN);
 const _: () = assert!(off::MACS == 920 && off::CAPSULE == 2504);
 const _: () = assert!(BUCKETS * ENTRIES_PER_BUCKET >= MAX_MEMBERS * crate::manifest::MAX_DEVICES);
 
@@ -126,8 +188,13 @@ pub struct GroupState {
     pub parent: [u8; 32],
     /// Name.
     pub name: String,
-    /// Server hosting the group mailbox.
+    /// Server hosting the group mailbox (from day `host_since` on).
     pub host: [u8; 16],
+    /// The server that hosted it before the last move (`07-groups.md` §4).
+    pub prev_host: [u8; 16],
+    /// The first day (Unix days) of `host`; earlier days' mailboxes are on
+    /// `prev_host`. 0: the group never moved.
+    pub host_since: u32,
     /// Only admins can send.
     pub admins_only: bool,
     /// On the record: messages carry their sender device's signature, and
@@ -140,18 +207,29 @@ pub struct GroupState {
 impl GroupState {
     /// Canonical encoding.
     pub fn encode(&self) -> Vec<u8> {
-        // Version 2 only for a group on the record, so the states (and
-        // state hashes) of every other group stay as they were.
+        // Version 2 for a group on the record, 3 for one that moved its
+        // mailboxes, so the states (and state hashes) of every other group
+        // stay as they were.
+        let version = if self.host_since != 0 {
+            3
+        } else if self.on_record {
+            2
+        } else {
+            1
+        };
         let mut w = Writer::new();
-        w.u8(if self.on_record { 2 } else { 1 })
+        w.u8(version)
             .fixed(&self.group_id)
             .u32(self.epoch)
             .fixed(&self.parent);
         w.bytes(self.name.as_bytes())
             .fixed(&self.host)
             .u8(u8::from(self.admins_only));
-        if self.on_record {
-            w.u8(1);
+        if version >= 2 {
+            w.u8(u8::from(self.on_record));
+        }
+        if version >= 3 {
+            w.fixed(&self.prev_host).u32(self.host_since);
         }
         w.u8(self.members.len() as u8);
         for m in &self.members {
@@ -167,7 +245,7 @@ impl GroupState {
     pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=2).contains(&version) {
+        if !(1..=3).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let group_id = r.array()?;
@@ -176,9 +254,19 @@ impl GroupState {
         let name = String::from_utf8(r.bytes(256)?.to_vec()).map_err(|_| ProtoError::Decode)?;
         let host = r.array()?;
         let admins_only = r.u8()? == 1;
-        let on_record = version == 2 && r.u8()? == 1;
-        if version == 2 && !on_record {
-            return Err(ProtoError::Decode); // not canonical
+        let on_record = match if version >= 2 { r.u8()? } else { 0 } {
+            0 => false,
+            1 => true,
+            _ => return Err(ProtoError::Decode),
+        };
+        let (prev_host, host_since) = if version >= 3 {
+            (r.array()?, r.u32()?)
+        } else {
+            ([0; 16], 0)
+        };
+        // Canonical: the lowest version that holds it.
+        if (version == 2 && !on_record) || (version == 3 && host_since == 0) {
+            return Err(ProtoError::Decode);
         }
         let n = r.u8()? as usize;
         if n == 0 || n > MAX_MEMBERS {
@@ -200,6 +288,8 @@ impl GroupState {
             parent,
             name,
             host,
+            prev_host,
+            host_since,
             admins_only,
             on_record,
             members,
@@ -229,6 +319,15 @@ impl GroupState {
     /// encoding includes the parent hash, so this chains.
     pub fn hash(&self) -> [u8; 32] {
         kmac256(&self.group_id, &self.encode(), labels::GRP_STATE)
+    }
+
+    /// The server hosting the mailboxes of day `day`.
+    pub fn host_for(&self, day: u32) -> [u8; 16] {
+        if day < self.host_since {
+            self.prev_host
+        } else {
+            self.host
+        }
     }
 
     /// Index of an active member.
@@ -302,6 +401,8 @@ impl GroupState {
     pub fn root_change(&self, next: &GroupState) -> Option<(u8, [u8; 64], [u8; 64])> {
         if next.name != self.name
             || next.host != self.host
+            || next.prev_host != self.prev_host
+            || next.host_since != self.host_since
             || next.admins_only != self.admins_only
             || next.on_record != self.on_record
             || next.epoch != self.epoch
@@ -356,6 +457,8 @@ impl GroupState {
         };
         next.name == self.name
             && next.host == self.host
+            && next.prev_host == self.prev_host
+            && next.host_since == self.host_since
             && next.admins_only == self.admins_only
             && next.on_record == self.on_record
             && next.epoch == self.epoch
@@ -595,6 +698,8 @@ impl Group {
             parent: [0; 32],
             name: name.to_string(),
             host,
+            prev_host: [0; 16],
+            host_since: 0,
             admins_only: false,
             on_record: false,
             members: vec![Member::new(my_root, true, now)],
@@ -758,7 +863,8 @@ impl Group {
         let mut unit = vec![0u8; ENVELOPE_LEN];
         unit[0] = VERSION;
         unit[1] = EnvelopeKind::Group as u8;
-        unit[2] = SUB_MESSAGE;
+        let v1 = legacy();
+        unit[2] = if v1 { SUB_MESSAGE_V1 } else { SUB_MESSAGE };
         unit[4..8].copy_from_slice(&self.state.epoch.to_be_bytes());
         rng.fill("group/nonce", &mut unit[NONCE..ENC])?;
         let e = &mut unit[ENC..ENC + SENDER_ENC_LEN];
@@ -783,13 +889,13 @@ impl Group {
             }
         };
         let framed = Zeroizing::new(pad_content(content, off::CONTENT_CAPACITY, &mut pad)?);
-        let body = seal::seal(&SealKey::from_bytes(gmk), &unit[..off::MACS], &framed, rng)?;
+        let body = seal::seal(&SealKey::from_bytes(gmk), &body_ad(&unit, v1), &framed, rng)?;
         if body.len() != off::BODY_LEN {
             return Err(ProtoError::Decode);
         }
         unit[off::BODY..].copy_from_slice(&body);
 
-        let h = sha3_512_parts(&[&unit[..off::MACS], &unit[off::CAPSULE..]]);
+        let h = mac_input(&unit, v1);
         let label = if flags & FLAG_STATE_UPDATE != 0 {
             labels::GRP_ADMIN_MAC
         } else {
@@ -835,7 +941,7 @@ impl Group {
         if unit.len() != ENVELOPE_LEN
             || unit[0] != VERSION
             || unit[1] != EnvelopeKind::Group as u8
-            || unit[2] != SUB_MESSAGE
+            || !matches!(unit[2], SUB_MESSAGE | SUB_MESSAGE_V1)
         {
             return Err(ProtoError::Decode);
         }
@@ -865,7 +971,7 @@ impl Group {
 
         // MAC first (constant time), unless it is from our own account.
         if !own_account {
-            let h = sha3_512_parts(&[&unit[..off::MACS], &unit[off::CAPSULE..]]);
+            let h = mac_input(unit, unit[2] == SUB_MESSAGE_V1);
             let p = if (self.me as usize) < member as usize {
                 self.me as usize
             } else {
@@ -904,7 +1010,7 @@ impl Group {
         }
         let framed = Zeroizing::new(seal::open(
             &SealKey::from_bytes(gmk),
-            &unit[..off::MACS],
+            &body_ad(unit, unit[2] == SUB_MESSAGE_V1),
             &unit[off::BODY..],
         )?);
         let content = unpad_content(&framed)?.to_vec();
@@ -1013,7 +1119,8 @@ impl Group {
         let mut header = vec![0u8; COMMON];
         header[0] = VERSION;
         header[1] = EnvelopeKind::Group as u8;
-        header[2] = SUB_REKEY;
+        let v1 = legacy();
+        header[2] = if v1 { SUB_REKEY_V1 } else { SUB_REKEY };
         header[4..8].copy_from_slice(&announce.to_be_bytes());
         rng.fill("group/nonce", &mut header[NONCE..ENC])?;
         header[ENC] = self.me;
@@ -1046,8 +1153,14 @@ impl Group {
             None => rng.fill("group/rekey-fill", &mut common_pt[34..66])?,
         }
         common_pt[70..102].copy_from_slice(&self.state.hash());
-        // The header's bucket byte is not covered: AD is the header with it zeroed.
-        let common = seal::seal(&SealKey::from_bytes(kb), &header, &common_pt, rng)?;
+        // The header's bucket byte is not covered: AD is the label and the
+        // header with it zeroed.
+        let common_ad = if v1 {
+            header.clone()
+        } else {
+            [labels::WIRE_AD_REKEY_COMMON.as_bytes(), &header].concat()
+        };
+        let common = seal::seal(&SealKey::from_bytes(kb), &common_ad, &common_pt, rng)?;
 
         // Entries into buckets (overflow to the next bucket).
         let ctx = export_context(
@@ -1089,13 +1202,29 @@ impl Group {
                 let r: [u8; 4] = rng.array("group/shuffle")?;
                 entries.swap(i, u32::from_be_bytes(r) as usize % (i + 1));
             }
-            let mut unit = vec![0u8; ENVELOPE_LEN];
-            rng.fill("group/rekey-padding", &mut unit)?;
-            unit[..COMMON].copy_from_slice(&header);
-            unit[3] = b as u8;
-            unit[COMMON..ENTRIES].copy_from_slice(&common);
+            // Common blob, entries, random filler, all under the outer seal
+            // (any member opens it; the server can't change or move a part).
+            let mut payload = Zeroizing::new(vec![0u8; REKEY_PAYLOAD]);
+            rng.fill("group/rekey-padding", &mut payload)?;
+            payload[..COMMON_LEN].copy_from_slice(&common);
             for (i, e) in entries.iter().enumerate() {
-                unit[ENTRIES + ENTRY_LEN * i..ENTRIES + ENTRY_LEN * (i + 1)].copy_from_slice(e);
+                let at = COMMON_LEN + ENTRY_LEN * i;
+                payload[at..at + ENTRY_LEN].copy_from_slice(e);
+            }
+            let mut hdr = header.clone();
+            hdr[3] = b as u8;
+            let unit = if v1 {
+                let mut u = [hdr, payload.to_vec()].concat();
+                let fill: Vec<u8> = (0..ENVELOPE_LEN - u.len()).map(|i| i as u8).collect();
+                u.extend_from_slice(&fill);
+                u
+            } else {
+                let ad = [labels::WIRE_AD_REKEY.as_bytes(), &hdr].concat();
+                let sealed = seal::seal(&outer_key(&es), &ad, &payload, rng)?;
+                [hdr, sealed].concat()
+            };
+            if unit.len() != ENVELOPE_LEN {
+                return Err(ProtoError::Decode);
             }
             units.push(unit);
         }
@@ -1120,7 +1249,7 @@ impl Group {
         if unit.len() != ENVELOPE_LEN
             || unit[0] != VERSION
             || unit[1] != EnvelopeKind::Group as u8
-            || unit[2] != SUB_REKEY
+            || !is_rekey(unit)
         {
             return Err(ProtoError::Decode);
         }
@@ -1157,9 +1286,22 @@ impl Group {
         let (sender, _) = self.rekey_sender(unit)?;
         let mut header = unit[..COMMON].to_vec();
         header[3] = 0;
+        // Version 1: no outer seal, no label on the common blob's AD.
+        let v1 = unit[2] == SUB_REKEY_V1;
+        let (common_ad, body): (Vec<u8>, Zeroizing<Vec<u8>>) = if v1 {
+            (header.clone(), Zeroizing::new(unit[COMMON..].to_vec()))
+        } else {
+            let es = self.epochs.get(&sender.epoch).ok_or(ProtoError::Missing)?;
+            let ad = [labels::WIRE_AD_REKEY.as_bytes(), &unit[..COMMON]].concat();
+            (
+                [labels::WIRE_AD_REKEY_COMMON.as_bytes(), &header].concat(),
+                Zeroizing::new(seal::open(&outer_key(es), &ad, &unit[COMMON..])?),
+            )
+        };
         let candidates = [sender.target_epoch];
         for i in 0..ENTRIES_PER_BUCKET {
-            let entry = &unit[ENTRIES + ENTRY_LEN * i..ENTRIES + ENTRY_LEN * (i + 1)];
+            let at = COMMON_LEN + ENTRY_LEN * i;
+            let entry = &body[at..at + ENTRY_LEN];
             let e = u32::from_be_bytes(entry[..4].try_into().map_err(|_| ProtoError::Decode)?);
             for target_epoch in &candidates {
                 let ctx = export_context(
@@ -1185,8 +1327,8 @@ impl Group {
                 let mac_key: Key = pt[32..].try_into().map_err(|_| ProtoError::Decode)?;
                 let common = Zeroizing::new(seal::open(
                     &SealKey::from_bytes(kb),
-                    &header,
-                    &unit[COMMON..ENTRIES],
+                    &common_ad,
+                    &body[..COMMON_LEN],
                 )?);
                 let cs0: Key = common[..32].try_into().map_err(|_| ProtoError::Decode)?;
                 if common[32] != sender.generation {
@@ -1504,5 +1646,105 @@ mod tests {
         assert_eq!(s3.index_of(&[3; 64]), Some(0));
         assert_eq!(GroupState::decode(&s2.encode()).unwrap(), s2);
         assert_ne!(s1.hash(), s2.hash());
+        // A move: version 3, earlier days stay on the old host.
+        let moved = s2
+            .child(|s| {
+                s.prev_host = s.host;
+                s.host = [8; 16];
+                s.host_since = 20_001;
+            })
+            .unwrap();
+        assert_eq!(moved.encode()[0], 3);
+        assert_eq!(GroupState::decode(&moved.encode()).unwrap(), moved);
+        assert_eq!(moved.host_for(20_000), [9; 16]);
+        assert_eq!(moved.host_for(20_001), [8; 16]);
+        assert_eq!(s2.encode()[0], 1, "an unmoved group keeps version 1");
+    }
+
+    fn pair(rng: &mut HedgedRng) -> (Session, Session) {
+        use crate::ratchet::{InitialDh, Role, SessionInit};
+        use enclave_crypto::kem::{MlKemSecret, X448Secret};
+        let sk: [u8; 64] = rng.array("test").unwrap();
+        let (spk, spk_pub) = X448Secret::generate(rng).unwrap();
+        let (auth_sk, auth_pk) = MlKemSecret::generate(rng).unwrap();
+        let (b_sk, b_pk) = MlKemSecret::generate(rng).unwrap();
+        let init = |role, initial_dh, my_pq, peer_pq| SessionInit {
+            sk: Zeroizing::new(sk),
+            role,
+            initial_dh,
+            my_pq,
+            peer_pq,
+            three_kem: true,
+            braid_to: None,
+        };
+        let a = Session::new(
+            init(
+                Role::Initiator,
+                InitialDh::Initiator(spk_pub),
+                (0, auth_sk, auth_pk.clone()),
+                None,
+            ),
+            rng,
+        )
+        .unwrap();
+        let b = Session::new(
+            init(
+                Role::Responder,
+                InitialDh::Responder(spk),
+                (1, b_sk, b_pk),
+                Some((0, auth_pk)),
+            ),
+            rng,
+        )
+        .unwrap();
+        (a, b)
+    }
+
+    /// Units written before the label prefixes and the rekey unit's outer
+    /// seal (subkinds 0 and 1) still open; the outer seal catches a unit
+    /// the server changed.
+    #[test]
+    fn old_formats_still_open() {
+        let mut rng = HedgedRng::new().unwrap();
+        let (s_ab, s_ba) = pair(&mut rng);
+        let mut a = Group::create("G", [1; 64], [9; 16], 100, &mut rng).unwrap();
+        let st = a
+            .state
+            .child(|s| {
+                s.add([2; 64], false, 100).unwrap();
+            })
+            .unwrap();
+        a.apply_state(st).unwrap();
+        a.rotate(&[], None, 100, &mut rng).unwrap();
+        let mut b = Group::join(&a.welcome(1).unwrap(), &[2; 64], 0).unwrap();
+        let target = |session| RekeyTarget {
+            member: 0,
+            device: 0,
+            device_id: [0xa0; 16],
+            session,
+        };
+        for v1 in [true, false] {
+            LEGACY.with(|l| l.set(v1));
+            let units = b.rotate(&[target(&s_ba)], None, 100, &mut rng).unwrap();
+            assert!(units.iter().all(|u| is_rekey(u)));
+            assert_eq!(units[0][2], if v1 { SUB_REKEY_V1 } else { SUB_REKEY });
+            if !v1 {
+                // The server changes a byte of the sealed part: refused.
+                let mut bad = units.clone();
+                for u in &mut bad {
+                    u[COMMON + 500] ^= 1;
+                }
+                assert!(bad.iter().all(|u| a.apply_rekey(u, &s_ab).is_err()));
+            }
+            let got = units
+                .iter()
+                .map(|u| a.apply_rekey(u, &s_ab).unwrap())
+                .find(|o| matches!(o, RekeyOutcome::Installed { .. }));
+            assert!(got.is_some(), "v1 {v1}");
+            let unit = b.seal(b"hello", 0, &mut rng).unwrap();
+            assert!(!is_rekey(&unit));
+            assert_eq!(a.open(&unit).unwrap().content, b"hello");
+        }
+        LEGACY.with(|l| l.set(false));
     }
 }

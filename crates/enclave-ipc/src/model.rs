@@ -44,6 +44,8 @@ pub struct Row {
     pub archived: bool,
     /// Blocked.
     pub blocked: bool,
+    /// A group member who is an admin (members sheet).
+    pub admin: bool,
 }
 
 /// A sticker pack added on this device.
@@ -369,6 +371,9 @@ pub enum Cmd {
     AddMembers(String),
     /// Remove a member from a group: group, member.
     RemoveMember(String, String),
+    /// Make a group member an admin, or no longer one: group id, member
+    /// id, admin.
+    SetGroupAdmin(String, String, bool),
     /// Leave a group.
     LeaveGroup(String),
     /// Open a locked profile with its passphrase.
@@ -523,7 +528,8 @@ fn put_row(w: &mut Writer, r: &Row) {
         .bool(r.pinned)
         .bool(r.muted)
         .bool(r.archived)
-        .bool(r.blocked);
+        .bool(r.blocked)
+        .bool(r.admin);
 }
 
 fn get_row(r: &mut Reader<'_>) -> Result<Row> {
@@ -543,6 +549,7 @@ fn get_row(r: &mut Reader<'_>) -> Result<Row> {
         muted: r.bool()?,
         archived: r.bool()?,
         blocked: r.bool()?,
+        admin: r.bool()?,
     })
 }
 
@@ -947,6 +954,7 @@ impl Cmd {
             Cmd::Search(q) => w.u8(31).str(q),
             Cmd::AddMembers(g) => w.u8(32).str(g),
             Cmd::RemoveMember(g, m) => w.u8(33).str(g).str(m),
+            Cmd::SetGroupAdmin(g, m, on) => w.u8(66).str(g).str(m).bool(*on),
             Cmd::LeaveGroup(g) => w.u8(34).str(g),
             Cmd::Unlock(p) => w.u8(35).str(p),
             Cmd::Lock => w.u8(36),
@@ -1026,6 +1034,7 @@ impl Cmd {
             31 => Cmd::Search(r.str()?),
             32 => Cmd::AddMembers(r.str()?),
             33 => Cmd::RemoveMember(r.str()?, r.str()?),
+            66 => Cmd::SetGroupAdmin(r.str()?, r.str()?, r.bool()?),
             34 => Cmd::LeaveGroup(r.str()?),
             35 => Cmd::Unlock(r.str()?),
             36 => Cmd::Lock,

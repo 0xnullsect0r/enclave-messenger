@@ -97,6 +97,7 @@ impl Contact {
 }
 
 mod backup;
+mod blobs;
 mod blocks;
 pub mod clock;
 mod closing;
@@ -106,6 +107,7 @@ mod gossip;
 mod group_devices;
 mod group_edits;
 mod group_files;
+mod group_hosts;
 mod group_pq;
 mod group_record;
 mod groups;
@@ -142,7 +144,9 @@ mod usernames;
 mod wallet;
 
 pub use crate::rpc::Sending;
+pub use blobs::fetch_due;
 pub use gossip::{GossipItem, KtAlert};
+pub use group_hosts::HOST_VOTE_SECS;
 pub use groups::{GroupInfo, GroupMessage, GroupReaction};
 pub use guard::RecoveryAlert;
 pub use invites::{InviteInfo, JOIN_PREFIX, JoinLink};

@@ -91,7 +91,7 @@ fn descriptors_witnesses_and_relays() {
     let policy = Policy {
         effort_request: 64,
         effort_claim: 8,
-        effort_blob: 1,
+        blob_tokens_per_day: 64,
         effort_username: 64,
         effort_inbox: 16,
         inbox_quota: 5_000,
@@ -112,6 +112,16 @@ fn descriptors_witnesses_and_relays() {
             vrf_public: vec![7; 32],
         }),
         &[key(DAY), key(DAY + 1)],
+        &[
+            BlobIssuer {
+                epoch: 7,
+                public: [3; 49],
+            },
+            BlobIssuer {
+                epoch: 8,
+                public: [4; 49],
+            },
+        ],
         NOW - 60,
         NOW + 86_400,
         &mut rng,
@@ -123,6 +133,8 @@ fn descriptors_witnesses_and_relays() {
     back.verify(NOW).unwrap();
     assert_eq!(back.id(), server_id(identity.public()));
     assert_eq!(back.key_at(NOW), Some(&key(DAY)));
+    assert_eq!(back.blob_issuer(8), Some([4; 49]));
+    assert_eq!(back.blob_issuer(9), None);
     assert_eq!(back.verify(NOW + 86_400), Err(FedError::Expired));
     every_flip_fails(&b, |t| {
         ServerDescriptor::decode(t).is_ok_and(|d| d.verify(NOW).is_ok())
@@ -139,6 +151,7 @@ fn descriptors_witnesses_and_relays() {
             policy,
             None,
             &[key(DAY)],
+            &[],
             NOW,
             NOW + 4 * 86_400,
             &mut rng

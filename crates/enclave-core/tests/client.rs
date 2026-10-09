@@ -17,7 +17,7 @@ fn network() -> LocalTransport {
             id,
             effort_request: 4,
             effort_claim: 1,
-            effort_blob: 1,
+            blob_tokens_per_day: 64,
             effort_username: 1,
             ..Default::default()
         })
@@ -1063,7 +1063,7 @@ async fn invite_links() {
         id: STRICT,
         effort_request: 1 << 30,
         effort_claim: 1,
-        effort_blob: 1,
+        blob_tokens_per_day: 64,
         ..Default::default()
     })
     .unwrap();
@@ -2609,7 +2609,7 @@ async fn move_to_another_server() {
         id: S3,
         effort_request: 4,
         effort_claim: 1,
-        effort_blob: 1,
+        blob_tokens_per_day: 64,
         effort_username: 1,
         ..Default::default()
     })

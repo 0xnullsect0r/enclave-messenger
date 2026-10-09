@@ -317,11 +317,13 @@ A rustls `CryptoProvider` with SecP384r1MLKEM1024 (codepoint 0x11ED) and `TLS_AE
 
 ## 9. Blobs
 
-- **Upload:** `BlobPut` with the chunk ID in the mailbox field and an Equi-X proof over `"blob-put" ‖ chunk_id ‖ SHA3-512(chunk)` at the server's blob effort (default 1). The first upload to an ID wins; a second gets `Denied`.
+- **Sealing** (`enclave-core/src/files.rs`, `08-envelope.md` §9): a file is padded to a size bucket and sealed in chunks under keys and IDs derived from a random blob secret, which travels only in the end-to-end encrypted message.
+- **Paying for uploads** (`BlobAlloc`, op 13; `client/blobs.rs`): a server lets its own accounts upload. The client proves its request inbox (mailbox and owner secret in the header) and is issued 8 blind Privacy Pass tokens at a time (RFC 9578 type 0x0001, VOPRF P-384, `docs/rfcs/0001-privacy-pass-voprf.md`; challenge issuer `blob.<server id>`), at most the server's `blob_tokens_per_day` (64) a day per inbox. Redeeming one, in a request whose mailbox and token fields are random, buys an **allocation**: 512 chunk uploads (about 7 MB) for a day. Each `BlobPut` carries the allocation's secret in its token field. The server learns which account asked for tokens, but a token can't be linked to its issue, so it can't tell which account an upload or allocation is from, only that it was paid for. Tokens and allocations are kept in the sealed store until used.
+- **The issuer key** is derived per month from a seed the server derives from its identity key (`KMAC256(identity seed, "", "enclave/v1/tokens/blob-issuer-seed")`), so it needs no file of its own; this month's and next month's keys are listed in the descriptor (§4.3 of `12-servers.md`). A client checks the key the server issues under against its KT-checked descriptor; holding none, it pins the first key named for the month and refuses another, so a server can't give each account its own key to tell redemptions apart. Tokens from last month are still accepted.
+- **Upload:** `BlobPut` with the chunk ID in the mailbox field and an allocation. The first upload to an ID wins; a second gets `Denied`. No allocation (or a used-up one) gets `Quota`, and the client buys another.
 - **Fetch:** `BlobGet` with the chunk ID; no credential. The chunk ID is the capability.
+- **Decoys and delays (RT-17).** A download fetches 1 to 3 chunks of other files the device has seen on the same server, at random places among its own (`Client::fetch_chunks`), and remembers a few of its own chunks as decoys for later (at most 256, for 25 days). Previews and voice notes are fetched no sooner than 5 to 60 s after their message arrived (`fetch_due`, from the secret message id), so a download doesn't follow its upload at once; a download the person asks for goes at once. Before any other file is known there are no decoys. Tests `rt17_fetch_includes_decoys`, `uploads_are_paid_with_tokens` (core), `tokens_buy_uploads` (server), `rt17_attachment_padded_to_bucket`, `rt17_blob_ids_not_content_derived`.
 - Blobs expire 30 days after upload.
-
-Not implemented yet: `BLOB_ALLOC` with Privacy Pass quotas, client-side chunk sealing and ID derivation, delayed fetches and decoy fetches (RT-17).
 
 ## 10. Errors
 
