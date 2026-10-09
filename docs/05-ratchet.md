@@ -321,16 +321,27 @@ SkipTo(s, until):
 
 Messages that arrive late within the 16-epoch PQ history and within the skipped-key store decrypt normally; each skipped key is deleted when used, so a second delivery of the same message is not found (RT-24).
 
-## 9. Modes (not yet implemented)
+## 9. Modes
 
-The conversation mode is bound into the EQXDH transcript (`04-eqxdh.md` §5), so every key of the session, including every device-slot and body key, depends on it: a peer that believes a different mode derives different keys and every message fails to open. A separate mode byte in the device-slot AD would add nothing until in-band mode switches exist; `ModeChange` must bind the new mode when it is added. On-the-record message signatures are not implemented. The label `enclave/v1/ctx/signed-msg` is reserved for them; the intended payload is
+The session mode is bound into the EQXDH transcript (`04-eqxdh.md` §5), so every key of the session, including every device-slot and body key, depends on it: a peer that believes a different mode derives different keys and every message fails to open. Sessions are always started Off the record, so the greeting stays deniable; a conversation goes on the record in-band.
 
-```
-payload = conv_id (32) ‖ sender_device_id (16) ‖ recipient_root_hash (32) ‖ u64(send_counter) ‖ u8(mode) ‖ SHA3-512(plaintext)
-sig     = CompositeSign(device_sk, ctx = "enclave/v1/ctx/signed-msg", payload)
-```
+**As implemented** (`enclave-core/src/client/record.rs`, `enclave-proto/src/otr.rs`, RT-07):
 
-and a signature would occupy 4,741 B of the 9,160 B content region. Mode switches (`ModeChange`) are also not implemented.
+- **Switching.** Either person can put the conversation on the record or take it off (`Client::set_on_the_record`). That sends `ModeChange { on_record, seq }` (content kind 32) to them and to our other devices. It is content of the session like any other, so only the two of them can switch the mode, and both sides show who changed it (`Event::ModeChanged`). Changes are numbered: the higher number wins, and of two with the same number, off wins.
+- **Signing.** On the record, everything a person writes (`Content::is_personal`: texts, files, reactions, edits, deletes, the timer, locations, stickers, shared contacts, pins) goes as `Content::Signed { counter, sig, content, tokens }` (kind 33). `content` is the encoded content with any write tokens taken out (they ride beside it, outside the signature, so a quote shown to someone else doesn't carry them). The signature is
+
+  ```
+  conv_id = ID256("enclave/v1/proto/conv-id", lower root_hash ‖ higher root_hash)
+  payload = conv_id (32) ‖ sender_device_id (16) ‖ recipient_root_hash (32) ‖ u64(counter) ‖ u8(1) ‖ SHA3-512(content)
+  sig     = CompositeSign(device_sk, ctx = "enclave/v1/ctx/signed-msg", payload)
+  ```
+
+  where `counter` counts the device's signed messages in the conversation. The signature takes 4,741 B; content that no longer fits one envelope goes in continuation units (`08-envelope.md` §5.6).
+- **Checking.** The receiver checks the signature against that device's entry in the sender's manifest. A personal message that arrives unsigned in a conversation on the record, or whose signature fails, is still shown, marked "not signed" (`Message::signed`); one that verifies keeps its signature in its own sealed record (`Message::evidence`), shredded with it, so a report can carry it (`13-operators.md` §2).
+- **The app** shows the mode in the conversation header ("On the record" / "Off the record"), switches it in the conversation sheet with the words of `17-design.md`, and says in the status line who changed it.
+- Test `rt07_mode_switch_requires_authenticated_event` (`tests/on_record.rs`): a change made in another conversation doesn't switch this one; a message written before the other side heard of the change is marked not signed; signed messages verify; a report's signatures verify at the operator and a changed one doesn't; switching back off.
+
+Groups have their own mode in the group state (`07-groups.md` §3).
 
 ## 10. Skipped keys
 
@@ -339,7 +350,7 @@ and a signature would occupy 4,741 B of the 9,160 B content region. Mode switche
 - Skipped keys expire after 7 days (`SKIPPED_MAX_AGE`). `Session::expire_skipped(now, max_age)` stamps new entries with `now` on its first pass and deletes entries older than `max_age`; `enclave-core` calls it on every sync. The stamp is persisted with the session.
 - A skipped key is deleted as soon as it is used.
 
-## 11. Gaps and control messages (not yet implemented)
+## 11. Gaps and control messages
 
 **Gaps, as implemented** (`enclave-core/src/client/gaps.rs`, RT-24):
 
@@ -348,7 +359,21 @@ and a signature would occupy 4,741 B of the 9,160 B content region. Mode switche
 - An envelope from the account inbox that no session opens yet is held (at most 64, for 7 days) and tried again after each sync's inboxes; our own cover self-copies never are.
 - Tests: `rt24_gap_notice_after_60s` (a held-back message: the notice after a minute, then "delivered late"), `rt24_replayed_message_rejected` (in order and out of order).
 
-The v1 control messages (`SessionSetup`, `TokenRefill`, `DeviceListChanged`, `ForcePQStep`, `ModeChange`, `Reroot`, `Receipt`, `Typing` (since built as content kind 23, `16-features.md` §7), `KTGossip`, `Moved` (since built as content kinds 25 and 26, `12-servers.md` §4.4), `Closed`) are specified for M5–M6 and are not in the code. Content is opaque bytes to `enclave-proto`.
+**Control messages, as implemented.** Content is opaque bytes to `enclave-proto`; `enclave-core` encodes it as Protobuf (`08-envelope.md` §5.5). The v1 control set maps onto content kinds as follows:
+
+| Control message | As built |
+|---|---|
+| `SessionSetup` | `Hello` (kind 1): the greeting's first content, with the server, inbox seed, write tokens and card |
+| `TokenRefill` | `Tokens` (kind 3), and tokens riding on a `Text` |
+| `DeviceListChanged` | `Devices` (kind 13): the new manifest version, fetched and checked against key transparency |
+| `ForcePQStep` | `PqStep { reply }` (kind 21) |
+| `ModeChange` | `ModeChange { on_record, seq }` (kind 32), §9 |
+| `Reroot` | A new bonded greeting when people meet again (`client/meet.rs`): the sessions are replaced, which heals more than mixing a PSK into the old root (`proto/bond-reroot` retired) |
+| `Receipt` | `Read` (kind 10) and `Delivered` (kind 27), and delivery receipts riding in free space (`outbox::wrap_receipts`) |
+| `Typing` | `Typing { on }` (kind 23, `16-features.md` §7) |
+| `KTGossip` | Gossip items riding in free space (`gossip::wrap`) and `KtHead` (kind 16) |
+| `Moved` | `ServerMoved` and `HomeMoved` (kinds 25 and 26, `12-servers.md` §4.4) |
+| `Closed` | `Closed` (kind 34): the sender closed their account; the conversation stays, read-only, and nothing more is sent to them (`client/closing.rs`, `Event::ContactClosed`; sent by account deletion, `03-identity.md` §8.5) |
 
 ## 12. Errors
 

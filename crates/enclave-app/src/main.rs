@@ -428,6 +428,10 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::ConvPrefs(id.to_string(), archived, pinned, muted));
     });
     let t = tx.clone();
+    ui.on_set_on_record(move |on| {
+        let _ = t.send(Cmd::SetOnRecord(on));
+    });
+    let t = tx.clone();
     ui.on_pin(move |id, seq, on| {
         if let Ok(seq) = seq.parse() {
             let _ = t.send(Cmd::Pin(id.to_string(), seq, on));

@@ -208,7 +208,9 @@ body     = seal(body_key, hdr16, framed)                      # 9,168 + 64 = 9,2
 
 `pad_content` rejects content over the capacity; `unpad_content` rejects a length field larger than the region. The body key reaches each recipient device wrapped in its device slot (`05-ratchet.md` §5).
 
-Content is opaque bytes at this layer (its encoding is `enclave-core`'s, §5.6). Receipts and key-transparency gossip ride in the content region's free space (`outbox::wrap_receipts`, `gossip::wrap`). Not implemented yet: the Protobuf content schema and On-the-record signatures (which would take 4,741 B of the 9,160, leaving 4,419).
+Content is opaque bytes at this layer. Receipts and key-transparency gossip ride in the content region's free space (`outbox::wrap_receipts`, `gossip::wrap`). On the record a content carries its sender's 4,741 B signature (`05-ratchet.md` §9), leaving 4,419 B before it goes in continuation units.
+
+**Content encoding, as implemented** (`enclave-core/src/content_pb.rs`, `content.rs`): content is a Protobuf message (proto3, through `prost`'s derive, no generated code) with one `oneof` whose field numbers are the content kinds (1 `Hello` … 34 `Closed`). Unknown fields are skipped, so a later version can add fields to a message and older clients read the rest; content of a kind a client doesn't know fails to decode and is dropped. Limits are checked on both sides: the encoding is at most 65,536 + 1,024 B before it is parsed (Protobuf nesting is at most two levels, a kind inside the `oneof`, so there is no depth to bound beyond that), and every field's length and count is checked against the same limits as before (`Content::check`: texts 4,096 B, or 60,000 B for a long text; at most 32 tokens; signatures 4,741 B; …). The earlier hand-made encoding is kept only as the yardstick for those limits. A Protobuf content never starts with `0xFE` or `0xFD` (they would be field 15 with wire types 6 and 5), the markers of gossip and receipts. Tests `forward_compatible` and `roundtrip_and_limits` (`content.rs`).
 
 ### 5.6 Continuation units
 
@@ -270,7 +272,7 @@ Implemented in `enclave-proto::group` (M7). The sender header (bytes 16–88), s
 | 3,568 | 10,736 | content and random padding (encrypted) |
 | 14,304 | 32 | body `T` |
 
-Sum: 88 + 32 + 800 + 1,584 + 1,024 + 32 + 8 + 10,736 + 32 = **14,336**. Body offset 3,528 and content capacity 10,736 are compile-time assertions. In On-the-record groups a 4,741 B signature would leave 5,995 B.
+Sum: 88 + 32 + 800 + 1,584 + 1,024 + 32 + 8 + 10,736 + 32 = **14,336**. Body offset 3,528 and content capacity 10,736 are compile-time assertions. In On-the-record groups the 4,741 B signature leaves 5,995 B (`07-groups.md` §3).
 
 This is PLAN §8's field order. The contents of the 88 B sender header and the protection of the state hash and frontier (which reveal group structure if left in the clear) are decided when groups are implemented (`07-groups.md`; `00-overview.md` §9, I-14).
 

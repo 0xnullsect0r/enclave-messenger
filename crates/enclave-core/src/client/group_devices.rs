@@ -45,6 +45,38 @@ fn own_key(gid: &[u8; 32], id: &[u8; 8]) -> Vec<u8> {
     [&gid[..], &id[..]].concat()
 }
 
+/// First byte of a held message with its chain position.
+const HELD_V2: u8 = 0xff;
+
+fn held_message(v: &[u8], id: [u8; 8]) -> Option<enclave_proto::group::GroupMessage> {
+    let (head, state_hash, content) = if v.first() == Some(&HELD_V2) {
+        (v.get(1..13)?, v.get(13..45)?, v.get(45..)?)
+    } else {
+        (v.get(..3)?, v.get(3..35)?, v.get(35..)?)
+    };
+    let (epoch, generation, counter) = match head.get(4..12) {
+        Some(x) => (
+            u32::from_be_bytes(x[..4].try_into().ok()?),
+            head[3],
+            u32::from_be_bytes(x[4..].try_into().ok()?),
+        ),
+        None => (0, 0, 0),
+    };
+    Some(enclave_proto::group::GroupMessage {
+        member: head[0],
+        device: head[1],
+        epoch,
+        generation,
+        counter,
+        id,
+        state_hash: state_hash.try_into().ok()?,
+        frontier: Vec::new(),
+        flags: head[2],
+        own_account: true,
+        content: content.to_vec(),
+    })
+}
+
 impl Client {
     /// Vouch to our other devices for a group message this one sent.
     pub(crate) fn queue_group_sent(&mut self, gid: &[u8; 32], id: [u8; 8]) -> Result<()> {
@@ -73,8 +105,13 @@ impl Client {
         gid: &[u8; 32],
         msg: &enclave_proto::group::GroupMessage,
     ) -> Result<()> {
+        // `0xff ‖ member ‖ device ‖ flags ‖ generation ‖ u32 epoch ‖ u32
+        // counter ‖ state_hash ‖ content` (before signatures: `member ‖
+        // device ‖ flags ‖ state_hash ‖ content`).
         let v = [
-            &[msg.member, msg.device, msg.flags][..],
+            &[HELD_V2, msg.member, msg.device, msg.flags, msg.generation][..],
+            &msg.epoch.to_be_bytes(),
+            &msg.counter.to_be_bytes(),
             &msg.state_hash,
             &msg.content,
         ]
@@ -101,18 +138,8 @@ impl Client {
                 continue;
             };
             self.store.delete(NS_OWN_HELD, &key)?;
-            if v.len() < 35 || !self.groups.contains_key(gid) {
+            let Some(msg) = held_message(&v, *id).filter(|_| self.groups.contains_key(gid)) else {
                 continue;
-            }
-            let msg = enclave_proto::group::GroupMessage {
-                member: v[0],
-                device: v[1],
-                id: *id,
-                state_hash: v[3..35].try_into().map_err(|_| CoreError::NotFound)?,
-                frontier: Vec::new(),
-                flags: v[2],
-                own_account: true,
-                content: v[35..].to_vec(),
             };
             if let Some(e) = self.on_group_message(gid, msg, now)? {
                 events.push(e);

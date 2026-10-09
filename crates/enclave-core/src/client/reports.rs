@@ -17,7 +17,7 @@
 use super::{Client, ContactState};
 use crate::{CoreError, Result};
 use enclave_rpc::api::{
-    self, FLAG_EFFORT, MAX_INBOX_EFFORT, MAX_REPORT_MESSAGES, ReportBody, ReportReason,
+    self, FLAG_EFFORT, MAX_INBOX_EFFORT, MAX_REPORT_MESSAGES, ReportBody, ReportReason, SignedQuote,
 };
 use enclave_wire::{Op, RequestHeader};
 
@@ -47,18 +47,38 @@ impl Client {
             return Err(CoreError::NotAccepted); // nothing of theirs to report
         }
         let (server, inbox) = (c.server, c.request_inbox);
-        let mut quotes: Vec<String> = self
+        let mut theirs: Vec<super::Message> = self
             .messages(root)?
             .into_iter()
             .filter(|m| !m.outgoing && !m.deleted && !m.text.is_empty())
-            .map(|m| m.text)
             .collect();
         let keep = quote.min(MAX_REPORT_MESSAGES);
-        quotes.drain(..quotes.len().saturating_sub(keep));
+        theirs.drain(..theirs.len().saturating_sub(keep));
+        // On the record, the quotes' signatures go too (the latest that
+        // fit), so the operator can check who wrote them
+        // (`docs/13-operators.md` §2). Edited messages aren't: what was
+        // signed is the text before the edit.
+        let me = enclave_proto::otr::root_hash(&self.account.root_public.0);
+        let signed: Vec<SignedQuote> = theirs
+            .iter()
+            .filter(|m| !m.edited)
+            .filter_map(|m| m.evidence.as_ref())
+            .filter(|e| e.content.len() <= api::MAX_SIGNED_CONTENT)
+            .map(|e| SignedQuote {
+                device: e.device,
+                counter: e.counter,
+                recipient: me,
+                sig: e.sig.clone(),
+                content: e.content.clone(),
+            })
+            .collect();
+        let on_record = !signed.is_empty();
         let body = ReportBody {
             reason,
-            on_record: false,
-            quotes,
+            on_record,
+            quotes: theirs.into_iter().map(|m| m.text).collect(),
+            reported: on_record.then_some(*root),
+            signed,
         };
         let env = api::frame(&body.encode(), &mut self.rng)?;
         let now = self.now();

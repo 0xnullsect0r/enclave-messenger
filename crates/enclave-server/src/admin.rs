@@ -48,7 +48,7 @@ pub fn command(server: &mut Server, line: &str, now: u64) -> String {
                     reason(r.body.reason),
                     r.body.quotes.len(),
                     if r.body.on_record {
-                        "on the record"
+                        "on the record (signed quotes)"
                     } else {
                         "off the record (unverifiable)"
                     },
@@ -70,7 +70,7 @@ pub fn command(server: &mut Server, line: &str, now: u64) -> String {
                 reason(r.body.reason),
                 hex(&r.request_inbox),
                 if r.body.on_record {
-                    "on the record: the quotes carry their author's signatures"
+                    "on the record: signed quotes are checked against the account's manifest; other quotes are unverified"
                 } else {
                     "off the record: nobody can confirm who wrote the quotes"
                 }
@@ -82,6 +82,18 @@ pub fn command(server: &mut Server, line: &str, now: u64) -> String {
                     i + 1,
                     q.replace('\n', " \u{23ce} ")
                 ));
+            }
+            for (i, v) in server.verify_quotes(&r).into_iter().enumerate() {
+                let s = &r.body.signed[i];
+                out.push_str(&match v {
+                    Ok(text) => format!(
+                        "signed {}: verified, device {}: {}\n",
+                        i + 1,
+                        hex(&s.device),
+                        text.replace('\n', " \u{23ce} ")
+                    ),
+                    Err(why) => format!("signed {}: not verified: {why}\n", i + 1),
+                });
             }
             out
         }

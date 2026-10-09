@@ -45,7 +45,7 @@ seeds   = KMAC256(rs, "", 768, "enclave/v1/root/keygen")
 
 BIP-39 is used only as an encoding of `rs`; the BIP-39 PBKDF2 seed derivation is not used. `RecoverySecret::from_words` ignores case and extra whitespace and rejects a bad checksum.
 
-Reserved: `root_hash = ID256("enclave/v1/proto/root-hash", root_pk)`. The code uses the full 64 B `root_pk` wherever a root identifier is needed (transcripts, the directory key in §10.3).
+`root_hash = ID256("enclave/v1/proto/root-hash", root_pk)` (`enclave_proto::otr::root_hash`) names an account in On-the-record signatures (`05-ratchet.md` §9), where a 32 B hash is what a verifier needs; elsewhere the code uses the full 64 B `root_pk` (transcripts, the directory key in §10.3).
 
 ### 2.2 Backup key
 
@@ -171,7 +171,9 @@ pq_slot_key    = kmac32(mk_DR, [], "enclave/v1/ratchet/pq-slot")
 body_key       = HedgedRng.fill("envelope/body-key", 32)                             # fresh per envelope
 ```
 
-Reserved: the notification key chain `nk_d = KMAC256(nk_{d−1}, u32(d), 256, "enclave/v1/proto/notify-key")`, the conversation ID and message ID (`enclave/v1/proto/conv-id`, `enclave/v1/proto/msg-id`), and the re-root mix (`enclave/v1/proto/bond-reroot`).
+A 1:1 conversation's id is `conv_id = ID256("enclave/v1/proto/conv-id", lo ‖ hi)` over the two root hashes, the lower first, so both sides compute the same one (`otr::conv_id`); On-the-record signatures cover it. Message ids are 16 random bytes chosen by the sender (`core/msg-id`), and meeting again replaces the sessions with new bonded ones, so the draft's `proto/msg-id` and `proto/bond-reroot` derivations are retired (`label-registry.md` §4).
+
+Reserved: the notification key chain `nk_d = KMAC256(nk_{d−1}, u32(d), 256, "enclave/v1/proto/notify-key")`.
 
 ## 8. Groups (reserved)
 

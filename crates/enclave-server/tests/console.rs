@@ -55,6 +55,8 @@ fn reports_through_the_console() {
     let body = ReportBody {
         reason: ReportReason::Abuse,
         on_record: false,
+        reported: None,
+        signed: Vec::new(),
         quotes: vec!["first\nline".into(), "second".into()],
     };
     let env = api::frame(&body.encode(), &mut rng).unwrap();

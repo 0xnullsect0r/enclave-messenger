@@ -25,6 +25,7 @@ enclave-nym = { path = "../enclave-nym" }
 enclave-store = { path = "../enclave-store" }
 enclave-kt = { path = "../enclave-kt" }
 enclave-federation = { path = "../enclave-federation" }
+prost = { version = "0.14", default-features = false, features = ["derive", "std"] }
 thiserror = "2"
 zeroize = "1"
 

@@ -63,7 +63,10 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | `enclave/v1/ctx/signed-prekey` | CTX-C | — | `bundle.rs` `SignedPrekey::verify`, `PrekeyStore::publish` | Signed prekey (X448 + ML-KEM-1024) |
 | `enclave/v1/ctx/opk-batch` | CTX-C | — | `bundle.rs` `OpkBatchHeader::verify`, `PrekeyStore::publish` | One-time-prekey batch header (Merkle root) |
 | `enclave/v1/ctx/last-resort` | CTX-C | — | `bundle.rs` `LastResortPrekey::verify`, `PrekeyStore::publish` | Last-resort ML-KEM-1024 prekey |
-| `enclave/v1/ctx/signed-msg` | CTX-C | — | `labels.rs` only (`CTX_SIGNED_MESSAGE`); no call site yet | On-the-record message signature. Defined, not yet used: On-the-record message signatures are not implemented (`05-ratchet.md` §9). |
+| `enclave/v1/ctx/signed-msg` | CTX-C | — | `otr.rs` `sign`, `verify` (`Kind::Message`); `enclave-core` `client/record.rs`, `enclave-server` `verify_quotes` | On-the-record 1:1 message signature (`05-ratchet.md` §9) |
+| `enclave/v1/proto/grp-signed-msg` | CTX-C | — | `otr.rs` (`Kind::Group`); `enclave-core` `client/group_record.rs` | On-the-record group message signature (07 §3) |
+| `enclave/v1/proto/grp-admin-sig` | CTX-C | — | `otr.rs` (`Kind::Admin`); `client/group_record.rs` | On-the-record admin state-update signature (07 §7.3) |
+| `enclave/v1/proto/poll-tally` | CTX-C | — | `otr.rs` (`Kind::Tally`); `client/group_record.rs` | Poll creator's tally signature in On-the-record groups (07 §7.5) |
 | `enclave/v1/ctx/eqxdh-transcript` | CTX-C | — | `eqxdh.rs` `initiate`, `verify_transcript_sig` | On-the-record initiator transcript signature |
 | `enclave/v1/ctx/manifest-cosign` | CTX-C | — | `attest.rs` `Attestation::sign`, `verify` | A listed device approves a manifest update |
 | `enclave/v1/ctx/manifest-veto` | CTX-C | — | `attest.rs` `Attestation::sign`, `verify` | A listed device vetoes a manifest update |
@@ -177,6 +180,8 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/proto/grp-bucket-index` | KMAC | 256 (16 bits used) | `enclave-proto/src/labels.rs` | Recipient bucket index (spec: 07 §5) |
 | `enclave/v1/proto/grp-header` | KMAC | 256 | `enclave-proto/src/labels.rs` | Group routing-header seal key (spec: 07 §4) |
 | `enclave/v1/proto/grp-state` | HASH | 256 | `enclave-proto/src/labels.rs` | Group state hash chain (spec: 07 §7) |
+| `enclave/v1/proto/root-hash` | HASH | 256 | `enclave-proto/src/otr.rs` `root_hash` | `root_hash` of a root public key, in signed-message payloads and conversation ids (02b §2.1) |
+| `enclave/v1/proto/conv-id` | HASH | 256 | `enclave-proto/src/otr.rs` `conv_id`, `conv_id_of` | 1:1 conversation id over the two root hashes, lower first (02b §7) |
 | `enclave/v1/proto/grp-msg-id` | HASH | 256 (first 64 used) | `enclave-proto/src/labels.rs` | Group message ID for the causal frontier (spec: 07 §7) |
 | `enclave/v1/proto/poll-tally-hash` | HASH | 512 | `enclave-core/src/client/polls.rs`, `enclave-proto/src/labels.rs` | Poll-close tally hash (spec: 07 §7) |
 | `enclave/v1/net/grp-mailbox` | KMAC | 256 | `enclave-proto/src/labels.rs` | Daily group-mailbox address (spec: 07 §4) |
@@ -219,13 +224,9 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/proto/root-hash` | HASH | 256 | `root_hash` of a root public key | 02b §2.1 |
 | `enclave/v1/proto/pending-root` | CTX-R | — | Pending root action with `not_before` | 03 §8.1 |
 | `enclave/v1/proto/veto` | CTX-C | — | Device approval or veto of a manifest update | 03 §3.3, §8.1 |
-| `enclave/v1/proto/conv-id` | HASH | 256 | 1:1 conversation ID | 02b §7 |
-| `enclave/v1/proto/msg-id` | HASH | 256 (first 128 used) | 1:1 message ID | 02b §7 |
 | `enclave/v1/proto/contact-art` | KMAC | 256 | Seed for key-derived contact art | 02b §4.3 |
-| `enclave/v1/proto/bond-reroot` | KMAC | 256 | Mix a new bond PSK into an existing session | 02b §6 |
 | `enclave/v1/proto/invite-psk` | KMAC | 256 | Normalized one-way invite PSK | 02b §5 |
 | `enclave/v1/proto/invite-cap` | KMAC | 256 | Request-inbox write capability from an invite secret | 02b §2.7 |
 | `enclave/v1/proto/link-psk` | KMAC | 256 | Normalized device-link PSK | 02b §5 |
@@ -238,10 +239,7 @@ These labels belong to features that are specified but not in code. They are res
 |---|---|---|---|---|
 | `enclave/v1/proto/grp-rekey-outer` | KMAC | 256 | Outer seal key of rekey units | 07 §5 |
 | `enclave/v1/proto/grp-notify` | KMAC | 256 | Daily group notification key | 10 §4 |
-| `enclave/v1/proto/grp-signed-msg` | CTX-C | — | On-the-record group message signature | 07 §3 |
-| `enclave/v1/proto/grp-admin-sig` | CTX-C | — | On-the-record admin update signature | 07 §7 |
 | `enclave/v1/proto/grp-invite-cap` | KMAC | 256 | Group invite capability | 07 §9 |
-| `enclave/v1/proto/poll-tally` | CTX-C | — | Poll creator's tally signature (On-the-record groups) | 07 §7 |
 | `enclave/v1/net/grp-read-key` | KMAC | 256 | Group read-credential key | 07 §4 |
 | `enclave/v1/net/grp-read-cred` | KMAC | 256 | Group read credential for one address | 07 §4 |
 
@@ -275,6 +273,8 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 
 | Retired label | Replaced by |
 |---|---|
+| `enclave/v1/proto/msg-id` | None: a 1:1 message id is 16 random bytes its sender picks (`core/msg-id`), which a re-send keeps; a derived id would need a counter both sides agree on and add nothing |
+| `enclave/v1/proto/bond-reroot` | None: meeting again replaces the sessions with new bonded ones (an EQXDH greeting with the new bond PSK, `client/meet.rs`), which heals more than mixing a PSK into the old root would |
 | `enclave/v1/net/token-key` | Write tokens from a shared, per-device pool of hedged random values (`core/write-token`, 09 §3.3): per-contact keys let the server group writes by registration batch |
 | `enclave/v1/proto/manifest` | `enclave/v1/ctx/manifest` |
 | `enclave/v1/proto/migration` | `enclave/v1/ctx/migration` |

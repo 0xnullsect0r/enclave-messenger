@@ -1,7 +1,9 @@
 //! Message content inside ratchet envelopes (`docs/08-envelope.md`).
 //!
-//! A small canonical binary format. Every field has a hard limit and decoding
-//! rejects trailing bytes. Write tokens, inbox addresses and contact cards
+//! Encoded as Protobuf (`content_pb.rs`), so a later version may add fields
+//! an older one skips. Every field has a hard limit, checked on encoding and
+//! after decoding by a canonical binary form kept for that purpose
+//! (`Content::check`). Write tokens, inbox addresses and contact cards
 //! travel only here, inside the end-to-end encrypted body, never in anything
 //! a server can read.
 
@@ -166,6 +168,31 @@ pub enum Content {
     CardAsk,
     /// The sender's current contact card (encoded), answering a `CardAsk`.
     Card(Vec<u8>),
+    /// The conversation goes on the record (messages signed by their
+    /// sender's device) or off it (`05-ratchet.md` §9). Authenticated as
+    /// any content in the session; `seq` orders changes.
+    ModeChange {
+        /// On the record (else off).
+        on_record: bool,
+        /// Change number in this conversation.
+        seq: u32,
+    },
+    /// Content signed by its sender's device, in a conversation on the
+    /// record (`05-ratchet.md` §9).
+    Signed {
+        /// The sender's signing counter in this conversation.
+        counter: u64,
+        /// Composite signature (`ctx/signed-msg`).
+        sig: Vec<u8>,
+        /// The signed content (encoded), with any write tokens taken out:
+        /// they ride in `tokens`, so a quote shown to someone else (a
+        /// report) doesn't carry them.
+        content: Vec<u8>,
+        /// Write tokens for the sender, outside the signature.
+        tokens: Vec<Token>,
+    },
+    /// The sender closed their account (`03-identity.md` §8.5).
+    Closed,
     /// One continuation unit of content too large for one envelope
     /// (`client/parts.rs`).
     Part {
@@ -249,6 +276,53 @@ pub enum Content {
 }
 
 impl Content {
+    /// What a person wrote (or did) in a conversation, which On the record
+    /// carries its sender's signature (`05-ratchet.md` §9); not protocol
+    /// messages.
+    pub fn is_personal(&self) -> bool {
+        matches!(
+            self,
+            Content::Text { .. }
+                | Content::Attachment { .. }
+                | Content::React { .. }
+                | Content::Edit { .. }
+                | Content::Delete { .. }
+                | Content::Timer(_)
+                | Content::Location { .. }
+                | Content::Sticker { .. }
+                | Content::ContactShare { .. }
+                | Content::Pin { .. }
+        )
+    }
+
+    /// Take out the write tokens content carries (they never go under a
+    /// signature).
+    pub fn take_tokens(&mut self) -> Vec<Token> {
+        match self {
+            Content::Text { tokens, .. } => core::mem::take(tokens),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Put write tokens back into content that carries them.
+    pub fn put_tokens(&mut self, t: Vec<Token>) {
+        if let Content::Text { tokens, .. } = self {
+            *tokens = t;
+        }
+    }
+
+    /// The id of the message this content makes, if it makes one.
+    pub fn message_id(&self) -> Option<MsgId> {
+        match self {
+            Content::Text { id, .. }
+            | Content::Attachment { id, .. }
+            | Content::Location { id, .. }
+            | Content::Sticker { id, .. }
+            | Content::ContactShare { id, .. } => Some(*id),
+            _ => None,
+        }
+    }
+
     /// Whether this waits, in Maximum privacy, for all three KEMs to
     /// protect the session (`docs/04-eqxdh.md` §7): everything a person
     /// wrote or shared does. Protocol messages don't, so the session can
@@ -268,6 +342,8 @@ impl Content {
                 | Content::OwnSync { .. }
                 | Content::CardAsk
                 | Content::Card { .. }
+                | Content::ModeChange { .. }
+                | Content::Closed
                 | Content::ServerMoved { .. }
                 | Content::HomeMoved { .. }
         )
@@ -305,6 +381,11 @@ const K_OWN_SYNC: u8 = 28;
 const K_CARD_ASK: u8 = 29;
 const K_CARD: u8 = 30;
 const K_PART: u8 = 31;
+const K_MODE_CHANGE: u8 = 32;
+const K_SIGNED: u8 = 33;
+const K_CLOSED: u8 = 34;
+/// Longest composite signature (ML-DSA-87 and Ed448).
+pub const MAX_SIG: usize = 4_741;
 /// Largest encoded location.
 const MAX_LOCATION: usize = 512;
 /// Longest recovery share (33 words of at most 8 letters).
@@ -340,8 +421,29 @@ fn timer(secs: u32) -> Result<u32> {
 }
 
 impl Content {
-    /// Encode. Fails if a limit is exceeded.
+    /// Encode (Protobuf). Fails if a limit is exceeded.
     pub fn encode(&self) -> Result<Vec<u8>> {
+        self.check()?;
+        Ok(crate::content_pb::encode(self))
+    }
+
+    /// Decode (Protobuf), then check every limit.
+    pub fn decode(b: &[u8]) -> Result<Self> {
+        if b.len() > MAX_SPLIT_CONTENT + 1024 {
+            return Err(ProtoError::TooLarge);
+        }
+        let c = crate::content_pb::decode(b)?;
+        c.check()?;
+        Ok(c)
+    }
+
+    /// Every limit: the content survives its canonical binary form.
+    fn check(&self) -> Result<()> {
+        Self::canonical_decode(&self.canonical()?).map(|_| ())
+    }
+
+    /// The canonical binary form (limits only; not on the wire).
+    fn canonical(&self) -> Result<Vec<u8>> {
         let mut w = Writer::new();
         let too_large = Err(ProtoError::TooLarge);
         match self {
@@ -590,17 +692,37 @@ impl Content {
                     .fixed(vault_locator);
             }
             Content::SelfCopy { to, content } => {
-                if content.len() > MAX_SPLIT_CONTENT || content.first() == Some(&K_SELF_COPY) {
+                if content.len() > MAX_SPLIT_CONTENT {
                     return too_large;
                 }
                 w.u8(K_SELF_COPY).fixed(to).bytes(content);
+            }
+            Content::ModeChange { on_record, seq } => {
+                w.u8(K_MODE_CHANGE).u8(u8::from(*on_record)).u32(*seq);
+            }
+            Content::Signed {
+                counter,
+                sig,
+                content,
+                tokens,
+            } => {
+                if sig.len() > MAX_SIG
+                    || content.len() > MAX_SPLIT_CONTENT
+                    || tokens.len() > MAX_TOKENS
+                {
+                    return too_large;
+                }
+                w.u8(K_SIGNED).u64(*counter).bytes(sig).bytes(content);
+                put_tokens(&mut w, tokens);
+            }
+            Content::Closed => {
+                w.u8(K_CLOSED);
             }
         }
         Ok(w.finish())
     }
 
-    /// Decode.
-    pub fn decode(b: &[u8]) -> Result<Self> {
+    fn canonical_decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);
         let c = match r.u8()? {
             K_HELLO => Content::Hello {
@@ -701,6 +823,21 @@ impl Content {
             },
             K_OWN_SYNC => Content::OwnSync(r.bytes(MAX_SELF_COPY)?.to_vec()),
             K_CARD_ASK => Content::CardAsk,
+            K_MODE_CHANGE => Content::ModeChange {
+                on_record: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(ProtoError::Decode),
+                },
+                seq: r.u32()?,
+            },
+            K_SIGNED => Content::Signed {
+                counter: r.u64()?,
+                sig: r.bytes(MAX_SIG)?.to_vec(),
+                content: r.bytes(MAX_SPLIT_CONTENT)?.to_vec(),
+                tokens: get_tokens(&mut r)?,
+            },
+            K_CLOSED => Content::Closed,
             K_PART => Content::Part {
                 id: r.array()?,
                 index: r.u8()?,
@@ -735,9 +872,6 @@ impl Content {
             K_SELF_COPY => {
                 let to = r.array()?;
                 let content = r.bytes(MAX_SPLIT_CONTENT)?.to_vec();
-                if content.first() == Some(&K_SELF_COPY) {
-                    return Err(ProtoError::Decode);
-                }
                 Content::SelfCopy { to, content }
             }
             _ => return Err(ProtoError::Decode),
@@ -751,6 +885,25 @@ impl Content {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    /// A later version's extra field is skipped; a kind this version
+    /// doesn't know is refused (and the caller ignores it).
+    #[test]
+    fn forward_compatible() {
+        use prost::Message as _;
+        let c = Content::Typing { on: true };
+        let mut b = c.encode().unwrap();
+        // Field 99 of the outer message, length-delimited, 3 bytes.
+        prost::encoding::encode_key(99, prost::encoding::WireType::LengthDelimited, &mut b);
+        prost::encoding::encode_varint(3, &mut b);
+        b.extend_from_slice(b"new");
+        assert_eq!(Content::decode(&b).unwrap(), c);
+        let unknown = crate::content_pb::Pb { kind: None }.encode_to_vec();
+        assert!(Content::decode(&unknown).is_err());
+        // Limits hold after decoding too.
+        let long = crate::content_pb::to_pb(&Content::RecoveryShare("x".repeat(600)));
+        assert!(Content::decode(&long.encode_to_vec()).is_err());
+    }
 
     #[test]
     fn roundtrip_and_limits() {
@@ -821,6 +974,17 @@ mod tests {
                 total: 3,
                 data: vec![6; 8192],
             },
+            Content::ModeChange {
+                on_record: true,
+                seq: 2,
+            },
+            Content::Signed {
+                counter: 9,
+                sig: vec![1; MAX_SIG],
+                content: vec![2; 4000],
+                tokens: vec![[3; 32]; 4],
+            },
+            Content::Closed,
             Content::ServerMoved {
                 server: [1; 16],
                 inbox: [2; 32],

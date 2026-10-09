@@ -21,6 +21,7 @@
 pub mod card;
 pub mod client;
 pub mod content;
+mod content_pb;
 pub mod files;
 mod persist;
 mod rpc;

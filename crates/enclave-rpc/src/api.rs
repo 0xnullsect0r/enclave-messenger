@@ -327,33 +327,166 @@ pub enum ReportReason {
     Other = 3,
 }
 
+/// The text a person wrote in signed content: a Protobuf `Text` (field 2,
+/// its text in field 2) or an `Attachment`'s caption (field 6, caption in
+/// field 3) (`docs/08-envelope.md` §5.6). The field numbers never change, so
+/// an operator's server reads them without the client's schema.
+pub fn quoted_text(content: &[u8]) -> Option<String> {
+    let (field, inner) = only_field(content)?;
+    let want = match field {
+        2 => 2,
+        6 => 3,
+        _ => return None,
+    };
+    let mut text = String::new();
+    let mut b = inner;
+    while !b.is_empty() {
+        let (key, r) = varint(b)?;
+        let (f, wire) = (key >> 3, key & 7);
+        b = match wire {
+            0 => varint(r)?.1,
+            2 => {
+                let (len, r) = varint(r)?;
+                let len = usize::try_from(len).ok()?;
+                if r.len() < len {
+                    return None;
+                }
+                if f == want {
+                    text = String::from_utf8(r[..len].to_vec()).ok()?;
+                }
+                &r[len..]
+            }
+            _ => return None,
+        };
+    }
+    Some(text)
+}
+
+/// The one length-delimited top-level field of encoded content.
+fn only_field(b: &[u8]) -> Option<(u64, &[u8])> {
+    let (key, r) = varint(b)?;
+    if key & 7 != 2 {
+        return None;
+    }
+    let (len, r) = varint(r)?;
+    let len = usize::try_from(len).ok()?;
+    (r.len() == len).then_some((key >> 3, r))
+}
+
+fn varint(b: &[u8]) -> Option<(u64, &[u8])> {
+    let mut v = 0u64;
+    for (i, &x) in b.iter().enumerate().take(10) {
+        v |= u64::from(x & 0x7f) << (7 * i);
+        if x & 0x80 == 0 {
+            return Some((v, &b[i + 1..]));
+        }
+    }
+    None
+}
+
+/// Most signed messages one report carries (each with its 4,741 B
+/// signature; what fits one frame).
+pub const MAX_SIGNED_QUOTES: usize = 2;
+/// Longest signed content in a report, in bytes.
+pub const MAX_SIGNED_CONTENT: usize = 2_048;
+/// A composite signature's length.
+const SIG_LEN: usize = 4_741;
+
+/// A quoted message's signature, from a conversation on the record
+/// (`docs/05-ratchet.md` §9): what the reported account's device signed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignedQuote {
+    /// The signing device (in the reported account's manifest).
+    pub device: [u8; 16],
+    /// Its counter in the conversation.
+    pub counter: u64,
+    /// The recipient's root hash (the reporter's: needed to check the
+    /// signature, so a verifiable report shows whom it was sent to).
+    pub recipient: [u8; 32],
+    /// The composite signature.
+    pub sig: Vec<u8>,
+    /// The signed content (Protobuf, `docs/08-envelope.md` §5.6).
+    pub content: Vec<u8>,
+}
+
 /// A user report to the operator of the reported account's server
 /// (`Op::Report`). The header's mailbox is the reported account's request
-/// inbox; nothing in it names the reporter.
+/// inbox; nothing in it names the reporter, except that signed quotes
+/// carry the recipient's root hash.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReportBody {
     /// Why.
     pub reason: ReportReason,
-    /// The conversation was on the record (quotes carry signatures; not
-    /// built yet, so always false: quotes are an unverifiable claim).
+    /// The conversation was on the record: `signed` carries the quotes'
+    /// signatures, which the operator can check.
     pub on_record: bool,
     /// Messages the reporter chose to quote, oldest first.
     pub quotes: Vec<String>,
+    /// On the record: the reported account's root.
+    pub reported: Option<[u8; 64]>,
+    /// On the record: the latest quotes' signatures, oldest first.
+    pub signed: Vec<SignedQuote>,
 }
 
 impl ReportBody {
-    /// `u8 version ‖ u8 reason ‖ u8 on_record ‖ u8 n ‖ n × (u16 len ‖ UTF-8)`.
+    /// `u8 version ‖ u8 reason ‖ u8 on_record ‖ u8 n ‖ n × (u16 len ‖
+    /// UTF-8)`, and on the record `‖ reported root (64) ‖ u8 m ‖ m × (u16 len
+    /// ‖ content ‖ device (16) ‖ u64 counter ‖ recipient root hash (32) ‖ sig
+    /// (4,741))`. Signed quotes come first: to fit one frame, the oldest
+    /// text quotes are left out.
     pub fn encode(&self) -> Vec<u8> {
-        let mut b = vec![1, self.reason as u8, u8::from(self.on_record)];
-        let quotes: Vec<&String> = self.quotes.iter().take(MAX_REPORT_MESSAGES).collect();
+        let on_record = self.on_record && self.reported.is_some();
+        let mut fit: Vec<&SignedQuote> = if on_record {
+            self.signed
+                .iter()
+                .filter(|s| s.sig.len() == SIG_LEN && s.content.len() <= MAX_SIGNED_CONTENT)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        fit.drain(..fit.len().saturating_sub(MAX_SIGNED_QUOTES));
+        let signed_len = if on_record {
+            64 + 1
+                + fit
+                    .iter()
+                    .map(|s| 2 + s.content.len() + 56 + SIG_LEN)
+                    .sum::<usize>()
+        } else {
+            0
+        };
+        let mut b = vec![1, self.reason as u8, u8::from(on_record)];
+        let mut quotes: Vec<&[u8]> = self
+            .quotes
+            .iter()
+            .take(MAX_REPORT_MESSAGES)
+            .map(|q| {
+                let mut end = q.len().min(MAX_REPORT_TEXT);
+                while !q.is_char_boundary(end) {
+                    end -= 1;
+                }
+                &q.as_bytes()[..end]
+            })
+            .collect();
+        let text_len = |q: &[&[u8]]| 4 + q.iter().map(|x| 2 + x.len()).sum::<usize>();
+        while !quotes.is_empty() && text_len(&quotes) + signed_len > MAX_PAYLOAD {
+            quotes.remove(0);
+        }
         b.push(quotes.len() as u8);
         for q in quotes {
-            let mut end = q.len().min(MAX_REPORT_TEXT);
-            while !q.is_char_boundary(end) {
-                end -= 1;
+            b.extend_from_slice(&(q.len() as u16).to_be_bytes());
+            b.extend_from_slice(q);
+        }
+        if let (true, Some(root)) = (on_record, self.reported) {
+            b.extend_from_slice(&root);
+            b.push(fit.len() as u8);
+            for s in fit {
+                b.extend_from_slice(&(s.content.len() as u16).to_be_bytes());
+                b.extend_from_slice(&s.content);
+                b.extend_from_slice(&s.device);
+                b.extend_from_slice(&s.counter.to_be_bytes());
+                b.extend_from_slice(&s.recipient);
+                b.extend_from_slice(&s.sig);
             }
-            b.extend_from_slice(&(end as u16).to_be_bytes());
-            b.extend_from_slice(&q.as_bytes()[..end]);
         }
         b
     }
@@ -384,6 +517,36 @@ impl ReportBody {
             quotes.push(String::from_utf8(q.to_vec()).map_err(|_| m)?);
             rest = r;
         }
+        let (mut reported, mut signed) = (None, Vec::new());
+        if on_record == 1 {
+            let (root, r) = rest.split_first_chunk::<64>().ok_or(m)?;
+            let (&k, mut r) = r.split_first().ok_or(m)?;
+            if usize::from(k) > MAX_SIGNED_QUOTES {
+                return Err(m);
+            }
+            for _ in 0..k {
+                let (len, x) = r.split_first_chunk::<2>().ok_or(m)?;
+                let len = usize::from(u16::from_be_bytes(*len));
+                if len > MAX_SIGNED_CONTENT || x.len() < len + 56 + SIG_LEN {
+                    return Err(m);
+                }
+                let (content, x) = x.split_at(len);
+                let (device, x) = x.split_first_chunk::<16>().ok_or(m)?;
+                let (counter, x) = x.split_first_chunk::<8>().ok_or(m)?;
+                let (recipient, x) = x.split_first_chunk::<32>().ok_or(m)?;
+                let (sig, x) = x.split_at(SIG_LEN);
+                signed.push(SignedQuote {
+                    device: *device,
+                    counter: u64::from_be_bytes(*counter),
+                    recipient: *recipient,
+                    sig: sig.to_vec(),
+                    content: content.to_vec(),
+                });
+                r = x;
+            }
+            reported = Some(*root);
+            rest = r;
+        }
         if !rest.is_empty() {
             return Err(m);
         }
@@ -391,6 +554,8 @@ impl ReportBody {
             reason,
             on_record: on_record == 1,
             quotes,
+            reported,
+            signed,
         })
     }
 }
@@ -565,11 +730,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn signed_report_codec() {
+        // A Protobuf `Text`: field 2 { tokens (1), text (2) = "hi", id (3) }.
+        let text = [
+            0x12, 0x0a, 0x0a, 0x00, 0x12, 0x02, b'h', b'i', 0x1a, 0x02, 7, 7,
+        ];
+        assert_eq!(quoted_text(&text).as_deref(), Some("hi"));
+        assert_eq!(quoted_text(&[0x0a, 0x00]), None, "not a text");
+        assert_eq!(quoted_text(&text[..5]), None, "cut short");
+        let q = |i: u8| SignedQuote {
+            device: [i; 16],
+            counter: u64::from(i),
+            recipient: [9; 32],
+            sig: vec![i; SIG_LEN],
+            content: vec![i; MAX_SIGNED_CONTENT],
+        };
+        let r = ReportBody {
+            reason: ReportReason::Abuse,
+            on_record: true,
+            quotes: vec!["x".repeat(MAX_REPORT_TEXT); MAX_REPORT_MESSAGES],
+            reported: Some([3; 64]),
+            signed: vec![q(1), q(2), q(3)],
+        };
+        let b = r.encode();
+        assert!(b.len() <= MAX_PAYLOAD, "fits one frame");
+        let d = ReportBody::decode(&b).unwrap();
+        assert!(d.on_record);
+        assert_eq!(d.reported, Some([3; 64]));
+        assert_eq!(d.signed, vec![q(2), q(3)], "the latest two");
+        assert!(d.quotes.len() < MAX_REPORT_MESSAGES, "older text left out");
+        let mut cut = b.clone();
+        cut.pop();
+        assert!(ReportBody::decode(&cut).is_err());
+    }
+
+    #[test]
     fn report_codec() {
         let r = ReportBody {
             reason: ReportReason::Spam,
             on_record: false,
             quotes: vec!["buy now".into(), "é".repeat(600)],
+            reported: None,
+            signed: Vec::new(),
         };
         let b = r.encode();
         let d = ReportBody::decode(&b).unwrap();

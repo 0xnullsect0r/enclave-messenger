@@ -67,6 +67,8 @@ fn snapshot() -> Snapshot {
         privacy: 1,
         finishing: true,
         gap: true,
+        on_record: true,
+        closed: false,
         add_error: String::new(),
         busy: true,
         pick: vec![Pick {
@@ -178,6 +180,8 @@ fn cmds() -> Vec<Cmd> {
         Cmd::BackupRoute(true),
         Cmd::BackupRoute(false),
         Cmd::SetBridges("obfs4 192.0.2.1:443 AA cert=x iat-mode=0".into()),
+        Cmd::SetOnRecord(true),
+        Cmd::SetOnRecord(false),
         Cmd::Select(String::new()),
         Cmd::Send("id".into(), "text ✓".into()),
         Cmd::Accept("a".into()),

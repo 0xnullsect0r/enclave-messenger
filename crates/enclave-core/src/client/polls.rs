@@ -141,7 +141,7 @@ impl Rich {
         w.finish()
     }
 
-    fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
+    pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let v = match r.u8()? {
             K_POLL => {

@@ -484,6 +484,9 @@ fn display(m: &enclave_core::Message, now: u64) -> Msg {
     if m.late {
         time.push_str(" · delivered late");
     }
+    if !m.outgoing && m.signed == Some(false) {
+        time.push_str(" · not signed");
+    }
     if m.expires_secs > 0 {
         time.push_str(" · disappears");
     }
@@ -2215,6 +2218,16 @@ impl Engine {
                     });
                 }
             }
+            Cmd::SetOnRecord(on) => {
+                let done = match (self.selected, self.selected_group, self.client.as_mut()) {
+                    (Some(root), _, Some(c)) => c.set_on_the_record(&root, on).await.is_ok(),
+                    (None, Some(g), Some(c)) => c.set_group_on_the_record(&g, on).await.is_ok(),
+                    _ => true,
+                };
+                if !done {
+                    self.status = "Couldn't change the mode. Check your connection.".into();
+                }
+            }
             Cmd::SetBridges(text) => {
                 self.bridges_error.clear();
                 if let Mode::Server { profile, .. } = &self.mode {
@@ -2565,6 +2578,54 @@ impl Engine {
                             Event::Typing { root, on: false } | Event::Message { root, .. } => {
                                 self.typing_until.remove(root);
                             }
+                            Event::ModeChanged {
+                                root,
+                                on_record,
+                                by_us,
+                            } => {
+                                let who = if *by_us {
+                                    "You".to_string()
+                                } else {
+                                    c.contact(root)
+                                        .map(|ct| ct.name.clone())
+                                        .unwrap_or_default()
+                                };
+                                self.status = if *on_record {
+                                    format!(
+                                        "{who} put the conversation on the record: messages now carry a signature."
+                                    )
+                                } else {
+                                    format!("{who} took the conversation off the record.")
+                                };
+                            }
+                            Event::GroupModeChanged {
+                                group_id,
+                                on_record,
+                                by,
+                            } => {
+                                let who =
+                                    c.contact(by).map(|ct| ct.name.clone()).unwrap_or_default();
+                                let group = c
+                                    .groups()
+                                    .into_iter()
+                                    .find(|g| g.id == *group_id)
+                                    .map(|g| g.name)
+                                    .unwrap_or_default();
+                                self.status = if *on_record {
+                                    format!(
+                                        "{who} put {group} on the record: messages there now carry a signature."
+                                    )
+                                } else {
+                                    format!("{who} took {group} off the record.")
+                                };
+                            }
+                            Event::ContactClosed { root } => {
+                                let name = c
+                                    .contact(root)
+                                    .map(|ct| ct.name.clone())
+                                    .unwrap_or_default();
+                                self.status = format!("{name} closed their account.");
+                            }
                             Event::ContactMoved { old, root, .. } => {
                                 if self.selected == Some(*old) {
                                     self.selected = Some(*root);
@@ -2834,6 +2895,8 @@ impl Engine {
                 s.current = Some(row.clone());
                 s.finishing = c.protection_finishing(&ct.root);
                 s.gap = c.gap(&ct.root);
+                s.on_record = c.on_the_record(&ct.root);
+                s.closed = c.is_closed(&ct.root);
                 s.timer = ct.timer;
                 let pinned = c.pinned_ids(&Place::Contact(ct.root));
                 let shared = c.shared_contacts(&ct.root);
@@ -2940,6 +3003,7 @@ impl Engine {
             if self.selected_group == Some(g.id) {
                 s.current = Some(row.clone());
                 s.group_admin = g.admin;
+                s.on_record = g.on_record;
                 s.members = g
                     .members
                     .iter()
@@ -2988,7 +3052,11 @@ impl Engine {
                         let mut msg = Msg {
                             text: group_text(m),
                             outgoing: m.from.is_none(),
-                            time: clock(m.at),
+                            time: if m.from.is_some() && m.signed == Some(false) {
+                                format!("{} · not signed", clock(m.at))
+                            } else {
+                                clock(m.at)
+                            },
                             status: if m.delivered { 1 } else { 0 },
                             sender: m.from_name.clone(),
                             seq: m.seq,

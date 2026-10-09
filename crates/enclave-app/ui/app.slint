@@ -596,6 +596,7 @@ export component AppWindow inherits Window {
     in property <[ContactRow]> archived;
     in-out property <bool> show-archived;
     callback conv-prefs(string, bool, bool, bool);
+    callback set-on-record(bool);
     callback block(string, bool);
     callback share-contact(string, string);
     callback add-shared(string, string);
@@ -659,6 +660,10 @@ export component AppWindow inherits Window {
     // KEMs protect the conversation.
     in property <bool> finishing;
     in property <bool> gap;
+    // The current conversation is on the record; its contact closed their
+    // account.
+    in property <bool> on-record;
+    in property <bool> closed;
     in-out property <string> draft;
     in-out property <string> add-link;
     in-out property <string> add-text;
@@ -1273,8 +1278,8 @@ export component AppWindow inherits Window {
                                     text: root.current.kind == 2
                                         ? "Only you, on your devices"
                                         : root.current.kind == 1
-                                        ? root.current.members + " people · Off the record"
-                                        : (root.current.met ? "Met in person" : root.current.verified ? "Checked" : "Not checked yet") + " · Off the record";
+                                        ? root.current.members + (root.on-record ? " people · On the record" : " people · Off the record")
+                                        : (root.current.met ? "Met in person" : root.current.verified ? "Checked" : "Not checked yet") + (root.on-record ? " · On the record" : " · Off the record");
                                     vertical-alignment: center;
                                     overflow: elide;
                                     horizontal-stretch: 1;
@@ -1549,7 +1554,16 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                if root.current.state == 2 && !root.current.blocked: Rectangle {
+                if root.closed && root.current.kind == 0: Rectangle {
+                    VerticalLayout {
+                        padding: Tokens.space-m;
+                        Notice {
+                            title: root.current.name + " closed their account";
+                            text: "You can still read this conversation. Nothing more can be sent to them.";
+                        }
+                    }
+                }
+                if root.current.state == 2 && !root.current.blocked && !(root.closed && root.current.kind == 0): Rectangle {
                     HorizontalLayout {
                         padding: Tokens.space-m;
                         spacing: Tokens.space-s;
@@ -1712,6 +1726,18 @@ export component AppWindow inherits Window {
         if root.finishing: Notice {
             title: "Extra protection: finishing…";
             text: "Maximum privacy holds what you write until all three kinds of encryption protect this conversation. It goes out on its own once " + root.current.name + "'s app has finished setting it up.";
+        }
+        if root.current.kind == 0: SwitchRow {
+            label: "On the record";
+            detail: root.on-record
+                ? "Your messages carry your signature. Anyone who gets a copy can prove you wrote them."
+                : "Nobody can prove to others who wrote these messages.";
+            on: root.on-record;
+            toggled => { root.set-on-record(!root.on-record); }
+        }
+        if root.current.kind == 0: Caption {
+            text: "Both of you see when this changes, and who changed it.";
+            wrap: word-wrap;
         }
         SwitchRow {
             label: "Pin to top";
@@ -2473,6 +2499,20 @@ export component AppWindow inherits Window {
                     clicked => { root.remove-member(root.current-id, m.id); }
                 }
             }
+        }
+        if root.group-admin: SwitchRow {
+            label: "On the record";
+            detail: root.on-record
+                ? "Messages carry their sender's signature. Anyone who gets a copy can prove who wrote them."
+                : "Nobody can prove to others who wrote these messages.";
+            on: root.on-record;
+            toggled => { root.set-on-record(!root.on-record); }
+        }
+        if !root.group-admin: Caption {
+            text: root.on-record
+                ? "On the record: messages carry their sender's signature. Admins can change this."
+                : "Off the record: nobody can prove to others who wrote these messages. Admins can change this.";
+            wrap: word-wrap;
         }
         if root.group-admin: HorizontalLayout {
             alignment: start;

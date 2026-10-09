@@ -2106,6 +2106,45 @@ async fn group_round_reads_in_slots() {
     panic!("the message after the rekey never arrived: {seen:?}");
 }
 
+/// A few envelopes waiting (receipts, our own cover self-copies) are read
+/// in ordinary poll slots; only a real backlog opens a bulk window, which
+/// lets polls skip the shaper's clock (09 §6.4).
+#[tokio::test(flavor = "multi_thread")]
+async fn short_backlog_reads_in_slots() {
+    let net = network();
+    let counted = Counting::new(net.clone());
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut mo, _) = Client::create(memory(), Arc::new(counted.clone()), S2, "Mo")
+        .await
+        .unwrap();
+    connect(&mut ada, &mut mo).await;
+    mo.sync().await.unwrap();
+    for t in ["one", "two", "three"] {
+        ada.send_text(&mo.root(), t).await.unwrap();
+    }
+    counted.take();
+    mo.sync().await.unwrap();
+    let (_, bulk) = counted.take();
+    assert_eq!(bulk, 0, "three waiting opened a bulk window");
+    for i in 0..12 {
+        ada.send_text(&mo.root(), &format!("backlog {i}"))
+            .await
+            .unwrap();
+    }
+    mo.sync().await.unwrap();
+    let (_, bulk) = counted.take();
+    assert!(bulk > 0, "a backlog is read in bulk");
+    let texts: Vec<String> = mo
+        .messages(&ada.root())
+        .unwrap()
+        .into_iter()
+        .map(|m| m.text)
+        .collect();
+    assert!(texts.contains(&"backlog 11".to_string()), "{texts:?}");
+}
+
 /// Archive, pin to the top and mute: local to this device. A new message
 /// brings an archived conversation back unless it is muted; at most four
 /// conversations are pinned.

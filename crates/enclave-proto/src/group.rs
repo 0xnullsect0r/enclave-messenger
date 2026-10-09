@@ -59,6 +59,9 @@ pub const FLAG_STATE_UPDATE: u8 = 0x01;
 /// Message flag: structured content (polls, votes) rather than text. Like
 /// every flag it is inside the sealed, MAC-authenticated sender header.
 pub const FLAG_RICH: u8 = 0x02;
+/// Sender-header flag: the content starts with the sender device's
+/// composite signature (On-the-record groups, `07-groups.md` §3), 4,741 B.
+pub const FLAG_SIGNED: u8 = 0x04;
 /// Rekey flag: the rotation starts a new epoch.
 const REKEY_NEW_EPOCH: u8 = 0x01;
 
@@ -127,6 +130,9 @@ pub struct GroupState {
     pub host: [u8; 16],
     /// Only admins can send.
     pub admins_only: bool,
+    /// On the record: messages carry their sender device's signature, and
+    /// state updates their admin's (`07-groups.md` §3, §7.3).
+    pub on_record: bool,
     /// Members; a member's index is its position.
     pub members: Vec<Member>,
 }
@@ -134,14 +140,19 @@ pub struct GroupState {
 impl GroupState {
     /// Canonical encoding.
     pub fn encode(&self) -> Vec<u8> {
+        // Version 2 only for a group on the record, so the states (and
+        // state hashes) of every other group stay as they were.
         let mut w = Writer::new();
-        w.u8(1)
+        w.u8(if self.on_record { 2 } else { 1 })
             .fixed(&self.group_id)
             .u32(self.epoch)
             .fixed(&self.parent);
         w.bytes(self.name.as_bytes())
             .fixed(&self.host)
             .u8(u8::from(self.admins_only));
+        if self.on_record {
+            w.u8(1);
+        }
         w.u8(self.members.len() as u8);
         for m in &self.members {
             w.fixed(&m.root)
@@ -155,7 +166,8 @@ impl GroupState {
     /// Strict decoding.
     pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);
-        if r.u8()? != 1 {
+        let version = r.u8()?;
+        if !(1..=2).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let group_id = r.array()?;
@@ -164,6 +176,10 @@ impl GroupState {
         let name = String::from_utf8(r.bytes(256)?.to_vec()).map_err(|_| ProtoError::Decode)?;
         let host = r.array()?;
         let admins_only = r.u8()? == 1;
+        let on_record = version == 2 && r.u8()? == 1;
+        if version == 2 && !on_record {
+            return Err(ProtoError::Decode); // not canonical
+        }
         let n = r.u8()? as usize;
         if n == 0 || n > MAX_MEMBERS {
             return Err(ProtoError::Decode);
@@ -185,6 +201,7 @@ impl GroupState {
             name,
             host,
             admins_only,
+            on_record,
             members,
         };
         s.check()?;
@@ -286,6 +303,7 @@ impl GroupState {
         if next.name != self.name
             || next.host != self.host
             || next.admins_only != self.admins_only
+            || next.on_record != self.on_record
             || next.epoch != self.epoch
             || next.members.len() != self.members.len()
         {
@@ -339,6 +357,7 @@ impl GroupState {
         next.name == self.name
             && next.host == self.host
             && next.admins_only == self.admins_only
+            && next.on_record == self.on_record
             && next.epoch == self.epoch
             && strip(next) == strip(&expected)
     }
@@ -492,6 +511,12 @@ pub struct GroupMessage {
     pub member: u8,
     /// Sender device index.
     pub device: u8,
+    /// Epoch it was sent in.
+    pub epoch: u32,
+    /// The sender's chain generation.
+    pub generation: u8,
+    /// Its counter in that chain.
+    pub counter: u32,
     /// Message identifier.
     pub id: MsgId,
     /// The sender's state hash.
@@ -571,6 +596,7 @@ impl Group {
             name: name.to_string(),
             host,
             admins_only: false,
+            on_record: false,
             members: vec![Member::new(my_root, true, now)],
         };
         let es: Key = rng.array("group/epoch-secret")?;
@@ -700,6 +726,21 @@ impl Group {
     // ------------------------------------------------------------------
     // Messages
     // ------------------------------------------------------------------
+
+    /// What the next [`Group::seal`] will send under: `(epoch,
+    /// generation, counter, state_hash)`, for a signature over them.
+    pub fn next_send(&self) -> Result<(u32, u8, u32, [u8; 32])> {
+        let mine = self.mine.as_ref().ok_or(ProtoError::NoSession)?;
+        if mine.epoch != self.state.epoch {
+            return Err(ProtoError::NoSession);
+        }
+        Ok((
+            self.state.epoch,
+            mine.generation,
+            mine.chain.n,
+            self.state.hash(),
+        ))
+    }
 
     /// Seal `content` for the group mailbox.
     pub fn seal(&mut self, content: &[u8], flags: u8, rng: &mut HedgedRng) -> Result<Vec<u8>> {
@@ -897,6 +938,9 @@ impl Group {
         Ok(GroupMessage {
             member,
             device,
+            epoch,
+            generation,
+            counter,
             id,
             state_hash,
             frontier,

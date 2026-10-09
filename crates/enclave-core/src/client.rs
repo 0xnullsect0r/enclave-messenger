@@ -99,6 +99,7 @@ impl Contact {
 mod backup;
 mod blocks;
 pub mod clock;
+mod closing;
 mod devices;
 mod gaps;
 mod gossip;
@@ -106,6 +107,7 @@ mod group_devices;
 mod group_edits;
 mod group_files;
 mod group_pq;
+mod group_record;
 mod groups;
 mod guard;
 mod history;
@@ -127,6 +129,7 @@ mod pins;
 mod polls;
 mod prefs;
 mod push;
+mod record;
 mod reports;
 mod search;
 mod servers;
@@ -153,6 +156,7 @@ pub use own_sync::{INACTIVE_SECS, NEW_DEVICE_SECS, OwnDeviceState};
 pub use pins::MAX_PINS;
 pub use polls::{MAX_OPTIONS, PollView};
 pub use prefs::{ConvPrefs, MAX_PINNED_CONVERSATIONS};
+pub use record::Evidence;
 pub use reports::{CALM_PER_DAY, FLOOD_PER_DAY, RAISED_EFFORT_SECS};
 pub use search::{Hit, Place};
 pub use servers::ListUpdate;
@@ -310,6 +314,30 @@ pub enum Event {
         /// The conversation.
         place: Place,
     },
+    /// The conversation with `root` went on the record or off it
+    /// (`client/record.rs`).
+    ModeChanged {
+        /// The contact.
+        root: [u8; 64],
+        /// On the record now.
+        on_record: bool,
+        /// We changed it (on another device of ours).
+        by_us: bool,
+    },
+    /// An admin put group `group_id` on the record or took it off.
+    GroupModeChanged {
+        /// The group.
+        group_id: [u8; 32],
+        /// On the record now.
+        on_record: bool,
+        /// The admin who changed it.
+        by: [u8; 64],
+    },
+    /// `root` closed their account: the conversation is read-only.
+    ContactClosed {
+        /// The contact.
+        root: [u8; 64],
+    },
     /// A message from `root` may not have arrived: later ones did, over a
     /// minute ago ([`Client::gap`]).
     Gap {
@@ -387,6 +415,13 @@ pub struct Client {
     pq_carried: HashMap<SessionKey, u64>,
     /// The envelope being handled arrived late (`Message::late`).
     late_unit: bool,
+    /// The envelope being handled was personal content in a conversation
+    /// on the record, or signed: its verified signature, if any
+    /// (`Message::signed`).
+    unit_signature: Option<Option<record::Evidence>>,
+    /// The group message being handled: its signature's state on the
+    /// record (`GroupMessage::signed`).
+    group_unit_signed: Option<bool>,
     /// When each group was last read and how busy it has been, for the
     /// group rounds of [`Client::sync_round`].
     group_polls: HashMap<[u8; 32], GroupPoll>,
@@ -636,6 +671,8 @@ impl Client {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            unit_signature: None,
+            group_unit_signed: None,
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -719,6 +756,8 @@ impl Client {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            unit_signature: None,
+            group_unit_signed: None,
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -1130,6 +1169,8 @@ impl Client {
         for (k, _) in self.store.scan(&ns)? {
             self.store.delete(&ns, &k)?;
         }
+        self.forget_record(root)?;
+        self.forget_closed(root)?;
         self.forget_shared_contacts(root)
     }
 
@@ -1806,6 +1847,31 @@ impl Client {
                 },
                 _ => content,
             };
+            // On the record: signed content opens to what was signed, and
+            // personal content without a good signature is marked
+            // (`record.rs`).
+            let content = if root == self.account.root_public.0 {
+                content
+            } else {
+                match Content::decode(&content) {
+                    Ok(Content::Signed {
+                        counter,
+                        sig,
+                        content,
+                        tokens,
+                    }) => {
+                        let (inner, evidence) =
+                            self.open_signed(&root, &dev, counter, sig, content, tokens)?;
+                        self.unit_signature = Some(evidence);
+                        inner.encode()?
+                    }
+                    Ok(c) if c.is_personal() && self.on_the_record(&root) => {
+                        self.unit_signature = Some(None);
+                        content
+                    }
+                    _ => content,
+                }
+            };
             if root == self.account.root_public.0 {
                 // From another device of ours: it's in use.
                 self.seen_own(&dev, now)?;
@@ -1958,6 +2024,13 @@ impl Client {
                         expires,
                     });
                 }
+                Content::ModeChange { on_record, seq } => {
+                    c.received_since_refill = c.received_since_refill.saturating_add(1);
+                    events.extend(self.on_mode_change(&root, on_record, seq, false)?);
+                }
+                Content::Closed => {
+                    events.extend(self.on_closed(&root)?);
+                }
                 other => {
                     c.received_since_refill = c.received_since_refill.saturating_add(1);
                     rest = Some(other);
@@ -1973,12 +2046,15 @@ impl Client {
                 events.extend(self.on_message_content(&root, content, now)?);
             }
             Ok(events)
-        })()?;
-        acked.extend(rest);
+        })();
+        self.unit_signature = None;
+        acked.extend(rest?);
         Ok(acked)
     }
 
     async fn send_content(&mut self, root: &[u8; 64], content: &Content, now: u64) -> Result<()> {
+        // On the record, what a person writes is signed (`record.rs`).
+        let content = &self.sign_for(root, content)?;
         // Too large for one envelope: continuation units (`parts.rs`).
         let bytes = content.encode()?;
         let id = self.rng.array("core/part-id")?;
@@ -2010,7 +2086,7 @@ impl Client {
         content: &Content,
         droppable: bool,
     ) -> Result<(ServerId, RequestHeader, Vec<u8>)> {
-        if self.is_blocked(root) {
+        if self.is_blocked(root) || self.is_closed(root) {
             return Err(CoreError::NotAccepted);
         }
         let bytes = content.encode()?;

@@ -31,6 +31,7 @@ use enclave_crypto::rng::HedgedRng;
 use enclave_kt::{KtError, KtInfo, KtService, UsernameClaim};
 use enclave_proto::bundle::{Bundle, Publication};
 use enclave_proto::manifest::{Manifest, SignedManifest};
+use enclave_proto::otr;
 use enclave_rpc::api::{
     self, DirAction, DirKind, DirReply, DirRequest, FLAG_CREATE, FLAG_EFFORT, FLAG_FOUND,
     FLAG_GROUP, FLAG_INVITE, FLAG_MORE, FLAG_REQUEST_INBOX, FLAG_REVOKE, Status,
@@ -1289,6 +1290,47 @@ impl Server {
                         body: api::ReportBody::decode(v.get(40..)?).ok()?,
                     },
                 ))
+            })
+            .collect()
+    }
+
+    /// Check a report's signed quotes (`docs/13-operators.md` §2): for
+    /// each, the text its author's device signed, or why it can't be
+    /// confirmed. The device must be in the reported account's manifest
+    /// held here, and that manifest must list the reported request inbox.
+    pub fn verify_quotes(&self, r: &Report) -> Vec<std::result::Result<String, &'static str>> {
+        let Some(root) = r.body.reported else {
+            return Vec::new();
+        };
+        let manifest = self
+            .db
+            .read(|t| t.get(db::MANIFESTS, &manifest_key(&root)))
+            .ok()
+            .flatten()
+            .and_then(|v| SignedManifest::from_bytes(tail(&v)).ok())
+            .and_then(|sm| Manifest::decode(&sm.body).ok())
+            .filter(|m| m.root.0 == root);
+        r.body
+            .signed
+            .iter()
+            .map(|q| {
+                let m = manifest
+                    .as_ref()
+                    .ok_or("the reported account's manifest isn't on this server")?;
+                if m.request_inbox.as_slice() != r.request_inbox {
+                    return Err("that account's manifest doesn't list this request inbox");
+                }
+                let d = m
+                    .devices
+                    .iter()
+                    .find(|d| d.id == q.device)
+                    .ok_or("signed by a device that isn't in the account's manifest")?;
+                let conv = otr::conv_id_of(&otr::root_hash(&root), &q.recipient);
+                let payload =
+                    otr::message_payload_of(&conv, &q.device, &q.recipient, q.counter, &q.content);
+                otr::verify(&d.signing, otr::Kind::Message, &payload, &q.sig)
+                    .map_err(|_| "the signature doesn't verify")?;
+                api::quoted_text(&q.content).ok_or("signed, but not a text message")
             })
             .collect()
     }

@@ -46,6 +46,9 @@ pub(crate) struct Rpc {
     keys: HashMap<ServerId, ServerKey>,
 }
 
+/// Envelopes read in a row from one mailbox before the rest is read as a
+/// bulk transfer (`docs/09-transport.md` §6.4).
+pub const BACKLOG_BULK: usize = 8;
 impl Rpc {
     pub fn new(transport: Arc<dyn Transport>) -> Self {
         Self {
@@ -481,6 +484,8 @@ impl Rpc {
     }
 
     /// Fetch everything in `mailbox` after `cursor`, reading with `cred`.
+    /// A few envelopes waiting are read in ordinary poll slots; a backlog
+    /// of [`BACKLOG_BULK`] or more opens a bulk window.
     pub async fn poll(
         &mut self,
         server: &ServerId,
@@ -491,8 +496,8 @@ impl Rpc {
         rng: &mut HedgedRng,
     ) -> Result<Vec<Polled>> {
         let mut out = Vec::new();
-        // Catching up on a backlog is a bulk transfer (a shaping transport
-        // may then skip its clock, where the profile allows).
+        // Catching up on a real backlog is a bulk transfer (a shaping
+        // transport may then skip its clock, where the profile allows).
         let mut bulk = false;
         let r = self
             .poll_loop(server, mailbox, cred, cursor, now, rng, &mut out, &mut bulk)
@@ -549,7 +554,10 @@ impl Rpc {
             if r.flags & api::FLAG_MORE == 0 {
                 break;
             }
-            if !*bulk {
+            // Our own cover self-copies and a few receipts are no backlog:
+            // they wait for ordinary slots, or every busy tick would skip
+            // the clock (the CI shape check found it).
+            if !*bulk && out.len() >= BACKLOG_BULK {
                 *bulk = true;
                 self.bulk(true);
             }

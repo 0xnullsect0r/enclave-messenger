@@ -217,6 +217,8 @@ impl Client {
             fallback_week: false,
             pq_carried: std::collections::HashMap::new(),
             late_unit: false,
+            unit_signature: None,
+            group_unit_signed: None,
             group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,

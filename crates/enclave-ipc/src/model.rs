@@ -180,6 +180,10 @@ pub struct Snapshot {
     /// A message in the current conversation may not have arrived: later
     /// ones did, over a minute ago (RT-24).
     pub gap: bool,
+    /// The current conversation is on the record (messages signed).
+    pub on_record: bool,
+    /// The current contact closed their account (read-only).
+    pub closed: bool,
     /// Error for the add sheet.
     pub add_error: String,
     /// A request is in flight.
@@ -434,6 +438,8 @@ pub enum Cmd {
     BackupRoute(bool),
     /// Tor bridges: empty (none), `builtin`, or bridge lines.
     SetBridges(String),
+    /// Put the current conversation on the record (or off it).
+    SetOnRecord(bool),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -617,6 +623,8 @@ impl Snapshot {
             .u8(u8::from(self.privacy == 1))
             .bool(self.finishing)
             .bool(self.gap)
+            .bool(self.on_record)
+            .bool(self.closed)
             .str(&self.add_error)
             .bool(self.busy);
         w.len(self.pick.len());
@@ -765,6 +773,8 @@ impl Snapshot {
         };
         let finishing = r.bool()?;
         let gap = r.bool()?;
+        let on_record = r.bool()?;
+        let closed = r.bool()?;
         let add_error = r.str()?;
         let busy = r.bool()?;
         let n = r.len()?;
@@ -805,6 +815,8 @@ impl Snapshot {
             privacy,
             finishing,
             gap,
+            on_record,
+            closed,
             add_error,
             busy,
             pick,
@@ -972,6 +984,7 @@ impl Cmd {
             Cmd::PlayClip(c, s) => w.u8(62).str(c).u64(*s),
             Cmd::BackupRoute(on) => w.u8(63).bool(*on),
             Cmd::SetBridges(b) => w.u8(64).str(b),
+            Cmd::SetOnRecord(on) => w.u8(65).bool(*on),
         };
         w.0
     }
@@ -1048,6 +1061,7 @@ impl Cmd {
             62 => Cmd::PlayClip(r.str()?, r.u64()?),
             63 => Cmd::BackupRoute(r.bool()?),
             64 => Cmd::SetBridges(r.str()?),
+            65 => Cmd::SetOnRecord(r.bool()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

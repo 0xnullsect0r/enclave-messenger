@@ -10,6 +10,18 @@ pub const CTX_OPK_BATCH: &str = "enclave/v1/ctx/opk-batch";
 pub const CTX_LAST_RESORT: &str = "enclave/v1/ctx/last-resort";
 /// Composite-signature context for On-the-record message signatures.
 pub const CTX_SIGNED_MESSAGE: &str = "enclave/v1/ctx/signed-msg";
+/// Composite-signature context for On-the-record group messages.
+pub const GRP_SIGNED_MSG: &str = "enclave/v1/proto/grp-signed-msg";
+/// Composite-signature context for an admin's state update in a group on
+/// the record.
+pub const GRP_ADMIN_SIG: &str = "enclave/v1/proto/grp-admin-sig";
+/// Composite-signature context for a poll creator's tally in a group on the
+/// record.
+pub const POLL_TALLY: &str = "enclave/v1/proto/poll-tally";
+/// `root_hash` of a root public key.
+pub const ROOT_HASH: &str = "enclave/v1/proto/root-hash";
+/// A 1:1 conversation's id.
+pub const CONV_ID: &str = "enclave/v1/proto/conv-id";
 /// Composite-signature context for the initiator's transcript signature.
 pub const CTX_EQXDH_TRANSCRIPT: &str = "enclave/v1/ctx/eqxdh-transcript";
 /// Composite-signature context for a device approving a manifest change.

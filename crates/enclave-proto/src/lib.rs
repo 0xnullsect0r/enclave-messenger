@@ -13,6 +13,7 @@ pub mod identity;
 pub mod labels;
 pub mod manifest;
 pub mod migration;
+pub mod otr;
 pub mod ratchet;
 pub mod recovery;
 pub mod server_move;

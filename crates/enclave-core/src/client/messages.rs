@@ -11,6 +11,7 @@
 //!   author's own messages, edits only within 24 hours.
 
 use super::location::Location;
+use super::record::Evidence;
 use super::search::Place;
 use super::{Client, ContactState, Event};
 use crate::content::{Content, MAX_TEXT, MsgId};
@@ -59,6 +60,12 @@ pub struct Message {
     /// Arrived more than a minute after messages they sent later: "Delivered
     /// late" (incoming only; `05-ratchet.md` §11, RT-24).
     pub late: bool,
+    /// On the record (`client/record.rs`): `Some(true)` signed by its
+    /// sender's device, `Some(false)` should have been and wasn't ("Not
+    /// signed"), `None` off the record.
+    pub signed: Option<bool>,
+    /// An incoming message's verified signature, for a report.
+    pub evidence: Option<Evidence>,
     /// Ours: they read it. Theirs: we read it.
     pub read: bool,
     /// Unix time (local clock) when sent or received.
@@ -94,6 +101,8 @@ impl Message {
             delivered: false,
             stalled: false,
             late: false,
+            signed: None,
+            evidence: None,
             read: false,
             at,
             text,
@@ -110,7 +119,7 @@ impl Message {
 
     pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(5).u64(self.seq).fixed(&self.id);
+        w.u8(6).u64(self.seq).fixed(&self.id);
         w.u8(u8::from(self.outgoing))
             .u8(u8::from(self.delivered))
             .u8(u8::from(self.read))
@@ -142,14 +151,25 @@ impl Message {
             Some(i) => w.u8(1).u8(i),
             None => w.u8(0),
         };
-        w.u8(u8::from(self.sent) | (u8::from(self.stalled) << 1) | (u8::from(self.late) << 2));
+        w.u8(u8::from(self.sent)
+            | (u8::from(self.stalled) << 1)
+            | (u8::from(self.late) << 2)
+            | (u8::from(self.signed.is_some()) << 3)
+            | (u8::from(self.signed == Some(true)) << 4));
+        w.bytes(
+            &self
+                .evidence
+                .as_ref()
+                .map(Evidence::encode)
+                .unwrap_or_default(),
+        );
         w.finish()
     }
 
     pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(2..=5).contains(&version) {
+        if !(2..=6).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let s = |r: &mut Reader<'_>, n| {
@@ -191,11 +211,22 @@ impl Message {
             None
         };
         // Before receipts, "delivered" meant accepted by the server.
-        let (sent, stalled, late) = if version >= 5 {
+        let (sent, stalled, late, signed) = if version >= 5 {
             let f = r.u8()?;
-            (f & 1 != 0, f & 2 != 0, f & 4 != 0)
+            let signed = (f & 8 != 0).then_some(f & 16 != 0);
+            (f & 1 != 0, f & 2 != 0, f & 4 != 0, signed)
         } else {
-            (delivered, false, false)
+            (delivered, false, false, None)
+        };
+        let evidence = if version >= 6 {
+            let e = r.bytes(crate::content::MAX_SIG + crate::content::MAX_SPLIT_CONTENT + 64)?;
+            if e.is_empty() {
+                None
+            } else {
+                Some(Evidence::decode(e)?)
+            }
+        } else {
+            None
         };
         r.end()?;
         Ok(Self {
@@ -206,6 +237,8 @@ impl Message {
             delivered,
             stalled,
             late,
+            signed,
+            evidence,
             read,
             at,
             text,
@@ -327,6 +360,12 @@ impl Client {
         self.save_contact(&c)?;
         let mut m = Message::new(seq, id, outgoing, now, text.to_string());
         m.late = !outgoing && self.late_unit;
+        if outgoing {
+            m.signed = self.on_the_record(root).then_some(true);
+        } else if let Some(sig) = self.unit_signature.clone() {
+            m.signed = Some(sig.is_some());
+            m.evidence = sig;
+        }
         m.expires_secs = expires_secs;
         if outgoing && expires_secs > 0 {
             m.expires_at = Some(now + u64::from(expires_secs));
@@ -828,6 +867,9 @@ impl Client {
                         seq: m.seq,
                     });
                 }
+            }
+            Content::ModeChange { on_record, seq } => {
+                events.extend(self.on_mode_change(to, on_record, seq, true)?);
             }
             Content::Timer(secs) => {
                 let c = self.contacts.get_mut(to).ok_or(CoreError::NotFound)?;

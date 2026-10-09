@@ -55,6 +55,8 @@ pub struct GroupInfo {
     pub unread: u32,
     /// We are no longer a member.
     pub left: bool,
+    /// On the record (`group_record.rs`).
+    pub on_record: bool,
 }
 
 /// A reaction to a group message.
@@ -99,6 +101,10 @@ pub struct GroupMessage {
     pub attachment: Option<Attachment>,
     /// A sticker: its index in the pack.
     pub sticker: Option<u8>,
+    /// On the record (`group_record.rs`): `Some(true)` signed by its
+    /// sender's device, `Some(false)` should have been and wasn't ("Not
+    /// signed"), `None` off the record.
+    pub signed: Option<bool>,
 }
 
 fn put_who(w: &mut Writer, who: &Option<[u8; 64]>) {
@@ -119,7 +125,7 @@ fn get_who(r: &mut Reader<'_>) -> enclave_proto::Result<Option<[u8; 64]>> {
 impl GroupMessage {
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(6).u64(self.seq);
+        w.u8(7).u64(self.seq);
         put_who(&mut w, &self.from);
         w.bytes(self.from_name.as_bytes())
             .bytes(self.text.as_bytes())
@@ -147,13 +153,18 @@ impl GroupMessage {
             Some(i) => w.u8(1).u8(i),
             None => w.u8(0),
         };
+        w.u8(match self.signed {
+            None => 0,
+            Some(false) => 1,
+            Some(true) => 2,
+        });
         w.finish()
     }
 
     fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=6).contains(&version) {
+        if !(1..=7).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let seq = r.u64()?;
@@ -198,6 +209,12 @@ impl GroupMessage {
         } else {
             None
         };
+        let signed = match if version >= 7 { r.u8()? } else { 0 } {
+            0 => None,
+            1 => Some(false),
+            2 => Some(true),
+            _ => return Err(ProtoError::Decode),
+        };
         r.end()?;
         Ok(Self {
             seq,
@@ -213,6 +230,7 @@ impl GroupMessage {
             deleted,
             attachment,
             sticker,
+            signed,
         })
     }
 }
@@ -335,6 +353,7 @@ impl Client {
                     admin: st.active().any(|(_, m)| m.root == me && m.admin),
                     unread: e.unread,
                     left: e.left,
+                    on_record: st.on_record,
                 }
             })
             .collect()
@@ -678,9 +697,11 @@ impl Client {
         flags: u8,
         now: u64,
     ) -> Result<()> {
+        // On the record, signed (`group_record.rs`).
+        let (content, flags) = self.sign_group(gid, content, flags)?;
         let (unit, host, addr, secret) = {
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
-            let unit = e.group.seal(content, flags, &mut self.rng)?;
+            let unit = e.group.seal(&content, flags, &mut self.rng)?;
             let epoch = e.group.epoch();
             let addr = e.group.mailbox(day(now))?;
             let secret = e.group.mailbox_secret(epoch, &addr)?;
@@ -1113,9 +1134,14 @@ impl Client {
             // update arrived, is known here by the new root.
             (self.current_root(&root), e.group.state.clone())
         };
+        // On the record: the sender device's signature (`group_record.rs`).
+        let mut msg = msg;
+        let signed = self.check_group_signature(&prev_state, &sender_root, &mut msg);
         if msg.flags & FLAG_STATE_UPDATE != 0 {
             let next = GroupState::decode(&msg.content)?;
-            if !prev_state.accepts(&next, msg.member) {
+            if !prev_state.accepts(&next, msg.member)
+                || (prev_state.on_record && signed != Some(true))
+            {
                 return Ok(None);
             }
             // Someone's root changes in place: only with their migration.
@@ -1123,14 +1149,44 @@ impl Client {
                 let applied = self.on_group_root_change(gid, msg.member, next, &old, &new)?;
                 return Ok(applied.then_some(Event::GroupChanged { group_id: *gid }));
             }
+            let mode = (next.on_record != prev_state.on_record).then_some(next.on_record);
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
             match e.group.apply_state(next) {
                 Ok(()) => {}
                 Err(ProtoError::NoSession) => e.left = true,
                 Err(err) => return Err(err.into()),
             }
+            if let Some(on_record) = mode {
+                return Ok(Some(Event::GroupModeChanged {
+                    group_id: *gid,
+                    on_record,
+                    by: sender_root,
+                }));
+            }
             return Ok(Some(Event::GroupChanged { group_id: *gid }));
         }
+        // A message on the record without a good signature is shown
+        // marked; one signed off the record shows as signed.
+        self.group_unit_signed = match (prev_state.on_record, signed) {
+            (true, s) => Some(s == Some(true)),
+            (false, Some(true)) => Some(true),
+            (false, _) => None,
+        };
+        let r = self.on_group_content(gid, &sender_root, msg, now);
+        self.group_unit_signed = None;
+        r
+    }
+
+    /// A group message's content (not a state update), its signature
+    /// checked.
+    fn on_group_content(
+        &mut self,
+        gid: &[u8; 32],
+        sender_root: &[u8; 64],
+        msg: enclave_proto::group::GroupMessage,
+        now: u64,
+    ) -> Result<Option<Event>> {
+        let sender_root = *sender_root;
         if self.is_blocked(&sender_root) {
             return Ok(None); // their state updates still apply, above
         }
@@ -1296,6 +1352,7 @@ impl Client {
         // Sent by another device of ours: our own message.
         let from = from.filter(|(r, _)| *r != self.account.root_public.0);
         let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
+        let on_record = e.group.state.on_record;
         let seq = e.next_seq;
         e.next_seq += 1;
         let (from, from_name) = match from {
@@ -1316,6 +1373,11 @@ impl Client {
             deleted: false,
             attachment: None,
             sticker: None,
+            signed: if from.is_some() {
+                self.group_unit_signed
+            } else {
+                on_record.then_some(true)
+            },
         };
         self.store
             .put(&msg_ns(gid), &seq.to_be_bytes(), &m.encode(), &mut self.rng)?;
