@@ -91,6 +91,25 @@ pub trait Transport: Send + Sync {
         let _ = within;
         Ok(true)
     }
+    /// HTTP through the mixnet client's Tor, for the credential gate
+    /// (`docs/09-transport.md` §7): the status and the body.
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        let _ = (method, url, body);
+        Err(NetError::Unavailable("fetching through Tor"))
+    }
+    /// Buy one zk-nym ticketbook from the credential gate at `gate` with
+    /// one Privacy Pass token: the ticketbook, to keep.
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        let _ = (gate, token);
+        Err(NetError::Unavailable("zk-nym tickets"))
+    }
+    /// Connect the mixnet client, spending these ticketbooks, if it is
+    /// waiting for them (netd `--await-tickets`). Already connected or
+    /// without a mixnet: nothing to do.
+    async fn connect_mixnet(&self, tickets: Vec<Vec<u8>>) -> Result<()> {
+        let _ = tickets;
+        Ok(())
+    }
     /// Current time, Unix seconds. The system clock, except in simulations
     /// that move time forward.
     fn now(&self) -> u64 {
@@ -604,6 +623,20 @@ impl Transport for NymTransport {
 
     async fn flush(&self, within: std::time::Duration) -> Result<bool> {
         Ok(self.driver.flush(within).await)
+    }
+
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        self.driver
+            .fetch(method, url, body)
+            .await
+            .map_err(|e| NetError::Unreachable(e.to_string()))
+    }
+
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        self.driver
+            .buy_tickets(gate, token)
+            .await
+            .map_err(|e| NetError::Unreachable(e.to_string()))
     }
 
     fn set_pacing(&self, pacing: enclave_nym::Pacing) {

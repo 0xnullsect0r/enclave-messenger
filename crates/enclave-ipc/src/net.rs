@@ -7,6 +7,9 @@
 use crate::codec::{MAX_BYTES, Reader, Writer};
 use crate::{IpcError, Result};
 
+/// Most ticketbooks one `Connect` carries.
+pub const MAX_TICKETBOOKS: usize = 64;
+
 /// Vault → netd.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetRequest {
@@ -58,6 +61,36 @@ pub enum NetRequest {
         /// On or off.
         on: bool,
     },
+    /// HTTP through the mixnet client's Tor (the credential gate,
+    /// `docs/09-transport.md` §7). The reply is `u16 status ‖ body`.
+    Fetch {
+        /// Request number.
+        id: u32,
+        /// `GET` or `POST`.
+        method: String,
+        /// The URL.
+        url: String,
+        /// The body.
+        body: Vec<u8>,
+    },
+    /// Buy one zk-nym ticketbook from the credential gate at `gate` with
+    /// one Privacy Pass token. The reply is the ticketbook, to keep.
+    BuyTickets {
+        /// Request number.
+        id: u32,
+        /// The gate's base URL.
+        gate: String,
+        /// The token.
+        token: Vec<u8>,
+    },
+    /// Connect the mixnet client, spending these ticketbooks (netd started
+    /// with `--await-tickets`). The reply is empty, or why it couldn't.
+    Connect {
+        /// Request number.
+        id: u32,
+        /// Ticketbooks, as `BuyTickets` returned them.
+        tickets: Vec<Vec<u8>>,
+    },
 }
 
 /// netd → vault.
@@ -91,6 +124,23 @@ impl NetRequest {
             }
             NetRequest::RequirePrivate { on } => {
                 w.u8(6).u8(u8::from(*on));
+            }
+            NetRequest::Fetch {
+                id,
+                method,
+                url,
+                body,
+            } => {
+                w.u8(7).u32(*id).str(method).str(url).bytes(body);
+            }
+            NetRequest::BuyTickets { id, gate, token } => {
+                w.u8(8).u32(*id).str(gate).bytes(token);
+            }
+            NetRequest::Connect { id, tickets } => {
+                w.u8(9).u32(*id).u32(tickets.len() as u32);
+                for t in tickets {
+                    w.bytes(t);
+                }
             }
         }
         w.0
@@ -129,6 +179,29 @@ impl NetRequest {
                     _ => return Err(IpcError::Malformed),
                 },
             },
+            7 => NetRequest::Fetch {
+                id: r.u32()?,
+                method: r.str()?,
+                url: r.str()?,
+                body: r.bytes()?,
+            },
+            8 => NetRequest::BuyTickets {
+                id: r.u32()?,
+                gate: r.str()?,
+                token: r.bytes()?,
+            },
+            9 => {
+                let id = r.u32()?;
+                let n = r.u32()? as usize;
+                if n > MAX_TICKETBOOKS {
+                    return Err(IpcError::Malformed);
+                }
+                let mut tickets = Vec::with_capacity(n);
+                for _ in 0..n {
+                    tickets.push(r.bytes()?);
+                }
+                NetRequest::Connect { id, tickets }
+            }
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

@@ -325,6 +325,25 @@ fn net_messages_round_trip_and_refuse_garbage() {
             bytes: vec![1; 16_384],
         },
         NetRequest::RequirePrivate { on: true },
+        NetRequest::Fetch {
+            id: 10,
+            method: "POST".into(),
+            url: "https://gate.example/credgate/v1/tokens".into(),
+            body: vec![2; 500],
+        },
+        NetRequest::BuyTickets {
+            id: 11,
+            gate: "https://gate.example".into(),
+            token: vec![3; 146],
+        },
+        NetRequest::Connect {
+            id: 12,
+            tickets: vec![vec![4; 3000], vec![5; 10]],
+        },
+        NetRequest::Connect {
+            id: 13,
+            tickets: vec![],
+        },
         NetRequest::SetPacing {
             pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },

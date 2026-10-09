@@ -28,9 +28,14 @@ pub const SPARES: usize = 1;
 /// still running, of the helper and its spares).
 pub struct PipeTransport {
     links: Vec<Link>,
+    /// The ticketbooks the mixnet client was connected with, so a spare
+    /// that takes over connects with them too.
+    tickets: std::sync::Mutex<Option<Vec<Vec<u8>>>>,
 }
 
 struct Link {
+    /// Its mixnet client is connected (or was never waiting for tickets).
+    connected: AtomicBool,
     next: AtomicU32,
     out: mpsc::UnboundedSender<Vec<u8>>,
     pending: Pending,
@@ -98,6 +103,7 @@ impl Link {
             p.lock().await.clear();
         });
         Ok(Self {
+            connected: AtomicBool::new(false),
             next: AtomicU32::new(1),
             out,
             pending,
@@ -118,7 +124,15 @@ impl PipeTransport {
     ) -> std::io::Result<Self> {
         let mut links = vec![Link::spawn(bin, servers, extra)?];
         links.extend((0..SPARES).filter_map(|_| Link::spawn(bin, servers, extra).ok()));
-        Ok(Self { links })
+        // Without --await-tickets every netd's client connects by itself.
+        let waits = extra.iter().any(|a| a == "--await-tickets");
+        for l in &links {
+            l.connected.store(!waits, Ordering::SeqCst);
+        }
+        Ok(Self {
+            links,
+            tickets: std::sync::Mutex::new(None),
+        })
     }
 
     /// netd processes still running.
@@ -135,6 +149,17 @@ impl PipeTransport {
             .iter()
             .find(|l| l.alive.load(Ordering::SeqCst))
             .ok_or(NetError::Unavailable("netd stopped"))?;
+        // A spare taking over connects with the tickets the first had.
+        let tickets = self.tickets.lock().ok().and_then(|t| t.clone());
+        if let Some(t) = tickets
+            && !l.connected.swap(true, Ordering::SeqCst)
+        {
+            Self::send(l, |id| NetRequest::Connect { id, tickets: t }).await?;
+        }
+        Self::send(l, make).await
+    }
+
+    async fn send(l: &Link, make: impl FnOnce(u32) -> NetRequest) -> enclave_net::Result<Vec<u8>> {
         let id = l.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         l.pending.lock().await.insert(id, tx);
@@ -188,6 +213,46 @@ impl Transport for PipeTransport {
             })
             .await?;
         Ok((!b.is_empty()).then_some(b))
+    }
+
+    async fn fetch(
+        &self,
+        method: &str,
+        url: &str,
+        body: Vec<u8>,
+    ) -> enclave_net::Result<(u16, Vec<u8>)> {
+        let (method, url) = (method.to_string(), url.to_string());
+        let b = self
+            .call(|id| NetRequest::Fetch {
+                id,
+                method,
+                url,
+                body,
+            })
+            .await?;
+        if b.len() < 2 {
+            return Err(NetError::BadReply);
+        }
+        Ok((u16::from_be_bytes([b[0], b[1]]), b[2..].to_vec()))
+    }
+
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> enclave_net::Result<Vec<u8>> {
+        let (gate, token) = (gate.to_string(), token.to_vec());
+        self.call(|id| NetRequest::BuyTickets { id, gate, token })
+            .await
+    }
+
+    async fn connect_mixnet(&self, tickets: Vec<Vec<u8>>) -> enclave_net::Result<()> {
+        if let Ok(mut t) = self.tickets.lock() {
+            *t = Some(tickets);
+        }
+        // `call` connects the netd in use first.
+        self.call(|id| NetRequest::Connect {
+            id,
+            tickets: Vec::new(),
+        })
+        .await
+        .map(|_| ())
     }
 
     fn require_private(&self, on: bool) {

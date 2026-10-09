@@ -428,6 +428,19 @@ impl Transport for ShapedTransport {
         self.inner.require_private(on);
     }
 
+    // Outside the shape: Tor carries these, not the mixnet.
+    async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
+        self.inner.fetch(method, url, body).await
+    }
+
+    async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
+        self.inner.buy_tickets(gate, token).await
+    }
+
+    async fn connect_mixnet(&self, tickets: Vec<Vec<u8>>) -> Result<()> {
+        self.inner.connect_mixnet(tickets).await
+    }
+
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> Result<Vec<u8>> {
         self.enqueue(server, request, false, false)
             .await?
