@@ -257,7 +257,7 @@ async fn start_tord(
 
 /// A started `enclave-nymd`: connected, or waiting for its tickets.
 enum Nymd {
-    Ready(enclave_nym::pipe::PipeDriver),
+    Ready(Box<enclave_nym::pipe::PipeDriver>),
     Waiting(Waiting),
 }
 
@@ -307,7 +307,7 @@ async fn start_nymd(
     let driver = enclave_nym::pipe::PipeDriver::new(stdout, stdin)
         .await
         .map_err(|e| format!("enclave-nymd: {e}"))?;
-    Ok((Nymd::Ready(driver), child))
+    Ok((Nymd::Ready(Box::new(driver)), child))
 }
 
 fn main() -> ExitCode {
@@ -404,7 +404,7 @@ fn main() -> ExitCode {
     let (waiting, _child) = match nymd {
         Some((Nymd::Ready(driver), child)) => {
             let n = rt.block_on(async {
-                NymTransport::new(Arc::new(driver), over_nym.clone(), NymTransport::TIMEOUT)
+                NymTransport::new(Arc::new(*driver), over_nym.clone(), NymTransport::TIMEOUT)
             });
             let _ = nym.set(n);
             (None, Some(child))

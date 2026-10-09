@@ -508,16 +508,40 @@ async fn clients_over_the_mixnet() {
     );
     ben.accept(&ada.root()).await.unwrap();
     ada.sync().await.unwrap();
+    // Writes go one way: what was sent may still be crossing the (fake)
+    // mixnet when the other side polls, so poll a few times.
     ada.send_text(&ben.root(), "over the mixnet").await.unwrap();
-    let ev = ben.sync().await.unwrap();
+    let mut got = Vec::new();
+    for _ in 0..50 {
+        got.extend(ben.sync().await.unwrap());
+        if got.iter().any(
+            |e| matches!(e, Event::Message { message, .. } if message.text == "over the mixnet"),
+        ) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert!(
-        ev.iter().any(
+        got.iter().any(
             |e| matches!(e, Event::Message { message, .. } if message.text == "over the mixnet")
         ),
-        "{ev:?}"
+        "{got:?}"
     );
     ben.send_text(&ada.root(), "and back").await.unwrap();
-    ada.sync().await.unwrap();
+    let delivered = |ada: &Client| {
+        ada.messages(&ben.root())
+            .unwrap()
+            .into_iter()
+            .find(|m| m.text == "over the mixnet")
+            .is_some_and(|m| m.delivered)
+    };
+    for _ in 0..50 {
+        ada.sync().await.unwrap();
+        if delivered(&ada) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     let mine = ada.messages(&ben.root()).unwrap();
     let m = mine.iter().find(|m| m.text == "over the mixnet").unwrap();
     assert!(m.delivered, "Ben's receipt rode on his answer: {m:?}");
