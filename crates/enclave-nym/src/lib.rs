@@ -166,6 +166,13 @@ pub trait MixnetDriver: Send + Sync {
     async fn tickets_spent(&self) -> Result<u64> {
         Ok(0)
     }
+    /// One request to `host:port` over the client's Tor in the server's
+    /// length-prefixed framing, and its reply: the fallback route to a
+    /// stack's onion service (`docs/09-transport.md` §7).
+    async fn exchange_tor(&self, host: &str, port: u16, request: Vec<u8>) -> Result<Vec<u8>> {
+        let _ = (host, port, request);
+        Err(NymError::Client("this client has no Tor".into()))
+    }
 }
 
 /// A zk-nym ticketbook a device holds (`docs/09-transport.md` §7): how

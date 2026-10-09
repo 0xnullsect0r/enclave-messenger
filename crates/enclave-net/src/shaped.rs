@@ -428,6 +428,10 @@ impl Transport for ShapedTransport {
         self.inner.require_private(on);
     }
 
+    fn use_fallback(&self, on: bool) {
+        self.inner.use_fallback(on);
+    }
+
     // Outside the shape: Tor carries these, not the mixnet.
     async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
         self.inner.fetch(method, url, body).await

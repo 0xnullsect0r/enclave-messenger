@@ -301,7 +301,7 @@ Other crates:
 
 #### N4: fallback, measurement, gate report
 
-- **Fallback:** `enclave-ingress onion` (an arti onion service), with the descriptor's `onion` field filled and the consent sheet "Backup route: slower to hide who you talk to". It is never used in Maximum.
+- **Fallback:** `enclave-ingress onion` (an arti onion service), with the descriptor's `onion` field filled and the consent sheet "Backup route: slower to hide who you talk to". It is never used in Maximum. Done as `enclave-onion` (crate `enclave-tord`, compose profile `onion`), `Route::Onion`, nymd pipe frame 11, netd `UseFallback`, and the app's notices (`09` §7); live check nightly (`onion-smoke`).
 - **Censorship mode:** obfs4 through `ptrs` in-process. Snowflake and WebTunnel run as declared Go-subprocess exceptions (IPtProxy on iOS), only in censorship mode, with "Try a bridge?" detection (`09` §7).
 - **Measurement:** `enclave-e2e bench` (RSS, cold connect, throughput, packets per class, bytes per hour, credential cost), plus a hidden **Network diagnostics** screen on mobile that exports JSON. Bench done as `live_bench` (`nym/enclave-nym-sdk/examples`): local mixnet in CI, sandbox nightly and mainnet weekly through Tor with the cost check (`nym-live.yml`; funded accounts are G7). Packets per class and bytes per hour come from the pcap shape check. The diagnostics screen waits for A1/I1.
 - Workflow `nym-live.yml`: the sandbox nightly and mainnet weekly. Done (jobs `tor-smoke` and `nym-bench`).

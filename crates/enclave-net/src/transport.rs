@@ -82,6 +82,11 @@ pub trait Transport: Send + Sync {
     /// fallback, and nothing at all without Tor in front of the mixnet.
     /// Requests that would break that fail instead.
     fn require_private(&self, _on: bool) {}
+    /// Reach servers that have an onion route ([`Route::Onion`]) over it
+    /// from now on (`on`), or over the mixnet again: the fallback route,
+    /// only ever with the user's consent, and ignored in Maximum privacy
+    /// (`docs/09-transport.md` §7). Transports without one ignore it.
+    fn use_fallback(&self, _on: bool) {}
     /// Wait, for at most `within`, until everything sent so far has left
     /// this device (over the mixnet: reached the far gateway). Called
     /// before exiting, since a one-way send still queued is lost with the
@@ -143,11 +148,22 @@ pub enum Route {
     Tcp(SocketAddr),
     /// Over the mixnet, to the server's ingress: `nym:ADDRESS`.
     Nym(String),
+    /// The fallback route, over Tor to the stack's onion service:
+    /// `onion:HOST.onion` (port [`ONION_PORT`]). Used only with the user's
+    /// consent and never in Maximum privacy (`docs/09-transport.md` §7).
+    Onion(String),
 }
 
+/// The port of a stack's onion service (`enclave-onion`).
+pub const ONION_PORT: u16 = 7443;
+
 impl Route {
-    /// Parse `HOST:PORT` or `nym:ADDRESS`.
+    /// Parse `HOST:PORT`, `nym:ADDRESS` or `onion:HOST.onion`.
     pub fn parse(s: &str) -> Option<Self> {
+        if let Some(h) = s.strip_prefix("onion:") {
+            return (h.len() > ".onion".len() && h.ends_with(".onion") && !h.contains(':'))
+                .then(|| Route::Onion(h.into()));
+        }
         match s.strip_prefix("nym:") {
             Some(a) if !a.is_empty() => Some(Route::Nym(a.into())),
             Some(_) => None,
@@ -161,6 +177,7 @@ impl std::fmt::Display for Route {
         match self {
             Route::Tcp(a) => write!(f, "{a}"),
             Route::Nym(a) => write!(f, "nym:{a}"),
+            Route::Onion(h) => write!(f, "onion:{h}"),
         }
     }
 }
@@ -467,6 +484,15 @@ impl GatewayPath {
 
 #[cfg(feature = "nym")]
 impl NymTransport {
+    /// One request to a stack's onion service over the mixnet client's Tor
+    /// (the fallback route), and its reply.
+    pub async fn exchange_tor(&self, host: &str, request: Vec<u8>) -> Result<Vec<u8>> {
+        self.driver
+            .exchange_tor(host, ONION_PORT, request)
+            .await
+            .map_err(|e| NetError::Unreachable(e.to_string()))
+    }
+
     /// How long a request waits for its reply by default.
     pub const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 

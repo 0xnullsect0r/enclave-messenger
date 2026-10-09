@@ -17,6 +17,7 @@
 //!            8 ‖ u16 len ‖ method ‖ u16 len ‖ url ‖ body       fetch (through Tor)
 //!            9 ‖ u16 len ‖ gate ‖ token                        buy a ticketbook
 //!            10                                                tickets spent so far
+//!            11 ‖ u16 len ‖ host ‖ u16 port ‖ request          an exchange over Tor
 //! from nymd: 1 ‖ address                                       ready (first, and
 //!                                                              after a switch)
 //!            2 ‖ u8 has_tag ‖ [tag (16)] ‖ data                a message
@@ -26,9 +27,14 @@
 //!            8 ‖ 0 ‖ u16 status ‖ body | 8 ‖ 1 ‖ reason        fetched or not
 //!            9 ‖ 0 ‖ held ticketbook | 9 ‖ 1 ‖ reason          bought or not
 //!            10 ‖ 0 ‖ u64 spent                                the count
+//!            11 ‖ 0 ‖ reply | 11 ‖ 1 ‖ reason                  exchanged or not
 //! ```
 //!
-//! Started with `--await-tickets`, nymd answers 6, 8 and 9 before it
+//! Frame 11 is the fallback route (`docs/09-transport.md` §7): one request
+//! in the server's length-prefixed framing to a stack's onion service,
+//! through nymd's Tor, and its reply. It works before nymd connects too.
+//!
+//! Started with `--await-tickets`, nymd answers 6, 8, 9 and 11 before it
 //! connects, and connects on 7 with the ticketbooks it was given
 //! ([`PipeDriver::start`]): a device can buy its first ones over Tor before
 //! a gateway that wants them would refuse it. Fetches and purchases also
@@ -94,6 +100,21 @@ fn buy_frame(gate: &str, token: &[u8]) -> Result<Vec<u8>> {
     Ok(b)
 }
 
+/// Frame 11: an exchange over Tor.
+fn tor_frame(host: &str, port: u16, request: &[u8]) -> Result<Vec<u8>> {
+    let mut b = vec![11u8];
+    lp16(&mut b, host.as_bytes())?;
+    b.extend_from_slice(&port.to_be_bytes());
+    b.extend_from_slice(request);
+    Ok(b)
+}
+
+fn parse_tor(mut rest: &[u8]) -> Option<(String, u16, Vec<u8>)> {
+    let host = String::from_utf8(take16(&mut rest)?.to_vec()).ok()?;
+    let port = u16::from_be_bytes([*rest.first()?, *rest.get(1)?]);
+    Some((host, port, rest[2..].to_vec()))
+}
+
 fn parse_buy(mut rest: &[u8]) -> Option<(String, Vec<u8>)> {
     let gate = String::from_utf8(take16(&mut rest)?.to_vec()).ok()?;
     Some((gate, rest.to_vec()))
@@ -126,6 +147,11 @@ pub trait Purchaser: Send + Sync {
     async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)>;
     /// One ticketbook for one token.
     async fn buy(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>>;
+    /// One request to `host:port` over Tor, and its reply (frame 11).
+    async fn exchange_tor(&self, host: &str, port: u16, request: Vec<u8>) -> Result<Vec<u8>> {
+        let _ = (host, port, request);
+        Err(NymError::Client("no Tor here".into()))
+    }
 }
 
 /// Answer frame 8 or 9 with `p`.
@@ -148,6 +174,15 @@ async fn purchase(p: &dyn Purchaser, b: &[u8]) -> Option<Vec<u8>> {
                 p.buy(&gate, &token).await.map_err(|e| e.to_string()),
             ))
         }
+        Some((11, rest)) => {
+            let (host, port, request) = parse_tor(rest)?;
+            Some(answer_frame(
+                11,
+                p.exchange_tor(&host, port, request)
+                    .await
+                    .map_err(|e| e.to_string()),
+            ))
+        }
         _ => None,
     }
 }
@@ -162,6 +197,9 @@ impl Purchaser for ViaDriver {
     }
     async fn buy(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {
         self.0.buy_tickets(gate, token).await
+    }
+    async fn exchange_tor(&self, host: &str, port: u16, request: Vec<u8>) -> Result<Vec<u8>> {
+        self.0.exchange_tor(host, port, request).await
     }
 }
 
@@ -183,7 +221,7 @@ where
         match b.split_first() {
             Some((6, t)) => tickets.push(t.to_vec()),
             Some((7, [])) => return Some(tickets),
-            Some((8 | 9, _)) => {
+            Some((8 | 9 | 11, _)) => {
                 let answer = purchase(purchaser, &b).await?;
                 write_frame(writer, &answer).await.ok()?;
             }
@@ -268,6 +306,12 @@ where
         self.call(&f, 9).await
     }
 
+    /// One request to `host:port` over nymd's Tor, and its reply.
+    pub async fn exchange_tor(&mut self, host: &str, port: u16, request: &[u8]) -> Result<Vec<u8>> {
+        let f = tor_frame(host, port, request)?;
+        self.call(&f, 11).await
+    }
+
     /// Connect with these ticketbooks, and drive the client.
     pub async fn connect(mut self, tickets: &[Vec<u8>]) -> Result<PipeDriver> {
         for t in tickets {
@@ -332,7 +376,7 @@ impl PipeDriver {
                         answer(if *ok == 0 { Ok(text) } else { Err(text) });
                         continue;
                     }
-                    Some((kind @ (8..=10), [ok, v @ ..])) => {
+                    Some((kind @ (8..=11), [ok, v @ ..])) => {
                         let waiting = call_waiter.lock().ok().and_then(|mut w| w.take());
                         if let Some((k, w)) = waiting
                             && k == *kind
@@ -477,6 +521,11 @@ impl MixnetDriver for PipeDriver {
         self.call(&f, 9).await
     }
 
+    async fn exchange_tor(&self, host: &str, port: u16, request: Vec<u8>) -> Result<Vec<u8>> {
+        let f = tor_frame(host, port, &request)?;
+        self.call(&f, 11).await
+    }
+
     async fn tickets_spent(&self) -> Result<u64> {
         let v = self.call(&[10], 10).await?;
         Ok(u64::from_be_bytes(
@@ -591,7 +640,7 @@ pub async fn serve(
                     let _ = write_frame(&mut *writer.lock().await, &answer).await;
                 });
             }
-            Some((8 | 9, _)) => {
+            Some((8 | 9 | 11, _)) => {
                 let writer = Arc::clone(&writer);
                 tokio::spawn(async move {
                     if let Some(answer) = purchase(&ViaDriver(driver), &b).await {
@@ -715,6 +764,8 @@ mod tests {
         // Fetching through a client that can't comes back as an error.
         assert!(pipe.fetch("GET", "https://x", vec![]).await.is_err());
         assert!(pipe.buy_tickets("https://x", b"t").await.is_err());
+        // And so does an exchange over Tor without Tor.
+        assert!(pipe.exchange_tor("abc.onion", 7443, vec![1]).await.is_err());
     }
 
     struct Shop;
@@ -732,6 +783,9 @@ mod tests {
                 return Err(NymError::Client("no token".into()));
             }
             Ok([gate.as_bytes(), token].concat())
+        }
+        async fn exchange_tor(&self, host: &str, port: u16, request: Vec<u8>) -> Result<Vec<u8>> {
+            Ok([host.as_bytes(), &port.to_be_bytes(), &request].concat())
         }
     }
 
@@ -761,6 +815,14 @@ mod tests {
         let book = starting.buy("https://gate", b"token").await.unwrap();
         assert_eq!(book, b"https://gatetoken");
         assert!(starting.buy("https://gate", b"").await.is_err());
+        // The fallback route works before connecting too.
+        assert_eq!(
+            starting
+                .exchange_tor("abc.onion", 7443, &[9; 2048])
+                .await
+                .unwrap(),
+            [&b"abc.onion"[..], &7443u16.to_be_bytes(), &[9; 2048]].concat()
+        );
         let pipe = starting
             .connect(&[book.clone(), vec![7; 300_000]])
             .await

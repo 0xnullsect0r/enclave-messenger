@@ -308,6 +308,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_recovery_alert(s.recovery_alert.clone().into());
     ui.set_username_problem(s.username_problem.clone().into());
     ui.set_kt_split(s.kt_split.clone().into());
+    ui.set_route(i32::from(s.route));
     ui.set_clock_skew(s.clock_skew.clone().into());
     ui.set_joining(s.joining.join(", ").into());
     ui.set_restore_error(s.restore_error.clone().into());

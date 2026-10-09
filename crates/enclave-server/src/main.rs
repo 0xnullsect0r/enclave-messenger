@@ -396,7 +396,7 @@ async fn run(args: &[String]) -> Result<(), String> {
         let server = Arc::clone(&server);
         let keys = Arc::clone(&keys);
         let cfg = cfg.clone();
-        let mut published_nym = ingress_address(&cfg);
+        let mut published = (ingress_address(&cfg), onion_address(&cfg));
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(60));
             loop {
@@ -421,12 +421,13 @@ async fn run(args: &[String]) -> Result<(), String> {
                     Ok(false) => {}
                     Err(e) => eprintln!("request-key rotation failed: {e}"),
                 }
-                // The ingress connected (or moved): a descriptor naming it.
-                let nym = ingress_address(&cfg);
-                if nym != published_nym {
+                // The ingress connected (or moved), or the onion service
+                // came up: a descriptor naming them.
+                let now_at = (ingress_address(&cfg), onion_address(&cfg));
+                if now_at != published {
                     let mut s = server.lock().await;
                     match publish_descriptor(&cfg, &k, &mut s) {
-                        Ok(()) => published_nym = nym,
+                        Ok(()) => published = now_at,
                         Err(e) => eprintln!("descriptor failed: {e}"),
                     }
                 }
@@ -528,6 +529,14 @@ fn ingress_address(cfg: &FileConfig) -> String {
         .unwrap_or_default()
 }
 
+/// The onion address of the stack's fallback route (`enclave-onion`, which
+/// writes `public_dir/onion.addr`); empty without one.
+fn onion_address(cfg: &FileConfig) -> String {
+    std::fs::read_to_string(cfg.server.public_dir.join("onion.addr"))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
 /// Today's descriptor: valid two days, today's and tomorrow's request keys.
 fn sign_descriptor(
     cfg: &FileConfig,
@@ -542,7 +551,7 @@ fn sign_descriptor(
         &cfg.server.operator,
         &cfg.server.family,
         &ingress_address(cfg),
-        "",
+        &onion_address(cfg),
         cfg.published_policy(),
         kt,
         &[

@@ -7,8 +7,9 @@
 #
 # `server` holds every service an operator's stack runs except the Nym
 # sidecar: enclave-server, enclave-witness, enclave-front, enclave-relay,
-# enclave-push-relay, enclave-admin and enclave-credgate (the foundation's
-# credential gate, compose profile `foundation`). The compose file picks the binary
+# enclave-push-relay, enclave-admin, enclave-credgate (the foundation's
+# credential gate, compose profile `foundation`) and enclave-onion (the
+# fallback route's onion service, profile `onion`). The compose file picks the binary
 # per service. The runtime is distroless (no shell, no package manager) and
 # runs as the unprivileged `nonroot` user.
 #
@@ -37,17 +38,18 @@ RUN --mount=type=cache,target=/cargo/registry \
     cargo build --release --locked \
       -p enclave-server -p enclave-witness -p enclave-front \
       -p enclave-relay -p enclave-push-relay -p enclave-admin -p enclave-credgate \
+      -p enclave-tord --features enclave-tord/onion-service --bins \
  && mkdir -p /out \
  && cp target/release/enclave-server target/release/enclave-witness \
        target/release/enclave-front target/release/enclave-relay \
        target/release/enclave-push-relay target/release/enclave-admin \
-       target/release/enclave-credgate /out/
+       target/release/enclave-credgate target/release/enclave-onion /out/
 # State directories, owned by `nonroot` (65532), so the named volumes
 # mounted on them start out writable; key directories owner-only.
 RUN cd /var/lib && mkdir -p enclave \
- && cd enclave && mkdir server public backups witness front relay credgate \
+ && cd enclave && mkdir server public backups witness front relay credgate onion \
       keys witness-keys relay-keys push-keys credgate-keys \
- && chmod 0700 keys witness-keys relay-keys push-keys credgate-keys \
+ && chmod 0700 keys witness-keys relay-keys push-keys credgate-keys onion \
  && chown -R 65532:65532 /var/lib/enclave
 
 FROM ${RUNTIME_IMAGE} AS server

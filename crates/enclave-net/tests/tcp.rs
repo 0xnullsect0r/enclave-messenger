@@ -126,6 +126,18 @@ async fn routes_parse_and_are_learned() {
     assert!(parse_route("0011=127.0.0.1:1").is_none());
     let (_, r) = parse_route(&format!("{hex}=127.0.0.1:7443")).unwrap();
     assert_eq!(Route::parse(&r.to_string()), Some(r));
+    // An onion service: a `.onion` host, no port.
+    let (_, r) = parse_route(&format!("{hex}=onion:abcdef.onion")).unwrap();
+    assert_eq!(r, Route::Onion("abcdef.onion".into()));
+    assert_eq!(Route::parse(&r.to_string()), Some(r));
+    for bad in [
+        "onion:",
+        "onion:.onion",
+        "onion:example.com",
+        "onion:abc.onion:7443",
+    ] {
+        assert_eq!(Route::parse(bad), None, "{bad}");
+    }
 
     let (addr, real) = spawn_server().await;
     let t = TcpTransport::new(HashMap::new());

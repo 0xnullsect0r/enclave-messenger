@@ -28,15 +28,17 @@ use std::sync::Arc;
 /// How long netd waits on exit for what was sent to leave.
 const EXIT_FLUSH: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// `--server` routes: TCP addresses and Nym addresses.
+/// `--server` routes: TCP addresses, Nym addresses and onion services.
 fn parse_servers(
     args: &[String],
 ) -> (
     HashMap<ServerId, std::net::SocketAddr>,
     HashMap<ServerId, String>,
+    HashMap<ServerId, String>,
 ) {
     let mut tcp = HashMap::new();
     let mut nym = HashMap::new();
+    let mut onion = HashMap::new();
     for p in args.windows(2).filter(|p| p[0] == "--server") {
         match enclave_net::transport::parse_route(&p[1]) {
             Some((id, Route::Tcp(a))) => {
@@ -45,10 +47,13 @@ fn parse_servers(
             Some((id, Route::Nym(a))) => {
                 nym.insert(id, a);
             }
+            Some((id, Route::Onion(h))) => {
+                onion.insert(id, h);
+            }
             None => eprintln!("enclave-netd: --server {}: not a route", p[1]),
         }
     }
-    (tcp, nym)
+    (tcp, nym, onion)
 }
 
 /// Each server over the transport its route names.
@@ -72,9 +77,38 @@ struct Routed {
     /// Maximum privacy (`Transport::require_private`): the mixnet behind
     /// Tor only.
     private: std::sync::atomic::AtomicBool,
+    /// Servers' onion services (from their descriptors): the fallback
+    /// route, carried by nymd over its Tor.
+    onion: std::sync::RwLock<HashMap<ServerId, String>>,
+    /// The user chose the fallback route (`Transport::use_fallback`).
+    fallback: std::sync::atomic::AtomicBool,
 }
 
 impl Routed {
+    /// The onion service to reach `server` at, when the user chose the
+    /// fallback route and Maximum privacy is off.
+    fn onion_for(&self, server: &ServerId) -> Option<String> {
+        use std::sync::atomic::Ordering::SeqCst;
+        if !self.fallback.load(SeqCst) || self.private.load(SeqCst) {
+            return None;
+        }
+        self.onion.read().ok()?.get(server).cloned()
+    }
+
+    /// One request over the fallback route (nymd's Tor), connected or not.
+    async fn via_tor(&self, host: &str, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+        if let Some(n) = self.nym.get() {
+            return n.exchange_tor(host, request).await;
+        }
+        match self.waiting.lock().await.as_mut() {
+            Some(w) => w
+                .exchange_tor(host, enclave_net::transport::ONION_PORT, &request)
+                .await
+                .map_err(|e| NetError::Unreachable(e.to_string())),
+            None => Err(NetError::Unavailable("no Tor")),
+        }
+    }
+
     fn pick(&self, server: &ServerId) -> enclave_net::Result<&dyn Transport> {
         let private = self.private.load(std::sync::atomic::Ordering::SeqCst);
         let over_nym = self
@@ -107,10 +141,17 @@ type Waiting = enclave_nym::pipe::Starting<
 #[async_trait::async_trait]
 impl Transport for Routed {
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+        if let Some(h) = self.onion_for(server) {
+            return self.via_tor(&h, request).await;
+        }
         self.pick(server)?.exchange(server, request).await
     }
 
     async fn server_key(&self, server: &ServerId) -> enclave_net::Result<enclave_rpc::ServerKey> {
+        if let Some(h) = self.onion_for(server) {
+            let bundle = self.via_tor(&h, Vec::new()).await?;
+            return enclave_net::transport::verify_key_bundle(server, &bundle, self.now());
+        }
         self.pick(server)?.server_key(server).await
     }
 
@@ -119,7 +160,14 @@ impl Transport for Routed {
         server: &ServerId,
         request: Vec<u8>,
     ) -> enclave_net::Result<Option<Vec<u8>>> {
+        if let Some(h) = self.onion_for(server) {
+            return self.via_tor(&h, request).await.map(Some);
+        }
         self.pick(server)?.exchange_oneway(server, request).await
+    }
+
+    fn use_fallback(&self, on: bool) {
+        self.fallback.store(on, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn set_pacing(&self, pacing: enclave_net::transport::Pacing) {
@@ -199,6 +247,16 @@ impl Transport for Routed {
     }
 
     fn set_route(&self, server: ServerId, route: Route) {
+        // An onion service is kept aside, for when the user chooses the
+        // fallback route; it needs nymd (and its Tor) to carry it.
+        if let Route::Onion(h) = &route {
+            if self.has_nym
+                && let Ok(mut o) = self.onion.write()
+            {
+                o.insert(server, h.clone());
+            }
+            return;
+        }
         let nym = matches!(route, Route::Nym(_));
         // Maximum privacy takes no route but the mixnet.
         if !nym && self.private.load(std::sync::atomic::Ordering::SeqCst) {
@@ -313,7 +371,7 @@ async fn start_nymd(
 fn main() -> ExitCode {
     let _ = enclave_sandbox::process();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (tcp, over_nym) = parse_servers(&args);
+    let (tcp, over_nym, onion) = parse_servers(&args);
     let Ok(rt) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -417,6 +475,8 @@ fn main() -> ExitCode {
         tcp_allowed,
         tor: tor.is_some(),
         private: std::sync::atomic::AtomicBool::new(false),
+        onion: std::sync::RwLock::new(if has_nym { onion } else { HashMap::new() }),
+        fallback: std::sync::atomic::AtomicBool::new(false),
         over_nym: std::sync::RwLock::new(if has_nym {
             over_nym.keys().copied().collect()
         } else {
@@ -453,6 +513,10 @@ fn main() -> ExitCode {
                 }
                 Ok(NetRequest::RequirePrivate { on }) => {
                     transport.require_private(on);
+                    continue;
+                }
+                Ok(NetRequest::UseFallback { on }) => {
+                    transport.use_fallback(on);
                     continue;
                 }
                 Ok(NetRequest::SetRoute { server, route }) => {
@@ -524,7 +588,8 @@ fn main() -> ExitCode {
                     ),
                     NetRequest::SetRoute { .. }
                     | NetRequest::SetPacing { .. }
-                    | NetRequest::RequirePrivate { .. } => return,
+                    | NetRequest::RequirePrivate { .. }
+                    | NetRequest::UseFallback { .. } => return,
                 };
                 let _ = tx.send(NetReply { id, result }.encode());
             };
@@ -571,6 +636,8 @@ mod tests {
             over_nym: std::sync::RwLock::new(HashSet::from([over_nym])),
             tor,
             private: std::sync::atomic::AtomicBool::new(false),
+            onion: std::sync::RwLock::new(HashMap::new()),
+            fallback: std::sync::atomic::AtomicBool::new(false),
         };
         (r, over_nym, over_tcp)
     }
@@ -591,6 +658,71 @@ mod tests {
         async fn buy(&self, _: &str, token: &[u8]) -> enclave_nym::Result<Vec<u8>> {
             Ok(token.to_vec())
         }
+        async fn exchange_tor(
+            &self,
+            host: &str,
+            port: u16,
+            request: Vec<u8>,
+        ) -> enclave_nym::Result<Vec<u8>> {
+            Ok([host.as_bytes(), &port.to_be_bytes(), &request].concat())
+        }
+    }
+
+    /// The fallback route (a server's onion service, through nymd's Tor)
+    /// is used only once the user chose it, never in Maximum privacy, and
+    /// works while the mixnet client still waits for its tickets.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_fallback_route_needs_consent() {
+        let (a, b) = tokio::io::duplex(1 << 20);
+        let (ar, aw) = tokio::io::split(a);
+        let (mut br, mut bw) = tokio::io::split(b);
+        tokio::spawn(
+            async move { enclave_nym::pipe::serve_starting(&Shop, &mut br, &mut bw).await },
+        );
+        let id: ServerId = [3; 16];
+        let r = Routed {
+            tcp: TcpTransport::new(HashMap::new()),
+            tcp_allowed: false,
+            nym: std::sync::OnceLock::new(),
+            has_nym: true,
+            waiting: tokio::sync::Mutex::new(Some(enclave_nym::pipe::Starting::new(
+                Box::new(ar),
+                Box::new(aw),
+            ))),
+            pending_routes: std::sync::Mutex::new(HashMap::new()),
+            over_nym: std::sync::RwLock::new(HashSet::new()),
+            tor: true,
+            private: std::sync::atomic::AtomicBool::new(false),
+            onion: std::sync::RwLock::new(HashMap::new()),
+            fallback: std::sync::atomic::AtomicBool::new(false),
+        };
+        r.set_route(id, Route::Nym("ingress".into()));
+        r.set_route(id, Route::Onion("stack.onion".into()));
+        let unavailable =
+            |x: enclave_net::Result<Vec<u8>>| matches!(x, Err(NetError::Unavailable(_)));
+        // Not chosen: the mixnet (still waiting).
+        assert!(unavailable(r.exchange(&id, vec![1; 4]).await));
+        // Chosen: over Tor to the onion service's port.
+        r.use_fallback(true);
+        let over_tor = [
+            &b"stack.onion"[..],
+            &enclave_net::transport::ONION_PORT.to_be_bytes(),
+            &[1; 4],
+        ]
+        .concat();
+        assert_eq!(r.exchange(&id, vec![1; 4]).await.unwrap(), over_tor);
+        assert_eq!(
+            r.exchange_oneway(&id, vec![1; 4]).await.unwrap(),
+            Some(over_tor)
+        );
+        // A server without an onion service isn't reached over Tor.
+        assert!(r.exchange(&[4; 16], vec![1; 4]).await.is_err());
+        // Maximum privacy ignores the choice.
+        r.require_private(true);
+        assert!(unavailable(r.exchange(&id, vec![1; 4]).await));
+        r.require_private(false);
+        r.use_fallback(false);
+        assert!(unavailable(r.exchange(&id, vec![1; 4]).await));
     }
 
     /// With `--await-tickets`: Nym routes wait for the client, which
@@ -626,6 +758,8 @@ mod tests {
             over_nym: std::sync::RwLock::new(HashSet::new()),
             tor: true,
             private: std::sync::atomic::AtomicBool::new(false),
+            onion: std::sync::RwLock::new(HashMap::new()),
+            fallback: std::sync::atomic::AtomicBool::new(false),
         };
         r.set_route(id, Route::Nym("ingress".into()));
         assert!(matches!(

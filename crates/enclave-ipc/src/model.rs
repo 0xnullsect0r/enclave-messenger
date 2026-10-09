@@ -273,6 +273,10 @@ pub struct Snapshot {
     /// The open conversation's contact changed their recovery words:
     /// 0 no, 1 confirmed by their old key, 2 not confirmed.
     pub moved: u8,
+    /// The route to the home server (`docs/09-transport.md` §7): 0 the
+    /// mixnet, 1 the mixnet is unreachable and the backup route (Tor to the
+    /// server's onion service) can be offered, 2 on the backup route.
+    pub route: u8,
 }
 
 /// UI → vault.
@@ -409,6 +413,9 @@ pub enum Cmd {
     ChangeWords,
     /// Play the clip at a message: conversation, position.
     PlayClip(String, u64),
+    /// Use the backup route (true), or the mixnet again (false: "Keep
+    /// waiting", "Back to the private route").
+    BackupRoute(bool),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -663,7 +670,8 @@ impl Snapshot {
             .bool(self.typing)
             .bool(self.can_change_words)
             .bool(self.words_pending)
-            .u8(self.moved);
+            .u8(self.moved)
+            .u8(self.route);
         w.0
     }
 
@@ -851,6 +859,7 @@ impl Snapshot {
             can_change_words: r.bool()?,
             words_pending: r.bool()?,
             moved: r.u8()?,
+            route: r.u8()?,
         };
         r.end()?;
         Ok(s)
@@ -930,6 +939,7 @@ impl Cmd {
             Cmd::Typing(c, on) => w.u8(60).str(c).bool(*on),
             Cmd::ChangeWords => w.u8(61),
             Cmd::PlayClip(c, s) => w.u8(62).str(c).u64(*s),
+            Cmd::BackupRoute(on) => w.u8(63).bool(*on),
         };
         w.0
     }
@@ -1004,6 +1014,7 @@ impl Cmd {
             60 => Cmd::Typing(r.str()?, r.bool()?),
             61 => Cmd::ChangeWords,
             62 => Cmd::PlayClip(r.str()?, r.u64()?),
+            63 => Cmd::BackupRoute(r.bool()?),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

@@ -301,6 +301,7 @@ async fn world(args: &[String]) -> R<World> {
                 nym.insert(id, a);
                 servers.push(id);
             }
+            (_, Route::Onion(_)) => return Err(format!("--servers: {s}: TCP or Nym only")),
         }
     }
     if !tcp.is_empty() && !nym.is_empty() {

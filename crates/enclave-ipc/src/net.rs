@@ -98,6 +98,13 @@ pub enum NetRequest {
         /// Request number.
         id: u32,
     },
+    /// Use the fallback route (servers' onion services, over Tor) for
+    /// servers that have one, or the mixnet again
+    /// (`Transport::use_fallback`). No reply.
+    UseFallback {
+        /// On or off.
+        on: bool,
+    },
 }
 
 /// netd → vault.
@@ -151,6 +158,9 @@ impl NetRequest {
             }
             NetRequest::TicketsSpent { id } => {
                 w.u8(10).u32(*id);
+            }
+            NetRequest::UseFallback { on } => {
+                w.u8(11).u8(u8::from(*on));
             }
         }
         w.0
@@ -213,6 +223,13 @@ impl NetRequest {
                 NetRequest::Connect { id, tickets }
             }
             10 => NetRequest::TicketsSpent { id: r.u32()? },
+            11 => NetRequest::UseFallback {
+                on: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(IpcError::Malformed),
+                },
+            },
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

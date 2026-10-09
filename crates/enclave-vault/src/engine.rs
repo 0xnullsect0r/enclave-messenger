@@ -24,6 +24,9 @@ const TICK: Duration = Duration::from_secs(3);
 const TICKET_UPKEEP_ROUNDS: u64 = 100;
 /// After a failed start of the mixnet client, wait this long to try again.
 const MIXNET_RETRY: u64 = 60;
+/// Failed sync rounds in a row (about a minute) before the backup route
+/// is offered.
+const OFFER_BACKUP_AFTER: u32 = 20;
 
 /// Where the account lives.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -291,6 +294,13 @@ struct Engine {
     mixnet_retry_at: u64,
     /// Tickets bought before there was a profile to keep them in.
     prewallet: Option<TicketWallet>,
+    /// Sync rounds that failed on the network, in a row.
+    net_failures: u32,
+    /// On the backup route (the user chose it).
+    backup_route: bool,
+    /// The user said "Keep waiting": not offered again until the mixnet
+    /// has worked once more.
+    backup_declined: bool,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -644,8 +654,10 @@ pub async fn run_with(
                             Route::Tcp(a) => {
                                 routes.insert(s, *a);
                             }
-                            Route::Nym(_) => {
-                                eprintln!("enclave-vault: no netd, so no mixnet route to a server");
+                            Route::Nym(_) | Route::Onion(_) => {
+                                eprintln!(
+                                    "enclave-vault: no netd, so no mixnet or Tor route to a server"
+                                );
                             }
                         }
                     }
@@ -715,6 +727,9 @@ pub async fn run_with(
         mixnet_up: false,
         mixnet_retry_at: 0,
         prewallet: None,
+        net_failures: 0,
+        backup_route: false,
+        backup_declined: false,
         out,
     };
     // Reopen an existing profile.
@@ -2162,6 +2177,18 @@ impl Engine {
                     });
                 }
             }
+            Cmd::BackupRoute(on) => {
+                let maximum = self
+                    .client
+                    .as_ref()
+                    .is_some_and(|c| matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
+                self.backup_route = on && !maximum;
+                if !on {
+                    self.backup_declined = true;
+                }
+                self.net_failures = 0;
+                self.transport.use_fallback(self.backup_route);
+            }
             Cmd::Privacy(p) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_setting("privacy", &[p as u8]);
@@ -2310,6 +2337,11 @@ impl Engine {
         let maximum = matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]);
         c.set_maximum(maximum);
         self.transport.require_private(maximum);
+        // Maximum never uses the backup route.
+        if maximum && self.backup_route {
+            self.backup_route = false;
+            self.transport.use_fallback(false);
+        }
         if let Some(s) = &self.shaper {
             s.set_shaping(Shaping::On(if maximum {
                 Profile::Maximum
@@ -2431,6 +2463,13 @@ impl Engine {
             } else {
                 c.sync().await
             };
+            // Whether the network carried this round (for the backup
+            // route's offer).
+            let result_kind = match &result {
+                Ok(_) => Some(true),
+                Err(CoreError::Net(_)) => Some(false),
+                Err(_) => None,
+            };
             match result {
                 Ok(events) => {
                     if !events.is_empty() {
@@ -2484,6 +2523,14 @@ impl Engine {
                     }
                 }
                 Err(_) => self.status = "Offline. Messages will send when you're back.".into(),
+            }
+            match result_kind {
+                Some(true) => {
+                    self.net_failures = 0;
+                    self.backup_declined = false;
+                }
+                Some(false) => self.net_failures = self.net_failures.saturating_add(1),
+                None => {}
             }
         }
         if let Some(d) = self.demo.as_mut()
@@ -2646,6 +2693,22 @@ impl Engine {
         }
         s.recovery_saved = matches!(c.setting("recovery-saved"), Ok(Some(v)) if v == [1]);
         s.privacy = i32::from(matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
+        // The backup route: offered after a minute without the mixnet, when
+        // the home server has an onion service and Maximum is off.
+        s.route = if self.backup_route {
+            2
+        } else if self.net_failures >= OFFER_BACKUP_AFTER
+            && !self.backup_declined
+            && s.privacy != 1
+            && c.server_descriptor(&self.server)
+                .ok()
+                .flatten()
+                .is_some_and(|d| !d.onion.is_empty())
+        {
+            1
+        } else {
+            0
+        };
         let mut rows: Vec<(u64, Row)> = Vec::new();
         for ct in c.contacts() {
             let blocked = c.is_blocked(&ct.root);

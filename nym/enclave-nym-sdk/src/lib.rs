@@ -73,6 +73,7 @@ pub fn packet_gap(pacing: &Pacing) -> Duration {
 /// device's address (`docs/09-transport.md` §1). Process-wide; call before
 /// connecting.
 pub fn dial_gateways_through(proxy: std::net::SocketAddr, secret: String) {
+    let _ = TOR.set((proxy, secret.clone()));
     let secret = std::sync::Arc::new(secret);
     let connector: nym_gateway_client::client::StreamConnector =
         std::sync::Arc::new(move |host: String, port: u16| {
@@ -80,6 +81,41 @@ pub fn dial_gateways_through(proxy: std::net::SocketAddr, secret: String) {
             Box::pin(async move { enclave_tord::socks::connect(proxy, &secret, &host, port).await })
         });
     nym_gateway_client::client::set_stream_connector(Some(connector));
+}
+
+/// The SOCKS5 proxy (Tor) and its secret, once [`dial_gateways_through`]
+/// set them.
+static TOR: std::sync::OnceLock<(std::net::SocketAddr, String)> = std::sync::OnceLock::new();
+
+/// Largest reply taken over the fallback route.
+const MAX_TOR_REPLY: usize = 64 * 1024;
+
+/// One request to `host:port` over Tor in the server's length-prefixed
+/// framing (`u32 len ‖ bytes` each way), and its reply: the fallback route
+/// to a stack's onion service (`docs/09-transport.md` §7). Needs Tor
+/// ([`dial_gateways_through`]).
+pub async fn exchange_over_tor(host: &str, port: u16, request: &[u8]) -> Result<Vec<u8>> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (proxy, secret) = TOR
+        .get()
+        .ok_or_else(|| NymError::Client("no Tor on this device".into()))?;
+    let io = |e: std::io::Error| NymError::Client(format!("over Tor: {e}"));
+    let mut s = enclave_tord::socks::connect(*proxy, secret, host, port)
+        .await
+        .map_err(io)?;
+    let len = u32::try_from(request.len()).map_err(|_| NymError::Malformed)?;
+    s.write_all(&len.to_be_bytes()).await.map_err(io)?;
+    s.write_all(request).await.map_err(io)?;
+    s.flush().await.map_err(io)?;
+    let mut n = [0u8; 4];
+    s.read_exact(&mut n).await.map_err(io)?;
+    let n = u32::from_be_bytes(n) as usize;
+    if n > MAX_TOR_REPLY {
+        return Err(NymError::Malformed);
+    }
+    let mut reply = vec![0u8; n];
+    s.read_exact(&mut reply).await.map_err(io)?;
+    Ok(reply)
 }
 
 /// Which side of Enclave this client is.
@@ -515,6 +551,10 @@ impl MixnetDriver for NymDriver {
 
     async fn tickets_spent(&self) -> Result<u64> {
         Ok(nym_gateway_client::client::tickets_spent())
+    }
+
+    async fn exchange_tor(&self, host: &str, port: u16, request: Vec<u8>) -> Result<Vec<u8>> {
+        exchange_over_tor(host, port, &request).await
     }
 
     async fn buy_tickets(&self, gate: &str, token: &[u8]) -> Result<Vec<u8>> {

@@ -685,6 +685,8 @@ export component AppWindow inherits Window {
     in property <string> username-problem;
     in property <string> kt-split;
     in property <string> clock-skew;
+    // 0 the mixnet, 1 offer the backup route, 2 on the backup route.
+    in property <int> route;
     in property <string> joining;
     in property <string> restore-error;
     in property <[PickRow]> friends;
@@ -706,6 +708,7 @@ export component AppWindow inherits Window {
     callback reveal-share(string);
     callback new-group-invite(string);
     callback stop-recovery();
+    callback backup-route(bool);
     callback meet-scan(string);
     callback search(string);
     callback add-members(string);
@@ -1036,6 +1039,26 @@ export component AppWindow inherits Window {
                     title: "Waiting to join " + root.joining;
                     text: "An admin needs to let you in. You'll see the group here when they do.";
                     kind: 0;
+                }
+                if root.route == 1: Notice {
+                    title: "Backup route: slower to hide who you talk to";
+                    text: "Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk.";
+                    kind: 1;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: Tokens.space-s;
+                        PrimaryButton { text: "Use it"; clicked => { root.backup-route(true); } }
+                        QuietButton { text: "Keep waiting"; clicked => { root.backup-route(false); } }
+                    }
+                }
+                if root.route == 2: Notice {
+                    title: "On the backup route";
+                    text: "Messages go to your server through Tor instead of the private network. Switch back when the private network works again.";
+                    kind: 1;
+                    HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: "Back to the private route"; clicked => { root.backup-route(false); } }
+                    }
                 }
                 if root.kt-split != "": Notice {
                     title: "A username server showed people different lists";

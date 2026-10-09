@@ -114,6 +114,11 @@ impl Client {
         if !d.nym_address.is_empty() {
             self.rpc.set_route(*id, Route::Nym(d.nym_address.clone()));
         }
+        // Its onion service: the fallback route, used only if the user
+        // chooses it (`docs/09-transport.md` §7).
+        if let Some(r) = Route::parse(&format!("onion:{}", d.onion)) {
+            self.rpc.set_route(*id, r);
+        }
         let key = [KEY_DESCRIPTOR, id.as_slice()].concat();
         self.store
             .put(NS_SERVERS, &key, &d.encode(), &mut self.rng)?;
@@ -223,14 +228,18 @@ impl Client {
     }
 
     /// Reach every listed server at its ingress's Nym address (a
-    /// transport without the mixnet ignores these).
+    /// transport without the mixnet ignores these), and keep the onion
+    /// service of each whose descriptor is held, for the fallback route.
     fn apply_routes(&self) {
         for s in self.servers.iter().flat_map(|l| &l.servers) {
+            let id = enclave_federation::server_id(&s.identity);
             if !s.nym_address.is_empty() {
-                self.rpc.set_route(
-                    enclave_federation::server_id(&s.identity),
-                    Route::Nym(s.nym_address.clone()),
-                );
+                self.rpc.set_route(id, Route::Nym(s.nym_address.clone()));
+            }
+            if let Ok(Some(d)) = self.server_descriptor(&id)
+                && let Some(r) = Route::parse(&format!("onion:{}", d.onion))
+            {
+                self.rpc.set_route(id, r);
             }
         }
     }

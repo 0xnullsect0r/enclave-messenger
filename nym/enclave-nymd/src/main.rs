@@ -143,4 +143,13 @@ impl Purchaser for Shop {
     async fn buy(&self, gate: &str, token: &[u8]) -> enclave_nym::Result<Vec<u8>> {
         enclave_nym_sdk::credentials::buy(&self.0, gate, token).await
     }
+
+    async fn exchange_tor(
+        &self,
+        host: &str,
+        port: u16,
+        request: Vec<u8>,
+    ) -> enclave_nym::Result<Vec<u8>> {
+        enclave_nym_sdk::exchange_over_tor(host, port, &request).await
+    }
 }

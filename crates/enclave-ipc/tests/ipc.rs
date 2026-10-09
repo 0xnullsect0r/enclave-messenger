@@ -131,6 +131,7 @@ fn snapshot() -> Snapshot {
         can_change_words: true,
         words_pending: true,
         moved: 2,
+        route: 1,
     }
 }
 
@@ -168,6 +169,8 @@ fn cmds() -> Vec<Cmd> {
         Cmd::TypingSetting(true),
         Cmd::Typing("c1".into(), false),
         Cmd::ChangeWords,
+        Cmd::BackupRoute(true),
+        Cmd::BackupRoute(false),
         Cmd::Select(String::new()),
         Cmd::Send("id".into(), "text ✓".into()),
         Cmd::Accept("a".into()),
@@ -345,6 +348,8 @@ fn net_messages_round_trip_and_refuse_garbage() {
             tickets: vec![],
         },
         NetRequest::TicketsSpent { id: 14 },
+        NetRequest::UseFallback { on: true },
+        NetRequest::UseFallback { on: false },
         NetRequest::SetPacing {
             pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },

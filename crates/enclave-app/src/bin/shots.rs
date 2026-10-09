@@ -230,6 +230,7 @@ fn fixture() -> Snapshot {
         can_change_words: true,
         words_pending: false,
         moved: 0,
+        route: 0,
     }
 }
 
@@ -392,6 +393,16 @@ fn main() -> Result<(), slint::PlatformError> {
         view::apply(&ui, &data);
         shot("05-conversation", desktop);
         shot("05-conversation-phone", phone);
+
+        // The mixnet unreachable for a minute: the backup route offered.
+        let mut offline = empty.clone();
+        offline.route = 1;
+        view::apply(&ui, &offline);
+        shot("26-backup-route-phone", phone);
+        offline.route = 2;
+        view::apply(&ui, &offline);
+        shot("26-on-backup-route-phone", phone);
+        view::apply(&ui, &data);
 
         // A picture from Sam, with its preview (as mediad would send it).
         let mut pic = data.clone();

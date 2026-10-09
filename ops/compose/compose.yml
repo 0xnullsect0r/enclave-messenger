@@ -71,6 +71,29 @@ services:
       timeout: 10s
       retries: 3
 
+  # The fallback route (docs/09-transport.md §7): an onion service in
+  # front of the server, which devices use only with their user's consent
+  # when the mixnet is unreachable, and never in Maximum privacy. Its
+  # address (public/onion.addr) goes in the server's descriptor; its Tor
+  # identity key stays in the onion-data volume (back it up with the
+  # keys). Recommended for every operator.
+  onion:
+    <<: *service
+    profiles: [onion]
+    entrypoint: ["/usr/local/bin/enclave-onion"]
+    command: ["run", "--forward", "server:7443"]
+    volumes:
+      - onion-data:/var/lib/enclave/onion
+      - public:/var/lib/enclave/public
+    networks: [backend, egress]
+    depends_on: [server]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/enclave-onion", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 5m
+
   front:
     <<: *service
     entrypoint: ["/usr/local/bin/enclave-front"]
@@ -252,3 +275,4 @@ volumes:
   push-ingress-data:
   credgate-keys:
   credgate-data:
+  onion-data:

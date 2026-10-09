@@ -60,6 +60,41 @@ jobs:
           # Without the secret, nothing.
           ! curl -sS --max-time 30 --socks5-hostname "127.0.0.1:$port" https://check.torproject.org/api/ip
 
+  onion-smoke:
+    name: enclave-onion publishes a server and a client reaches it through Tor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Build enclave-server, enclave-onion and enclave-tord (Tor)
+        run: |
+          cargo build --release --locked -p enclave-server
+          cargo build --release --locked -p enclave-tord --features onion-service --bins
+      - name: A dev server behind an onion service, asked for its key bundle over Tor
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          target/release/enclave-server dev 127.0.0.1:17443 > "$work/server.out" 2>&1 &
+          target/release/enclave-onion run --state "$work/onion" --forward 127.0.0.1:17443 \
+            --public "$work/public" > "$work/onion.log" 2>&1 &
+          for _ in $(seq 600); do [ -s "$work/public/onion.addr" ] && break; sleep 1; done
+          cat "$work/onion.log"
+          host=$(tr -d '\n' < "$work/public/onion.addr")
+          test -n "$host"
+          secret=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          mkfifo "$work/tord.in"
+          (echo "$secret"; sleep 1800) > "$work/tord.in" &
+          target/release/enclave-tord --state "$work/tor" < "$work/tord.in" > "$work/tord.out" &
+          for _ in $(seq 300); do grep -q ready "$work/tord.out" && break; sleep 1; done
+          port=$(awk '/ready/{print $2}' "$work/tord.out")
+          # A new onion service takes a while to be reachable: retry.
+          for i in $(seq 10); do
+            if python3 ci/onion/keybundle.py "$port" "$secret" "$host" 7443; then exit 0; fi
+            sleep 30
+          done
+          exit 1
+
   nym-bench:
     name: live_bench on the Nym ${{ matrix.network }}, through Tor
     strategy:

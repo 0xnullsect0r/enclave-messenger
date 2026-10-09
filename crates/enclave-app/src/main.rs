@@ -508,6 +508,10 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::StopRecovery);
     });
     let t = tx.clone();
+    ui.on_backup_route(move |on| {
+        let _ = t.send(Cmd::BackupRoute(on));
+    });
+    let t = tx.clone();
     ui.on_approve_recovery(move || {
         let _ = t.send(Cmd::ApproveRecovery);
     });

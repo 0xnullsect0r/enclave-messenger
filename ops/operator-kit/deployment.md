@@ -189,6 +189,22 @@ foundation's credential gate.
   (`public/push-ingress.addr`) goes into the foundation's list with the
   keys.
 
+## Backup route (onion service)
+
+When the mixnet is unreachable, a device can offer its user a backup route
+to your server through Tor, never in Maximum privacy. It needs your stack to
+run the onion service (profile `onion`, recommended):
+
+```sh
+docker compose --profile nym --profile onion up -d
+```
+
+`onion` publishes an onion service in front of the server and writes its
+address to `public/onion.addr`; the server puts it in its descriptor, so
+devices learn it while the mixnet works. The service's Tor identity key is
+in the `onion-data` volume: back it up with the keys, or the address
+changes (devices learn the new one from the next descriptor).
+
 ## Push
 
 With profile `nym`, `push-egress` carries the server's due wakes to the
