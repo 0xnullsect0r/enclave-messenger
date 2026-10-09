@@ -536,7 +536,8 @@ async fn link_a_second_device() {
     let ev = a.sync().await.unwrap();
     assert!(ev.contains(&Event::DevicesChanged));
 
-    // History waits 24 h unless asked for on the first device.
+    // History waits 24 h unless both devices confirm: the new one asks,
+    // then the first one sends.
     let new_id = a2.devices().iter().find(|d| d.this_device).unwrap().id;
     assert!(a2.messages(&b.root()).unwrap().is_empty());
     assert!(!a.history_sent(&new_id));
@@ -544,6 +545,13 @@ async fn link_a_second_device() {
         a2.send_history_now(&new_id).await.is_err(),
         "only the root sends"
     );
+    assert!(
+        a.send_history_now(&new_id).await.is_err(),
+        "not before the new device asks"
+    );
+    a2.ask_history_now().await.unwrap();
+    a.sync().await.unwrap();
+    assert!(a.history_asked(&new_id));
     a.send_history_now(&new_id).await.unwrap();
     assert!(a.history_sent(&new_id));
     let ev = a2.sync().await.unwrap();

@@ -87,6 +87,39 @@ impl Client {
             self.store
                 .put(NS_PREFS, &key(place), &prefs.encode(), &mut self.rng)?;
         }
+        // The same on our other devices (`own_sync.rs`).
+        self.queue_own(super::own_sync::SyncItem::Prefs {
+            place: key(place),
+            prefs: prefs.encode(),
+        })
+    }
+
+    /// Another device of ours changed how a conversation is listed. A pin
+    /// past the limit here is dropped (the archive and mute still apply).
+    pub(crate) fn apply_synced_prefs(&mut self, place: &[u8], prefs: &[u8]) -> Result<()> {
+        if !matches!(place.first(), Some(b'c' | b'g')) {
+            return Ok(());
+        }
+        let Ok(mut p) = ConvPrefs::decode(prefs) else {
+            return Ok(());
+        };
+        if p.pinned {
+            let pinned = self
+                .store
+                .scan(NS_PREFS)?
+                .into_iter()
+                .filter(|(k, b)| k != place && ConvPrefs::decode(b).is_ok_and(|p| p.pinned))
+                .count();
+            if pinned >= MAX_PINNED_CONVERSATIONS {
+                p.pinned = false;
+            }
+        }
+        if p == ConvPrefs::default() {
+            self.store.delete(NS_PREFS, place)?;
+        } else {
+            self.store
+                .put(NS_PREFS, place, &p.encode(), &mut self.rng)?;
+        }
         Ok(())
     }
 

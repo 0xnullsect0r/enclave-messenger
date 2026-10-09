@@ -101,6 +101,7 @@ mod blocks;
 pub mod clock;
 mod devices;
 mod gossip;
+mod group_devices;
 mod group_edits;
 mod group_files;
 mod group_pq;
@@ -119,6 +120,7 @@ mod migrate;
 mod moves;
 mod notes;
 pub mod outbox;
+mod own_sync;
 mod pins;
 mod polls;
 mod prefs;
@@ -144,6 +146,8 @@ pub use location::{Location, MAX_LOCATION_LABEL};
 pub use meet::{MEET_PREFIX, MeetMatch};
 pub use messages::{EDIT_WINDOW, Message, Reaction};
 pub use migrate::Moved;
+use own_sync::NS_CARD_OWED;
+pub use own_sync::{INACTIVE_SECS, NEW_DEVICE_SECS, OwnDeviceState};
 pub use pins::MAX_PINS;
 pub use polls::{MAX_OPTIONS, PollView};
 pub use prefs::{ConvPrefs, MAX_PINNED_CONVERSATIONS};
@@ -304,6 +308,10 @@ pub enum Event {
         /// The conversation.
         place: Place,
     },
+    /// Another device of ours changed something here: a conversation read,
+    /// archived, pinned or muted, a setting, a contact added or blocked
+    /// (`own_sync.rs`).
+    Synced,
 }
 
 /// Where and how to keep the profile.
@@ -366,6 +374,9 @@ pub struct Client {
     inbox_rounds: u64,
     /// A re-send writes to the week before's address (`outbox.rs`).
     fallback_week: bool,
+    /// When each session last carried an envelope's PQ slot (a counter),
+    /// for the carrier choice (`docs/06-multidevice.md` §3).
+    pq_carried: HashMap<SessionKey, u64>,
     /// When each group was last read and how busy it has been, for the
     /// group rounds of [`Client::sync_round`].
     group_polls: HashMap<[u8; 32], GroupPoll>,
@@ -388,6 +399,25 @@ struct GroupPoll {
 
 /// A group not read for this long goes first in the next group round.
 pub const GROUP_FLOOR_SECS: u64 = 60;
+
+/// Which of `refs` (sessions `keys`) carries the envelope's PQ slot
+/// (`docs/06-multidevice.md` §3): of those with something to send in it,
+/// the one whose pair last carried one longest ago.
+pub(crate) fn pq_carrier(
+    carried: &mut HashMap<SessionKey, u64>,
+    keys: &[SessionKey],
+    refs: &[&mut Session],
+) -> Option<usize> {
+    let i = refs
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.wants_pq_slot())
+        .min_by_key(|(i, _)| carried.get(&keys[*i]).copied().unwrap_or(0))
+        .map(|(i, _)| i)?;
+    let tick = carried.values().max().copied().unwrap_or(0) + 1;
+    carried.insert(keys[i], tick);
+    Some(i)
+}
 
 /// A session is identified by the peer root and the peer device.
 type SessionKey = ([u8; 64], [u8; 16]);
@@ -589,6 +619,7 @@ impl Client {
             maximum: false,
             inbox_rounds: 0,
             fallback_week: false,
+            pq_carried: std::collections::HashMap::new(),
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -670,6 +701,7 @@ impl Client {
             maximum: false,
             inbox_rounds: 0,
             fallback_week: false,
+            pq_carried: std::collections::HashMap::new(),
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -782,6 +814,14 @@ impl Client {
 
     /// Store an app setting (sealed like everything else).
     pub fn set_setting(&mut self, key: &str, value: &[u8]) -> Result<()> {
+        // The ones every device of the account shares go to the others.
+        if own_sync::SYNCED_SETTINGS.contains(&key) && self.setting(key)?.as_deref() != Some(value)
+        {
+            self.queue_own(own_sync::SyncItem::Setting {
+                key: key.to_string(),
+                value: value.to_vec(),
+            })?;
+        }
         Ok(self
             .store
             .put(NS_SETTINGS, key.as_bytes(), value, &mut self.rng)?)
@@ -796,6 +836,10 @@ impl Client {
     pub fn set_verified(&mut self, root: &[u8; 64], verified: bool) -> Result<()> {
         let c = self.contacts.get_mut(root).ok_or(CoreError::NotFound)?;
         c.verified = verified;
+        if verified {
+            self.sync_contact_to_own(root, false)?;
+        }
+        let c = self.contacts.get_mut(root).ok_or(CoreError::NotFound)?;
         let c = c.clone();
         self.save_contact(&c)?;
         if verified {
@@ -1045,7 +1089,8 @@ impl Client {
         let c = self.contacts.get_mut(root).ok_or(CoreError::NotFound)?;
         c.state = ContactState::Accepted;
         let c = c.clone();
-        self.save_contact(&c)
+        self.save_contact(&c)?;
+        self.sync_contact_to_own(root, true)
     }
 
     /// Delete a contact (declining a request, blocking). Their sessions and
@@ -1234,7 +1279,12 @@ impl Client {
         }
         for polled in reqs {
             match self.handle_request(&polled.envelope, now).await {
-                Ok(Some(e)) => events.push(e),
+                Ok(Some(e)) => {
+                    if let Event::Accepted { root } = &e {
+                        self.sync_contact_to_own(root, true)?;
+                    }
+                    events.push(e);
+                }
                 Ok(None) => {}
                 // Network trouble: stop here and retry this envelope next time.
                 Err(e @ CoreError::Net(_)) => {
@@ -1320,6 +1370,7 @@ impl Client {
             events.push(Event::HistoryImported);
         }
         self.send_due_history(now).await?;
+        events.append(&mut self.own_upkeep(now).await?);
 
         // Token refills for contacts who have been writing without replies.
         let due: Vec<([u8; 64], usize)> = self
@@ -1699,9 +1750,12 @@ impl Client {
                 self.on_gossip(&root, &gossip)?;
             }
             if root == self.account.root_public.0 {
-                // From another device of ours: self-copies and device changes.
+                // From another device of ours: it's in use.
+                self.seen_own(&dev, now)?;
+                // Self-copies, device changes, keeping in step.
                 return match Content::decode(&content)? {
                     Content::SelfCopy { to, content } => self.on_self_copy(&to, &content, now),
+                    Content::OwnSync(b) => self.on_own_sync(&dev, &b),
                     Content::Devices(v) => {
                         self.stale_manifests.insert(root, v);
                         Ok(Vec::new())
@@ -1734,6 +1788,7 @@ impl Client {
                 .ok_or(CoreError::NotFound)?;
             let mut events = Vec::new();
             let mut rest = None;
+            let mut got_card = false;
             match Content::decode(&content)? {
                 Content::Hello {
                     server,
@@ -1817,6 +1872,20 @@ impl Client {
                     c.received_since_refill = c.received_since_refill.saturating_add(1);
                     self.on_group_cards(&root, &group_id, &cards)?;
                 }
+                Content::CardAsk => {
+                    c.received_since_refill = c.received_since_refill.saturating_add(1);
+                    self.store.put(NS_CARD_OWED, &root, &[], &mut self.rng)?;
+                }
+                Content::Card(b) => {
+                    c.received_since_refill = c.received_since_refill.saturating_add(1);
+                    if let Ok(card) = ContactCard::decode(&b)
+                        && card.root == root
+                        && c.card.is_none()
+                    {
+                        c.card = Some(card);
+                        got_card = true;
+                    }
+                }
                 Content::Text {
                     tokens,
                     text,
@@ -1839,6 +1908,10 @@ impl Client {
             }
             self.contacts.insert(root, c.clone());
             self.save_contact(&c)?;
+            // With a card at last, they can be handed to our other devices.
+            if got_card {
+                self.sync_contact_to_own(&root, true)?;
+            }
             if let Some(content) = rest {
                 events.extend(self.on_message_content(&root, content, now)?);
             }
@@ -1924,7 +1997,7 @@ impl Client {
             let carrier = if droppable {
                 None
             } else {
-                refs.iter().position(|s| s.wants_pq_slot())
+                pq_carrier(&mut self.pq_carried, &keys, &refs)
             };
             let env = envelope::seal_direct(&mut refs, &bytes, carrier, &mut self.rng)?;
             drop(refs);
@@ -2044,7 +2117,7 @@ impl Client {
     }
 }
 
-fn add_tokens(held: &mut Vec<Token>, new: Vec<Token>) {
+pub(crate) fn add_tokens(held: &mut Vec<Token>, new: Vec<Token>) {
     held.extend(new);
     if held.len() > MAX_HELD_TOKENS {
         let excess = held.len() - MAX_HELD_TOKENS;
@@ -2067,7 +2140,7 @@ fn request_inbox_of(m: &Manifest) -> [u8; 32] {
 
 /// Names from other people: strip control and bidi-override characters and
 /// cap combining marks, so a name cannot spoof layout (`docs/15-client.md`).
-fn sanitize_name(name: &str) -> String {
+pub(crate) fn sanitize_name(name: &str) -> String {
     let mut out = String::new();
     let mut combining = 0;
     for ch in name.chars() {

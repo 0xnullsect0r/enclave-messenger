@@ -487,10 +487,7 @@ impl Client {
                     self.store_group_message(gid, id, Some((*from, name)), &question, now)?;
                 m.poll = Some(id);
                 self.put_group_message(gid, &m)?;
-                if let Some(e) = self.groups.get_mut(gid) {
-                    e.unread = e.unread.saturating_add(1);
-                }
-                self.unarchive_on_message(&Place::Group(*gid))?;
+                self.bump_group_unread(gid, from)?;
                 Ok(Some(Event::GroupMessage {
                     group_id: *gid,
                     message: m,

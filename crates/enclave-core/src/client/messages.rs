@@ -406,6 +406,8 @@ impl Client {
             self.put_message(root, &m)?;
             ids.push(m.id);
         }
+        // Read on our other devices too.
+        self.queue_read(root, &ids)?;
         let receipts = !matches!(self.setting("receipts"), Ok(Some(v)) if v == [0]);
         if receipts && !ids.is_empty() && c.state == ContactState::Accepted {
             for chunk in ids.chunks(crate::content::MAX_RECEIPTS) {

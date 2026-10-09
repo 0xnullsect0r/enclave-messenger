@@ -1,10 +1,11 @@
 //! Message history for a newly linked device (`03-identity.md` §4.4).
 //!
 //! History does not travel with the link itself. The device holding the root
-//! sends it 24 hours after linking, or sooner when the person asks on that
-//! device ("Send history now"), so someone who tricks a person into linking
-//! their device doesn't get the past at once, and the 7-day "new device"
-//! notice has time to be seen.
+//! sends it 24 hours after linking, or sooner when both devices confirm: the
+//! new device asks ("Ask for history now", an own-sync item) and the person
+//! then taps "Send history now" on the device holding the root. Someone who
+//! tricks a person into linking their device doesn't get the past at once,
+//! and the 7-day "new device" notice has time to be seen.
 //!
 //! The history is one sealed file (`files::seal_file`) in the blob store of
 //! our home server; its reference goes to our devices as `Content::History`
@@ -29,15 +30,65 @@ fn sent_key(device: &[u8; 16]) -> Vec<u8> {
     [&b"history-sent/"[..], device].concat()
 }
 
+fn asked_key(device: &[u8; 16]) -> Vec<u8> {
+    [&b"history-asked/"[..], device].concat()
+}
+
 impl Client {
     /// Send message history to our linked device `device` now, instead of
     /// waiting for the 24-hour delay. Only the device holding the root sends
-    /// history.
+    /// history, and only once that device has asked for it
+    /// ([`Client::ask_history_now`]): both devices confirm.
     pub async fn send_history_now(&mut self, device: &[u8; 16]) -> Result<()> {
         if !self.can_link() || *device == self.device.id || self.manifest.device(device).is_none() {
             return Err(CoreError::NotFound);
         }
+        if !self.history_asked(device) {
+            return Err(CoreError::NotAccepted);
+        }
         self.send_history(device, self.now()).await
+    }
+
+    /// On a linked device: ask the device holding the root for message
+    /// history now; it goes once the person also confirms there.
+    pub async fn ask_history_now(&mut self) -> Result<()> {
+        if self.can_link() {
+            return Err(CoreError::NotAccepted);
+        }
+        self.send_own_now(super::own_sync::SyncItem::HistoryAsk)
+            .await?;
+        let now = self.now();
+        let key = asked_key(&self.device.id);
+        self.store
+            .put(NS_SETTINGS, &key, &now.to_be_bytes(), &mut self.rng)?;
+        Ok(())
+    }
+
+    /// Whether linked device `device` asked for history (on the device
+    /// holding the root), or this device did (on a linked one).
+    pub fn history_asked(&self, device: &[u8; 16]) -> bool {
+        matches!(self.store.get(NS_SETTINGS, &asked_key(device)), Ok(Some(_)))
+    }
+
+    /// Whether message history from the device holding the root has
+    /// arrived here.
+    pub fn history_received(&self) -> bool {
+        matches!(
+            self.store.get(NS_SETTINGS, b"history-received"),
+            Ok(Some(_))
+        )
+    }
+
+    /// Our device `device` asked for history (`own_sync.rs`).
+    pub(crate) fn on_history_ask(&mut self, device: &[u8; 16]) -> Result<()> {
+        let now = self.now();
+        self.store.put(
+            NS_SETTINGS,
+            &asked_key(device),
+            &now.to_be_bytes(),
+            &mut self.rng,
+        )?;
+        Ok(())
     }
 
     /// Whether history has been sent to `device`.
@@ -139,6 +190,12 @@ impl Client {
             }
             let pkg = Zeroizing::new(files::finish(&att, &parts)?);
             imported += self.merge_history(&pkg)?;
+            self.store.put(
+                NS_SETTINGS,
+                b"history-received",
+                &now.to_be_bytes(),
+                &mut self.rng,
+            )?;
         }
         Ok(imported)
     }

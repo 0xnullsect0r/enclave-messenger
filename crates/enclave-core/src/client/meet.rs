@@ -110,6 +110,7 @@ impl Client {
             c.state = ContactState::Accepted;
             let c = c.clone();
             self.save_contact(&c)?;
+            self.sync_contact_to_own(&root, true)?;
         }
         // Replace our sessions with them by bonded ones.
         let (manifest, vault) = self.fetch_peer(&card, now).await?;

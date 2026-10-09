@@ -361,6 +361,15 @@ fn multi_device_wrap_table() {
         open_direct(&mut [&mut c], &env, None, &mut rng),
         Err(ProtoError::NoSession)
     ));
+    // A cover envelope has a real one's form and length, and nobody opens
+    // it.
+    let cover = enclave_proto::envelope::cover_direct(&mut rng).unwrap();
+    assert_eq!(cover.len(), env.len());
+    assert_eq!(cover[..16], env[..16], "the same header");
+    assert!(matches!(
+        open_direct(&mut [&mut c], &cover, None, &mut rng),
+        Err(ProtoError::NoSession)
+    ));
     drop(carol);
 }
 

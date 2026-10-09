@@ -49,7 +49,7 @@ Rules:
 
 ## 3. PQ slot rotation
 
-Each envelope has **one** PQ slot, which serves one session. The caller chooses which session carries it (`pq_carrier`); `Session::wants_pq_slot()` tells it which sessions have something to send (an unanswered peer key, an unacknowledged ciphertext, a pending braid, or a key id above 0 to announce). The intended policy, not yet implemented in a client:
+Each envelope has **one** PQ slot, which serves one session. The caller chooses which session carries it (`pq_carrier`); `Session::wants_pq_slot()` tells it which sessions have something to send (an unanswered peer key, an unacknowledged ciphertext, a pending braid, or a key id above 0 to announce). The policy, as implemented in the client (`enclave-core` `pq_carrier`, for messages to contacts and to our own devices; a unit that may be dropped carries none):
 
 ```
 ChoosePQCarrier(sessions):
@@ -61,17 +61,34 @@ ChoosePQCarrier(sessions):
 - With one recipient device, every envelope carries that pair's PQ slot, so every round trip takes a PQ step.
 - With 5 due pairs, each pair gets a PQ slot every 5 envelopes.
 
-## 4. Self-copy (not yet implemented)
+## 4. Self-copy
 
 PLAN D5: each message is exactly 2 envelopes, one to the recipient's account inbox and one self-copy to the sender's own account inbox, wrapped for the sender's other devices through their intra-account sessions. The self-copy is sent even for a single-device account (all slots random), so the server sees 2 writes per message regardless of device count. The recipient's envelope and the self-copy are built separately, each with its own body key and slot table, so identical ciphertexts never appear in two inboxes. Self-copies are sent with priority "own-device sync" (`09-transport.md` §6.2).
 
-**Note to self, as implemented** (`enclave-core/src/client/notes.rs`): notes are messages stored under the account's own root in the sealed store, and each one (and each delete) goes to our other devices as `Content::SelfCopy { to: own root, Text | Delete }` over the intra-account sessions. Nothing is written to anyone else's inbox; a single-device account sends nothing at all for a note today (the always-sent self-copy above is not built yet). The app always lists **Note to self** ("Me"), with no delivery marks, reactions or pins, and it can be pinned, muted or archived like any conversation. Notes are not in local search yet. Tested in `link_a_second_device`.
+**As implemented** (`Client::send_own`): every message, reaction, edit, delete and timer change to a contact is followed by `Content::SelfCopy` to the account's own inbox, sealed to our other devices' sessions. With no other device to seal to (a single-device account, or no session yet), the self-copy is a cover envelope (`envelope::cover_direct`: random slots, PQ slot and capsule, a body sealed under a random key) of the same length, written with a write token like any other, so a message costs two writes whatever the number of devices. Test `one_device_self_copy_and_watermark`.
 
-## 5. Intra-account sessions and sync (not yet implemented)
+**Note to self, as implemented** (`enclave-core/src/client/notes.rs`): notes are messages stored under the account's own root in the sealed store, and each one (and each delete) goes to our other devices as `Content::SelfCopy { to: own root, Text | Delete }` over the intra-account sessions. Nothing is written to anyone else's inbox; a single-device account writes a cover self-copy for a note, as for any message. The app always lists **Note to self** ("Me"), with no delivery marks, reactions or pins, and it can be pinned, muted or archived like any conversation. Notes are not in local search yet. Tested in `link_a_second_device`.
+
+## 5. Intra-account sessions and sync
 
 Every pair of the account's own devices has a Lockstep session, established by EQXDH when a device is linked. Own-device sync carries sent messages, read state, contact and group changes, settings, verification states and fetch positions, but never ratchet state.
 
-**Conversation list settings, as implemented** (`enclave-core/src/client/prefs.rs`): archive, pin to the top and mute are kept per conversation, 1:1 or group, in the sealed store. They are local: nothing about them is sent to anyone, including our other devices, which keep their own until this sync exists. At most four conversations are pinned to the top (they list first, newest first). A message from someone else brings an archived conversation back unless it is muted; a muted conversation still counts unread messages but shows the count without the Pine fill. The app has a conversation sheet with the three switches (on a phone it also holds the disappearing-messages timer) and an "Archived (n)" section at the end of the list. Test `conversation_prefs`.
+**Conversation list settings, as implemented** (`enclave-core/src/client/prefs.rs`): archive, pin to the top and mute are kept per conversation, 1:1 or group, in the sealed store. Nothing about them is sent to anyone but our other devices, which get the change through own-device sync (below). At most four conversations are pinned to the top (they list first, newest first). A message from someone else brings an archived conversation back unless it is muted; a muted conversation still counts unread messages but shows the count without the Pine fill. The app has a conversation sheet with the three switches (on a phone it also holds the disappearing-messages timer) and an "Archived (n)" section at the end of the list. Test `conversation_prefs`.
+
+**Own-device sync, as implemented** (`enclave-core/src/client/own_sync.rs`). What one device does that the others should know goes to them as `Content::OwnSync` (content kind 28, a list of items) over the intra-account sessions:
+
+| Item | Sent when | The other devices |
+|---|---|---|
+| Read (conversation, message ids) | a conversation is read here | mark them read (read receipts went from this device) |
+| Prefs (conversation, archive/pin/mute) | a conversation's list settings change | apply them (a pin past the limit of 4 is dropped) |
+| Setting (read receipts, typing) | one of the shared settings changes | apply it |
+| Contact (card, name, checked, timer, inbox, half of this device's write tokens) | a contact accepts us, is accepted, met in person, or checked here | store a new contact, fetch its manifest and greet it from their own device (its devices accept silently: we're in our root-signed manifest), or update a known one |
+| Blocked (root, on/off) | someone is blocked or unblocked here | the same |
+| Position (week, cursor) | at every flush, and at least once a day | record how far that device has read each weekly address |
+| Group (device, sealed file reference) | a group this device holds and that device lacks | the named device takes in the group (`07-groups.md` note 10) |
+| HistoryAsk | the person asks for history on a newly linked device | the device holding the root may send history before 24 h (`03-identity.md` §4.x) |
+
+Items are queued in the sealed store as they happen and leave together at the next sync, as few `OwnSync` contents as fit; an account with one device queues nothing. Ratchet state never travels. A contact we hold no card for (from a store before cards were exchanged) can't be handed over: the device asks them once for it (`Content::CardAsk`, kind 29) and they answer with their card (`Content::Card`, kind 30), after which it is shared like any other. Test `own_devices_stay_in_step`.
 
 ## 6. Deletion watermark
 
@@ -82,11 +99,15 @@ Implemented at the server (`12-servers.md` §1.2):
 - `Ack` with a watermark `W` deletes every envelope with sequence number `≤ W`.
 - The server deletes envelopes 30 days after they were written regardless of the watermark (`Server::expire`).
 
-Not implemented yet: devices reporting their positions to each other through own-device sync, and the rule that a device advances the watermark only after every device in the manifest has reported at least `W`. Decoy re-fetches are built: a device's account-inbox poll starts one envelope back one time in eight (`09-transport.md` §5), so a caught-up device's polls still bring envelopes.
+**As implemented** (`Client::advance_watermarks`): each device reports its position on every weekly address through own-device sync (§5) and acknowledges an address up to the lowest position its active devices have reported, its own included; a single-device account acknowledges what it has read at once. A device inactive for 30 days (below) doesn't hold the watermark back. Decoy re-fetches are built: a device's account-inbox poll starts one envelope back one time in eight (`09-transport.md` §5), so a caught-up device's polls still bring envelopes.
 
-## 7. Device-list changes (not yet implemented)
+## 7. Device-list changes
 
 When the account publishes a new manifest, each device sends a `DeviceListChanged{manifest_version, manifest_hash}` control message to each contact; the contact fetches and verifies the manifest (`03-identity.md` §3.4), deletes sessions with removed devices, and establishes sessions with new ones on the next send.
+
+**As implemented:** `Content::Devices(version)` (kind 13) is `DeviceListChanged`; the hash is not sent, since the receiver fetches the root-signed manifest and checks its version against the one announced (`client/devices.rs`, `03-identity.md` §5.1). A new device opens its own sessions with every contact's devices after linking; contacts never start sessions to a device of ours.
+
+**Inactive devices** (`03-identity.md` §4.4): a device none of whose messages reached the others for 30 days is inactive: nothing more is encrypted to it, it doesn't hold the watermark back, and the device holding the root removes it from the manifest at its next sync. Devices show when each other device was last used, and every device shows a notice for 7 days after a device is linked ("New device linked … If that wasn't you, remove it now").
 
 ## 8. Errors
 

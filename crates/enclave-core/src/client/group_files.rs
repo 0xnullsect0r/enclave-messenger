@@ -10,7 +10,6 @@
 
 use super::messages::NS_FILES;
 use super::polls::Rich;
-use super::search::Place;
 use super::{Client, Event, GroupMessage};
 use crate::content::MAX_TEXT;
 use crate::files::{self, Attachment};
@@ -87,10 +86,7 @@ impl Client {
         let mut m = self.store_group_message(gid, id, Some((*from, name)), caption, now)?;
         m.attachment = Some(att);
         self.put_group_message(gid, &m)?;
-        if let Some(e) = self.groups.get_mut(gid) {
-            e.unread = e.unread.saturating_add(1);
-        }
-        self.unarchive_on_message(&Place::Group(*gid))?;
+        self.bump_group_unread(gid, from)?;
         Ok(Some(Event::GroupMessage {
             group_id: *gid,
             message: m,

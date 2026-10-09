@@ -179,14 +179,14 @@ fn fixture() -> Snapshot {
                 label: "This device".into(),
                 detail: "Added 2 Sep 2026".into(),
                 removable: false,
-                history_pending: false,
+                history_action: String::new(),
             },
             view::Device {
                 id: "b2".into(),
                 label: "Linked device".into(),
                 detail: "Added 30 Sep 2026 · Message history follows 24 hours after linking".into(),
                 removable: true,
-                history_pending: true,
+                history_action: "Send history now".into(),
             },
         ],
         link_choices: Vec::new(),
@@ -209,6 +209,7 @@ fn fixture() -> Snapshot {
         username_problem: String::new(),
         kt_split: String::new(),
         clock_skew: String::new(),
+        new_device: String::new(),
         joining: Vec::new(),
         restore_error: String::new(),
         friends: Vec::new(),
@@ -895,6 +896,11 @@ fn main() -> Result<(), slint::PlatformError> {
         clock.clock_skew = "3 hours behind".into();
         view::apply(&ui, &clock);
         shot("29-clock-skew-phone", phone);
+        let mut linked = clock.clone();
+        linked.clock_skew = String::new();
+        linked.new_device = "a new device, 30 Sep 14:02".into();
+        view::apply(&ui, &linked);
+        shot("53-new-device-phone", phone);
 
         // Recovery with friends: choosing, holding, restoring.
         let mut friends = data.clone();

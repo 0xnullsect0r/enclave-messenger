@@ -152,6 +152,13 @@ pub enum Content {
     /// The sender changed their recovery words: a sealed file reference to
     /// the migration record and their new manifest (`03-identity.md` §8.2).
     Migration(Vec<u8>),
+    /// To our other devices only: what keeps the account's devices in step
+    /// (`06-multidevice.md` §5), encoded by `client/own_sync.rs`.
+    OwnSync(Vec<u8>),
+    /// Asks a contact for their current contact card (we hold none).
+    CardAsk,
+    /// The sender's current contact card (encoded), answering a `CardAsk`.
+    Card(Vec<u8>),
     /// The sender started (`on`) or stopped typing in this conversation.
     /// Sent only in cover slots, so it may never arrive (`docs/16-features.md`).
     Typing {
@@ -239,6 +246,9 @@ impl Content {
                 | Content::KtHead { .. }
                 | Content::Devices { .. }
                 | Content::Migration { .. }
+                | Content::OwnSync { .. }
+                | Content::CardAsk
+                | Content::Card { .. }
                 | Content::ServerMoved { .. }
                 | Content::HomeMoved { .. }
         )
@@ -272,6 +282,9 @@ const K_MIGRATION: u8 = 24;
 const K_SERVER_MOVED: u8 = 25;
 const K_HOME_MOVED: u8 = 26;
 const K_DELIVERED: u8 = 27;
+const K_OWN_SYNC: u8 = 28;
+const K_CARD_ASK: u8 = 29;
+const K_CARD: u8 = 30;
 /// Largest encoded location.
 const MAX_LOCATION: usize = 512;
 /// Longest recovery share (33 words of at most 8 letters).
@@ -468,6 +481,21 @@ impl Content {
                 }
                 w.u8(K_MIGRATION).bytes(att);
             }
+            Content::OwnSync(b) => {
+                if b.len() > MAX_SELF_COPY {
+                    return too_large;
+                }
+                w.u8(K_OWN_SYNC).bytes(b);
+            }
+            Content::CardAsk => {
+                w.u8(K_CARD_ASK);
+            }
+            Content::Card(card) => {
+                if card.len() > MAX_CARD {
+                    return too_large;
+                }
+                w.u8(K_CARD).bytes(card);
+            }
             Content::Sticker {
                 id,
                 pack,
@@ -640,6 +668,9 @@ impl Content {
                 request_owner: r.array()?,
                 vault_locator: r.array()?,
             },
+            K_OWN_SYNC => Content::OwnSync(r.bytes(MAX_SELF_COPY)?.to_vec()),
+            K_CARD_ASK => Content::CardAsk,
+            K_CARD => Content::Card(r.bytes(MAX_CARD)?.to_vec()),
             K_TYPING => Content::Typing {
                 on: match r.u8()? {
                     0 => false,
@@ -744,6 +775,9 @@ mod tests {
             Content::Typing { on: true },
             Content::Typing { on: false },
             Content::Migration(vec![8; 300]),
+            Content::OwnSync(vec![9; 4000]),
+            Content::CardAsk,
+            Content::Card(vec![4; 300]),
             Content::ServerMoved {
                 server: [1; 16],
                 inbox: [2; 32],

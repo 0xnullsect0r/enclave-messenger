@@ -290,7 +290,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
             label: d.label.clone().into(),
             detail: d.detail.clone().into(),
             removable: d.removable,
-            history_pending: d.history_pending,
+            history_action: d.history_action.clone().into(),
         })
         .collect();
     ui.set_devices(ModelRc::from(Rc::new(VecModel::from(devices))));
@@ -314,6 +314,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_bridges_error(s.bridges_error.clone().into());
     ui.set_bridges_restart(s.bridges_restart);
     ui.set_clock_skew(s.clock_skew.clone().into());
+    ui.set_new_device(s.new_device.clone().into());
     ui.set_joining(s.joining.join(", ").into());
     ui.set_restore_error(s.restore_error.clone().into());
     ui.set_friends(ModelRc::from(Rc::new(VecModel::from(

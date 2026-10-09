@@ -48,7 +48,7 @@ export struct DeviceRow {
     label: string,
     detail: string,
     removable: bool,
-    history-pending: bool,
+    history-action: string,
 }
 
 // status: 0 sending privately, 1 on its way, 2 delivered, 3 read,
@@ -685,6 +685,7 @@ export component AppWindow inherits Window {
     in property <string> username-problem;
     in property <string> kt-split;
     in property <string> clock-skew;
+    in property <string> new-device;
     // 0 the mixnet, 1 offer the backup route, 2 on the backup route.
     in property <int> route;
     // Censorship mode: Tor didn't come up; the bridges set (empty,
@@ -1089,6 +1090,15 @@ export component AppWindow inherits Window {
                     title: "A username server showed people different lists";
                     text: root.kt-split + " gave you and one of your contacts two different signed versions of its public list of usernames. Someone may be trying to send you, or them, to the wrong person. Check security codes, ideally in person, before sharing anything private.";
                     kind: 2;
+                }
+                if root.new-device != "": Notice {
+                    title: "New device linked";
+                    text: "Your account was linked to " + root.new-device + ". If that wasn't you, remove it now: it can read your new messages.";
+                    kind: 1;
+                    HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: "Your devices"; clicked => { root.open-sheet(Sheet.devices); } }
+                    }
                 }
                 if root.clock-skew != "": Notice {
                     title: "This device's clock is wrong";
@@ -2549,12 +2559,12 @@ export component AppWindow inherits Window {
                     clicked => { root.confirm-remove = d.id; }
                 }
             }
-            if d.history-pending && root.confirm-remove != d.id: HorizontalLayout {
+            if d.history-action != "" && root.confirm-remove != d.id: HorizontalLayout {
                 alignment: start;
                 QuietButton {
-                    text: "Send history now";
+                    text: d.history-action;
                     outlined: true;
-                    accessible-label: "Send message history to " + d.label + " now";
+                    accessible-label: d.history-action + ": " + d.label;
                     clicked => { root.send-history(d.id); }
                 }
             }

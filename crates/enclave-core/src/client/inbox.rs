@@ -255,6 +255,13 @@ impl Client {
                 }
             };
             if let Ok(mut e) = self.handle_direct_from(&envelope, from_root, now) {
+                // A contact who accepted us here: our other devices learn of
+                // them too.
+                for ev in &e {
+                    if let Event::Accepted { root } = ev {
+                        self.sync_contact_to_own(root, true)?;
+                    }
+                }
                 events.append(&mut e);
             }
             p.set_cursor(week, seq);

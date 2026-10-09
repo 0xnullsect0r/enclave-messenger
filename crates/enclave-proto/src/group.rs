@@ -1242,6 +1242,28 @@ impl Group {
         Zeroizing::new(w.finish())
     }
 
+    /// This device's view of the group for another device of the same
+    /// account (index `their_device` in our manifest): every epoch secret
+    /// and chain it can read with, and our sending chain from where it is
+    /// now as one it receives. It starts a sending chain of its own at its
+    /// first send (`docs/06-multidevice.md` §5).
+    pub fn hand_over(&self, their_device: u8) -> Result<Zeroizing<Vec<u8>>> {
+        let mut g = Self::import(&self.export())?;
+        if let Some(m) = g.mine.take() {
+            g.recv.insert(
+                (g.me, g.my_device, m.generation),
+                RecvChain {
+                    epoch: m.epoch,
+                    chain: m.chain,
+                    skipped: BTreeMap::new(),
+                    mac_key: [0; 32],
+                },
+            );
+        }
+        g.my_device = their_device;
+        Ok(g.export())
+    }
+
     /// Inverse of [`Group::export`].
     pub fn import(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);

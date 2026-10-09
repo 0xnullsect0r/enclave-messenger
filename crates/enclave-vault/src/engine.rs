@@ -1867,10 +1867,19 @@ impl Engine {
                             d.iter().map(|b| format!("{b:02x}")).collect::<String>() == hex
                         });
                     if let Some(id) = id {
-                        self.link_status = match c.send_history_now(&id).await {
-                            Ok(()) => "Message history sent. It appears on the other device when it next connects.".into(),
-                            Err(CoreError::Net(_)) => "Couldn't reach your server. Try again in a moment.".into(),
-                            Err(_) => "Couldn't send message history.".into(),
+                        let this = c.devices().iter().any(|d| d.this_device && d.id == id);
+                        self.link_status = if this {
+                            match c.ask_history_now().await {
+                                Ok(()) => "Asked for your message history. Confirm on the device you linked from to send it now.".into(),
+                                Err(CoreError::Net(_)) => "Couldn't reach your server. Try again in a moment.".into(),
+                                Err(_) => "Couldn't ask for message history.".into(),
+                            }
+                        } else {
+                            match c.send_history_now(&id).await {
+                                Ok(()) => "Message history sent. It appears on the other device when it next connects.".into(),
+                                Err(CoreError::Net(_)) => "Couldn't reach your server. Try again in a moment.".into(),
+                                Err(_) => "Couldn't send message history.".into(),
+                            }
                         };
                     }
                 }
@@ -3089,6 +3098,25 @@ impl Engine {
             })
             .collect();
         let can_link = c.can_link();
+        let own = c.own_devices();
+        let now = c.now();
+        s.new_device = c
+            .devices()
+            .into_iter()
+            .filter(|d| !d.primary && d.added_at + enclave_core::client::NEW_DEVICE_SECS > now)
+            .max_by_key(|d| d.added_at)
+            .map(|d| {
+                let who = if d.this_device {
+                    "this device"
+                } else {
+                    "a new device"
+                };
+                let at = chrono::DateTime::from_timestamp(d.added_at as i64, 0)
+                    .map(|t| t.format("%-d %b %H:%M").to_string())
+                    .unwrap_or_default();
+                format!("{who}, {at}")
+            })
+            .unwrap_or_default();
         s.devices = c
             .devices()
             .into_iter()
@@ -3103,17 +3131,43 @@ impl Engine {
                 let day = chrono::DateTime::from_timestamp(d.added_at as i64, 0)
                     .map(|t| t.format("%-d %b %Y").to_string())
                     .unwrap_or_default();
+                // History goes early only when both devices confirm: the new
+                // one asks, then the one holding the root sends.
                 let history_pending = can_link && !d.this_device && !c.history_sent(&d.id);
+                let history_action = if history_pending && c.history_asked(&d.id) {
+                    "Send history now"
+                } else if !can_link && d.this_device && !c.history_received() {
+                    if c.history_asked(&d.id) { "" } else { "Ask for history now" }
+                } else {
+                    ""
+                };
+                // When we last heard from another device of ours, and
+                // whether it's about to be taken off for being unused.
+                let used = own
+                    .iter()
+                    .find(|o| o.id == d.id)
+                    .map(|o| {
+                        if o.inactive {
+                            " · Unused for 30 days: it will be removed".to_string()
+                        } else {
+                            chrono::DateTime::from_timestamp(o.last_seen as i64, 0)
+                                .map(|t| format!(" · Last used {}", t.format("%-d %b")))
+                                .unwrap_or_default()
+                        }
+                    })
+                    .unwrap_or_default();
                 Device {
                     id: d.id.iter().map(|b| format!("{b:02x}")).collect(),
                     label: label.to_string(),
                     detail: if history_pending {
-                        format!("Added {day} · Message history follows 24 hours after linking")
+                        format!(
+                            "Added {day}{used} · Message history follows 24 hours after linking, sooner if both devices confirm"
+                        )
                     } else {
-                        format!("Added {day}")
+                        format!("Added {day}{used}")
                     },
                     removable: can_link && !d.this_device,
-                    history_pending,
+                    history_action: history_action.to_string(),
                 }
             })
             .collect();

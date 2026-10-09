@@ -234,7 +234,7 @@ pub(crate) struct GroupEntry {
 }
 
 impl GroupEntry {
-    fn encode(&self) -> Vec<u8> {
+    pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
         w.u8(1).bytes(&self.group.export());
         w.u16(self.cards.len() as u16);
@@ -259,7 +259,7 @@ impl GroupEntry {
         w.finish()
     }
 
-    fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
+    pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         if r.u8()? != 1 {
             return Err(ProtoError::Decode);
@@ -397,6 +397,7 @@ impl Client {
             cards.insert(*r, c.card.clone().ok_or(CoreError::NotFound)?);
         }
         let mut group = Group::create(name, me, self.profile.server, now, &mut self.rng)?;
+        group.my_device = self.my_device_index();
         let st = group.state.child(|s| {
             for r in members {
                 let _ = s.add(*r, false, now);
@@ -726,11 +727,33 @@ impl Client {
         exclude: Option<[u8; 64]>,
         now: u64,
     ) -> Result<()> {
+        let own_quiet: Vec<[u8; 16]> = self
+            .own_devices()
+            .into_iter()
+            .filter(|d| d.inactive)
+            .map(|d| d.id)
+            .collect();
         let (units, host, keyed) = {
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
             let me = e.group.me;
             let mut targets = Vec::new();
             let mut keyed = BTreeSet::new();
+            // Our other active devices read what this one sends.
+            let own = self.account.root_public.0;
+            let quiet: Vec<[u8; 16]> = own_quiet.clone();
+            for (di, dev) in self.manifest.devices.iter().enumerate() {
+                if di as u8 == e.group.my_device || quiet.contains(&dev.id) {
+                    continue;
+                }
+                if let Some(s) = self.sessions.get(&(own, dev.id)) {
+                    targets.push(RekeyTarget {
+                        member: me,
+                        device: di as u8,
+                        device_id: dev.id,
+                        session: s,
+                    });
+                }
+            }
             for (m, member) in e.group.state.active() {
                 if m == me || Some(member.root) == exclude {
                     continue;
@@ -1006,7 +1029,8 @@ impl Client {
                 .group
                 .rekey_sender(unit)?;
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
-            if sender.member == e.group.me {
+            let own = sender.member == e.group.me;
+            if own && sender.device == e.group.my_device {
                 return Ok(None);
             }
             let root = e
@@ -1017,12 +1041,25 @@ impl Client {
                 .map(|m| m.root)
                 .ok_or(ProtoError::Decode)?;
             let root = super::migrate::resolve(&self.store, &root);
-            let dev_id = self
-                .contacts
-                .get(&root)
-                .and_then(|c| c.manifest.devices.get(sender.device as usize))
-                .map(|d| d.id)
-                .ok_or(ProtoError::Missing)?;
+            // Another device of ours rotated: its chain comes over our
+            // intra-account session.
+            let dev_id = if own {
+                self.manifest
+                    .devices
+                    .get(sender.device as usize)
+                    .map(|d| d.id)
+            } else {
+                self.contacts
+                    .get(&root)
+                    .and_then(|c| c.manifest.devices.get(sender.device as usize))
+                    .map(|d| d.id)
+            }
+            .ok_or(ProtoError::Missing)?;
+            let root = if own {
+                self.account.root_public.0
+            } else {
+                root
+            };
             let session = self
                 .sessions
                 .get(&(root, dev_id))
@@ -1040,9 +1077,7 @@ impl Client {
                 Err(err) => return Err(err.into()),
             }
         };
-        if msg.own_account {
-            return Ok(None);
-        }
+        // From another device of ours: shown as our own (`store_group_message`).
         let (sender_root, prev_state) = {
             let e = self.groups.get(gid).ok_or(CoreError::NotFound)?;
             let root = e
@@ -1098,10 +1133,7 @@ impl Client {
             self.member_name(e, &sender_root)
         };
         let m = self.store_group_message(gid, id, Some((sender_root, name)), &text, now)?;
-        if let Some(e) = self.groups.get_mut(gid) {
-            e.unread = e.unread.saturating_add(1);
-        }
-        self.unarchive_on_message(&Place::Group(*gid))?;
+        self.bump_group_unread(gid, &sender_root)?;
         Ok(Some(Event::GroupMessage {
             group_id: *gid,
             message: m,
@@ -1120,7 +1152,7 @@ impl Client {
         _now: u64,
     ) -> Result<Option<Event>> {
         let me = self.account.root_public.0;
-        let group = Group::join(welcome, &me, 0)?;
+        let group = Group::join(welcome, &me, self.my_device_index())?;
         let st = &group.state;
         let from_admin = st
             .index_of(from)
@@ -1213,6 +1245,24 @@ impl Client {
         Ok(())
     }
 
+    /// Someone else's message in `gid`: one more unread, and back from the
+    /// archive. Ours, sent from another device of ours, is neither.
+    pub(crate) fn bump_group_unread(&mut self, gid: &[u8; 32], from: &[u8; 64]) -> Result<()> {
+        if *from == self.account.root_public.0 {
+            return Ok(());
+        }
+        if let Some(e) = self.groups.get_mut(gid) {
+            e.unread = e.unread.saturating_add(1);
+        }
+        self.unarchive_on_message(&Place::Group(*gid))
+    }
+
+    /// Who a group message, reaction or edit is from as stored: `None` for
+    /// us (from any of our devices).
+    pub(crate) fn group_author(&self, root: &[u8; 64]) -> Option<[u8; 64]> {
+        (*root != self.account.root_public.0).then_some(*root)
+    }
+
     pub(crate) fn store_group_message(
         &mut self,
         gid: &[u8; 32],
@@ -1221,6 +1271,8 @@ impl Client {
         text: &str,
         now: u64,
     ) -> Result<GroupMessage> {
+        // Sent by another device of ours: our own message.
+        let from = from.filter(|(r, _)| *r != self.account.root_public.0);
         let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
         let seq = e.next_seq;
         e.next_seq += 1;

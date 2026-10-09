@@ -81,8 +81,9 @@ pub struct Device {
     pub detail: String,
     /// This device may remove it.
     pub removable: bool,
-    /// Message history hasn't been sent to it yet (and this device can send it).
-    pub history_pending: bool,
+    /// What this device can do about message history for that device:
+    /// "Send history now", "Ask for history now", or empty for nothing.
+    pub history_action: String,
 }
 
 /// A message.
@@ -229,6 +230,9 @@ pub struct Snapshot {
     /// How wrong the device clock is against trusted time ("3 hours
     /// behind"), or empty when it is right (RT-23).
     pub clock_skew: String,
+    /// A device linked to the account in the last 7 days ("Linked device,
+    /// 30 Sep 14:02"), pointed out on every device, or empty.
+    pub new_device: String,
     /// Names of groups we asked to join that haven't let us in yet.
     pub joining: Vec<String>,
     /// Why restoring failed.
@@ -624,7 +628,7 @@ impl Snapshot {
                 .str(&d.label)
                 .str(&d.detail)
                 .bool(d.removable)
-                .bool(d.history_pending);
+                .str(&d.history_action);
         }
         w.strs(&self.link_choices)
             .str(&self.link_status)
@@ -646,6 +650,7 @@ impl Snapshot {
         w.str(&self.username_problem)
             .str(&self.kt_split)
             .str(&self.clock_skew)
+            .str(&self.new_device)
             .strs(&self.joining)
             .str(&self.restore_error);
         w.len(self.friends.len());
@@ -776,7 +781,7 @@ impl Snapshot {
                     label: r.str()?,
                     detail: r.str()?,
                     removable: r.bool()?,
-                    history_pending: r.bool()?,
+                    history_action: r.str()?,
                 })
             })
             .collect::<Result<_>>()?;
@@ -818,6 +823,7 @@ impl Snapshot {
             username_problem: r.str()?,
             kt_split: r.str()?,
             clock_skew: r.str()?,
+            new_device: r.str()?,
             joining: r.strs()?,
             restore_error: r.str()?,
             friends: {

@@ -606,6 +606,13 @@ impl Server {
         self.stats
     }
 
+    /// Envelopes stored now, in every inbox (diagnostics, tests).
+    pub fn envelopes_held(&self) -> usize {
+        self.db
+            .read(|r| r.scan(db::ENVELOPES, b"").map(|v| v.len()))
+            .unwrap_or(0)
+    }
+
     /// Test hook: every token-registration batch, and every burned token
     /// hash in order, as a curious server could log them.
     #[cfg(feature = "test-hooks")]

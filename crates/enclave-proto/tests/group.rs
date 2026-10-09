@@ -326,3 +326,28 @@ fn hundred_members_five_devices_rotation_is_three_units() {
     }
     assert_eq!(own, 4, "our other four devices see it as our own");
 }
+
+/// A device handed the group by another device of its account reads what
+/// that device sends from then on (as our own), and starts a chain of its
+/// own before sending.
+#[test]
+fn hand_over_to_another_device() {
+    let mut rng = HedgedRng::new().unwrap();
+    let mut first = Group::create("Ours", [1; 64], [9; 16], NOW, &mut rng).unwrap();
+    first.rotate(&[], None, NOW, &mut rng).unwrap();
+    let earlier = first.seal(b"before", 0, &mut rng).unwrap();
+    let mut second = Group::import(&first.hand_over(1).unwrap()).unwrap();
+    assert_eq!((second.me, second.my_device), (0, 1));
+    let msg = first.seal(b"after", 0, &mut rng).unwrap();
+    let got = second.open(&msg).unwrap();
+    assert_eq!(got.content, b"after");
+    assert!(got.own_account, "from our own account");
+    assert!(
+        second.open(&earlier).is_err(),
+        "nothing from before the hand-over"
+    );
+    // Its own chain comes from its own rotation.
+    assert!(second.seal(b"mine", 0, &mut rng).is_err());
+    second.rotate(&[], None, NOW, &mut rng).unwrap();
+    assert!(second.seal(b"mine", 0, &mut rng).is_ok());
+}

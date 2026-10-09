@@ -105,7 +105,7 @@ impl Client {
         if m.deleted {
             return Ok(None);
         }
-        set_reaction(&mut m, Some(*from), &emoji);
+        set_reaction(&mut m, self.group_author(from), &emoji);
         self.put_group_message(gid, &m)?;
         Ok(Self::changed(gid, m.seq))
     }
@@ -121,7 +121,7 @@ impl Client {
         let Some(mut m) = self.group_message_by_id(gid, id)? else {
             return Ok(None);
         };
-        if m.from != Some(*from)
+        if m.from != self.group_author(from)
             || m.deleted
             || m.poll.is_some()
             || text.trim().is_empty()
@@ -144,7 +144,7 @@ impl Client {
         let Some(mut m) = self.group_message_by_id(gid, id)? else {
             return Ok(None);
         };
-        if m.from != Some(*from) || m.deleted {
+        if m.from != self.group_author(from) || m.deleted {
             return Ok(None);
         }
         wipe(&mut m);

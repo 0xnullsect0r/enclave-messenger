@@ -459,6 +459,7 @@ impl LinkingDevice {
             maximum: false,
             inbox_rounds: 0,
             fallback_week: false,
+            pq_carried: std::collections::HashMap::new(),
             group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
@@ -797,10 +798,6 @@ impl Client {
         content: &Content,
         now: u64,
     ) -> Result<()> {
-        let own = self.account.root_public.0;
-        if !self.sessions.keys().any(|(r, _)| *r == own) {
-            return Ok(());
-        }
         let copy = Content::SelfCopy {
             to: *to,
             content: content.encode()?,
@@ -811,11 +808,18 @@ impl Client {
 
     /// Send encoded content to every other device of ours we have a session
     /// with (one envelope, one slot per device).
+    ///
+    /// With no other device to send to (none, none active, or no session
+    /// yet), a cover envelope goes instead: every message costs the same
+    /// two writes whatever the number of devices (`06-multidevice.md` §4).
     pub(crate) async fn send_own(&mut self, copy: &[u8], now: u64) -> Result<()> {
         let own = self.account.root_public.0;
-        if !self.sessions.keys().any(|(r, _)| *r == own) {
-            return Ok(());
-        }
+        let inactive: Vec<[u8; 16]> = self
+            .own_devices()
+            .into_iter()
+            .filter(|d| d.inactive)
+            .map(|d| d.id)
+            .collect();
         let token = self
             .issue_tokens(&own, 1, now)
             .await?
@@ -825,30 +829,38 @@ impl Client {
             let mut keys = Vec::new();
             let mut refs = Vec::new();
             for (k, s) in self.sessions.iter_mut() {
-                if k.0 == own && s.can_send() && refs.len() < MAX_DEVICES {
+                if k.0 == own
+                    && s.can_send()
+                    && !inactive.contains(&k.1)
+                    && refs.len() < MAX_DEVICES
+                {
                     keys.push(*k);
                     refs.push(s);
                 }
             }
             if refs.is_empty() {
-                return Ok(());
-            }
-            let carrier = refs.iter().position(|s| s.wants_pq_slot());
-            let env =
-                enclave_proto::envelope::seal_direct(&mut refs, copy, carrier, &mut self.rng)?;
-            drop(refs);
-            for k in keys {
-                if let Some(s) = self.sessions.get(&k) {
-                    let s = s.clone();
-                    self.save_session(&k.0, &k.1, &s)?;
+                drop(refs);
+                enclave_proto::envelope::cover_direct(&mut self.rng)?
+            } else {
+                let carrier = super::pq_carrier(&mut self.pq_carried, &keys, &refs);
+                let env =
+                    enclave_proto::envelope::seal_direct(&mut refs, copy, carrier, &mut self.rng)?;
+                drop(refs);
+                for k in keys {
+                    if let Some(s) = self.sessions.get(&k) {
+                        let s = s.clone();
+                        self.save_session(&k.0, &k.1, &s)?;
+                    }
                 }
+                env
             }
-            env
         };
         let h = RequestHeader {
             op: Op::Write,
             flags: 0,
-            mailbox: self.profile.addr(enclave_rpc::api::week_of(now)),
+            mailbox: self
+                .profile
+                .addr(enclave_rpc::api::week_of(self.inbox_now(now))),
             token,
         };
         let server = self.profile.server;

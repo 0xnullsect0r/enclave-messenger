@@ -79,7 +79,7 @@ fn snapshot() -> Snapshot {
             label: "This device".into(),
             detail: "Added 2 Sep 2026".into(),
             removable: false,
-            history_pending: true,
+            history_action: "Send history now".into(),
         }],
         link_choices: vec!["a b c".into(); 4],
         link_status: "s".into(),
@@ -101,6 +101,7 @@ fn snapshot() -> Snapshot {
         username_problem: "@robin@enclave.example".into(),
         kt_split: "enclave.example".into(),
         clock_skew: "3 hours behind".into(),
+        new_device: "a new device, 30 Sep 14:02".into(),
         joining: vec!["Book club".into()],
         restore_error: "wrong words".into(),
         friends: vec![enclave_ipc::Pick {

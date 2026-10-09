@@ -140,6 +140,32 @@ pub fn seal_direct(
     Ok(env)
 }
 
+/// A direct envelope nobody can open: random slots, PQ slot and capsule,
+/// and a body sealed under a random key over empty content. It has the
+/// form and length of a real one; a single-device account writes it as its
+/// self-copy (`06-multidevice.md` §4), so the server sees two writes per
+/// message whatever the number of devices.
+pub fn cover_direct(rng: &mut HedgedRng) -> Result<Vec<u8>> {
+    let hdr = header(EnvelopeKind::Direct);
+    let (_, body) = seal_body(&[], direct::BODY_LEN, &hdr, rng)?;
+    let mut env = Vec::with_capacity(ENVELOPE_LEN);
+    env.extend_from_slice(&hdr);
+    let mut r = vec![0u8; DEVICE_SLOTS * DEVICE_SLOT_LEN];
+    rng.fill("envelope/dummy-slot", &mut r)?;
+    env.extend_from_slice(&r);
+    let mut r = vec![0u8; PQ_SLOT_LEN];
+    rng.fill("envelope/dummy-pq", &mut r)?;
+    env.extend_from_slice(&r);
+    let mut capsule = vec![0u8; CAPSULE_LEN];
+    rng.fill("envelope/capsule", &mut capsule)?;
+    env.extend_from_slice(&capsule);
+    env.extend_from_slice(&body);
+    if env.len() != ENVELOPE_LEN {
+        return Err(ProtoError::Decode);
+    }
+    Ok(env)
+}
+
 /// Result of opening an envelope.
 pub struct OpenedEnvelope {
     /// Index of the session (in the caller's list) that matched.

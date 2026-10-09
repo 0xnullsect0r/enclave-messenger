@@ -12,7 +12,6 @@
 
 use super::messages::NS_FILES;
 use super::polls::Rich;
-use super::search::Place;
 use super::{Client, ContactState, Event, GroupMessage, Message};
 use crate::content::{Content, MAX_ATTACHMENT_REF, MsgId};
 use crate::files::{self, Attachment};
@@ -341,10 +340,7 @@ impl Client {
         m.attachment = Some(att);
         m.sticker = Some(index);
         self.put_group_message(gid, &m)?;
-        if let Some(e) = self.groups.get_mut(gid) {
-            e.unread = e.unread.saturating_add(1);
-        }
-        self.unarchive_on_message(&Place::Group(*gid))?;
+        self.bump_group_unread(gid, from)?;
         Ok(Some(Event::GroupMessage {
             group_id: *gid,
             message: m,

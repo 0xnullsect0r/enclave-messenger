@@ -39,6 +39,10 @@ impl Client {
         }
         let now = self.now();
         self.store.put(NS_BLOCKED, root, &[1], &mut self.rng)?;
+        self.queue_own(super::own_sync::SyncItem::Blocked {
+            root: *root,
+            on: true,
+        })?;
         // Revoked at every address they could write to now; the next
         // weekly addresses never get them.
         let tokens = self.issued(root);
@@ -64,6 +68,10 @@ impl Client {
             return Ok(());
         }
         self.store.delete(NS_BLOCKED, root)?;
+        self.queue_own(super::own_sync::SyncItem::Blocked {
+            root: *root,
+            on: false,
+        })?;
         let accepted = self
             .contacts
             .get(root)
