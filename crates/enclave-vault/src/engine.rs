@@ -10,7 +10,7 @@ use enclave_ipc::{Cmd, Device, Effect, Msg, Out, Pick, Row, Snapshot, tint_for};
 use enclave_net::schedule::Profile;
 use enclave_net::shaped::{ShapedTransport, Shaping};
 use enclave_net::transport::{Route, ServerId, TcpTransport, Transport};
-use enclave_store::{FileKeystore, MemoryKeystore};
+use enclave_store::MemoryKeystore;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -277,6 +277,8 @@ struct Engine {
     server: ServerId,
     /// The servers in the foundation's list, checked (for the picker).
     listed: Vec<enclave_federation::ListedServer>,
+    /// The profile's secrets are in files, not a platform keystore.
+    file_keys: bool,
     client: Option<Client>,
     demo: Option<Demo>,
     selected: Option<[u8; 64]>,
@@ -793,6 +795,10 @@ pub async fn run_with(
         }
     };
     let (foundation, list) = federation(&mode);
+    let file_keys = match &mode {
+        Mode::Server { profile, .. } => crate::keystore::uses_files(profile),
+        Mode::Demo => false,
+    };
     let mut e = Engine {
         mode,
         media: helpers
@@ -805,6 +811,7 @@ pub async fn run_with(
         transport,
         server: server.unwrap_or_default(),
         listed: Vec::new(),
+        file_keys,
         client: None,
         demo: None,
         selected: None,
@@ -958,11 +965,9 @@ impl Engine {
                 // Useless without this device's keystore, and outliving
                 // shredding if copied: left out of OS backups.
                 let _ = enclave_platform::backup::exclude(profile);
-                let keystore: Arc<dyn enclave_store::Keystore> =
-                    match FileKeystore::new(profile.join("keys")) {
-                        Ok(k) => Arc::new(k),
-                        Err(_) => Arc::new(MemoryKeystore::default()),
-                    };
+                // The platform keystore where there is one
+                // (`crate::keystore`).
+                let keystore = crate::keystore::open(profile);
                 Options {
                     path: Some(profile.join("profile.redb")),
                     keystore,
@@ -3487,6 +3492,7 @@ impl Engine {
                 .filter(|v| v.weight > 0 || v.id() == self.server)
                 .map(server_row)
                 .collect(),
+            file_keys: self.file_keys,
             home: if self.server == ServerId::default() {
                 String::new()
             } else {

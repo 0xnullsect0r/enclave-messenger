@@ -147,24 +147,13 @@ impl LockFile {
 }
 
 /// Erase the profile in `dir` without opening it (the panic wipe, also
-/// from the command line: `enclave --profile DIR --panic-wipe`): every
-/// keystore secret is overwritten and removed (which alone makes the
-/// database unreadable), then the database and the lock settings go.
+/// from the command line: `enclave --panic-wipe`): every keystore secret
+/// is destroyed, in the platform keystore or overwritten in files (which
+/// alone makes the database unreadable), then the database and the lock
+/// settings go.
 pub fn erase_profile(dir: &std::path::Path) -> std::io::Result<()> {
-    use enclave_store::Keystore as _;
-    let keys = dir.join("keys");
-    if let Ok(entries) = std::fs::read_dir(&keys) {
-        let ks = enclave_store::FileKeystore::new(keys.clone())
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
-        for f in entries.flatten() {
-            let name = f.file_name().to_string_lossy().into_owned();
-            if let Some(stem) = name.strip_suffix(".key") {
-                let _ = ks.destroy(stem);
-            }
-        }
-        let _ = std::fs::remove_dir_all(&keys);
-    }
-    for f in ["profile.redb", "lock.bin"] {
+    crate::keystore::erase(dir)?;
+    for f in ["profile.redb", "profile.redb.pre-migration", "lock.bin"] {
         match std::fs::remove_file(dir.join(f)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
             _ => {}

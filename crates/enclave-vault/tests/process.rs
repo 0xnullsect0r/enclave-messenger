@@ -39,6 +39,7 @@ async fn vault_process_serves_the_ui() {
     let token = [0x5a; TOKEN_LEN];
 
     let mut child = Command::new(BIN)
+        .env("ENCLAVE_KEYSTORE", "file")
         .arg("--connect")
         .arg(&sock)
         .arg("--demo")
@@ -146,13 +147,17 @@ async fn vault_process_serves_the_ui() {
 #[test]
 fn vault_refuses_to_start_without_a_token() {
     let mut child = Command::new(BIN)
+        .env("ENCLAVE_KEYSTORE", "file")
         .args(["--connect", "/nonexistent", "--demo"])
         .stdin(Stdio::piped())
         .spawn()
         .unwrap();
     writeln!(child.stdin.take().unwrap(), "not-a-token").unwrap();
     assert!(!child.wait().unwrap().success());
-    let status = Command::new(BIN).status().unwrap();
+    let status = Command::new(BIN)
+        .env("ENCLAVE_KEYSTORE", "file")
+        .status()
+        .unwrap();
     assert!(!status.success());
 }
 
@@ -254,6 +259,7 @@ async fn start_vault(
     let listener = UnixListener::bind(&sock).unwrap();
     let token = [0x33; TOKEN_LEN];
     let mut child = Command::new(BIN)
+        .env("ENCLAVE_KEYSTORE", "file")
         .arg("--connect")
         .arg(&sock)
         .args(["--server", &format!("{}={addr}", hex(&id)), "--profile"])
@@ -381,6 +387,7 @@ async fn app_lock_and_emergency_pin() {
     let listener = UnixListener::bind(&sock).unwrap();
     let token = [0x6b; TOKEN_LEN];
     let mut child = Command::new(BIN)
+        .env("ENCLAVE_KEYSTORE", "file")
         .arg("--connect")
         .arg(&sock)
         .arg("--demo")
@@ -509,6 +516,7 @@ async fn picks_a_server_from_the_list_and_moves() {
         mode,
         "round trip without a home"
     );
+    enclave_vault::keystore::use_files_only();
     let (tx, mut rx) = enclave_vault::spawn(mode);
     async fn wait(
         rx: &mut tokio::sync::mpsc::UnboundedReceiver<Out>,

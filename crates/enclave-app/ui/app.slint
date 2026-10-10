@@ -798,6 +798,8 @@ export component AppWindow inherits Window {
     // About: this build's version, and the open-source notices, loaded
     // when their sheet opens.
     in property <string> version;
+    // This computer keeps Enclave's keys in files (no keyring).
+    in property <bool> file-keys;
     in property <[LicenceEntry]> licences;
     callback load-licences();
     callback check-backup(string, string);
@@ -1053,6 +1055,9 @@ export component AppWindow inherits Window {
                     placeholder: "Passphrase for this computer (optional)";
                     secret: true;
                     text <=> root.new-passphrase;
+                }
+                if root.can-join && root.file-keys && root.new-passphrase == "": Secondary {
+                    text: "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files.";
                 }
                 if root.can-join && root.new-passphrase != "": Secondary {
                     text: "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.";

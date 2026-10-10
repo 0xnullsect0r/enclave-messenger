@@ -305,6 +305,7 @@ fn fixture() -> Snapshot {
         group_votes: Vec::new(),
         group_admins: 0,
         group_vote: String::new(),
+        file_keys: false,
     }
 }
 

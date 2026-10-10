@@ -8,6 +8,8 @@
 //!   are never written to swap.
 //! - [`backup`]: keeping the profile directory out of OS backups.
 //! - [`process`]: no console windows on Windows.
+//! - [`keystore`] (feature `keystores`): the Keychain, DPAPI and the
+//!   Secret Service.
 //!
 //! The desktop and mobile shims (keystores, capture exclusion, audio,
 //! camera) join this crate with the desktop and mobile milestones, behind
@@ -15,5 +17,7 @@
 
 pub mod backup;
 pub mod dit;
+#[cfg(feature = "keystores")]
+pub mod keystore;
 pub mod mem;
 pub mod process;

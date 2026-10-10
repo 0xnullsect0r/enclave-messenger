@@ -405,6 +405,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_server_backup_at(s.server_backup_at.clone().into());
     ui.set_backup_check(s.backup_check.clone().into());
     apply_servers(ui, s);
+    ui.set_file_keys(s.file_keys);
     ui.set_app_lock(s.app_lock);
     ui.set_lock_timeout(i32::try_from(s.lock_timeout).unwrap_or(i32::MAX));
     ui.set_invites(s.invites as i32);

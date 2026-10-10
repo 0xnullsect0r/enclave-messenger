@@ -380,6 +380,9 @@ pub struct Snapshot {
     pub group_admins: u32,
     /// The server we voted to move the open group to, or empty.
     pub group_vote: String,
+    /// Keys are kept in files in the profile, not a platform keystore (a
+    /// passphrase is recommended).
+    pub file_keys: bool,
 }
 
 /// UI → vault.
@@ -878,7 +881,8 @@ impl Snapshot {
             .str(&self.group_next)
             .strs(&self.group_votes)
             .u32(self.group_admins)
-            .str(&self.group_vote);
+            .str(&self.group_vote)
+            .bool(self.file_keys);
         w.0
     }
 
@@ -1122,6 +1126,7 @@ impl Snapshot {
             group_votes: r.strs()?,
             group_admins: r.u32()?,
             group_vote: r.str()?,
+            file_keys: r.bool()?,
         };
         r.end()?;
         Ok(s)

@@ -105,7 +105,11 @@ where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
 {
     // The network lives in netd and pictures in mediad; start them while
-    // we still may.
+    // we still may, and reach the platform keystore (the Secret Service's
+    // bus) while we can open a socket.
+    if matches!(mode, enclave_vault::Mode::Server { .. }) {
+        enclave_vault::keystore::prepare();
+    }
     let net = start_netd(&mode);
     if net.is_some() {
         report.network = "netd";

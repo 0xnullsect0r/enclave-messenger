@@ -25,6 +25,8 @@ pub fn paths_for(mode: &crate::Mode) -> (Vec<PathBuf>, Vec<PathBuf>) {
         // The engine creates the profile directory if it's missing.
         let _ = std::fs::create_dir_all(profile);
         rw.push(profile.clone());
+        // The secret portal's keyring, in a Flatpak (`crate::keystore`).
+        rw.extend(crate::keystore::writable_paths());
         if let Some(k) = kt_pins {
             ro.push(k.clone());
         }

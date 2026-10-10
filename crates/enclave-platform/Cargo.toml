@@ -26,11 +26,26 @@ panic = "warn"
 dbg_macro = "deny"
 todo = "deny"
 
+[features]
+# The platform keystores (`keystore`): the vault turns this on; the crypto
+# crate, which also depends on this one, doesn't.
+keystores = ["dep:security-framework", "dep:oo7", "dep:pollster"]
+
 [dependencies]
 zeroize = "1"
+pollster = { version = "0.4", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { version = "3", optional = true, features = ["OSX_10_15"] }
+
+# Linux and the BSDs: the Secret Service (or, in a Flatpak, the secret
+# portal). async-io rather than tokio, like the file dialogs' portal client,
+# so neither needs a tokio runtime.
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
+oo7 = { version = "0.6", optional = true, default-features = false, features = ["async-std", "native_crypto"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_System_Memory", "Win32_System_SystemInformation"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Console", "Win32_System_Memory", "Win32_System_SystemInformation"] }

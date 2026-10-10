@@ -176,6 +176,7 @@ fn snapshot() -> Snapshot {
         group_votes: vec!["aa:1".into()],
         group_admins: 3,
         group_vote: "aa".into(),
+        file_keys: true,
     }
 }
 
