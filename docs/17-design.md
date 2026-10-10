@@ -130,8 +130,9 @@ The PLAN §15.2 figures (15.0 / 15.44, 13.51, 5.23, 6.0, 5.39, 7.67, 9.11, 8.86,
 
 - **Motion:** 150 to 200 ms, ease-out. **Reduce-motion** turns every animation into a cross-fade (and the Seal close into an instant state change).
 - **Haptics:** a light tick on send; a distinct pattern when the Seal closes. Haptics follow the OS setting.
+- **As implemented on the desktop:** the app reads the system's reduce-motion setting at start (macOS "Reduce motion", Windows "Show animations", GNOME's animations through the desktop portal) into `Tokens.reduce-motion`, which every animation follows; haptics play on a Mac's Force Touch trackpad (`NSHapticFeedbackManager`: generic on send, level change when the Seal closes) and nowhere else on the desktop.
 - **Icons:** a custom 24 px set with a 1.75 px stroke, derived from Lucide (ISC). **No locks, shields, or keyholes.**
-- **App icon:** a Pine square with a paper-colored Seal (a circle with a folded notch).
+- **App icon:** a Pine square with a paper-colored Seal (a circle with a folded notch). **As drawn** (`design/icon/`, rendered by `cargo xtask icons`): the back of a Pine letter, its lighter flap folded down to a paper-colored Seal with an inner ring; a full-bleed variant for masks and stores, and a one-color glyph (flap and Seal) for themed and symbolic icons.
 - **Spinners:** never longer than 2 s without text. Progress bars show real progress only.
 
 ## 6. Signature moments

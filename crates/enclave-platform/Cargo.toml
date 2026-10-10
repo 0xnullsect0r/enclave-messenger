@@ -31,7 +31,7 @@ todo = "deny"
 # crate, which also depends on this one, doesn't.
 keystores = ["dep:security-framework", "dep:oo7", "dep:pollster"]
 # Window shims (`window`): the app turns this on.
-window = ["dep:raw-window-handle", "dep:objc2"]
+window = ["dep:raw-window-handle", "dep:objc2", "dep:zbus"]
 # Touch ID and Windows Hello for the app lock (`biometric`): the vault's.
 biometric = ["dep:objc2", "dep:objc2-local-authentication", "dep:objc2-foundation", "dep:block2", "dep:windows", "dep:windows-future"]
 
@@ -52,6 +52,7 @@ block2 = { version = "0.6", optional = true }
 # so neither needs a tokio runtime.
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
 oo7 = { version = "0.6", optional = true, default-features = false, features = ["async-std", "native_crypto"] }
+zbus = { version = "5", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

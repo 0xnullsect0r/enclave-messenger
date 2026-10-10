@@ -9,7 +9,7 @@ import "fonts/NotoEmoji-Regular.ttf";
 import { Tokens } from "tokens.slint";
 import { AboutSlint, ListView } from "std-widgets.slint";
 import {
-    Body, Secondary, Caption, Title, ScreenTitle, Code, Seal, SealState, PrimaryButton,
+    Body, Secondary, Caption, Title, ScreenTitle, Code, Seal, SealState, SealClose, PrimaryButton,
     QuietButton, ActionTile, Field, Avatar, Notice, Icons,
 } from "controls.slint";
 
@@ -781,6 +781,15 @@ export component AppWindow inherits Window {
     // Open the system's file dialog for a path field: 0 the backup to
     // restore, 1 a backup to check, 2 a file to send, 3 sticker pictures.
     callback browse(int);
+    // Scanning a code with the camera into a field: 1 add, 2 meet in
+    // person, 3 a friend's new device (recovery share), 4 linking a device,
+    // 10 the next empty share field when restoring.
+    in property <bool> can-scan: true;
+    in-out property <bool> scanning;
+    in property <image> scan-frame;
+    in property <string> scan-error;
+    callback scan(int);
+    callback stop-scan();
     // The servers to pick from, and what picking is for: 0 setting up,
     // 1 moving the account, 2 voting to move the open group.
     in property <[ServerOption]> servers;
@@ -995,6 +1004,10 @@ export component AppWindow inherits Window {
                         text: "Their screen should show: " + root.share-request-words + ". Each friend scans this same code.";
                     }
                     Field { placeholder: "Share 1 (the code a friend shows you)"; mono: true; text <=> root.restore-s1; }
+                    if root.can-scan: HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: "Scan a friend's code"; outlined: true; clicked => { root.scan(10); } }
+                    }
                     Field { placeholder: "Share 2"; mono: true; text <=> root.restore-s2; }
                     Field { placeholder: "Share 3 (if needed)"; mono: true; text <=> root.restore-s3; }
                     Field { placeholder: "Share 4 (if needed)"; mono: true; text <=> root.restore-s4; }
@@ -1894,7 +1907,11 @@ export component AppWindow inherits Window {
         title: "Add someone";
         close => { root.sheet = Sheet.none; }
         Secondary { text: root.usernames ? "Paste the invite link they sent you, or type their username." : "Paste the invite link they sent you."; }
-        Field { placeholder: root.usernames ? "enclave:add#…  or  @name@server" : "enclave:add#…"; mono: true; text <=> root.add-link; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: root.usernames ? "enclave:add#…  or  @name@server" : "enclave:add#…"; mono: true; text <=> root.add-link; horizontal-stretch: 1; }
+            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan their invite code with the camera"; clicked => { root.scan(1); } }
+        }
         Field { placeholder: "Say hello (optional)"; text <=> root.add-text; }
         if root.add-error != "": HorizontalLayout {
             spacing: Tokens.space-s;
@@ -2330,9 +2347,9 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.meet: SheetFrame {
         title: root.meet-done != "" ? "You and " + root.meet-done + " are checked in person" : root.meet-words != "" ? "Do you both see these words?" : "Meet in person";
         close => { root.sheet = Sheet.none; }
-        if root.meet-done != "": HorizontalLayout {
+        HorizontalLayout {
             alignment: start;
-            Seal { state: SealState.checked; size: 48px; }
+            SealClose { closed: root.meet-done != "" || root.meet-words != ""; size: 56px; }
         }
         if root.meet-done != "": Secondary { text: "If anything changes, we'll tell you before you send anything. Your conversation now also rests on a secret that only crossed the room between your two screens."; }
         if root.meet-done != "": HorizontalLayout {
@@ -2360,7 +2377,11 @@ export component AppWindow inherits Window {
                 }
             }
         }
-        if root.meet-done == "" && root.meet-words == "": Field { placeholder: "Their code: enclave:meet#…"; mono: true; text <=> root.meet-input; }
+        if root.meet-done == "" && root.meet-words == "": HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "Their code: enclave:meet#…"; mono: true; text <=> root.meet-input; horizontal-stretch: 1; }
+            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan their code with the camera"; clicked => { root.scan(2); } }
+        }
         if root.meet-done == "" && root.meet-words == "" && root.meet-error != "": Text {
             text: root.meet-error;
             color: Tokens.danger;
@@ -2379,7 +2400,6 @@ export component AppWindow inherits Window {
         if root.meet-done == "" && root.meet-words != "": HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-sm;
-            Seal { state: SealState.checked; size: 32px; }
             Code {
                 text: root.meet-words;
                 vertical-alignment: center;
@@ -2946,10 +2966,15 @@ export component AppWindow inherits Window {
         if root.share-release == "": Secondary {
             text: "Anyone who collects enough of these can take over their account. Never give it over a message or a call, even if it seems to be them.";
         }
-        if root.share-release == "": Field {
-            placeholder: "Scan or paste the code on their new device";
-            mono: true;
-            text <=> root.share-request-input;
+        if root.share-release == "": HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field {
+                placeholder: "Scan or paste the code on their new device";
+                mono: true;
+                text <=> root.share-request-input;
+                horizontal-stretch: 1;
+            }
+            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan the code on their new device with the camera"; clicked => { root.scan(3); } }
         }
         if root.share-release == "": HorizontalLayout {
             alignment: start;
@@ -3236,7 +3261,11 @@ export component AppWindow inherits Window {
         if root.can-link && root.link-choices.length == 0: Secondary {
             text: "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device.";
         }
-        if root.can-link && root.link-choices.length == 0: Field { placeholder: "enclave:link#…"; mono: true; text <=> root.link-code; }
+        if root.can-link && root.link-choices.length == 0: HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "enclave:link#…"; mono: true; text <=> root.link-code; horizontal-stretch: 1; }
+            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan the new device's code with the camera"; clicked => { root.scan(4); } }
+        }
         if root.can-link && root.link-choices.length == 0: HorizontalLayout {
             alignment: start;
             PrimaryButton {
@@ -3444,6 +3473,55 @@ export component AppWindow inherits Window {
                 clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.change-words(); root.open-sheet(Sheet.recovery); }
             }
             QuietButton { text: "Not now"; clicked => { root.sheet = Sheet.recovery; } }
+        }
+    }
+
+    // ------------------------------------------------------- camera (scan)
+    if root.scanning: Rectangle {
+        background: #000000d9;
+        accessible-role: groupbox;
+        accessible-label: "Scanning a code";
+        TouchArea { }
+        VerticalLayout {
+            alignment: center;
+            padding: Tokens.space-l;
+            spacing: Tokens.space-m;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: min(root.width - 2 * Tokens.space-l, 480px);
+                    height: self.width * 3 / 4;
+                    border-radius: Tokens.radius-sheet;
+                    background: #111;
+                    clip: true;
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.scan-frame;
+                        image-fit: cover;
+                        accessible-role: image;
+                        accessible-label: "Camera";
+                    }
+                    // The frame to hold the code in.
+                    Rectangle {
+                        width: parent.height * 0.6;
+                        height: self.width;
+                        border-width: 3px;
+                        border-radius: 12px;
+                        border-color: Tokens.saffron;
+                    }
+                }
+            }
+            Text {
+                text: root.scan-error != "" ? root.scan-error : "Hold their code up to the camera.";
+                color: #ffffff;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: center;
+                PrimaryButton { text: "Cancel"; clicked => { root.stop-scan(); } }
+            }
         }
     }
 }

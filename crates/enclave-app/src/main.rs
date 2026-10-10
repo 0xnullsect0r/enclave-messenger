@@ -106,6 +106,71 @@ fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
 #[cfg(windows)]
 const NOTIFY_APP_ID: &str = "io.github.EnclaveChat.Enclave";
 
+thread_local! {
+    /// The scan in progress, owned by the UI thread.
+    static SCAN: std::cell::RefCell<Option<enclave_app::camera::Scan>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Scan a code with the camera into the field `target` names (see `scan`
+/// in the UI).
+fn scan(ui: &AppWindow, target: i32) {
+    use enclave_app::camera::{self, Event};
+    ui.set_scan_error("".into());
+    ui.set_scan_frame(slint::Image::default());
+    ui.set_scanning(true);
+    let w = ui.as_weak();
+    let running = camera::start(move |e| {
+        let _ = w.upgrade_in_event_loop(move |ui| {
+            if !ui.get_scanning() {
+                return;
+            }
+            match e {
+                Event::Frame(width, height, grey) => {
+                    let mut buf = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(width, height);
+                    for (px, g) in buf.make_mut_slice().iter_mut().zip(grey) {
+                        *px = slint::Rgb8Pixel { r: g, g, b: g };
+                    }
+                    ui.set_scan_frame(slint::Image::from_rgb8(buf));
+                }
+                Event::Code(code) => {
+                    let code: slint::SharedString = code.trim().into();
+                    match target {
+                        1 => ui.set_add_link(code),
+                        2 => ui.set_meet_input(code),
+                        3 => ui.set_share_request_input(code),
+                        4 => ui.set_link_code(code),
+                        _ => {
+                            // The next empty share field.
+                            if ui.get_restore_s1().is_empty() {
+                                ui.set_restore_s1(code);
+                            } else if ui.get_restore_s2().is_empty() {
+                                ui.set_restore_s2(code);
+                            } else if ui.get_restore_s3().is_empty() {
+                                ui.set_restore_s3(code);
+                            } else if ui.get_restore_s4().is_empty() {
+                                ui.set_restore_s4(code);
+                            } else {
+                                ui.set_restore_s5(code);
+                            }
+                        }
+                    }
+                    stop_scan(&ui);
+                }
+                Event::Failed(why) => ui.set_scan_error(why.into()),
+            }
+        });
+    });
+    SCAN.with(|s| *s.borrow_mut() = Some(running));
+}
+
+/// Turn the camera off and close the scan view.
+fn stop_scan(ui: &AppWindow) {
+    SCAN.with(|s| s.borrow_mut().take());
+    ui.set_scanning(false);
+    ui.set_scan_frame(slint::Image::default());
+}
+
 /// The system's file dialog for one of the path fields (`browse` in the
 /// UI): the chosen paths go into the field.
 fn browse(ui: &AppWindow, what: i32) {
@@ -327,6 +392,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::ServerBackup(on));
     });
     ui.set_version(env!("CARGO_PKG_VERSION").into());
+    // The system's reduce-motion setting (`docs/17-design.md` §5).
+    ui.global::<enclave_app::Tokens>()
+        .set_reduce_motion(enclave_platform::window::reduce_motion());
     // Notifications come from the app's bundle (an unbundled build keeps
     // the system's default sender).
     #[cfg(target_os = "macos")]
@@ -362,6 +430,18 @@ fn main() -> Result<(), slint::PlatformError> {
             && ui.get_licences().row_count() == 0
         {
             ui.set_licences(view::licences());
+        }
+    });
+    let w = ui.as_weak();
+    ui.on_scan(move |target| {
+        if let Some(ui) = w.upgrade() {
+            scan(&ui, target);
+        }
+    });
+    let w = ui.as_weak();
+    ui.on_stop_scan(move || {
+        if let Some(ui) = w.upgrade() {
+            stop_scan(&ui);
         }
     });
     let w = ui.as_weak();
@@ -482,6 +562,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     let t = tx.clone();
     ui.on_send(move |id, text| {
+        enclave_platform::window::haptic(enclave_platform::window::Haptic::Tick);
         let _ = t.send(Cmd::Send(id.to_string(), text.to_string()));
     });
     let t = tx.clone();

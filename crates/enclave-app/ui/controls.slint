@@ -84,6 +84,55 @@ export component Seal inherits Rectangle {
     }
 }
 
+// The Seal closing (docs/17-design.md §6.2): two halves meet when two
+// people have scanned each other, in 240 ms (instantly under reduce
+// motion), and the seal fills.
+export component SealClose inherits Rectangle {
+    in property <bool> closed;
+    in property <length> size: 64px;
+    width: root.size;
+    height: root.size;
+    accessible-role: image;
+    accessible-label: root.closed ? "Sealed" : "Waiting for both codes";
+    property <length> apart: root.closed ? 0px : root.size * 0.16;
+    property <duration> time: Tokens.reduce-motion ? 0ms : Tokens.motion-seal-close;
+    left := Path {
+        x: -root.apart;
+        width: root.size;
+        height: root.size;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12 2.5 A 9.5 9.5 0 0 0 12 21.5";
+        fill: root.closed ? Tokens.saffron : transparent;
+        stroke: root.closed ? Tokens.seal-stroke : Tokens.text-muted;
+        stroke-width: 1.75px;
+        animate x { duration: root.time; easing: ease-out; }
+    }
+    right := Path {
+        x: root.apart;
+        width: root.size;
+        height: root.size;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12 2.5 A 9.5 9.5 0 0 1 12 21.5";
+        fill: root.closed ? Tokens.saffron : transparent;
+        stroke: root.closed ? Tokens.seal-stroke : Tokens.text-muted;
+        stroke-width: 1.75px;
+        animate x { duration: root.time; easing: ease-out; }
+    }
+    Path {
+        width: root.size;
+        height: root.size;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 7 9.5 L 12 13.5 L 17 9.5";
+        stroke: Tokens.seal-stroke;
+        stroke-width: 1.75px;
+        opacity: root.closed ? 1 : 0;
+        animate opacity { duration: root.time; easing: ease-out; }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Buttons: 48 px minimum target, 2 px focus ring, sentence case labels.
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 //! and receives plain display data back. On Unix desktops the vault is a
 //! separate process ([`vault`]); elsewhere it is a thread.
 
+pub mod camera;
 pub mod vault;
 pub mod view;
 

@@ -425,6 +425,8 @@ fn main() -> Result<(), slint::PlatformError> {
     for dark in [false, true] {
         let mode = if dark { "dark" } else { "light" };
         ui.global::<Tokens>().set_dark(dark);
+        // Final states, not the first frame of an animation.
+        ui.global::<Tokens>().set_reduce_motion(true);
         let shot =
             |name: &str, size| render(&window, &ui, size, &out.join(format!("{name}-{mode}.png")));
 

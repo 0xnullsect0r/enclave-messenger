@@ -238,7 +238,7 @@ A new mutual scan with an existing contact produces a new `psk_bond`. Each devic
 - After scanning, both phones compute `psk_bond = eqxdh::bond_psk(s_A, s_B, Q_A, Q_B)` (ordered by payload) and show `seal_words(psk_bond)`. Nothing is stored until the person taps **They match**; then the bond is kept per contact root and the contact is marked checked.
 - **Re-rooting differs from §7.4**: instead of mixing the PSK into the running ratchet, the side with the lower root key drops its sessions with the other account and starts new EQXDH sessions with `psk = psk_bond` to each of their devices (a greeting with fresh tokens), which the other side takes in place of the old ones. Strangers who meet become contacts this way; the receiving side accepts a bonded greeting without a message request.
 - A greeting with the PSK flag is tried against each stored bond (the responder can't know the sender before opening it). A failed try burns nothing: one-time prekeys are removed only after a handshake succeeds.
-- The header shows "Met in person" for bonded contacts. Not done: the Seal animation and haptics, and camera scanning on desktop (the code is pasted).
+- The header shows "Met in person" for bonded contacts. **As implemented on the desktop:** the sheet's Seal closes when both codes are scanned (two halves meet in 240 ms, instantly under the system's reduce-motion setting) with a haptic pulse where the computer has one (a Mac's Force Touch trackpad), and every code field (invite links, in-person and link codes, friends' shares) has **Scan**, which reads the code with the camera (`enclave-app::camera`: `nokhwa` capture, `rqrr` reading, frames kept in the window's process and never stored); pasting still works.
 
 ### 7.5 Formal model and copy
 

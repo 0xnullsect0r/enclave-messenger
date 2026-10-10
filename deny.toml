@@ -94,6 +94,7 @@ allow-build-scripts = [
     "borsh",
     "clang-sys",
     "classic-mceliece-rust",
+    "core-foundation-sys",  # links CoreFoundation (camera, via nokhwa on macOS)
     "crabgrind",  # constant-time tests under valgrind only (cfg(valgrind_ct_test))
     "crc32fast",
     "crossbeam-deque",
@@ -118,8 +119,8 @@ allow-build-scripts = [
     "glutin_egl_sys",
     "glutin_glx_sys",
     "glutin_wgl_sys",
-    "heapless",  # target cfg; obfs4 bridges (enclave-tord)
     "hax-lib",
+    "heapless",  # target cfg; obfs4 bridges (enclave-tord)
     "httparse",
     "i-slint-backend-linuxkms",
     "i-slint-backend-selector",
@@ -150,19 +151,21 @@ allow-build-scripts = [
     "libfuzzer-sys",  # fuzzing builds only (cargo-fuzz; rav1e under cfg(fuzzing))
     "liblzma-sys",  # arti directory compression; netd only
     "libm",
-    "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
     "libseat",  # Linux seat management (linuxkms)
     "libseat-sys",  # Linux seat management (linuxkms)
     "libsqlite3-sys",  # arti/nym-sdk state storage; netd/ingress only
     "libudev-sys",  # Linux device discovery (linuxkms)
+    "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
     "memoffset",
     "naga",
     "nix",
+    "nokhwa-bindings-macos",  # links AVFoundation, CoreMedia, CoreVideo (camera scanning)
     "ntapi",
     "num-bigint-dig",
     "num-traits",
     "objc-sys",  # Apple platform glue (winit)
     "objc2",
+    "objc_exception",  # one small Objective-C file catching exceptions (nokhwa on macOS)
     "openssl",
     "openssl-sys",  # test oracle only (dev-dependency of enclave-crypto); never shipped
     "orbclient",
@@ -179,9 +182,9 @@ allow-build-scripts = [
     "rav1d",  # AV1 decoder; asm feature off, so cc/nasm are not run (enclave-av1 exception)
     "rav1e",  # AV1 encoder; asm feature off (default-features = false)
     "rayon-core",
-    "rfd",  # links AppKit on macOS; checks one dialog backend is chosen
     "redb",
     "ref-cast",
+    "rfd",  # links AppKit on macOS; checks one dialog backend is chosen
     "ring",  # rustls via arti (tor feature) and nym-sdk; netd/ingress only, no long-term keys
     "rspolib",
     "rustix",
@@ -198,6 +201,7 @@ allow-build-scripts = [
     "thiserror",
     "tiny-xlib",  # Linux X11 fallback
     "uncased",
+    "v4l2-sys-mit",  # bindgen over the kernel's videodev2.h (camera scanning on Linux)
     "valuable",
     "wasm-bindgen",
     "wasm-bindgen-shared",

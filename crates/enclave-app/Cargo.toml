@@ -55,6 +55,12 @@ directories = "6"
 # Desktop notifications (D-Bus on Linux, NSUserNotification on macOS, toasts
 # on Windows).
 notify-rust = "4"
+# Scanning codes with the camera: capture (AVFoundation, Media Foundation,
+# V4L2; no JPEG decoder of its own, which would be C), QR reading, and
+# MJPEG frames decoded in Rust.
+nokhwa = { version = "0.10", default-features = false, features = ["input-native"] }
+rqrr = "0.11"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 [dev-dependencies]
 # The tests run the demo.

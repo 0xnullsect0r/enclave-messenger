@@ -443,6 +443,10 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
             ui.set_meet_qr(qr_image(&s.meet_code));
         }
     }
+    // The Seal closes when both have scanned: a haptic pulse with it.
+    if ui.get_meet_words().is_empty() && !s.meet_words.is_empty() {
+        enclave_platform::window::haptic(enclave_platform::window::Haptic::SealClosed);
+    }
     ui.set_meet_words(s.meet_words.clone().into());
     ui.set_meet_name(s.meet_name.clone().into());
     ui.set_meet_error(s.meet_error.clone().into());
