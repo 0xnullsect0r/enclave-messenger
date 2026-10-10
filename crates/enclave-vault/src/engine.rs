@@ -285,6 +285,10 @@ struct Engine {
     file_keys: bool,
     /// Touch ID or Windows Hello, when this computer has it set up.
     biometric_name: Option<&'static str>,
+    /// History being fetched by the window on the local network, by token
+    /// (hex): the offer and the chunks so far.
+    lan_in: HashMap<String, (enclave_core::LanHistory, Vec<Vec<u8>>)>,
+
     client: Option<Client>,
     demo: Option<Demo>,
     selected: Option<[u8; 64]>,
@@ -475,6 +479,21 @@ fn server_row(v: &enclave_federation::ListedServer) -> enclave_ipc::ServerRow {
         operator: v.operator.clone(),
         family: v.family.clone(),
     }
+}
+
+fn hex16(b: &[u8; 16]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn unhex16(s: &str) -> Option<[u8; 16]> {
+    let mut out = [0u8; 16];
+    if s.len() != 32 {
+        return None;
+    }
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = u8::from_str_radix(s.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(out)
 }
 
 fn hex_server(id: &ServerId) -> String {
@@ -909,6 +928,7 @@ pub async fn run_with(
         server: server.unwrap_or_default(),
         listed: Vec::new(),
         file_keys,
+        lan_in: HashMap::new(),
         biometric_name: enclave_platform::biometric::available()
             .then(enclave_platform::biometric::name)
             .flatten(),
@@ -1035,6 +1055,7 @@ pub async fn run_with(
                 }
                 if e.client.is_some() {
                     e.sync().await;
+                    e.lan_upkeep();
                     e.push();
                     e.load_media().await;
                 } else if e.joining.is_some() {
@@ -1313,6 +1334,7 @@ impl Engine {
             self.bulk(true);
         }
         self.handle_cmd(cmd).await;
+        self.lan_upkeep();
         if bulk {
             self.bulk(false);
         }
@@ -2733,6 +2755,39 @@ impl Engine {
                     }
                 }
             }
+            Cmd::LanServing(token, addrs) => {
+                if let (Some(c), Some(t)) = (self.client.as_mut(), unhex16(&token)) {
+                    let _ = c.history_lan_ready(&t, addrs);
+                }
+            }
+            Cmd::LanChunks(token, chunks, last) => {
+                let Some((offer, got)) = self.lan_in.get_mut(&token) else {
+                    return;
+                };
+                got.extend(chunks);
+                if got.len() > offer.chunks() as usize {
+                    if let (Some((offer, _)), Some(c)) =
+                        (self.lan_in.remove(&token), self.client.as_mut())
+                    {
+                        let _ = c.history_lan_failed(&offer.attachment);
+                    }
+                    return;
+                }
+                if last
+                    && let Some((offer, got)) = self.lan_in.remove(&token)
+                    && let Some(c) = self.client.as_mut()
+                    && c.import_history_chunks(&offer.attachment, &got).is_ok()
+                {
+                    self.status = "Your messages from your other device are here.".into();
+                }
+            }
+            Cmd::LanFailed(token) => {
+                if let (Some((offer, _)), Some(c)) =
+                    (self.lan_in.remove(&token), self.client.as_mut())
+                {
+                    let _ = c.history_lan_failed(&offer.attachment);
+                }
+            }
             Cmd::SetScreenSecurity(on) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_setting(SCREEN_SECURITY, if on { &[] } else { &[0] });
@@ -2986,6 +3041,40 @@ impl Engine {
         }
     }
 
+    /// Hand the window what history it is to serve, stop serving or fetch
+    /// on the local network (`enclave_core` history): only sealed chunks
+    /// and where to find them cross to it.
+    fn lan_upkeep(&mut self) {
+        let Some(c) = self.client.as_mut() else {
+            return;
+        };
+        for s in c.take_history_serve() {
+            let token = hex16(&s.token);
+            let batches: Vec<&[Vec<u8>]> = s.chunks.chunks(enclave_ipc::LAN_BATCH).collect();
+            if batches.is_empty() {
+                let _ = self
+                    .out
+                    .send(Out::LanChunks(token.clone(), Vec::new(), true));
+            }
+            for (i, b) in batches.iter().enumerate() {
+                let last = i + 1 == batches.len();
+                let _ = self
+                    .out
+                    .send(Out::LanChunks(token.clone(), b.to_vec(), last));
+            }
+        }
+        for t in c.take_history_lan_stop() {
+            let _ = self.out.send(Out::LanStop(hex16(&t)));
+        }
+        for h in c.take_lan_history() {
+            let token = hex16(&h.token);
+            let _ = self
+                .out
+                .send(Out::LanFetch(token.clone(), h.addrs.clone(), h.chunks()));
+            self.lan_in.insert(token, (h, Vec::new()));
+        }
+    }
+
     /// Check the server list this build offers and route to its servers,
     /// so a new account can be set up on any of them; without a home
     /// server named, pick one (weighted by the list), which the person can
@@ -3051,6 +3140,9 @@ impl Engine {
     /// Give a client what this build knows about the federation: the
     /// foundation key, a server list to offer, and extra pins.
     fn configure(&self, c: &mut Client) {
+        // History to and from our other devices goes window to window on
+        // the local network where it can (`enclave_core` history).
+        c.set_history_lan(matches!(self.mode, Mode::Server { .. }));
         if let Some(k) = &self.foundation {
             if let Err(e) = c.set_foundation(k.clone()) {
                 eprintln!("enclave-vault: foundation key: {e}");

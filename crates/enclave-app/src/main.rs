@@ -252,9 +252,16 @@ fn main() -> Result<(), slint::PlatformError> {
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
     // Outputs from the vault, applied on the UI thread.
     let w = ui.as_weak();
+    let lan_tx = tx.clone();
     std::thread::Builder::new()
         .name("enclave-ui-feed".into())
         .spawn(move || {
+            // History for our other device on the local network
+            // (`enclave_app::lan`): served, and being received.
+            let mut serving: std::collections::HashMap<String, enclave_app::lan::Serving> =
+                std::collections::HashMap::new();
+            let mut to_serve: std::collections::HashMap<String, Vec<Vec<u8>>> =
+                std::collections::HashMap::new();
             while let Some(o) = out.blocking_recv() {
                 // Files are written here, in the UI process, where the
                 // person chooses: the vault can't reach anything outside
@@ -266,6 +273,43 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     Out::Notify(n) => {
                         let _ = w.upgrade_in_event_loop(move |ui| notify(&ui, n));
+                        continue;
+                    }
+                    Out::LanChunks(token, chunks, last) => {
+                        let all = to_serve.entry(token.clone()).or_default();
+                        all.extend(chunks);
+                        if last {
+                            let all = to_serve.remove(&token).unwrap_or_default();
+                            let addrs = match enclave_app::lan::unhex(&token) {
+                                Some(t) => {
+                                    let (s, addrs) = enclave_app::lan::serve(t, all);
+                                    serving.insert(token.clone(), s);
+                                    addrs
+                                }
+                                None => Vec::new(),
+                            };
+                            let _ = lan_tx.send(Cmd::LanServing(token, addrs));
+                        }
+                        continue;
+                    }
+                    Out::LanStop(token) => {
+                        serving.remove(&token);
+                        continue;
+                    }
+                    Out::LanFetch(token, addrs, count) => {
+                        let Some(t) = enclave_app::lan::unhex(&token) else {
+                            let _ = lan_tx.send(Cmd::LanFailed(token));
+                            continue;
+                        };
+                        let tx = lan_tx.clone();
+                        enclave_app::lan::fetch(t, addrs, count, move |r| {
+                            let _ = tx.send(match r {
+                                enclave_app::lan::Fetched::Batch(c, last) => {
+                                    Cmd::LanChunks(token.clone(), c, last)
+                                }
+                                enclave_app::lan::Fetched::Failed => Cmd::LanFailed(token.clone()),
+                            });
+                        });
                         continue;
                     }
                     Out::Invite(link) => {
@@ -284,7 +328,12 @@ fn main() -> Result<(), slint::PlatformError> {
                     Out::Effect(e) => view::apply_effect(&ui, e),
                     Out::Preview(p) => view::apply_preview(&ui, p),
                     Out::Clip(c) => view::apply_clip(&ui, c),
-                    Out::File(..) | Out::Invite(_) | Out::Notify(_) => {}
+                    Out::File(..)
+                    | Out::Invite(_)
+                    | Out::Notify(_)
+                    | Out::LanChunks(..)
+                    | Out::LanStop(_)
+                    | Out::LanFetch(..) => {}
                 });
             }
         })

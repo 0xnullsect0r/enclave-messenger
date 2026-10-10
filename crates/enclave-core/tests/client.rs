@@ -2863,3 +2863,96 @@ async fn withdrawn_usernames() {
     assert!(cy.add_contact(&ben_card, "hello?").await.is_err());
     assert!(ben.claim_username("benjamin2").await.is_err());
 }
+
+/// History over the local network (`03-identity.md` §4.3 step 8): the
+/// sealed chunks go window to window, the reference and the token through
+/// own-device sync; the new device opens them and says so, and nothing
+/// goes through the server. Chunks that don't open fall back to the server.
+#[tokio::test(flavor = "multi_thread")]
+async fn history_over_the_lan() {
+    let net = network();
+    let (mut a, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut b, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Ben")
+        .await
+        .unwrap();
+    connect(&mut a, &mut b).await;
+    b.send_text(&a.root(), "before the link").await.unwrap();
+    a.sync().await.unwrap();
+    let mut a2 = link_device(&mut a, &net, S1).await;
+    b.sync().await.unwrap();
+    a.sync().await.unwrap();
+    let new_id = a2.devices().iter().find(|d| d.this_device).unwrap().id;
+    a.set_history_lan(true);
+    a2.set_history_lan(true);
+    a2.ask_history_now().await.unwrap();
+    a.sync().await.unwrap();
+
+    // Offered on the local network: the window gets the sealed chunks.
+    a.send_history_now(&new_id).await.unwrap();
+    assert!(!a.history_sent(&new_id), "not until the device has it");
+    let serve = a.take_history_serve();
+    assert_eq!(serve.len(), 1);
+    a.history_lan_ready(&serve[0].token, vec!["192.168.1.20:40123".into()])
+        .unwrap();
+    a.sync().await.unwrap();
+    a2.sync().await.unwrap();
+    let lan = a2.take_lan_history();
+    assert_eq!(lan.len(), 1);
+    assert_eq!(lan[0].token, serve[0].token);
+    assert_eq!(lan[0].addrs, vec!["192.168.1.20:40123".to_string()]);
+    assert_eq!(lan[0].chunks() as usize, serve[0].chunks.len());
+    assert!(
+        a2.messages(&b.root()).unwrap().is_empty(),
+        "nothing via the server"
+    );
+
+    // The window fetched them: opened and merged here.
+    let n = a2
+        .import_history_chunks(&lan[0].attachment, &serve[0].chunks)
+        .unwrap();
+    assert!(n > 0);
+    assert!(a2.history_received());
+    assert!(
+        a2.messages(&b.root())
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "before the link")
+    );
+    // The first device hears so, stops serving, and is done.
+    a2.sync().await.unwrap();
+    a.sync().await.unwrap();
+    assert!(a.history_sent(&new_id));
+    assert_eq!(a.take_history_lan_stop(), vec![serve[0].token]);
+
+    // A second linked device whose chunks don't open (altered on the way)
+    // gets the history through the server instead.
+    let mut a3 = link_device(&mut a, &net, S1).await;
+    b.sync().await.unwrap();
+    a.sync().await.unwrap();
+    let third = a3.devices().iter().find(|d| d.this_device).unwrap().id;
+    a3.set_history_lan(true);
+    a3.ask_history_now().await.unwrap();
+    a.sync().await.unwrap();
+    a.send_history_now(&third).await.unwrap();
+    let serve = a.take_history_serve();
+    a.history_lan_ready(&serve[0].token, vec!["10.0.0.2:4000".into()])
+        .unwrap();
+    a.sync().await.unwrap();
+    a3.sync().await.unwrap();
+    let lan = a3.take_lan_history();
+    let mut altered = serve[0].chunks.clone();
+    altered[0][20] ^= 1;
+    assert!(
+        a3.import_history_chunks(&lan[0].attachment, &altered)
+            .is_err()
+    );
+    assert!(!a3.history_received());
+    a3.sync().await.unwrap();
+    a.sync().await.unwrap();
+    assert!(a.history_sent(&third), "sent through the server");
+    let ev = a3.sync().await.unwrap();
+    assert!(ev.contains(&Event::HistoryImported), "{ev:?}");
+    assert!(a3.history_received());
+}

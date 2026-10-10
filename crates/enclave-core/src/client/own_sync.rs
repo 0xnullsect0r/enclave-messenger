@@ -65,6 +65,10 @@ const T_POSITION: u8 = 6;
 const T_GROUP: u8 = 7;
 const T_HISTORY_ASK: u8 = 8;
 const T_GROUP_SENT: u8 = 9;
+const T_HISTORY_LAN: u8 = 10;
+const T_HISTORY_DONE: u8 = 11;
+/// Most addresses a LAN offer lists.
+const MAX_LAN_ADDRS: usize = 8;
 
 /// One thing our other devices should know.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,6 +120,21 @@ pub(crate) enum SyncItem {
         group: [u8; 32],
         ids: Vec<[u8; 8]>,
     },
+    /// History for our device `device`, offered over the local network
+    /// (`history.rs`): the sealed file's reference, a one-time token, and
+    /// where the sending device's window serves its chunks.
+    HistoryLan {
+        device: [u8; 16],
+        attachment: Vec<u8>,
+        token: [u8; 16],
+        addrs: Vec<String>,
+    },
+    /// The history file whose hash starts `hash` arrived (`ok`), or
+    /// couldn't be fetched over the local network.
+    HistoryDone {
+        hash: [u8; 16],
+        ok: bool,
+    },
 }
 
 impl SyncItem {
@@ -166,6 +185,24 @@ impl SyncItem {
             }
             SyncItem::HistoryAsk => {
                 w.u8(T_HISTORY_ASK);
+            }
+            SyncItem::HistoryLan {
+                device,
+                attachment,
+                token,
+                addrs,
+            } => {
+                w.u8(T_HISTORY_LAN)
+                    .fixed(device)
+                    .bytes(attachment)
+                    .fixed(token)
+                    .u8(addrs.len().min(MAX_LAN_ADDRS) as u8);
+                for a in addrs.iter().take(MAX_LAN_ADDRS) {
+                    w.bytes(a.as_bytes());
+                }
+            }
+            SyncItem::HistoryDone { hash, ok } => {
+                w.u8(T_HISTORY_DONE).fixed(hash).u8(u8::from(*ok));
             }
             SyncItem::GroupSent { group, ids } => {
                 w.u8(T_GROUP_SENT).fixed(group).u8(ids.len() as u8);
@@ -228,6 +265,32 @@ impl SyncItem {
                 cursor: r.u64().ok()?,
             },
             T_HISTORY_ASK => SyncItem::HistoryAsk,
+            T_HISTORY_LAN => {
+                let device = r.array().ok()?;
+                let attachment = r.bytes(crate::content::MAX_ATTACHMENT_REF).ok()?.to_vec();
+                let token = r.array().ok()?;
+                let n = usize::from(r.u8().ok()?);
+                if n > MAX_LAN_ADDRS {
+                    return None;
+                }
+                let addrs = (0..n)
+                    .map(|_| {
+                        r.bytes(64)
+                            .ok()
+                            .and_then(|b| String::from_utf8(b.to_vec()).ok())
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                SyncItem::HistoryLan {
+                    device,
+                    attachment,
+                    token,
+                    addrs,
+                }
+            }
+            T_HISTORY_DONE => SyncItem::HistoryDone {
+                hash: r.array().ok()?,
+                ok: r.u8().ok()? == 1,
+            },
             T_GROUP_SENT => {
                 let group = r.array().ok()?;
                 let n = usize::from(r.u8().ok()?);
@@ -260,6 +323,8 @@ impl SyncItem {
                 [&b"g"[..], device, &attachment[..attachment.len().min(32)]].concat()
             }
             SyncItem::HistoryAsk => b"h".to_vec(),
+            SyncItem::HistoryLan { device, .. } => [&b"hl"[..], device].concat(),
+            SyncItem::HistoryDone { hash, .. } => [&b"hd"[..], hash].concat(),
             SyncItem::GroupSent { group, .. } => [&b"m"[..], group].concat(),
         }
     }
@@ -563,6 +628,25 @@ impl Client {
                         self.on_history_ask(dev)?;
                         events.push(Event::Synced);
                     }
+                }
+                SyncItem::HistoryLan {
+                    device,
+                    attachment,
+                    token,
+                    addrs,
+                } => {
+                    if device == self.device.id
+                        && let Ok(att) = crate::files::Attachment::decode(&attachment)
+                    {
+                        self.history_lan.incoming.push(super::history::LanHistory {
+                            attachment: att,
+                            token,
+                            addrs,
+                        });
+                    }
+                }
+                SyncItem::HistoryDone { hash, ok } => {
+                    self.on_history_done(dev, &hash, ok)?;
                 }
                 SyncItem::GroupSent { group, ids } => {
                     let now = self.now();
@@ -956,6 +1040,16 @@ mod tests {
             SyncItem::GroupSent {
                 group: [3; 32],
                 ids: vec![[1; 8], [2; 8]],
+            },
+            SyncItem::HistoryLan {
+                device: [4; 16],
+                attachment: vec![2; 150],
+                token: [5; 16],
+                addrs: vec!["192.168.1.20:40123".into(), "[fd00::2]:40123".into()],
+            },
+            SyncItem::HistoryDone {
+                hash: [6; 16],
+                ok: true,
             },
         ];
         assert_eq!(decode_items(&encode_items(&items)), items);

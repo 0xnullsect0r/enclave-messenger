@@ -38,7 +38,8 @@ pub use client::{
     RecoveryHold, ShareRelease, ShareRequest, words_from_shares,
 };
 pub use client::{
-    HostVotes, ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS, TicketWallet, fetch_due,
+    HistoryServe, HostVotes, LanHistory, ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS,
+    TicketWallet, fetch_due,
 };
 pub use enclave_kt::KtPolicy;
 

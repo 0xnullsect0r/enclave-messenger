@@ -164,6 +164,7 @@ pub use gossip::{GossipItem, KtAlert};
 pub use group_hosts::{HOST_VOTE_SECS, HostVotes};
 pub use groups::{GroupInfo, GroupMessage, GroupReaction};
 pub use guard::{RecoveryAlert, RecoveryHold};
+pub use history::{HistoryServe, LAN_WAIT_SECS, LanHistory};
 pub use invites::{InviteInfo, JOIN_PREFIX, JoinLink};
 pub use link::{DeviceInfo, LinkCode, LinkOffer, LinkProgress, LinkingDevice};
 pub use location::{Location, MAX_LOCATION_LABEL};
@@ -437,6 +438,8 @@ pub struct Client {
     stale_manifests: BTreeMap<[u8; 64], u64>,
     /// History files from our own devices, fetched at the end of `sync`.
     pending_history: Vec<crate::files::Attachment>,
+    /// History over the local network (`history.rs`).
+    history_lan: history::LanState,
     /// Signed heads to send contacts whose gossip disagreed with ours.
     pending_kt_proofs: Vec<([u8; 64], [u8; 16], u64)>,
     /// Signed heads contacts sent us, to fetch and check.
@@ -726,6 +729,7 @@ impl Client {
             servers: None,
             stale_manifests: BTreeMap::new(),
             pending_history: Vec::new(),
+            history_lan: Default::default(),
             pending_kt_proofs: Vec::new(),
             pending_kt_heads: Vec::new(),
             recovery_alert: None,
@@ -847,6 +851,7 @@ impl Client {
             servers: None,
             stale_manifests: BTreeMap::new(),
             pending_history: Vec::new(),
+            history_lan: Default::default(),
             pending_kt_proofs: Vec::new(),
             pending_kt_heads: Vec::new(),
             recovery_alert: None,

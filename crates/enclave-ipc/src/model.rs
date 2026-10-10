@@ -594,6 +594,14 @@ pub enum Cmd {
     UnlockBiometric(u64),
     /// Let Touch ID or Windows Hello open the app lock (or stop).
     SetBiometric(bool),
+    /// The window serves the history for this token at these addresses
+    /// (empty: it can't).
+    LanServing(String, Vec<String>),
+    /// History chunks fetched for this token, in order, in batches;
+    /// `true` on the last.
+    LanChunks(String, Vec<Vec<u8>>, bool),
+    /// The history for this token couldn't be fetched.
+    LanFailed(String),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -638,7 +646,22 @@ pub enum Out {
     /// a desktop notification (what it says is the vault's choice: names
     /// and text only with previews on, `docs/14-storage.md` §5).
     Notify(Notice),
+    /// History for our other device, to serve on the local network
+    /// (`docs/03-identity.md` §4.3): sealed chunks, in order, for the
+    /// token (hex), in batches; `true` on the last, after which the window
+    /// serves them and answers [`Cmd::LanServing`].
+    LanChunks(String, Vec<Vec<u8>>, bool),
+    /// Stop serving the history for this token.
+    LanStop(String),
+    /// Fetch history offered on the local network: token, the other
+    /// window's addresses, how many chunks. The chunks come back as
+    /// [`Cmd::LanChunks`] (or [`Cmd::LanFailed`]).
+    LanFetch(String, Vec<String>, u32),
 }
+
+/// Most history chunks in one [`Out::LanChunks`] or [`Cmd::LanChunks`]
+/// (about 7 MB, well inside a frame).
+pub const LAN_BATCH: usize = 512;
 
 /// A desktop notification.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1266,6 +1289,15 @@ impl Cmd {
             Cmd::SetScreenSecurity(on) => w.u8(86).bool(*on),
             Cmd::UnlockBiometric(window) => w.u8(87).u64(*window),
             Cmd::SetBiometric(on) => w.u8(88).bool(*on),
+            Cmd::LanServing(t, a) => w.u8(89).str(t).strs(a),
+            Cmd::LanChunks(t, chunks, last) => {
+                w.u8(90).str(t).u32(chunks.len() as u32);
+                for c in chunks {
+                    w.bytes(c);
+                }
+                w.bool(*last)
+            }
+            Cmd::LanFailed(t) => w.u8(91).str(t),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1366,6 +1398,17 @@ impl Cmd {
             86 => Cmd::SetScreenSecurity(r.bool()?),
             87 => Cmd::UnlockBiometric(r.u64()?),
             88 => Cmd::SetBiometric(r.bool()?),
+            89 => Cmd::LanServing(r.str()?, r.strs()?),
+            90 => {
+                let t = r.str()?;
+                let n = r.u32()? as usize;
+                if n > LAN_BATCH {
+                    return Err(IpcError::Malformed);
+                }
+                let chunks = (0..n).map(|_| r.bytes()).collect::<Result<Vec<_>>>()?;
+                Cmd::LanChunks(t, chunks, r.bool()?)
+            }
+            91 => Cmd::LanFailed(r.str()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1416,6 +1459,25 @@ impl Out {
                 w.u8(7).str(&n.conversation).str(&n.title).str(&n.body);
                 w.0
             }
+            Out::LanChunks(token, chunks, last) => {
+                let mut w = Writer::default();
+                w.u8(8).str(token).u32(chunks.len() as u32);
+                for c in chunks {
+                    w.bytes(c);
+                }
+                w.bool(*last);
+                w.0
+            }
+            Out::LanStop(token) => {
+                let mut w = Writer::default();
+                w.u8(9).str(token);
+                w.0
+            }
+            Out::LanFetch(token, addrs, n) => {
+                let mut w = Writer::default();
+                w.u8(10).str(token).strs(addrs).u32(*n);
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -1452,6 +1514,30 @@ impl Out {
             [3, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::File(r.str()?, r.bytes()?);
+                r.end()?;
+                Ok(o)
+            }
+            [8, ..] => {
+                let mut r = Reader(&b[1..]);
+                let token = r.str()?;
+                let n = r.u32()? as usize;
+                if n > LAN_BATCH {
+                    return Err(IpcError::Malformed);
+                }
+                let chunks = (0..n).map(|_| r.bytes()).collect::<Result<Vec<_>>>()?;
+                let o = Out::LanChunks(token, chunks, r.bool()?);
+                r.end()?;
+                Ok(o)
+            }
+            [9, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::LanStop(r.str()?);
+                r.end()?;
+                Ok(o)
+            }
+            [10, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::LanFetch(r.str()?, r.strs()?, r.u32()?);
                 r.end()?;
                 Ok(o)
             }

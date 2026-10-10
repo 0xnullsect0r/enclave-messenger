@@ -343,6 +343,7 @@ impl Client {
             servers: None,
             stale_manifests: BTreeMap::new(),
             pending_history: Vec::new(),
+            history_lan: Default::default(),
             pending_kt_proofs: Vec::new(),
             pending_kt_heads: Vec::new(),
             recovery_alert: None,
