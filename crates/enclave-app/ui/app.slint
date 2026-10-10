@@ -7,6 +7,7 @@ import "fonts/AtkinsonHyperlegibleMono-Regular.ttf";
 // Emoji (reactions, and emoji people type): Noto Emoji, monochrome outlines.
 import "fonts/NotoEmoji-Regular.ttf";
 import { Tokens } from "tokens.slint";
+import { AboutSlint, ListView } from "std-widgets.slint";
 import {
     Body, Secondary, Caption, Title, ScreenTitle, Code, Seal, SealState, PrimaryButton,
     QuietButton, ActionTile, Field, Avatar, Notice, Icons,
@@ -101,6 +102,12 @@ export struct MessageRow {
     clip-time: string,
 }
 
+// One licence text and the packages under it (Settings → About).
+export struct LicenceEntry {
+    title: string,
+    text: string,
+}
+
 // A server from the foundation's list. votes: admins of the open group who
 // voted to move it there.
 export struct ServerOption {
@@ -125,7 +132,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, servers, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account }
+export enum Sheet { none, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -611,6 +618,8 @@ component SheetFrame inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Enclave";
+    // Rendered by `cargo xtask icons` from design/icon/enclave.svg.
+    icon: @image-url("../../../packaging/icons/png/enclave-256.png");
     preferred-width: 1180px;
     preferred-height: 780px;
     min-width: 360px;
@@ -769,6 +778,9 @@ export component AppWindow inherits Window {
     callback restore(string, string, string, string, string, string, string);
     callback save-backup(bool);
     callback set-server-backup(bool);
+    // Open the system's file dialog for a path field: 0 the backup to
+    // restore, 1 a backup to check, 2 a file to send, 3 sticker pictures.
+    callback browse(int);
     // The servers to pick from, and what picking is for: 0 setting up,
     // 1 moving the account, 2 voting to move the open group.
     in property <[ServerOption]> servers;
@@ -783,6 +795,11 @@ export component AppWindow inherits Window {
     in-out property <int> server-pick-for;
     in-out property <string> chosen-server;
     callback pick-server(int, string);
+    // About: this build's version, and the open-source notices, loaded
+    // when their sheet opens.
+    in property <string> version;
+    in property <[LicenceEntry]> licences;
+    callback load-licences();
     callback check-backup(string, string);
     in-out property <bool> backup-media;
     in property <bool> server-backup;
@@ -970,7 +987,11 @@ export component AppWindow inherits Window {
                     Field { placeholder: "Share 3 (if needed)"; mono: true; text <=> root.restore-s3; }
                     Field { placeholder: "Share 4 (if needed)"; mono: true; text <=> root.restore-s4; }
                     Field { placeholder: "Share 5 (if needed)"; mono: true; text <=> root.restore-s5; }
-                    Field { placeholder: "Path to your backup file (or leave empty for the one on your server)"; mono: true; text <=> root.restore-file; }
+                    HorizontalLayout {
+                        spacing: Tokens.space-s;
+                        Field { placeholder: "Path to your backup file (or leave empty for the one on your server)"; mono: true; text <=> root.restore-file; horizontal-stretch: 1; }
+                        QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose your backup file"; clicked => { root.browse(0); } }
+                    }
                     if root.restore-file == "" && root.home-label != "": HorizontalLayout {
                         spacing: Tokens.space-s;
                         Secondary { text: "Your server: " + root.home-label; horizontal-stretch: 1; }
@@ -2010,7 +2031,11 @@ export component AppWindow inherits Window {
         title: "Send a file";
         close => { root.sheet = Sheet.none; }
         Secondary { text: "Files are sealed before they leave this device and padded so their size doesn't give them away. " + (root.current.kind == 1 ? "Each member downloads them" : root.current.name + " downloads them") + " only when they choose to. A WAV recording is sent as a voice note."; }
-        Field { placeholder: "Path to the file"; mono: true; text <=> root.attach-path; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "Path to the file"; mono: true; text <=> root.attach-path; horizontal-stretch: 1; }
+            QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose a file to send"; clicked => { root.browse(2); } }
+        }
         Field { placeholder: "Add a caption (optional)"; text <=> root.attach-caption; }
         if root.attach-error != "": Text {
             text: root.attach-error;
@@ -2083,7 +2108,11 @@ export component AppWindow inherits Window {
         close => { root.sheet = Sheet.stickers; }
         Secondary { text: "Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."; }
         Field { placeholder: "Pack name"; text <=> root.pack-title; }
-        Field { placeholder: "Paths to pictures, separated by ;"; mono: true; text <=> root.pack-paths; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "Paths to pictures, separated by ;"; mono: true; text <=> root.pack-paths; horizontal-stretch: 1; }
+            QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose pictures for the pack"; clicked => { root.browse(3); } }
+        }
         if root.pack-error != "": Text {
             text: root.pack-error;
             color: Tokens.danger;
@@ -2708,7 +2737,11 @@ export component AppWindow inherits Window {
         Caption { text: "Check my backup"; }
         Secondary { text: "Make sure the words you wrote down open your backup, without restoring anything."; }
         Field { placeholder: "Your 24 recovery words"; mono: true; secret: true; text <=> root.check-words; }
-        Field { placeholder: "Path to a backup file (or leave empty for the one on your server)"; mono: true; text <=> root.check-file; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: "Path to a backup file (or leave empty for the one on your server)"; mono: true; text <=> root.check-file; horizontal-stretch: 1; }
+            QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose a backup file to check"; clicked => { root.browse(1); } }
+        }
         HorizontalLayout {
             alignment: start;
             QuietButton {
@@ -2768,6 +2801,66 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             alignment: start;
             QuietButton { text: root.share-threshold > 0 ? "Choose again" : "Choose friends"; outlined: true; clicked => { root.open-sheet(Sheet.friends); } }
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
+        HorizontalLayout {
+            alignment: start;
+            QuietButton { text: "About Enclave"; clicked => { root.sheet = Sheet.about; } }
+        }
+    }
+
+    if root.sheet == Sheet.about: SheetFrame {
+        title: "About Enclave";
+        close => { root.sheet = Sheet.settings; }
+        HorizontalLayout {
+            spacing: Tokens.space-m;
+            alignment: start;
+            Image {
+                width: 64px;
+                height: 64px;
+                source: @image-url("../../../packaging/icons/png/enclave-128.png");
+                accessible-role: image;
+                accessible-label: "Enclave";
+            }
+            VerticalLayout {
+                alignment: center;
+                Body { text: "Enclave"; font-weight: 600; }
+                Secondary { text: "Version " + root.version; }
+            }
+        }
+        Secondary { text: "Free software under the GNU General Public License, version 3, with additional permissions for app stores. Anyone can read, build and check it: github.com/enclavechat/enclave."; }
+        Secondary { text: "No single company runs its servers: independent operators do, and the foundation only signs the list of them."; }
+        HorizontalLayout { alignment: start; AboutSlint { } }
+        HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: "Open-source licences";
+                outlined: true;
+                clicked => { root.load-licences(); root.sheet = Sheet.licences; }
+            }
+        }
+    }
+
+    if root.sheet == Sheet.licences: SheetFrame {
+        title: "Open-source licences";
+        max-card-width: 720px;
+        close => { root.sheet = Sheet.about; }
+        Secondary { text: "Enclave is built with the work of these projects, under the licences below."; }
+        ListView {
+            height: min(root.height * 0.6, 640px);
+            for e in root.licences: VerticalLayout {
+                padding-top: Tokens.space-s;
+                padding-bottom: Tokens.space-s;
+                spacing: Tokens.space-xs;
+                Text {
+                    text: e.title;
+                    font-size: Tokens.type-secondary;
+                    font-weight: 600;
+                    color: Tokens.text;
+                    wrap: word-wrap;
+                }
+                Caption { text: e.text; wrap: word-wrap; }
+            }
         }
     }
 

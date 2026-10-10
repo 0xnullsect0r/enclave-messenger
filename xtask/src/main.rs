@@ -10,8 +10,12 @@
 //!   query's result against the `(* expect: true|false *)` note before it.
 //!   The binary is `$PROVERIF`, or `proverif` on the path.
 //! * `done [--report]`: the 1.0 completion gate (`done.rs`).
+//! * `icons [--check]`: the app icons for every platform (`icons.rs`).
+//! * `licenses [--check]`: the notices the app shows (`licenses.rs`).
 
 mod done;
+mod icons;
+mod licenses;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -31,9 +35,11 @@ fn main() -> ExitCode {
         "dudect" => dudect(),
         "proverif" => proverif(),
         "done" => done::done(std::env::args().any(|a| a == "--report")),
+        "icons" => icons::icons(std::env::args().any(|a| a == "--check")),
+        "licenses" => licenses::licenses(std::env::args().any(|a| a == "--check")),
         _ => {
             eprintln!(
-                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report]"
+                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | licenses [--check]"
             );
             ExitCode::FAILURE
         }

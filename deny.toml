@@ -178,6 +178,7 @@ allow-build-scripts = [
     "rav1d",  # AV1 decoder; asm feature off, so cc/nasm are not run (enclave-av1 exception)
     "rav1e",  # AV1 encoder; asm feature off (default-features = false)
     "rayon-core",
+    "rfd",  # links AppKit on macOS; checks one dialog backend is chosen
     "redb",
     "ref-cast",
     "ring",  # rustls via arti (tor feature) and nym-sdk; netd/ingress only, no long-term keys

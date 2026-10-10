@@ -39,6 +39,7 @@ dev-transport = ["enclave-vault/dev-transport"]
 demo = ["enclave-vault/demo"]
 
 [dependencies]
+enclave-platform = { path = "../enclave-platform" }
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-vault = { path = "../enclave-vault" }
 enclave-crypto = { path = "../enclave-crypto" }
@@ -47,6 +48,10 @@ qrcodegen = "1.8"
 png = "0.17"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }
 arboard = { version = "3", default-features = false }
+# The system's file dialogs (the desktop portal on Linux, so they work in a
+# Flatpak too).
+rfd = "0.17"
+directories = "6"
 
 [dev-dependencies]
 # The tests run the demo.

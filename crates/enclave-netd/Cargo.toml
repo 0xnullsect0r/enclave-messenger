@@ -22,6 +22,7 @@ path = "src/main.rs"
 dev-transport = ["enclave-net/dev-transport"]
 
 [dependencies]
+enclave-platform = { path = "../enclave-platform" }
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-net = { path = "../enclave-net", features = ["nym"] }
 enclave-nym = { path = "../enclave-nym" }

@@ -345,6 +345,7 @@ async fn start_nymd(
     tor: Option<&enclave_tord::launch::Running>,
 ) -> Result<(Nymd, tokio::process::Child), String> {
     let mut cmd = tokio::process::Command::new(bin);
+    enclave_platform::process::no_window(cmd.as_std_mut());
     if env {
         cmd.arg("--env");
     }

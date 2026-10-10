@@ -64,6 +64,7 @@ pub async fn start(
     within: std::time::Duration,
 ) -> Result<Running, String> {
     let mut cmd = tokio::process::Command::new(bin);
+    enclave_platform::process::no_window(cmd.as_std_mut());
     cmd.arg("--state").arg(state).args(extra);
     if direct {
         cmd.arg("--direct");

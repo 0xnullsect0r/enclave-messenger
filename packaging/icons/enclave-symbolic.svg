@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- One colour: the flap and its seal. Android themed icons and the
+       Linux symbolic icon (recoloured by the system). -->
+  <defs>
+    <mask id="ring">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <circle cx="512" cy="600" r="150" fill="none" stroke="#000" stroke-width="40"/>
+    </mask>
+  </defs>
+  <path d="M 120 250 L 512 560 L 904 250" fill="none" stroke="#000" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="600" r="220" fill="#000" mask="url(#ring)"/>
+</svg>

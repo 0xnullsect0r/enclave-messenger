@@ -16,11 +16,13 @@
 //! the computer. `enclave --panic-wipe [--profile DIR]` erases the profile
 //! without opening it (`docs/14-storage.md` §5), for an OS shortcut.
 #![deny(unsafe_code)]
+// A GUI program on Windows: no console window opens with it.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use enclave_app::{AppWindow, Screen, Sheet, vault, view};
 use enclave_ipc::{Cmd, Out};
 use enclave_vault::Mode;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model as _};
 use std::time::Duration;
 
 /// Largest file sent from here (it crosses to the vault in one message).
@@ -30,47 +32,96 @@ const MAX_STICKER_FILE: u64 = 4 * 1024 * 1024;
 /// Most bytes read for one pack (one IPC message).
 const MAX_PACK_FILES: u64 = 14 * 1024 * 1024;
 
-/// Write a downloaded attachment into the Downloads folder without
-/// overwriting anything. The name is the sender's, so only its last
-/// component is used.
-fn save_download(name: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    let dir = [home.join("Downloads"), home]
-        .into_iter()
-        .find(|d| d.is_dir())
-        .unwrap_or_else(std::env::temp_dir);
-    let base = std::path::Path::new(name)
+/// The Downloads folder (or home, or the temporary directory).
+fn downloads() -> std::path::PathBuf {
+    directories::UserDirs::new()
+        .and_then(|u| {
+            u.download_dir()
+                .map(std::path::Path::to_path_buf)
+                .or_else(|| Some(u.home_dir().to_path_buf()))
+        })
+        .unwrap_or_else(std::env::temp_dir)
+}
+
+/// A file's name as the sender gave it, made safe to suggest: its last
+/// component only, never hidden.
+fn safe_name(name: &str) -> String {
+    std::path::Path::new(name)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .filter(|n| !n.starts_with('.') && !n.is_empty())
-        .unwrap_or_else(|| "file".into());
-    for i in 0..1000 {
-        let candidate = if i == 0 {
-            dir.join(&base)
-        } else {
-            dir.join(format!("{i} {base}"))
+        .unwrap_or_else(|| "file".into())
+}
+
+/// Ask where to save a file the vault handed over (an attachment, a
+/// backup), starting in Downloads with its name, and write it there.
+fn save_with_dialog(ui: &AppWindow, name: String, bytes: Vec<u8>) {
+    let w = ui.as_weak();
+    let _ = slint::spawn_local(async move {
+        let chosen = rfd::AsyncFileDialog::new()
+            .set_directory(downloads())
+            .set_file_name(safe_name(&name))
+            .save_file()
+            .await;
+        let note = match chosen {
+            Some(f) => match std::fs::write(f.path(), &bytes) {
+                Ok(()) => format!("Saved to {}", f.path().display()),
+                Err(e) => format!("Couldn't save {name}: {e}"),
+            },
+            None => format!("{name} wasn't saved."),
         };
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
-            Ok(mut f) => {
-                use std::io::Write;
-                f.write_all(bytes)?;
-                return Ok(candidate);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(e),
+        if let Some(ui) = w.upgrade() {
+            ui.set_file_note(note.into());
         }
-    }
-    Err(std::io::Error::other("too many files with that name"))
+    });
+}
+
+/// The system's file dialog for one of the path fields (`browse` in the
+/// UI): the chosen paths go into the field.
+fn browse(ui: &AppWindow, what: i32) {
+    let w = ui.as_weak();
+    let _ = slint::spawn_local(async move {
+        let d = rfd::AsyncFileDialog::new().set_directory(downloads());
+        let paths: Vec<String> = match what {
+            0 | 1 => d
+                .add_filter("Enclave backup", &["enclave"])
+                .set_title("Choose your backup")
+                .pick_file()
+                .await
+                .into_iter()
+                .collect(),
+            3 => d
+                .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp"])
+                .set_title("Choose pictures for the pack")
+                .pick_files()
+                .await
+                .unwrap_or_default(),
+            _ => d
+                .set_title("Choose a file to send")
+                .pick_file()
+                .await
+                .into_iter()
+                .collect(),
+        }
+        .iter()
+        .map(|f| f.path().display().to_string())
+        .collect();
+        let (Some(ui), false) = (w.upgrade(), paths.is_empty()) else {
+            return;
+        };
+        let joined = paths.join("; ");
+        match what {
+            0 => ui.set_restore_file(joined.into()),
+            1 => ui.set_check_file(joined.into()),
+            3 => ui.set_pack_paths(joined.into()),
+            _ => ui.set_attach_path(joined.into()),
+        }
+    });
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    // Started from a terminal, its messages still show there.
+    enclave_platform::process::attach_parent_console();
     let args: Vec<String> = std::env::args().collect();
     // The panic wipe from outside the window (an OS shortcut can run it):
     // erase the profile without opening it, and stop. Only `--profile`
@@ -110,15 +161,12 @@ fn main() -> Result<(), slint::PlatformError> {
         .name("enclave-ui-feed".into())
         .spawn(move || {
             while let Some(o) = out.blocking_recv() {
-                // Files are written here, in the UI process: the vault can't
-                // reach anything outside its profile.
+                // Files are written here, in the UI process, where the
+                // person chooses: the vault can't reach anything outside
+                // its profile.
                 let o = match o {
                     Out::File(name, bytes) => {
-                        let note = match save_download(&name, &bytes) {
-                            Ok(path) => format!("Saved to {}", path.display()),
-                            Err(e) => format!("Couldn't save {name}: {e}"),
-                        };
-                        let _ = w.upgrade_in_event_loop(move |ui| ui.set_file_note(note.into()));
+                        let _ = w.upgrade_in_event_loop(move |ui| save_with_dialog(&ui, name, bytes));
                         continue;
                     }
                     Out::Invite(link) => {
@@ -243,6 +291,21 @@ fn main() -> Result<(), slint::PlatformError> {
     let t = tx.clone();
     ui.on_set_server_backup(move |on| {
         let _ = t.send(Cmd::ServerBackup(on));
+    });
+    ui.set_version(env!("CARGO_PKG_VERSION").into());
+    let w = ui.as_weak();
+    ui.on_load_licences(move || {
+        if let Some(ui) = w.upgrade()
+            && ui.get_licences().row_count() == 0
+        {
+            ui.set_licences(view::licences());
+        }
+    });
+    let w = ui.as_weak();
+    ui.on_browse(move |what| {
+        if let Some(ui) = w.upgrade() {
+            browse(&ui, what);
+        }
     });
     let t = tx.clone();
     ui.on_pick_server(move |purpose, id| {

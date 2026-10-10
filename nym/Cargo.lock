@@ -2113,6 +2113,7 @@ name = "enclave-tord"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "enclave-platform",
  "enclave-sandbox",
  "tokio",
 ]

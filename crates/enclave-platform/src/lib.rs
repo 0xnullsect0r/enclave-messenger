@@ -7,6 +7,7 @@
 //! - [`mem`]: locked, zeroized memory for long-term secrets, so key pages
 //!   are never written to swap.
 //! - [`backup`]: keeping the profile directory out of OS backups.
+//! - [`process`]: no console windows on Windows.
 //!
 //! The desktop and mobile shims (keystores, capture exclusion, audio,
 //! camera) join this crate with the desktop and mobile milestones, behind
@@ -15,3 +16,4 @@
 pub mod backup;
 pub mod dit;
 pub mod mem;
+pub mod process;

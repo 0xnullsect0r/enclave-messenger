@@ -12,3 +12,5 @@ workspace = true
 
 [dependencies]
 enclave-crypto = { path = "../crates/enclave-crypto" }
+resvg = { version = "0.48", default-features = false }
+serde_json = "1"

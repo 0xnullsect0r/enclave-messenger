@@ -557,3 +557,23 @@ pub fn apply_effect(ui: &AppWindow, e: Effect) {
         }
     }
 }
+
+/// The open-source notices (`cargo xtask licenses`), one entry per licence
+/// text with the packages under it.
+pub fn licences() -> ModelRc<crate::LicenceEntry> {
+    const NOTICES: &str = include_str!("../licenses.txt");
+    let mut parts = NOTICES.split("\n=== ");
+    let intro = parts.next().unwrap_or_default().trim();
+    let mut rows = vec![crate::LicenceEntry {
+        title: "Enclave".into(),
+        text: intro.into(),
+    }];
+    rows.extend(parts.map(|p| {
+        let (title, text) = p.split_once('\n').unwrap_or((p, ""));
+        crate::LicenceEntry {
+            title: title.into(),
+            text: text.trim().into(),
+        }
+    }));
+    ModelRc::from(Rc::new(VecModel::from(rows)))
+}

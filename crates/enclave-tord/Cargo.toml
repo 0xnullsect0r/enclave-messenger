@@ -34,6 +34,7 @@ path = "src/bin/enclave-onion.rs"
 required-features = ["onion-service"]
 
 [dependencies]
+enclave-platform = { path = "../enclave-platform" }
 enclave-sandbox = { path = "../enclave-sandbox" }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "io-std", "macros", "time"] }

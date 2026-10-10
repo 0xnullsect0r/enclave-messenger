@@ -197,7 +197,9 @@ pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Chan
                         return;
                     }
                 };
-                let mut child = match std::process::Command::new(&bin)
+                let mut cmd = std::process::Command::new(&bin);
+                enclave_platform::process::no_window(&mut cmd);
+                let mut child = match cmd
                     .arg("--connect")
                     .arg(&pipe)
                     .args(&args)

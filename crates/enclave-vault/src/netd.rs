@@ -106,6 +106,7 @@ impl Link {
         extra: &[String],
     ) -> std::io::Result<Self> {
         let mut cmd = Command::new(bin);
+        enclave_platform::process::no_window(cmd.as_std_mut());
         cmd.args(extra);
         for (id, addr) in servers {
             let hex: String = id.iter().map(|b| format!("{b:02x}")).collect();

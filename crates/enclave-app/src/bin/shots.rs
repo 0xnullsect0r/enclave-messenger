@@ -834,6 +834,12 @@ fn main() -> Result<(), slint::PlatformError> {
         shot("47-typing-phone", phone);
         ui.set_sheet(Sheet::Settings);
         shot("48-typing-setting-phone", phone);
+        ui.set_version("1.0.0".into());
+        ui.set_sheet(Sheet::About);
+        shot("57-about-phone", phone);
+        ui.set_licences(view::licences());
+        ui.set_sheet(Sheet::Licences);
+        shot("58-licences-phone", phone);
         ui.set_sheet(Sheet::None);
         // Changing the recovery words, and a contact who did.
         view::apply(&ui, &data);

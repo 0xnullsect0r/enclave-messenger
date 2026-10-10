@@ -45,7 +45,9 @@ pub fn mediad_binary() -> Option<std::path::PathBuf> {
 
 impl Proc {
     fn spawn(bin: &std::path::Path) -> std::io::Result<Self> {
-        let mut child = Command::new(bin)
+        let mut cmd = Command::new(bin);
+        enclave_platform::process::no_window(cmd.as_std_mut());
+        let mut child = cmd
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .kill_on_drop(true)
