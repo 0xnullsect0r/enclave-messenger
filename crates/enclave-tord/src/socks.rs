@@ -124,6 +124,9 @@ pub async fn session(
     let mut far = match dialer.dial(&host, port).await {
         Ok(s) => s,
         Err(e) => {
+            if REPORT.load(std::sync::atomic::Ordering::Relaxed) {
+                eprintln!("enclave-tord: connect {host}:{port} failed: {e}");
+            }
             reply(&mut sock, FAILURE).await?;
             return Err(e);
         }

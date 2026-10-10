@@ -1,0 +1,54 @@
+name: Nightly
+# Long checks that don't run on every push.
+#
+# flathub: the Flathub submission (packaging/flatpak/flathub.sh, External
+# Gate G4) built from source with no network, as Flathub builds it, and
+# started.
+
+on:
+  schedule:
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - packaging/flatpak/**
+      - .github/workflows/nightly.yml
+
+permissions:
+  contents: read
+
+jobs:
+  flathub:
+    name: Flathub build from source (offline)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Tools, runtime and SDK extensions
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder python3-venv python3-yaml
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//25.08 org.freedesktop.Sdk.Extension.golang//25.08
+      - name: The manifest and its sources, for this commit
+        run: |
+          git tag -f nightly-flathub HEAD
+          packaging/flatpak/flathub.sh nightly-flathub flathub
+          # The local clone stands in for GitHub (the tag exists only here).
+          sed -i "s|url: https://github.com/EnclaveChat/Enclave.git|url: file://$PWD|" flathub/io.github.EnclaveChat.Enclave.yml
+      - name: Build without network, install, start
+        run: |
+          set -euo pipefail
+          flatpak-builder --user --force-clean --sandbox --install build flathub/io.github.EnclaveChat.Enclave.yml
+          flatpak run io.github.EnclaveChat.Enclave --version | grep '^enclave '
+          for p in enclave-vault enclave-netd enclave-mediad enclave-tord enclave-nymd lyrebird; do
+            flatpak run --command=test io.github.EnclaveChat.Enclave -x "/app/lib/enclave-messenger/$p"
+          done
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flathub-manifest
+          path: flathub/

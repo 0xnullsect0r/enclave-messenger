@@ -78,8 +78,14 @@ jobs:
           cat "$state.out"
           port=$(awk '/ready/{print $2}' "$state.out")
           test -n "$port"
-          curl -sS --max-time 120 --socks5-hostname "enclave:$secret@127.0.0.1:$port" \
-            https://check.torproject.org/api/ip | tee "$state.json"
+          # Bridges come and go: a circuit through one may fail while Tor
+          # builds another, so the request is tried a few times.
+          for i in 1 2 3 4 5; do
+            curl -sS --max-time 120 --socks5-hostname "enclave:$secret@127.0.0.1:$port" \
+              https://check.torproject.org/api/ip > "$state.json" && break
+            echo "attempt $i failed"; sleep 20
+          done
+          cat "$state.json"
           grep -q '"IsTor":true' "$state.json"
       - name: Build lyrebird (Snowflake and WebTunnel)
         run: ci/tor/lyrebird.sh build target/release/lyrebird
@@ -95,8 +101,14 @@ jobs:
           cat "$state.out"
           port=$(awk '/ready/{print $2}' "$state.out")
           test -n "$port"
-          curl -sS --max-time 120 --socks5-hostname "enclave:$secret@127.0.0.1:$port" \
-            https://check.torproject.org/api/ip | tee "$state.json"
+          # Bridges come and go: a circuit through one may fail while Tor
+          # builds another, so the request is tried a few times.
+          for i in 1 2 3 4 5; do
+            curl -sS --max-time 120 --socks5-hostname "enclave:$secret@127.0.0.1:$port" \
+              https://check.torproject.org/api/ip > "$state.json" && break
+            echo "attempt $i failed"; sleep 20
+          done
+          cat "$state.json"
           grep -q '"IsTor":true' "$state.json"
       - name: The built-in bridges are still the Tor Project's
         continue-on-error: true
