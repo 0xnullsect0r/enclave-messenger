@@ -378,6 +378,12 @@ fn filter(profile: Profile) -> Option<seccompiler::BpfProgram> {
         .map(|o| one(eq(0, *o)))
         .collect::<Option<Vec<_>>>()?,
     );
+    // A connected pair of Unix sockets inside the process (tokio's signal
+    // handling makes one): it reaches nothing outside.
+    rules.insert(
+        libc::SYS_socketpair,
+        vec![one(Cond::new(0, Len::Dword, Op::Eq, libc::AF_UNIX as u64))?],
+    );
     if profile == Profile::Netd {
         // IPv4 and IPv6 only.
         rules.insert(
@@ -613,7 +619,8 @@ mod seccomp_tests {
             let dumpable =
                 rustix::process::set_dumpable_behavior(rustix::process::DumpableBehavior::Dumpable)
                     .is_ok();
-            let thread = std::thread::spawn(|| 2 + 2).join().is_ok();
+            let thread = std::thread::spawn(|| 2 + 2).join().is_ok()
+                && std::os::unix::net::UnixStream::pair().is_ok();
             use std::io::{Read, Write};
             let pipe = w.write_all(b"x").is_ok() && {
                 let mut b = [0u8; 1];
