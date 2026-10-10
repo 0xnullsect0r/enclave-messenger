@@ -5,8 +5,9 @@
 //! it, `lock.bin`:
 //!
 //! ```text
-//! u8 version (1) ‖ u8 app PIN set ‖ u32 memory ‖ u32 iterations ‖ u32 parallelism
+//! u8 version (2) ‖ u8 app PIN set ‖ u32 memory ‖ u32 iterations ‖ u32 parallelism
 //!   ‖ salt (32) ‖ app check (32) ‖ emergency check (32) ‖ u32 timeout (seconds; 0 = never)
+//!   ‖ u8 biometric (Touch ID or Windows Hello opens the app lock; version 1 has none)
 //! check = KMAC256(Argon2id(PIN, salt), "", 256, label)
 //!   labels "enclave/v1/store/app-lock", "enclave/v1/store/emergency-pin"
 //! ```
@@ -23,8 +24,10 @@ use enclave_crypto::pwhash::{self, PwParams};
 use enclave_crypto::rng::HedgedRng;
 use subtle::ConstantTimeEq;
 
-const VERSION: u8 = 1;
-const LEN: usize = 2 + 12 + 32 + 32 + 32 + 4;
+const VERSION: u8 = 2;
+/// Version 1's length; version 2 adds the biometric byte.
+const LEN_V1: usize = 2 + 12 + 32 + 32 + 32 + 4;
+const LEN: usize = LEN_V1 + 1;
 const L_APP: &str = "enclave/v1/store/app-lock";
 const L_EMERGENCY: &str = "enclave/v1/store/emergency-pin";
 /// Shortest app or emergency PIN.
@@ -54,6 +57,9 @@ pub struct LockFile {
     pub app_set: bool,
     /// Seconds without use before locking (0: never).
     pub timeout: u32,
+    /// Touch ID or Windows Hello opens the app lock too (never the
+    /// passphrase, and never root actions).
+    pub biometric: bool,
 }
 
 fn check(pin: &str, salt: &[u8; 32], params: PwParams, label: &str) -> Option<[u8; 32]> {
@@ -71,6 +77,7 @@ impl LockFile {
             emergency: rng.array("app/lock-fill").ok()?,
             app_set: false,
             timeout: DEFAULT_TIMEOUT,
+            biometric: false,
         })
     }
 
@@ -86,12 +93,18 @@ impl LockFile {
         v.extend_from_slice(&self.app);
         v.extend_from_slice(&self.emergency);
         v.extend_from_slice(&self.timeout.to_be_bytes());
+        v.push(u8::from(self.biometric));
         v
     }
 
     /// Decode.
     pub fn decode(b: &[u8]) -> Option<Self> {
-        if b.len() != LEN || b[0] != VERSION || b[1] > 1 {
+        let ok = match b.first() {
+            Some(1) => b.len() == LEN_V1,
+            Some(&VERSION) => b.len() == LEN && b[LEN - 1] <= 1,
+            _ => false,
+        };
+        if !ok || b[1] > 1 {
             return None;
         }
         let u = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
@@ -107,6 +120,7 @@ impl LockFile {
             emergency: arr(78)?,
             app_set: b[1] == 1,
             timeout: u(110),
+            biometric: b.get(LEN - 1) == Some(&1),
         })
     }
 
@@ -185,8 +199,20 @@ mod tests {
         h.set_emergency(None, &mut rng).unwrap();
         assert_eq!(h.encode().len(), g.encode().len());
         assert_eq!(h.entered("9999"), Entered::Neither);
-        assert!(LockFile::decode(&h.encode()[1..]).is_none());
+        assert!(
+            LockFile::decode(&h.encode()[..LEN - 2]).is_none(),
+            "cut short"
+        );
         assert!(g.app_set);
+        // Biometrics kept; a version 1 file (no byte for it) still reads.
+        let mut b = g.clone();
+        b.biometric = true;
+        assert!(LockFile::decode(&b.encode()).unwrap().biometric);
+        let mut v1 = g.encode();
+        v1.pop();
+        v1[0] = 1;
+        let old = LockFile::decode(&v1).unwrap();
+        assert!(!old.biometric && old.entered("1234") == Entered::App);
     }
 
     #[test]

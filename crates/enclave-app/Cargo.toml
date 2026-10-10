@@ -39,11 +39,11 @@ dev-transport = ["enclave-vault/dev-transport"]
 demo = ["enclave-vault/demo"]
 
 [dependencies]
-enclave-platform = { path = "../enclave-platform" }
+enclave-platform = { path = "../enclave-platform", features = ["window"] }
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-vault = { path = "../enclave-vault" }
 enclave-crypto = { path = "../enclave-crypto" }
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility", "raw-window-handle-06", "unstable-winit-030"] }
 qrcodegen = "1.8"
 png = "0.17"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }
@@ -52,6 +52,9 @@ arboard = { version = "3", default-features = false }
 # Flatpak too).
 rfd = "0.17"
 directories = "6"
+# Desktop notifications (D-Bus on Linux, NSUserNotification on macOS, toasts
+# on Windows).
+notify-rust = "4"
 
 [dev-dependencies]
 # The tests run the demo.

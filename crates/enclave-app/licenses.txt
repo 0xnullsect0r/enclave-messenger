@@ -1,6 +1,6 @@
 Enclave is free software under the GNU General Public License, version 3 only, with the additional permissions in legal/ADDITIONAL-PERMISSIONS.md. It is built with the software below, under the licences that follow each list.
 
-=== ab_glyph 0.2.32 (Apache-2.0), ab_glyph_rasterizer 0.1.10 (Apache-2.0), android-activity 0.6.1 (MIT OR Apache-2.0), arboard 3.6.1 (MIT OR Apache-2.0), fdeflate 0.3.7 (MIT OR Apache-2.0), field-offset 0.3.6 (MIT OR Apache-2.0), half 2.7.1 (MIT OR Apache-2.0), image 0.25.10 (MIT OR Apache-2.0), image-webp 0.2.4 (MIT OR Apache-2.0), linebender_resource_handle 0.1.1 (Apache-2.0 OR MIT), miniz_oxide 0.8.9 (MIT OR Zlib OR Apache-2.0), miniz_oxide 0.9.1 (MIT OR Zlib OR Apache-2.0), naga 30.0.1 (MIT OR Apache-2.0), naga-types 30.0.1 (MIT OR Apache-2.0), num-conv 0.2.2 (MIT OR Apache-2.0), os_str_bytes 6.6.1 (MIT OR Apache-2.0), owned_ttf_parser 0.25.1 (Apache-2.0), pin-project 1.1.13 (Apache-2.0 OR MIT), pin-project-internal 1.1.13 (Apache-2.0 OR MIT), pin-project-lite 0.2.17 (Apache-2.0 OR MIT), portable-atomic 1.15.0 (Apache-2.0 OR MIT), portable-atomic-util 0.2.8 (Apache-2.0 OR MIT), range-alloc 0.1.5 (MIT OR Apache-2.0), raw-window-handle 0.6.2 (MIT OR Apache-2.0 OR Zlib), resvg 0.48.1 (Apache-2.0 OR MIT), simdutf8 0.1.5 (MIT OR Apache-2.0), sync_wrapper 0.1.2 (Apache-2.0), sync_wrapper 1.0.2 (Apache-2.0), time 0.3.55 (MIT OR Apache-2.0), time-core 0.1.9 (MIT OR Apache-2.0), time-macros 0.2.32 (MIT OR Apache-2.0), tiny-xlib 0.2.5 (MIT OR Apache-2.0 OR Zlib), usvg 0.48.1 (Apache-2.0 OR MIT), wgpu 30.0.1 (MIT OR Apache-2.0), wgpu-core 30.0.1 (MIT OR Apache-2.0), wgpu-core-deps-apple 30.0.1 (MIT OR Apache-2.0), wgpu-core-deps-windows-linux-android 30.0.1 (MIT OR Apache-2.0), wgpu-hal 30.0.1 (MIT OR Apache-2.0), wgpu-naga-bridge 30.0.1 (MIT OR Apache-2.0), wgpu-types 30.0.1 (MIT OR Apache-2.0), widestring 1.2.1 (MIT OR Apache-2.0)
+=== ab_glyph 0.2.32 (Apache-2.0), ab_glyph_rasterizer 0.1.10 (Apache-2.0), android-activity 0.6.1 (MIT OR Apache-2.0), arboard 3.6.1 (MIT OR Apache-2.0), fdeflate 0.3.7 (MIT OR Apache-2.0), field-offset 0.3.6 (MIT OR Apache-2.0), half 2.7.1 (MIT OR Apache-2.0), image 0.25.10 (MIT OR Apache-2.0), image-webp 0.2.4 (MIT OR Apache-2.0), linebender_resource_handle 0.1.1 (Apache-2.0 OR MIT), miniz_oxide 0.8.9 (MIT OR Zlib OR Apache-2.0), miniz_oxide 0.9.1 (MIT OR Zlib OR Apache-2.0), naga 30.0.1 (MIT OR Apache-2.0), naga-types 30.0.1 (MIT OR Apache-2.0), num-conv 0.2.2 (MIT OR Apache-2.0), os_str_bytes 6.6.1 (MIT OR Apache-2.0), owned_ttf_parser 0.25.1 (Apache-2.0), pin-project 1.1.13 (Apache-2.0 OR MIT), pin-project-internal 1.1.13 (Apache-2.0 OR MIT), pin-project-lite 0.2.17 (Apache-2.0 OR MIT), portable-atomic 1.15.0 (Apache-2.0 OR MIT), portable-atomic-util 0.2.8 (Apache-2.0 OR MIT), range-alloc 0.1.5 (MIT OR Apache-2.0), raw-window-handle 0.6.2 (MIT OR Apache-2.0 OR Zlib), resvg 0.48.1 (Apache-2.0 OR MIT), simdutf8 0.1.5 (MIT OR Apache-2.0), sync_wrapper 0.1.2 (Apache-2.0), sync_wrapper 1.0.2 (Apache-2.0), tauri-winrt-notification 0.8.1 (MIT OR Apache-2.0), time 0.3.55 (MIT OR Apache-2.0), time-core 0.1.9 (MIT OR Apache-2.0), time-macros 0.2.32 (MIT OR Apache-2.0), tiny-xlib 0.2.5 (MIT OR Apache-2.0 OR Zlib), usvg 0.48.1 (Apache-2.0 OR MIT), wgpu 30.0.1 (MIT OR Apache-2.0), wgpu-core 30.0.1 (MIT OR Apache-2.0), wgpu-core-deps-apple 30.0.1 (MIT OR Apache-2.0), wgpu-core-deps-windows-linux-android 30.0.1 (MIT OR Apache-2.0), wgpu-hal 30.0.1 (MIT OR Apache-2.0), wgpu-naga-bridge 30.0.1 (MIT OR Apache-2.0), wgpu-types 30.0.1 (MIT OR Apache-2.0), widestring 1.2.1 (MIT OR Apache-2.0)
 Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -1691,7 +1691,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-=== annotate-snippets 0.12.16 (MIT OR Apache-2.0), anstream 1.0.0 (MIT OR Apache-2.0), anstyle 1.0.14 (MIT OR Apache-2.0), anstyle-parse 1.0.0 (MIT OR Apache-2.0), anstyle-query 1.1.5 (MIT OR Apache-2.0), anstyle-wincon 3.0.11 (MIT OR Apache-2.0), colorchoice 1.0.5 (MIT OR Apache-2.0), crc32fast 1.5.2 (MIT OR Apache-2.0), ctor 0.10.1 (Apache-2.0 OR MIT), derive_builder_core_fork_arti 0.11.2 (MIT/Apache-2.0), derive_builder_fork_arti 0.11.2 (MIT/Apache-2.0), derive_builder_macro_fork_arti 0.11.2 (MIT/Apache-2.0), dpi 0.1.2 (Apache-2.0 AND MIT), dtor 0.8.1 (Apache-2.0 OR MIT), fallible-iterator 0.2.0 (MIT/Apache-2.0), fallible-iterator 0.3.0 (MIT/Apache-2.0), fallible-streaming-iterator 0.1.9 (MIT/Apache-2.0), foreign-types 0.5.0 (MIT/Apache-2.0), foreign-types-macros 0.2.4 (MIT/Apache-2.0), foreign-types-shared 0.3.1 (MIT/Apache-2.0), hex 0.4.3 (MIT OR Apache-2.0), humantime 2.4.0 (MIT OR Apache-2.0), is_terminal_polyfill 1.70.2 (MIT OR Apache-2.0), jni-sys 0.3.1 (MIT OR Apache-2.0), jni-sys 0.4.1 (MIT OR Apache-2.0), no_std_io2 0.9.4 (Apache-2.0 OR MIT), once_cell_polyfill 1.70.2 (MIT OR Apache-2.0), quick-error 2.0.1 (MIT/Apache-2.0), resolv-conf 0.7.6 (MIT OR Apache-2.0), serde_spanned 0.6.9 (MIT OR Apache-2.0), serde_spanned 1.1.1 (MIT OR Apache-2.0), stringprep 0.1.5 (MIT/Apache-2.0), toml 0.8.23 (MIT OR Apache-2.0), toml 1.1.6+spec-1.1.0 (MIT OR Apache-2.0), toml_datetime 0.6.11 (MIT OR Apache-2.0), toml_datetime 1.1.1+spec-1.1.0 (MIT OR Apache-2.0), toml_edit 0.19.15 (MIT OR Apache-2.0), toml_edit 0.22.27 (MIT OR Apache-2.0), toml_edit 0.25.15+spec-1.1.0 (MIT OR Apache-2.0), toml_parser 1.1.3+spec-1.1.0 (MIT OR Apache-2.0), toml_write 0.1.2 (MIT OR Apache-2.0), toml_writer 1.1.2+spec-1.1.0 (MIT OR Apache-2.0), winapi 0.3.9 (MIT/Apache-2.0), winit 0.30.13 (Apache-2.0)
+=== annotate-snippets 0.12.16 (MIT OR Apache-2.0), anstream 1.0.0 (MIT OR Apache-2.0), anstyle 1.0.14 (MIT OR Apache-2.0), anstyle-parse 1.0.0 (MIT OR Apache-2.0), anstyle-query 1.1.5 (MIT OR Apache-2.0), anstyle-wincon 3.0.11 (MIT OR Apache-2.0), colorchoice 1.0.5 (MIT OR Apache-2.0), crc32fast 1.5.2 (MIT OR Apache-2.0), ctor 0.10.1 (Apache-2.0 OR MIT), derive_builder_core_fork_arti 0.11.2 (MIT/Apache-2.0), derive_builder_fork_arti 0.11.2 (MIT/Apache-2.0), derive_builder_macro_fork_arti 0.11.2 (MIT/Apache-2.0), dpi 0.1.2 (Apache-2.0 AND MIT), dtor 0.8.1 (Apache-2.0 OR MIT), fallible-iterator 0.2.0 (MIT/Apache-2.0), fallible-iterator 0.3.0 (MIT/Apache-2.0), fallible-streaming-iterator 0.1.9 (MIT/Apache-2.0), foreign-types 0.5.0 (MIT/Apache-2.0), foreign-types-macros 0.2.4 (MIT/Apache-2.0), foreign-types-shared 0.3.1 (MIT/Apache-2.0), hex 0.4.3 (MIT OR Apache-2.0), humantime 2.4.0 (MIT OR Apache-2.0), is_terminal_polyfill 1.70.2 (MIT OR Apache-2.0), jni-sys 0.3.1 (MIT OR Apache-2.0), jni-sys 0.4.1 (MIT OR Apache-2.0), no_std_io2 0.9.4 (Apache-2.0 OR MIT), notify-rust 4.18.2 (MIT OR Apache-2.0), once_cell_polyfill 1.70.2 (MIT OR Apache-2.0), quick-error 2.0.1 (MIT/Apache-2.0), resolv-conf 0.7.6 (MIT OR Apache-2.0), serde_spanned 0.6.9 (MIT OR Apache-2.0), serde_spanned 1.1.1 (MIT OR Apache-2.0), stringprep 0.1.5 (MIT/Apache-2.0), toml 0.8.23 (MIT OR Apache-2.0), toml 1.1.6+spec-1.1.0 (MIT OR Apache-2.0), toml_datetime 0.6.11 (MIT OR Apache-2.0), toml_datetime 1.1.1+spec-1.1.0 (MIT OR Apache-2.0), toml_edit 0.19.15 (MIT OR Apache-2.0), toml_edit 0.22.27 (MIT OR Apache-2.0), toml_edit 0.25.15+spec-1.1.0 (MIT OR Apache-2.0), toml_parser 1.1.3+spec-1.1.0 (MIT OR Apache-2.0), toml_write 0.1.2 (MIT OR Apache-2.0), toml_writer 1.1.2+spec-1.1.0 (MIT OR Apache-2.0), winapi 0.3.9 (MIT/Apache-2.0), winit 0.30.13 (Apache-2.0)
 Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -18648,6 +18648,29 @@ For these and/or other purposes and motivations, and without any expectation of 
 
      d. Affirmer understands and acknowledges that Creative Commons is not a party to this document and has no duty or obligation with respect to this CC0 or use of the Work.
 
+=== notify-rust 4.18.2 (MIT OR Apache-2.0)
+MIT License
+
+Copyright (c) 2017 Hendrik Sollich
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 === notify-types 2.1.0 (MIT OR Apache-2.0)
 Apache License
                         Version 2.0, January 2004
@@ -25478,6 +25501,50 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+=== tauri-winrt-notification 0.8.1 (MIT OR Apache-2.0)
+MIT License
+
+Copyright (c) 2017 - Present Tauri Apps Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+=== tauri-winrt-notification 0.8.1 (MIT OR Apache-2.0)
+SPDXVersion: SPDX-2.1
+DataLicense: CC0-1.0
+PackageName: winrt-notification
+DataFormat: SPDXRef-1
+PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
+PackageHomePage: https://tauri.app
+PackageLicenseDeclared: Apache-2.0
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2022-2022, The Tauri Programme in the Commons Conservancy
+PackageSummary: <text>An incomplete wrapper over the WinRT toast api.
+                </text>
+PackageComment: <text>The package includes the following libraries; see
+Relationship information.
+                </text>
+Created: 2019-05-20T09:00:00Z
+PackageDownloadLocation: git://github.com/tauri-apps/winrt-notification
+PackageDownloadLocation: git+https://github.com/tauri-apps/winrt-notification.git
+PackageDownloadLocation: git+ssh://github.com/tauri-apps/winrt-notification.git
+Creator: Person: Daniel Thompson-Yvetot
+
 === tempfile 3.27.0 (MIT OR Apache-2.0)
 Copyright (c) 2015 Steven Allen
 
@@ -27924,7 +27991,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-=== windows 0.61.3 (MIT OR Apache-2.0), windows 0.62.2 (MIT OR Apache-2.0), windows-collections 0.2.0 (MIT OR Apache-2.0), windows-collections 0.3.2 (MIT OR Apache-2.0), windows-core 0.61.2 (MIT OR Apache-2.0), windows-core 0.62.2 (MIT OR Apache-2.0), windows-future 0.2.1 (MIT OR Apache-2.0), windows-future 0.3.2 (MIT OR Apache-2.0), windows-implement 0.60.2 (MIT OR Apache-2.0), windows-interface 0.59.3 (MIT OR Apache-2.0), windows-link 0.1.3 (MIT OR Apache-2.0), windows-link 0.2.1 (MIT OR Apache-2.0), windows-numerics 0.2.0 (MIT OR Apache-2.0), windows-numerics 0.3.1 (MIT OR Apache-2.0), windows-registry 0.6.1 (MIT OR Apache-2.0), windows-result 0.3.4 (MIT OR Apache-2.0), windows-result 0.4.1 (MIT OR Apache-2.0), windows-strings 0.4.2 (MIT OR Apache-2.0), windows-strings 0.5.1 (MIT OR Apache-2.0), windows-sys 0.48.0 (MIT OR Apache-2.0), windows-sys 0.52.0 (MIT OR Apache-2.0), windows-sys 0.59.0 (MIT OR Apache-2.0), windows-sys 0.60.2 (MIT OR Apache-2.0), windows-sys 0.61.2 (MIT OR Apache-2.0), windows-targets 0.48.5 (MIT OR Apache-2.0), windows-targets 0.52.6 (MIT OR Apache-2.0), windows-targets 0.53.5 (MIT OR Apache-2.0), windows-threading 0.1.0 (MIT OR Apache-2.0), windows-threading 0.2.1 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_aarch64_msvc 0.48.5 (MIT OR Apache-2.0), windows_aarch64_msvc 0.52.6 (MIT OR Apache-2.0), windows_aarch64_msvc 0.53.1 (MIT OR Apache-2.0), windows_i686_gnu 0.48.5 (MIT OR Apache-2.0), windows_i686_gnu 0.52.6 (MIT OR Apache-2.0), windows_i686_gnu 0.53.1 (MIT OR Apache-2.0), windows_i686_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_i686_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_i686_msvc 0.48.5 (MIT OR Apache-2.0), windows_i686_msvc 0.52.6 (MIT OR Apache-2.0), windows_i686_msvc 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnu 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnu 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnu 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_x86_64_msvc 0.48.5 (MIT OR Apache-2.0), windows_x86_64_msvc 0.52.6 (MIT OR Apache-2.0), windows_x86_64_msvc 0.53.1 (MIT OR Apache-2.0)
+=== windows 0.61.3 (MIT OR Apache-2.0), windows 0.62.2 (MIT OR Apache-2.0), windows-collections 0.2.0 (MIT OR Apache-2.0), windows-collections 0.3.2 (MIT OR Apache-2.0), windows-core 0.61.2 (MIT OR Apache-2.0), windows-core 0.62.2 (MIT OR Apache-2.0), windows-future 0.2.1 (MIT OR Apache-2.0), windows-future 0.3.2 (MIT OR Apache-2.0), windows-implement 0.60.2 (MIT OR Apache-2.0), windows-interface 0.59.3 (MIT OR Apache-2.0), windows-link 0.1.3 (MIT OR Apache-2.0), windows-link 0.2.1 (MIT OR Apache-2.0), windows-numerics 0.2.0 (MIT OR Apache-2.0), windows-numerics 0.3.1 (MIT OR Apache-2.0), windows-registry 0.6.1 (MIT OR Apache-2.0), windows-result 0.3.4 (MIT OR Apache-2.0), windows-result 0.4.1 (MIT OR Apache-2.0), windows-strings 0.4.2 (MIT OR Apache-2.0), windows-strings 0.5.1 (MIT OR Apache-2.0), windows-sys 0.48.0 (MIT OR Apache-2.0), windows-sys 0.52.0 (MIT OR Apache-2.0), windows-sys 0.59.0 (MIT OR Apache-2.0), windows-sys 0.60.2 (MIT OR Apache-2.0), windows-sys 0.61.2 (MIT OR Apache-2.0), windows-targets 0.48.5 (MIT OR Apache-2.0), windows-targets 0.52.6 (MIT OR Apache-2.0), windows-targets 0.53.5 (MIT OR Apache-2.0), windows-threading 0.1.0 (MIT OR Apache-2.0), windows-threading 0.2.1 (MIT OR Apache-2.0), windows-version 0.1.7 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_aarch64_msvc 0.48.5 (MIT OR Apache-2.0), windows_aarch64_msvc 0.52.6 (MIT OR Apache-2.0), windows_aarch64_msvc 0.53.1 (MIT OR Apache-2.0), windows_i686_gnu 0.48.5 (MIT OR Apache-2.0), windows_i686_gnu 0.52.6 (MIT OR Apache-2.0), windows_i686_gnu 0.53.1 (MIT OR Apache-2.0), windows_i686_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_i686_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_i686_msvc 0.48.5 (MIT OR Apache-2.0), windows_i686_msvc 0.52.6 (MIT OR Apache-2.0), windows_i686_msvc 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnu 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnu 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnu 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_x86_64_msvc 0.48.5 (MIT OR Apache-2.0), windows_x86_64_msvc 0.52.6 (MIT OR Apache-2.0), windows_x86_64_msvc 0.53.1 (MIT OR Apache-2.0)
 Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -28127,7 +28194,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-=== windows 0.61.3 (MIT OR Apache-2.0), windows 0.62.2 (MIT OR Apache-2.0), windows-collections 0.2.0 (MIT OR Apache-2.0), windows-collections 0.3.2 (MIT OR Apache-2.0), windows-core 0.61.2 (MIT OR Apache-2.0), windows-core 0.62.2 (MIT OR Apache-2.0), windows-future 0.2.1 (MIT OR Apache-2.0), windows-future 0.3.2 (MIT OR Apache-2.0), windows-implement 0.60.2 (MIT OR Apache-2.0), windows-interface 0.59.3 (MIT OR Apache-2.0), windows-link 0.1.3 (MIT OR Apache-2.0), windows-link 0.2.1 (MIT OR Apache-2.0), windows-numerics 0.2.0 (MIT OR Apache-2.0), windows-numerics 0.3.1 (MIT OR Apache-2.0), windows-registry 0.6.1 (MIT OR Apache-2.0), windows-result 0.3.4 (MIT OR Apache-2.0), windows-result 0.4.1 (MIT OR Apache-2.0), windows-strings 0.4.2 (MIT OR Apache-2.0), windows-strings 0.5.1 (MIT OR Apache-2.0), windows-sys 0.48.0 (MIT OR Apache-2.0), windows-sys 0.52.0 (MIT OR Apache-2.0), windows-sys 0.59.0 (MIT OR Apache-2.0), windows-sys 0.60.2 (MIT OR Apache-2.0), windows-sys 0.61.2 (MIT OR Apache-2.0), windows-targets 0.48.5 (MIT OR Apache-2.0), windows-targets 0.52.6 (MIT OR Apache-2.0), windows-targets 0.53.5 (MIT OR Apache-2.0), windows-threading 0.1.0 (MIT OR Apache-2.0), windows-threading 0.2.1 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_aarch64_msvc 0.48.5 (MIT OR Apache-2.0), windows_aarch64_msvc 0.52.6 (MIT OR Apache-2.0), windows_aarch64_msvc 0.53.1 (MIT OR Apache-2.0), windows_i686_gnu 0.48.5 (MIT OR Apache-2.0), windows_i686_gnu 0.52.6 (MIT OR Apache-2.0), windows_i686_gnu 0.53.1 (MIT OR Apache-2.0), windows_i686_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_i686_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_i686_msvc 0.48.5 (MIT OR Apache-2.0), windows_i686_msvc 0.52.6 (MIT OR Apache-2.0), windows_i686_msvc 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnu 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnu 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnu 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_x86_64_msvc 0.48.5 (MIT OR Apache-2.0), windows_x86_64_msvc 0.52.6 (MIT OR Apache-2.0), windows_x86_64_msvc 0.53.1 (MIT OR Apache-2.0)
+=== windows 0.61.3 (MIT OR Apache-2.0), windows 0.62.2 (MIT OR Apache-2.0), windows-collections 0.2.0 (MIT OR Apache-2.0), windows-collections 0.3.2 (MIT OR Apache-2.0), windows-core 0.61.2 (MIT OR Apache-2.0), windows-core 0.62.2 (MIT OR Apache-2.0), windows-future 0.2.1 (MIT OR Apache-2.0), windows-future 0.3.2 (MIT OR Apache-2.0), windows-implement 0.60.2 (MIT OR Apache-2.0), windows-interface 0.59.3 (MIT OR Apache-2.0), windows-link 0.1.3 (MIT OR Apache-2.0), windows-link 0.2.1 (MIT OR Apache-2.0), windows-numerics 0.2.0 (MIT OR Apache-2.0), windows-numerics 0.3.1 (MIT OR Apache-2.0), windows-registry 0.6.1 (MIT OR Apache-2.0), windows-result 0.3.4 (MIT OR Apache-2.0), windows-result 0.4.1 (MIT OR Apache-2.0), windows-strings 0.4.2 (MIT OR Apache-2.0), windows-strings 0.5.1 (MIT OR Apache-2.0), windows-sys 0.48.0 (MIT OR Apache-2.0), windows-sys 0.52.0 (MIT OR Apache-2.0), windows-sys 0.59.0 (MIT OR Apache-2.0), windows-sys 0.60.2 (MIT OR Apache-2.0), windows-sys 0.61.2 (MIT OR Apache-2.0), windows-targets 0.48.5 (MIT OR Apache-2.0), windows-targets 0.52.6 (MIT OR Apache-2.0), windows-targets 0.53.5 (MIT OR Apache-2.0), windows-threading 0.1.0 (MIT OR Apache-2.0), windows-threading 0.2.1 (MIT OR Apache-2.0), windows-version 0.1.7 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_aarch64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_aarch64_msvc 0.48.5 (MIT OR Apache-2.0), windows_aarch64_msvc 0.52.6 (MIT OR Apache-2.0), windows_aarch64_msvc 0.53.1 (MIT OR Apache-2.0), windows_i686_gnu 0.48.5 (MIT OR Apache-2.0), windows_i686_gnu 0.52.6 (MIT OR Apache-2.0), windows_i686_gnu 0.53.1 (MIT OR Apache-2.0), windows_i686_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_i686_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_i686_msvc 0.48.5 (MIT OR Apache-2.0), windows_i686_msvc 0.52.6 (MIT OR Apache-2.0), windows_i686_msvc 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnu 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnu 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnu 0.53.1 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.48.5 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.52.6 (MIT OR Apache-2.0), windows_x86_64_gnullvm 0.53.1 (MIT OR Apache-2.0), windows_x86_64_msvc 0.48.5 (MIT OR Apache-2.0), windows_x86_64_msvc 0.52.6 (MIT OR Apache-2.0), windows_x86_64_msvc 0.53.1 (MIT OR Apache-2.0)
 MIT License
 
     Copyright (c) Microsoft Corporation.
@@ -29155,13 +29222,13 @@ Under MIT OR Apache-2.0. These packages carry no licence file of their own; the 
 === r-efi 5.3.0, r-efi 6.0.0
 Under MIT OR Apache-2.0 OR LGPL-2.1-or-later. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
-=== asn1-rs-impl 0.2.0, atomig-macro 0.4.0, winapi-i686-pc-windows-gnu 0.4.0, winapi-x86_64-pc-windows-gnu 0.4.0
+=== asn1-rs-impl 0.2.0, atomig-macro 0.4.0, mac-notification-sys 0.6.15, winapi-i686-pc-windows-gnu 0.4.0, winapi-x86_64-pc-windows-gnu 0.4.0
 Under MIT/Apache-2.0. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
 === dynasm 5.1.0, dynasmrt 5.1.0
 Under MPL-2.0. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
-=== dispatch2 0.3.1, objc2-app-kit 0.3.2, objc2-core-foundation 0.3.2, objc2-core-graphics 0.3.2, objc2-core-text 0.3.2, objc2-io-kit 0.3.2, objc2-io-surface 0.3.2, objc2-metal 0.3.2, objc2-quartz-core 0.3.2, objc2-system-configuration 0.3.2, objc2-ui-kit 0.3.2
+=== dispatch2 0.3.1, objc2-app-kit 0.3.2, objc2-core-foundation 0.3.2, objc2-core-graphics 0.3.2, objc2-core-text 0.3.2, objc2-io-kit 0.3.2, objc2-io-surface 0.3.2, objc2-local-authentication 0.3.2, objc2-metal 0.3.2, objc2-quartz-core 0.3.2, objc2-system-configuration 0.3.2, objc2-ui-kit 0.3.2
 Under Zlib OR Apache-2.0 OR MIT. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
 === IJG-jpeg-encoder

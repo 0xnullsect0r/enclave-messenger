@@ -177,6 +177,9 @@ fn snapshot() -> Snapshot {
         group_admins: 3,
         group_vote: "aa".into(),
         file_keys: true,
+        screen_security: true,
+        biometric: "Touch ID".into(),
+        biometric_on: true,
     }
 }
 
@@ -236,6 +239,9 @@ fn cmds() -> Vec<Cmd> {
         Cmd::PickServer("aa".into()),
         Cmd::MoveHome("aa".into()),
         Cmd::VoteGroupHost("aa".into()),
+        Cmd::SetScreenSecurity(false),
+        Cmd::UnlockBiometric(0x1234),
+        Cmd::SetBiometric(true),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
@@ -298,6 +304,11 @@ fn round_trips() {
         Out::Effect(Effect::PassphraseChanged),
         Out::File("a.txt".into(), vec![1, 2, 3]),
         Out::Invite("enclave:add#AAAA".into()),
+        Out::Notify(enclave_ipc::Notice {
+            conversation: "ab".into(),
+            title: "Priya".into(),
+            body: "Chapter 4?".into(),
+        }),
         Out::Preview(enclave_ipc::Preview {
             conversation: "ab".into(),
             seq: 3,

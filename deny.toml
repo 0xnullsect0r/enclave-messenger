@@ -150,6 +150,7 @@ allow-build-scripts = [
     "libfuzzer-sys",  # fuzzing builds only (cargo-fuzz; rav1e under cfg(fuzzing))
     "liblzma-sys",  # arti directory compression; netd only
     "libm",
+    "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
     "libseat",  # Linux seat management (linuxkms)
     "libseat-sys",  # Linux seat management (linuxkms)
     "libsqlite3-sys",  # arti/nym-sdk state storage; netd/ingress only

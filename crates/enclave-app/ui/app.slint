@@ -800,6 +800,16 @@ export component AppWindow inherits Window {
     in property <string> version;
     // This computer keeps Enclave's keys in files (no keyring).
     in property <bool> file-keys;
+    // Screen security: the window is kept out of screen capture where the
+    // platform can (can-hide-capture).
+    in-out property <bool> screen-security: true;
+    in property <bool> can-hide-capture;
+    callback set-screen-security(bool);
+    // Touch ID or Windows Hello for the app lock: its name where set up.
+    in property <string> biometric;
+    in property <bool> biometric-on;
+    callback unlock-biometric();
+    callback set-biometric(bool);
     in property <[LicenceEntry]> licences;
     callback load-licences();
     callback check-backup(string, string);
@@ -1101,10 +1111,15 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     alignment: start;
+                    spacing: Tokens.space-s;
                     PrimaryButton {
                         text: root.busy ? "Opening…" : "Unlock";
                         enabled: root.passphrase-input != "" && !root.busy;
                         clicked => { root.unlock(root.passphrase-input); root.passphrase-input = ""; }
+                    }
+                    if root.pin-lock && root.biometric-on: QuietButton {
+                        text: "Use " + root.biometric;
+                        clicked => { root.unlock-biometric(); }
                     }
                 }
             }
@@ -2594,6 +2609,16 @@ export component AppWindow inherits Window {
             wrap: word-wrap;
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
+        if root.can-hide-capture: SwitchRow {
+            label: "Hide from screenshots";
+            detail: "Screenshots, screen recordings and screen sharing show a blank window instead of your messages.";
+            on: root.screen-security;
+            toggled => { root.set-screen-security(!root.screen-security); }
+        }
+        if !root.can-hide-capture: Secondary {
+            text: "On Linux any program you run can capture the screen, and Enclave can't stop it. Close Enclave before sharing your screen.";
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
         SwitchRow {
             label: "Typing indicators";
             detail: "Show people when you're typing, and see when they are. They only replace cover traffic, so they never use more data, and some may not arrive.";
@@ -2698,6 +2723,12 @@ export component AppWindow inherits Window {
                 accessible-label: "Lock after " + t.name;
                 clicked => { root.set-lock-timeout(t.secs); }
             }
+        }
+        if root.app-lock && !root.can-lock && root.biometric != "": SwitchRow {
+            label: "Unlock with " + root.biometric;
+            detail: "Opens the screen lock only. Removing a device, new recovery words and deleting your account still need your PIN.";
+            on: root.biometric-on;
+            toggled => { root.set-biometric(!root.biometric-on); }
         }
         if root.app-lock && !root.can-lock: HorizontalLayout {
             alignment: start;

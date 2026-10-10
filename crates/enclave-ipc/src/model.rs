@@ -383,6 +383,13 @@ pub struct Snapshot {
     /// Keys are kept in files in the profile, not a platform keystore (a
     /// passphrase is recommended).
     pub file_keys: bool,
+    /// The window is kept out of screen capture (on unless turned off).
+    pub screen_security: bool,
+    /// What this computer's biometric unlock is called ("Touch ID",
+    /// "Windows Hello"), when it has one set up; else empty.
+    pub biometric: String,
+    /// It opens the app lock.
+    pub biometric_on: bool,
 }
 
 /// UI → vault.
@@ -580,6 +587,13 @@ pub enum Cmd {
     /// Vote to move the open group to this server (id, hex) (admins;
     /// `docs/07-groups.md` §4).
     VoteGroupHost(String),
+    /// Keep the window out of screenshots and screen sharing (or stop).
+    SetScreenSecurity(bool),
+    /// Open the app lock with Touch ID or Windows Hello; the window that
+    /// asks (Windows: its HWND, to attach the prompt to), or 0.
+    UnlockBiometric(u64),
+    /// Let Touch ID or Windows Hello open the app lock (or stop).
+    SetBiometric(bool),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -620,6 +634,21 @@ pub enum Out {
     Preview(Preview),
     /// A clip's frames to play.
     Clip(ClipFrames),
+    /// Something to tell the person about while the window isn't in front:
+    /// a desktop notification (what it says is the vault's choice: names
+    /// and text only with previews on, `docs/14-storage.md` §5).
+    Notify(Notice),
+}
+
+/// A desktop notification.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Notice {
+    /// The conversation it is about (empty: several).
+    pub conversation: String,
+    /// Its title.
+    pub title: String,
+    /// Its text.
+    pub body: String,
 }
 
 /// A clip decoded for playing (by `mediad`).
@@ -882,7 +911,10 @@ impl Snapshot {
             .strs(&self.group_votes)
             .u32(self.group_admins)
             .str(&self.group_vote)
-            .bool(self.file_keys);
+            .bool(self.file_keys)
+            .bool(self.screen_security)
+            .str(&self.biometric)
+            .bool(self.biometric_on);
         w.0
     }
 
@@ -1127,6 +1159,9 @@ impl Snapshot {
             group_admins: r.u32()?,
             group_vote: r.str()?,
             file_keys: r.bool()?,
+            screen_security: r.bool()?,
+            biometric: r.str()?,
+            biometric_on: r.bool()?,
         };
         r.end()?;
         Ok(s)
@@ -1228,6 +1263,9 @@ impl Cmd {
             Cmd::PickServer(s) => w.u8(83).str(s),
             Cmd::MoveHome(s) => w.u8(84).str(s),
             Cmd::VoteGroupHost(s) => w.u8(85).str(s),
+            Cmd::SetScreenSecurity(on) => w.u8(86).bool(*on),
+            Cmd::UnlockBiometric(window) => w.u8(87).u64(*window),
+            Cmd::SetBiometric(on) => w.u8(88).bool(*on),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1325,6 +1363,9 @@ impl Cmd {
             83 => Cmd::PickServer(r.str()?),
             84 => Cmd::MoveHome(r.str()?),
             85 => Cmd::VoteGroupHost(r.str()?),
+            86 => Cmd::SetScreenSecurity(r.bool()?),
+            87 => Cmd::UnlockBiometric(r.u64()?),
+            88 => Cmd::SetBiometric(r.bool()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1370,6 +1411,11 @@ impl Out {
                 }
                 w.0
             }
+            Out::Notify(n) => {
+                let mut w = Writer::default();
+                w.u8(7).str(&n.conversation).str(&n.title).str(&n.body);
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -1406,6 +1452,16 @@ impl Out {
             [3, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::File(r.str()?, r.bytes()?);
+                r.end()?;
+                Ok(o)
+            }
+            [7, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::Notify(Notice {
+                    conversation: r.str()?,
+                    title: r.str()?,
+                    body: r.str()?,
+                });
                 r.end()?;
                 Ok(o)
             }

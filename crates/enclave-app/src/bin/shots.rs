@@ -306,6 +306,9 @@ fn fixture() -> Snapshot {
         group_admins: 0,
         group_vote: String::new(),
         file_keys: false,
+        screen_security: true,
+        biometric: String::new(),
+        biometric_on: false,
     }
 }
 

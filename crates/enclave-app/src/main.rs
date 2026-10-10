@@ -76,6 +76,36 @@ fn save_with_dialog(ui: &AppWindow, name: String, bytes: Vec<u8>) {
     });
 }
 
+/// Show a desktop notification, unless the window is in front (the person
+/// sees the message already). Shown from a thread of its own: on Linux it
+/// is a D-Bus call.
+fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
+    use slint::winit_030::WinitWindowAccessor as _;
+    let in_front = ui
+        .window()
+        .with_winit_window(|w| w.has_focus() && w.is_minimized() != Some(true))
+        .unwrap_or(false);
+    if in_front {
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("enclave-notify".into())
+        .spawn(move || {
+            let mut note = notify_rust::Notification::new();
+            note.appname("Enclave").summary(&n.title).body(&n.body);
+            #[cfg(windows)]
+            note.app_id(NOTIFY_APP_ID);
+            #[cfg(all(unix, not(target_os = "macos")))]
+            note.icon("io.github.EnclaveChat.Enclave");
+            let _ = note.show();
+        });
+}
+
+/// The app's id for notifications (Windows toasts need the installer's
+/// Start menu shortcut to carry it, `packaging/windows`).
+#[cfg(windows)]
+const NOTIFY_APP_ID: &str = "io.github.EnclaveChat.Enclave";
+
 /// The system's file dialog for one of the path fields (`browse` in the
 /// UI): the chosen paths go into the field.
 fn browse(ui: &AppWindow, what: i32) {
@@ -169,6 +199,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         let _ = w.upgrade_in_event_loop(move |ui| save_with_dialog(&ui, name, bytes));
                         continue;
                     }
+                    Out::Notify(n) => {
+                        let _ = w.upgrade_in_event_loop(move |ui| notify(&ui, n));
+                        continue;
+                    }
                     Out::Invite(link) => {
                         copy_with_timeout(link);
                         let _ = w.upgrade_in_event_loop(|ui| {
@@ -185,7 +219,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Out::Effect(e) => view::apply_effect(&ui, e),
                     Out::Preview(p) => view::apply_preview(&ui, p),
                     Out::Clip(c) => view::apply_clip(&ui, c),
-                    Out::File(..) | Out::Invite(_) => {}
+                    Out::File(..) | Out::Invite(_) | Out::Notify(_) => {}
                 });
             }
         })
@@ -293,6 +327,35 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::ServerBackup(on));
     });
     ui.set_version(env!("CARGO_PKG_VERSION").into());
+    // Notifications come from the app's bundle (an unbundled build keeps
+    // the system's default sender).
+    #[cfg(target_os = "macos")]
+    let _ = notify_rust::set_application("io.github.EnclaveChat.Enclave");
+    ui.set_can_hide_capture(enclave_platform::window::CAN_EXCLUDE_FROM_CAPTURE);
+    // Kept out of screen capture from the first frame (the profile's
+    // setting follows with its first snapshot).
+    let w = ui.as_weak();
+    slint::Timer::single_shot(Duration::ZERO, move || {
+        if let Some(ui) = w.upgrade() {
+            view::apply_screen_security(&ui);
+        }
+    });
+    let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_unlock_biometric(move || {
+        let window = w.upgrade().map_or(0, |ui| {
+            enclave_platform::window::native_id(&ui.window().window_handle())
+        });
+        let _ = t.send(Cmd::UnlockBiometric(window));
+    });
+    let t = tx.clone();
+    ui.on_set_biometric(move |on| {
+        let _ = t.send(Cmd::SetBiometric(on));
+    });
+    let t = tx.clone();
+    ui.on_set_screen_security(move |on| {
+        let _ = t.send(Cmd::SetScreenSecurity(on));
+    });
     let w = ui.as_weak();
     ui.on_load_licences(move || {
         if let Some(ui) = w.upgrade()

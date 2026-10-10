@@ -17,6 +17,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+/// `NS_SETTINGS` key: `[0]` lets other programs capture the window
+/// (screen security is on otherwise; `docs/14-storage.md` §5).
+const SCREEN_SECURITY: &str = "screen-security";
+
 /// Foreground tick (docs/09-transport.md §9.4).
 const TICK: Duration = Duration::from_secs(3);
 /// Sync rounds between looks at the mixnet tickets (about 5 minutes).
@@ -279,6 +283,8 @@ struct Engine {
     listed: Vec<enclave_federation::ListedServer>,
     /// The profile's secrets are in files, not a platform keystore.
     file_keys: bool,
+    /// Touch ID or Windows Hello, when this computer has it set up.
+    biometric_name: Option<&'static str>,
     client: Option<Client>,
     demo: Option<Demo>,
     selected: Option<[u8; 64]>,
@@ -662,6 +668,97 @@ async fn send_preview(
     }));
 }
 
+/// Most notifications from one sync; more become one "N new messages".
+const MAX_NOTICES: usize = 3;
+/// Longest text a notification shows.
+const NOTICE_TEXT: usize = 160;
+
+/// Desktop notifications for what a sync brought (`docs/14-storage.md`
+/// §5): new messages in conversations that aren't muted, and message
+/// requests. Only with "Show previews" on do they name who wrote and show
+/// the text; otherwise "New message", as on a lock screen.
+fn notices(c: &Client, events: &[Event]) -> Vec<enclave_ipc::Notice> {
+    let previews = c.previews();
+    let shown = |text: &str, file: bool| -> String {
+        let t = if text.trim().is_empty() && file {
+            "Sent a file".to_string()
+        } else {
+            text.trim().to_string()
+        };
+        match t.char_indices().nth(NOTICE_TEXT) {
+            Some((i, _)) => format!("{}…", &t[..i]),
+            None => t,
+        }
+    };
+    let mut out = Vec::new();
+    for e in events {
+        let (conversation, title, body) = match e {
+            Event::Message { root, message } if !message.outgoing => {
+                if c.conv_prefs(&Place::Contact(*root)).muted {
+                    continue;
+                }
+                let name = c
+                    .contact(root)
+                    .map(|ct| ct.name.clone())
+                    .unwrap_or_default();
+                (
+                    hex_id(root),
+                    name,
+                    shown(&message.text, message.attachment.is_some()),
+                )
+            }
+            Event::GroupMessage { group_id, message } if message.from.is_some() => {
+                if c.conv_prefs(&Place::Group(*group_id)).muted {
+                    continue;
+                }
+                let group = c
+                    .groups()
+                    .into_iter()
+                    .find(|g| g.id == *group_id)
+                    .map(|g| g.name)
+                    .unwrap_or_default();
+                (
+                    hex_short(group_id),
+                    group,
+                    format!(
+                        "{}: {}",
+                        message.from_name,
+                        shown(&message.text, message.attachment.is_some())
+                    ),
+                )
+            }
+            Event::Request { root, name, text } => (
+                hex_id(root),
+                format!("Message request from {name}"),
+                shown(text, false),
+            ),
+            _ => continue,
+        };
+        out.push(if previews {
+            enclave_ipc::Notice {
+                conversation,
+                title,
+                body,
+            }
+        } else {
+            enclave_ipc::Notice {
+                conversation,
+                title: "Enclave".into(),
+                body: "New message".into(),
+            }
+        });
+    }
+    if out.len() > MAX_NOTICES {
+        let n = out.len();
+        out = vec![enclave_ipc::Notice {
+            conversation: String::new(),
+            title: "Enclave".into(),
+            body: format!("{n} new messages"),
+        }];
+    }
+    out
+}
+
 /// `name` with its extension replaced by `ext`.
 fn with_extension(name: &str, ext: &str) -> String {
     let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
@@ -812,6 +909,9 @@ pub async fn run_with(
         server: server.unwrap_or_default(),
         listed: Vec::new(),
         file_keys,
+        biometric_name: enclave_platform::biometric::available()
+            .then(enclave_platform::biometric::name)
+            .flatten(),
         client: None,
         demo: None,
         selected: None,
@@ -1183,7 +1283,7 @@ impl Engine {
         self.last_use = std::time::Instant::now();
         // Locked by the app PIN, the profile is open but the window gets
         // nothing until the PIN (or the emergency PIN) comes.
-        if self.pin_locked && !matches!(cmd, Cmd::Unlock(_)) {
+        if self.pin_locked && !matches!(cmd, Cmd::Unlock(_) | Cmd::UnlockBiometric(_)) {
             return;
         }
         // Setting up, restoring and linking need the mixnet.
@@ -2598,6 +2698,46 @@ impl Engine {
                 }
                 self.busy = false;
             }
+            Cmd::UnlockBiometric(window) => {
+                self.unlock_error.clear();
+                if !self.pin_locked
+                    || self.biometric_name.is_none()
+                    || !self.lock.as_ref().is_some_and(|l| l.biometric)
+                {
+                    return;
+                }
+                let ok = tokio::task::spawn_blocking(move || {
+                    enclave_platform::biometric::verify(window, "Unlock Enclave")
+                })
+                .await
+                .unwrap_or(false);
+                if ok {
+                    self.pin_locked = false;
+                    self.locked = false;
+                    self.lock_tries = 0;
+                    self.lock_wait = None;
+                } else {
+                    self.unlock_error = "Not unlocked. Type your PIN instead.".into();
+                }
+            }
+            Cmd::SetBiometric(on) => {
+                if on && self.biometric_name.is_none() {
+                    self.status = "This computer has no Touch ID or Windows Hello set up.".into();
+                } else if self.client.is_some()
+                    && self.lock.as_ref().is_some_and(|l| l.app_set || !on)
+                    && let Some(lf) = self.lock_mut()
+                {
+                    lf.biometric = on;
+                    if !self.save_lock() {
+                        self.status = "Couldn't save the lock settings.".into();
+                    }
+                }
+            }
+            Cmd::SetScreenSecurity(on) => {
+                if let Some(c) = self.client.as_mut() {
+                    let _ = c.set_setting(SCREEN_SECURITY, if on { &[] } else { &[0] });
+                }
+            }
             Cmd::TypingSetting(on) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_typing_enabled(on);
@@ -3133,6 +3273,9 @@ impl Engine {
                         self.status = "Your account was deleted from another of your devices, so everything on this device was erased too.".into();
                         return;
                     }
+                    for n in notices(c, &events) {
+                        let _ = self.out.send(Out::Notify(n));
+                    }
                     if let Some(sel) = self.selected
                         && events
                             .iter()
@@ -3365,6 +3508,10 @@ impl Engine {
             return;
         }
         let on = lf.app_set;
+        // Biometrics open the app lock only while there is one.
+        if !on {
+            lf.biometric = false;
+        }
         self.status = if !self.save_lock() {
             "Couldn't save the lock settings.".into()
         } else if on {
@@ -3493,6 +3640,14 @@ impl Engine {
                 .map(server_row)
                 .collect(),
             file_keys: self.file_keys,
+            biometric: self.biometric_name.unwrap_or_default().into(),
+            biometric_on: self.biometric_name.is_some()
+                && self.lock.as_ref().is_some_and(|l| l.app_set && l.biometric),
+            // On until turned off, and while no profile is open.
+            screen_security: self
+                .client
+                .as_ref()
+                .is_none_or(|c| !matches!(c.setting(SCREEN_SECURITY), Ok(Some(v)) if v == [0])),
             home: if self.server == ServerId::default() {
                 String::new()
             } else {

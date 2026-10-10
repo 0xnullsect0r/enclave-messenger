@@ -406,6 +406,12 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_backup_check(s.backup_check.clone().into());
     apply_servers(ui, s);
     ui.set_file_keys(s.file_keys);
+    ui.set_biometric(s.biometric.clone().into());
+    ui.set_biometric_on(s.biometric_on);
+    if ui.get_screen_security() != s.screen_security {
+        ui.set_screen_security(s.screen_security);
+        apply_screen_security(ui);
+    }
     ui.set_app_lock(s.app_lock);
     ui.set_lock_timeout(i32::try_from(s.lock_timeout).unwrap_or(i32::MAX));
     ui.set_invites(s.invites as i32);
@@ -557,6 +563,15 @@ pub fn apply_effect(ui: &AppWindow, e: Effect) {
             ui.set_attach_caption("".into());
         }
     }
+}
+
+/// Keep the window out of screen capture, or not, as the profile says
+/// (`docs/14-storage.md` §5; nothing to do on Linux).
+pub fn apply_screen_security(ui: &AppWindow) {
+    enclave_platform::window::exclude_from_capture(
+        &slint::ComponentHandle::window(ui).window_handle(),
+        ui.get_screen_security(),
+    );
 }
 
 /// The open-source notices (`cargo xtask licenses`), one entry per licence
