@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Enclave.app's Info.plist; `cargo xtask bundle-macos` fills in the
+     version. Every program is in Contents/MacOS, next to the window's. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Enclave</string>
+	<key>CFBundleExecutable</key>
+	<string>enclave</string>
+	<key>CFBundleIconFile</key>
+	<string>enclave</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.EnclaveChat.Enclave</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Enclave</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.social-networking</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>GPL-3.0-only. The Enclave contributors.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Enclave uses the camera to scan a contact's code or your other device's code. Nothing it sees leaves this Mac.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Enclave sends your message history straight to your other device on this network when you link them.</string>
+</dict>
+</plist>

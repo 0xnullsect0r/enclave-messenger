@@ -30,12 +30,12 @@ export GOTOOLCHAIN=${GOTOOLCHAIN:-auto} GOFLAGS=-mod=readonly CGO_ENABLED=0
 
 case "${1:-}" in
   build)
-    out=$2
+    mkdir -p "$(dirname "$2")"
+    out=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
     fetch
-    mkdir -p "$(dirname "$out")"
     (cd "$SRC" && GOOS=${3:-$(go env GOOS)} GOARCH=${4:-$(go env GOARCH)} \
       go build -trimpath -buildvcs=false -ldflags="-s -w -buildid= -X main.lyrebirdVersion=$VERSION" \
-        -o "$(realpath -m "$out")" ./cmd/lyrebird)
+        -o "$out" ./cmd/lyrebird)
     echo "lyrebird $VERSION ($COMMIT) → $out"
     ;;
   licenses)

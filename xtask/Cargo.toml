@@ -14,3 +14,9 @@ workspace = true
 enclave-crypto = { path = "../crates/enclave-crypto" }
 resvg = { version = "0.48", default-features = false }
 serde_json = "1"
+# Release archives and checksums (dist.rs).
+tar = "0.4"
+flate2 = "1"
+crc32fast = "1"
+sha2 = "0.10"
+sha3 = "0.10"

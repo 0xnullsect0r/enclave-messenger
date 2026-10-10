@@ -1,0 +1,44 @@
+# Enclave as a Flatpak (release.yml job `flatpak`): the programs `cargo xtask
+# dist` built for Linux (the same as in the .deb, .rpm and tarball), on the
+# Freedesktop runtime. Flathub needs a build from source instead; that
+# manifest is made by `flathub.sh` (External Gate G4).
+#
+#   cp target/dist/enclave-V-x86_64-unknown-linux-gnu.tar.gz packaging/flatpak/enclave-dist.tar.gz
+#   flatpak-builder --repo=repo build packaging/flatpak/io.github.EnclaveChat.Enclave.yml
+#   flatpak build-bundle repo Enclave.flatpak io.github.EnclaveChat.Enclave
+app-id: io.github.EnclaveChat.Enclave
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: enclave
+finish-args:
+  # The window, drawn with OpenGL.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Tor and the mixnet (netd and its helpers), and history to the person's
+  # other device on the local network.
+  - --share=network
+  # Cameras, for scanning codes: read through V4L2, which has no portal.
+  - --device=all
+  # New-message notices.
+  - --talk-name=org.freedesktop.Notifications
+  # Files to send, backups and saved attachments go through the file
+  # chooser portal; secrets through the Secret portal. Neither needs a
+  # permission here.
+modules:
+  - name: enclave
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/enclave-messenger /app/bin
+      - install -m755 enclave enclave-vault enclave-netd enclave-mediad enclave-tord enclave-nymd lyrebird /app/lib/enclave-messenger/
+      # The programs start each other from their own folder, which a
+      # symbolic link resolves to.
+      - ln -s ../lib/enclave-messenger/enclave /app/bin/enclave
+      - cp -r share/applications share/metainfo share/icons /app/share/
+      - install -Dm644 THIRD-PARTY-NOTICES.txt /app/share/doc/enclave/THIRD-PARTY-NOTICES.txt
+      - install -Dm644 LICENSE /app/share/licenses/io.github.EnclaveChat.Enclave/LICENSE
+    sources:
+      - type: archive
+        path: enclave-dist.tar.gz

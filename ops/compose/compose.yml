@@ -10,9 +10,9 @@
 #
 # What faces the internet: the front (80 and 443, TLS with the Enclave
 # profile) and the call relay (UDP). The server holds the keys and has no
-# HTTP surface; it sits on the internal `backend` network, reached in
-# production through the stack's Nym ingress (milestone N1) and, until
-# then, in development through compose.dev.yml. Every container runs as
+# HTTP surface; it sits on the internal `backend` network, reached only
+# through the stack's Nym ingress (compose.dev.yml maps its port for
+# development). Every container runs as
 # an unprivileged user with no capabilities and a read-only root
 # filesystem; state lives in the named volumes below.
 

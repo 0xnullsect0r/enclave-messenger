@@ -1,6 +1,6 @@
 [package]
 name = "enclave-app"
-description = "The Enclave app (Slint): desktop now, Android and iOS from the same code."
+description = "Private messages without a phone number (the Enclave app: desktop, Android and iOS from one Slint code base)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -29,6 +29,74 @@ path = "src/main.rs"
 name = "enclave-shots"
 path = "src/bin/shots.rs"
 required-features = ["demo"]
+
+# Linux packages (`release.yml`), from what `cargo xtask dist` gathers in
+# target/<target>/release/dist: every program in /usr/lib/enclave-messenger
+# (they start each other from there), `enclave` on the PATH, the desktop
+# entry, AppStream metadata and icons. `enclave` is taken in Debian and
+# Arch, hence the package name.
+[package.metadata.deb]
+name = "enclave-messenger"
+maintainer = "The Enclave contributors <security@enclave.chat>"
+copyright = "The Enclave contributors"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+A messenger that hides not only what you say but who you talk to and when: \
+no phone number, post-quantum encryption, traffic through Tor and the Nym \
+mixnet, and servers run by independent operators."""
+section = "net"
+priority = "optional"
+# `$auto` finds the libraries the programs link; the window also loads
+# these at run time (winit, glutin), which no tool can see.
+depends = "$auto, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-egl1, libegl1, libgl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2"
+recommends = "xdg-desktop-portal, gnome-keyring | kwalletmanager | keepassxc"
+assets = [
+  ["target/release/dist/enclave", "usr/lib/enclave-messenger/", "755"],
+  ["target/release/dist/enclave-vault", "usr/lib/enclave-messenger/", "755"],
+  ["target/release/dist/enclave-netd", "usr/lib/enclave-messenger/", "755"],
+  ["target/release/dist/enclave-mediad", "usr/lib/enclave-messenger/", "755"],
+  ["target/release/dist/enclave-tord", "usr/lib/enclave-messenger/", "755"],
+  ["target/release/dist/enclave-nymd", "usr/lib/enclave-messenger/", "755"],
+  ["target/release/dist/lyrebird", "usr/lib/enclave-messenger/", "755"],
+  ["../../packaging/linux/enclave", "usr/bin/enclave", "755"],
+  ["target/release/dist/share/applications/io.github.EnclaveChat.Enclave.desktop", "usr/share/applications/", "644"],
+  ["target/release/dist/share/metainfo/io.github.EnclaveChat.Enclave.metainfo.xml", "usr/share/metainfo/", "644"],
+  ["target/release/dist/share/icons/hicolor/**/*", "usr/share/icons/hicolor/", "644"],
+  ["target/release/dist/THIRD-PARTY-NOTICES.txt", "usr/share/doc/enclave-messenger/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "enclave-messenger"
+summary = "Private messages without a phone number"
+license = "GPL-3.0-only"
+url = "https://github.com/EnclaveChat/Enclave"
+# As for the deb: what the window loads at run time, beyond what the
+# programs link (found by `auto-req`).
+requires = { libxkbcommon = "*", libxkbcommon-x11 = "*", libwayland-client = "*", libwayland-egl = "*", libglvnd-egl = "*", libglvnd-glx = "*", libX11 = "*", libX11-xcb = "*", libXcursor = "*", libXi = "*", libXrandr = "*" }
+assets = [
+  { source = "target/release/dist/enclave", dest = "/usr/lib/enclave-messenger/enclave", mode = "755" },
+  { source = "target/release/dist/enclave-vault", dest = "/usr/lib/enclave-messenger/enclave-vault", mode = "755" },
+  { source = "target/release/dist/enclave-netd", dest = "/usr/lib/enclave-messenger/enclave-netd", mode = "755" },
+  { source = "target/release/dist/enclave-mediad", dest = "/usr/lib/enclave-messenger/enclave-mediad", mode = "755" },
+  { source = "target/release/dist/enclave-tord", dest = "/usr/lib/enclave-messenger/enclave-tord", mode = "755" },
+  { source = "target/release/dist/enclave-nymd", dest = "/usr/lib/enclave-messenger/enclave-nymd", mode = "755" },
+  { source = "target/release/dist/lyrebird", dest = "/usr/lib/enclave-messenger/lyrebird", mode = "755" },
+  { source = "../../packaging/linux/enclave", dest = "/usr/bin/enclave", mode = "755" },
+  { source = "target/release/dist/share/applications/io.github.EnclaveChat.Enclave.desktop", dest = "/usr/share/applications/io.github.EnclaveChat.Enclave.desktop", mode = "644" },
+  { source = "target/release/dist/share/metainfo/io.github.EnclaveChat.Enclave.metainfo.xml", dest = "/usr/share/metainfo/io.github.EnclaveChat.Enclave.metainfo.xml", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/16x16/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/16x16/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/24x24/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/24x24/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/32x32/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/32x32/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/48x48/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/48x48/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/64x64/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/64x64/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/128x128/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/256x256/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/512x512/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/512x512/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/scalable/apps/io.github.EnclaveChat.Enclave.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.EnclaveChat.Enclave.svg", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/symbolic/apps/io.github.EnclaveChat.Enclave-symbolic.svg", dest = "/usr/share/icons/hicolor/symbolic/apps/io.github.EnclaveChat.Enclave-symbolic.svg", mode = "644" },
+  { source = "target/release/dist/THIRD-PARTY-NOTICES.txt", dest = "/usr/share/doc/enclave-messenger/THIRD-PARTY-NOTICES.txt", mode = "644", doc = true },
+  { source = "../../LICENSE", dest = "/usr/share/licenses/enclave-messenger/LICENSE", mode = "644", doc = true },
+]
 
 [features]
 # The development TCP transport (`--server ID=HOST:PORT` against

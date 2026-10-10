@@ -12,7 +12,10 @@
 //! * `done [--report]`: the 1.0 completion gate (`done.rs`).
 //! * `icons [--check]`: the app icons for every platform (`icons.rs`).
 //! * `licenses [--check]`: the notices the app shows (`licenses.rs`).
+//! * `dist`, `packager`, `bundle-macos`, `checksums`, `version`: release
+//!   builds, archives and installers (`dist.rs`).
 
+mod dist;
 mod done;
 mod icons;
 mod licenses;
@@ -37,9 +40,19 @@ fn main() -> ExitCode {
         "done" => done::done(std::env::args().any(|a| a == "--report")),
         "icons" => icons::icons(std::env::args().any(|a| a == "--check")),
         "licenses" => licenses::licenses(std::env::args().any(|a| a == "--check")),
+        "dist" | "packager" | "bundle-macos" | "checksums" | "version" => {
+            let args: Vec<String> = std::env::args().skip(2).collect();
+            match task.as_str() {
+                "dist" => dist::dist(&args),
+                "packager" => dist::packager(&args),
+                "bundle-macos" => dist::bundle_macos(&args),
+                "checksums" => dist::checksums(&args),
+                _ => dist::version_task(&args),
+            }
+        }
         _ => {
             eprintln!(
-                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | licenses [--check]"
+                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | licenses [--check] | dist [--target T] [--no-build] | packager --target T --formats F | bundle-macos [--target T] | checksums DIR | version [TAG]"
             );
             ExitCode::FAILURE
         }
@@ -219,7 +232,7 @@ fn dudect() -> ExitCode {
     }
 }
 
-fn root() -> PathBuf {
+pub(crate) fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(Path::to_path_buf)

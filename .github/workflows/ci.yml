@@ -382,3 +382,55 @@ jobs:
         with:
           name: done-gate
           path: done-gate.txt
+
+  packaging:
+    name: packaging files (desktop entry, AppStream, scripts, versions)
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Validate
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y desktop-file-utils appstream shellcheck
+          desktop-file-validate packaging/linux/io.github.EnclaveChat.Enclave.desktop
+          appstreamcli validate --no-net --explain packaging/linux/io.github.EnclaveChat.Enclave.metainfo.xml
+          shellcheck -x ci/release/*.sh ci/tor/*.sh packaging/linux/enclave
+          bash -n packaging/aur/enclave-messenger/PKGBUILD packaging/aur/enclave-messenger-bin/PKGBUILD
+          python3 -c "import plistlib, sys; [plistlib.load(open(f, 'rb')) for f in sys.argv[1:]]" packaging/macos/*.plist packaging/macos/*.entitlements
+          cargo xtask version
+          ci/release/manifest.sh "$(cargo xtask version)" | sort | uniq -d | (! grep .)
+          python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" packaging/flatpak/io.github.EnclaveChat.Enclave.yml
+      - id: changes
+        name: Did packaging change? (then the release workflow runs as a dry run)
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          changed=true
+          if git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$BEFORE" HEAD)
+            if ! echo "$files" | grep -Eq '^(packaging/|ci/release/|ci/tor/lyrebird\.sh|xtask/src/dist\.rs|\.github/workflows/release\.yml|crates/enclave-app/(build\.rs|Cargo\.toml)|ops/docker/|ops/compose/compose\.yml)'; then
+              changed=false
+            fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "packaging changed: $changed"
+
+  release-dry-run:
+    name: release (dry run)
+    needs: packaging
+    if: needs.packaging.outputs.changed == 'true'
+    # What release.yml's jobs ask for; a dry run signs, pushes and publishes
+    # nothing.
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+    with:
+      dry_run: true

@@ -1,0 +1,633 @@
+name: Release
+# Every artifact of a release (docs/completion-plan.md, R1): the desktop
+# programs for Linux, macOS and Windows with their packages and
+# installers, the service images on GHCR, the compose stack as an OCI
+# artifact, SBOMs, checksums with Sigstore bundles and build provenance,
+# then install tests and the AUR.
+#
+# A `v*` tag publishes (a tag with a pre-release part, `v1.2.3-rc.1`, as a
+# pre-release). `workflow_dispatch` and `workflow_call` (CI's dry run, when
+# packaging changes) take `dry_run`: everything is built and tested, nothing
+# is signed with release keys, pushed or published.
+#
+# Signing secrets live in environments with required reviewers:
+# release-apple (APPLE_DEVELOPER_ID_P12_BASE64, APPLE_DEVELOPER_ID_P12_PASSWORD,
+# APPLE_TEAM_ID, ASC_API_KEY_P8_BASE64, ASC_API_KEY_ID, ASC_API_KEY_ISSUER_ID)
+# and aur (AUR_SSH_PRIVATE_KEY, AUR_KNOWN_HOSTS). Windows ships unsigned
+# until a certificate exists: the repository variable ENCLAVE_WIN_SIGN_CMD
+# (a command with %1 for the file) signs every program and installer.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release (vX.Y.Z or vX.Y.Z-pre); empty for a dry run of this commit
+        type: string
+        default: ''
+      dry_run:
+        description: Build and test only
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.dry_run && 'dry' || 'real' }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  ALMALINUX: almalinux:9@sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16
+  REGISTRY: ghcr.io/enclavechat
+
+jobs:
+  prepare:
+    name: version and tag
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      dry: ${{ steps.v.outputs.dry }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
+        name: The tag names the workspace version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          workspace=$(cargo xtask version)
+          if [ "${{ github.event_name }}" = push ]; then
+            tag=${GITHUB_REF_NAME}; dry=false
+          elif [ -n "${INPUT_TAG:-}" ]; then
+            tag=$INPUT_TAG; dry=${INPUT_DRY:-true}
+          else
+            # A dry run of this commit: a pre-release of the workspace version.
+            tag=v$workspace-dryrun.$(git rev-parse --short=12 HEAD); dry=true
+          fi
+          cargo xtask version "$tag"
+          version=${tag#v}
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "dry=$dry"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Release $tag (dry run: $dry, pre-release: $prerelease)" >> "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    name: Linux ${{ matrix.arch }} (tarball, .deb, .rpm, AppImage)
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    # The oldest glibc Enclave supports (2.34), so one build runs on every
+    # current distribution.
+    container: almalinux:9@sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16
+    env:
+      TARGET: ${{ matrix.arch }}-unknown-linux-gnu
+      ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - name: Build tools
+        run: |
+          dnf -y install --setopt=install_weak_deps=False \
+            git gcc gcc-c++ make perl-core pkgconf-pkg-config clang file findutils \
+            fontconfig-devel freetype-devel libxkbcommon-devel golang xz bzip2 python3 which
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Programs (cargo xtask dist)
+        run: |
+          git config --global --add safe.directory "$PWD"
+          rustup show active-toolchain || rustup toolchain install
+          cargo xtask dist --target "$TARGET"
+      - name: Packaging tools
+        run: cargo install --locked cargo-deb@3.8.0 cargo-generate-rpm@0.21.0 cargo-packager@0.11.8
+      - name: .deb, .rpm and AppImage
+        run: |
+          set -euo pipefail
+          debv=$(echo "$ENCLAVE_VERSION" | sed 's/-/~/')
+          cargo deb -p enclave-app --no-build --target "$TARGET" --deb-version "$debv" -o target/dist/
+          cargo generate-rpm -p crates/enclave-app --target "$TARGET" -s "version = \"$debv\"" -o target/dist/
+          cargo xtask packager --target "$TARGET" --formats appimage
+          ls -la target/dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-linux-${{ matrix.arch }}
+          path: |
+            target/dist/*.tar.gz
+            target/dist/*.deb
+            target/dist/*.rpm
+            target/dist/*.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak ${{ matrix.arch }}
+    needs: [prepare, linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-linux-${{ matrix.arch }}
+          path: dist
+      - name: Build the bundle
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+          cp "dist/enclave-$V-${{ matrix.arch }}-unknown-linux-gnu.tar.gz" packaging/flatpak/enclave-dist.tar.gz
+          flatpak-builder --user --force-clean --repo=repo build packaging/flatpak/io.github.EnclaveChat.Enclave.yml
+          mkdir -p out
+          flatpak build-bundle repo "out/Enclave-$V-${{ matrix.arch }}.flatpak" io.github.EnclaveChat.Enclave
+      - name: Install it and run it
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          flatpak install --user -y --noninteractive "out/Enclave-$V-${{ matrix.arch }}.flatpak"
+          flatpak run io.github.EnclaveChat.Enclave --version | grep '^enclave ' 
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-flatpak-${{ matrix.arch }}
+          path: out/*.flatpak
+          if-no-files-found: error
+
+  macos:
+    name: macOS (universal .app and .dmg)
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 180
+    environment: ${{ needs.prepare.outputs.dry == 'true' && 'dry-run' || 'release-apple' }}
+    env:
+      ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Programs for both architectures, joined (cargo xtask dist)
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo xtask dist --target universal2-apple-darwin
+      - name: Signing identity and notarization key
+        if: needs.prepare.outputs.dry != 'true'
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          ASC_P8: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          kc="$RUNNER_TEMP/release.keychain-db"
+          kcpw=$(head -c 24 /dev/urandom | base64)
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/id.p12"
+          security import "$RUNNER_TEMP/id.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
+          rm "$RUNNER_TEMP/id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          id=$(security find-identity -v -p codesigning "$kc" | awk '/Developer ID Application/{print $2; exit}')
+          test -n "$id"
+          echo "APPLE_SIGN_IDENTITY=$id" >> "$GITHUB_ENV"
+          echo "$ASC_P8" | base64 --decode > "$RUNNER_TEMP/asc.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
+      - name: Enclave.app, signed (ad hoc in a dry run), notarized and stapled, and the .dmg
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+        run: |
+          [ -n "${ASC_KEY_PATH:-}" ] || unset ASC_KEY_ID ASC_ISSUER_ID
+          cargo xtask bundle-macos --target universal2-apple-darwin
+      - name: Checks
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          app=target/universal2-apple-darwin/release/bundle/Enclave.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          for p in "$app"/Contents/MacOS/*; do
+            archs=$(lipo -archs "$p")
+            case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::$p is $archs"; exit 1 ;; esac
+          done
+          "$app/Contents/MacOS/enclave" --version
+          if [ "${{ needs.prepare.outputs.dry }}" != true ]; then
+            spctl -a -vv "$app"
+            xcrun stapler validate "target/dist/Enclave-$V-macos.dmg"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-macos
+          path: |
+            target/dist/*.dmg
+            target/dist/*.app.zip
+            target/dist/*.tar.gz
+          if-no-files-found: error
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8"; security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
+
+  windows:
+    name: Windows ${{ matrix.arch }} (.msi, setup .exe, .zip)
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: windows-2025 }
+          - { arch: aarch64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      TARGET: ${{ matrix.arch }}-pc-windows-msvc
+      ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
+      ENCLAVE_WIN_SIGN_CMD: ${{ vars.ENCLAVE_WIN_SIGN_CMD }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Programs (cargo xtask dist)
+        run: |
+          rustup target add "$TARGET"
+          cargo xtask dist --target "$TARGET"
+      - name: The window carries its icon and version information
+        shell: pwsh
+        run: |
+          $info = (Get-Item "target/$env:TARGET/release/dist/enclave.exe").VersionInfo
+          if ($info.ProductName -ne "Enclave") { throw "ProductName is '$($info.ProductName)'" }
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path "target/$env:TARGET/release/dist/enclave.exe"))
+          if ($null -eq $icon) { throw "no icon" }
+          & "target/$env:TARGET/release/dist/enclave.exe" --version
+      - name: Installers (cargo-packager)
+        run: |
+          cargo install --locked cargo-packager@0.11.8
+          cargo xtask packager --target "$TARGET" --formats wix,nsis
+          ls -la target/dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-windows-${{ matrix.arch }}
+          path: |
+            target/dist/*.msi
+            target/dist/*-setup.exe
+            target/dist/*.zip
+          if-no-files-found: error
+
+  images:
+    name: Service image ${{ matrix.image }} (${{ matrix.platform }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [server, nym]
+        platform: [amd64, arm64]
+        include:
+          - { platform: amd64, runner: ubuntu-24.04 }
+          - { platform: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - if: needs.prepare.outputs.dry != 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        name: Build (pushed by digest on a release)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ops/docker/Dockerfile
+          target: ${{ matrix.image }}
+          platforms: linux/${{ matrix.platform }}
+          provenance: false
+          outputs: ${{ needs.prepare.outputs.dry == 'true' && 'type=cacheonly' || format('type=image,name={0}/enclave-{1},push-by-digest=true,name-canonical=true,push=true', env.REGISTRY, matrix.image) }}
+          cache-from: type=gha,scope=release-${{ matrix.image }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.image }}-${{ matrix.platform }}
+      - name: Keep the digest
+        if: needs.prepare.outputs.dry != 'true'
+        run: |
+          mkdir -p digests
+          echo "${{ steps.build.outputs.digest }}" > "digests/${{ matrix.image }}-${{ matrix.platform }}"
+      - if: needs.prepare.outputs.dry != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ matrix.image }}-${{ matrix.platform }}
+          path: digests/*
+
+  images-merge:
+    name: Service images (both architectures), signed, and the compose stack
+    needs: [prepare, images]
+    if: needs.prepare.outputs.dry != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - id: merge
+        name: One tag per image for both architectures, signed (keyless)
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+          PRE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          for image in server nym; do
+            repo=$REGISTRY/enclave-$image
+            tags=(-t "$repo:$V")
+            [ "$PRE" = true ] || tags+=(-t "$repo:latest")
+            docker buildx imagetools create "${tags[@]}" \
+              "$repo@$(cat digests/$image-amd64)" "$repo@$(cat digests/$image-arm64)"
+            digest=$(docker buildx imagetools inspect "$repo:$V" --format '{{json .Manifest}}' | jq -r .digest)
+            cosign sign --yes "$repo@$digest"
+            echo "$image=$digest" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/enclave-server
+          subject-digest: ${{ steps.merge.outputs.server }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/enclave-nym
+          subject-digest: ${{ steps.merge.outputs.nym }}
+          push-to-registry: true
+      - name: The compose stack as an OCI artifact, its images pinned by digest
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+          SERVER: ${{ steps.merge.outputs.server }}
+          NYM: ${{ steps.merge.outputs.nym }}
+        run: |
+          set -euo pipefail
+          ci/release/stack.sh "$V" "$SERVER" "$NYM" stack
+          (cd stack && docker compose -f compose.yml publish --yes "$REGISTRY/enclave-stack:$V")
+          echo "Operators: docker compose -f oci://$REGISTRY/enclave-stack:$V up -d" >> "$GITHUB_STEP_SUMMARY"
+
+  operator-kit:
+    name: Operator kit and pinned compose files
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The kit, and the stack checked with sample settings
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Digests are filled in by images-merge; here the tags stand in.
+          ci/release/stack.sh "$V" "" "" stack
+          (cd stack && cp .env.example .env && docker compose -f compose.yml config -q)
+          mkdir -p out
+          tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+            -czf "out/enclave-operator-kit-$V.tar.gz" ops/operator-kit ops/compose
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-operator-kit
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  sbom:
+    name: SBOMs (CycloneDX)
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: One per shipped package, both workspaces
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          cargo install --locked cargo-cyclonedx@0.5.9
+          mkdir -p out/sbom
+          for p in enclave-app enclave-vault enclave-netd enclave-mediad enclave-tord \
+                   enclave-server enclave-witness enclave-front enclave-relay enclave-push-relay \
+                   enclave-admin enclave-credgate; do
+            dir=$(cargo metadata --format-version 1 --no-deps | jq -r --arg p "$p" '.packages[] | select(.name==$p) | .manifest_path' | xargs dirname)
+            cargo cyclonedx --manifest-path "$dir/Cargo.toml" --format json --spec-version 1.5 --override-filename "$p.cdx"
+            mv "$dir/$p.cdx.json" out/sbom/
+          done
+          for p in enclave-nymd enclave-ingress-bin; do
+            cargo cyclonedx --manifest-path "nym/$p/Cargo.toml" --format json --spec-version 1.5 --override-filename "$p.cdx"
+            mv "nym/$p/$p.cdx.json" out/sbom/
+          done
+          (cd out && tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$(git log -1 --format=%ct)" \
+            -czf "enclave-$V-sbom.tar.gz" sbom)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-sbom
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  repro-check:
+    name: Independent rebuild of the Linux tarball
+    needs: [prepare, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    container: almalinux:9@sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Build tools
+        run: |
+          dnf -y install --setopt=install_weak_deps=False \
+            git gcc gcc-c++ make perl-core pkgconf-pkg-config clang file findutils \
+            fontconfig-devel freetype-devel libxkbcommon-devel golang xz bzip2 python3 which
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-linux-x86_64
+          path: released
+      - name: Rebuild and compare
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$PWD"
+          cargo xtask dist --target "$TARGET"
+          f="enclave-$ENCLAVE_VERSION-$TARGET.tar.gz"
+          a=$(sha256sum "released/$f" | cut -d' ' -f1)
+          b=$(sha256sum "target/dist/$f" | cut -d' ' -f1)
+          echo "released $a, rebuilt $b"
+          if [ "$a" != "$b" ]; then
+            mkdir -p x y && tar xzf "released/$f" -C x && tar xzf "target/dist/$f" -C y
+            diff -r x y || true
+            if [ "${{ needs.prepare.outputs.prerelease }}" = true ]; then
+              echo "::warning::The rebuild differs from the release build"
+            else
+              echo "::error::The rebuild differs from the release build"; exit 1
+            fi
+          fi
+
+  finalize:
+    name: Checksums, signatures, provenance, publish
+    needs: [prepare, linux, flatpak, macos, windows, operator-kit, sbom, repro-check]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Every expected file is here (D8)
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          ci/release/manifest.sh "$V" > dist/MANIFEST.txt
+          missing=0
+          while read -r f; do
+            [ -f "dist/$f" ] || { echo "::error::missing $f"; missing=1; }
+          done < dist/MANIFEST.txt
+          ls -la dist
+          [ "$missing" = 0 ]
+      - name: SHA256SUMS and SHA3-512SUMS
+        run: cargo xtask checksums dist
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sigstore bundles for the sums (keyless)
+        if: needs.prepare.outputs.dry != 'true'
+        run: |
+          for s in SHA256SUMS SHA3-512SUMS; do
+            cosign sign-blob --yes --bundle "dist/$s.sigstore.json" "dist/$s"
+          done
+      - if: needs.prepare.outputs.dry != 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Publish the release
+        if: needs.prepare.outputs.dry != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--verify-tag --title "Enclave ${TAG#v}" --notes-file ci/release/notes.md)
+          [ "$PRE" = true ] && flags+=(--prerelease)
+          gh release create "$TAG" "${flags[@]}" dist/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ needs.prepare.outputs.version }}
+          path: dist/*
+
+  install-linux:
+    name: Install on ${{ matrix.os }}
+    needs: [prepare, linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, image: 'ubuntu:22.04@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401', kind: deb }
+          - { os: ubuntu-24.04, image: 'ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55', kind: deb }
+          - { os: debian-12, image: 'debian:12@sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858', kind: deb }
+          - { os: fedora-42, image: 'fedora:42@sha256:99e203b80b1c3d8f7e161ec10a68fd02b081ef83a3963553e513c82846b97814', kind: rpm }
+          - { os: rocky-9, image: 'rockylinux/rockylinux:9@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f', kind: rpm }
+          - { os: arch, image: 'archlinux:base-devel@sha256:996c3a1d6b0d87b01242f6fcd8cfa3ad3eece1a67ab5c8f108e20af1d7b97bdd', kind: pkgbuild }
+          - { os: appimage, image: 'ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55', kind: appimage }
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-linux-x86_64
+          path: dist
+      - name: Install, start, uninstall
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+          KIND: ${{ matrix.kind }}
+        run: ci/release/install-linux.sh "$KIND" "$V" dist
+
+  install-windows:
+    name: Install on Windows (${{ matrix.kind }})
+    needs: [prepare, windows]
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [msi, nsis]
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-windows-x86_64
+          path: dist
+      - name: Install silently, start, uninstall
+        shell: pwsh
+        run: ./ci/release/install-windows.ps1 -Kind ${{ matrix.kind }} -Dist dist
+
+  aur:
+    name: AUR (enclave-messenger, enclave-messenger-bin)
+    needs: [prepare, finalize, install-linux]
+    if: needs.prepare.outputs.dry != 'true'
+    runs-on: ubuntu-24.04
+    environment: aur
+    container: archlinux:base-devel@sha256:996c3a1d6b0d87b01242f6fcd8cfa3ad3eece1a67ab5c8f108e20af1d7b97bdd
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ needs.prepare.outputs.version }}
+          path: dist
+      - name: Push both packages
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_KNOWN_HOSTS: ${{ secrets.AUR_KNOWN_HOSTS }}
+        run: ci/release/aur.sh "$V" dist push
