@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- netd, nymd, tord and mediad: the hardened runtime and nothing more.
+     Each confines itself further with its own Seatbelt profile
+     (enclave-sandbox), as the App Sandbox can't give helpers of one app
+     different sandboxes. -->
+<plist version="1.0">
+<dict/>
+</plist>

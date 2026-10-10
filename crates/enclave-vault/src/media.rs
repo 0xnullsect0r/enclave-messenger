@@ -11,7 +11,7 @@ use enclave_media::{Format, Rgba, Sanitized};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 type Pending = Arc<Mutex<HashMap<u32, oneshot::Sender<Result<MediaOut, String>>>>>;
@@ -33,7 +33,8 @@ struct Proc {
     out: mpsc::UnboundedSender<Vec<u8>>,
     pending: Pending,
     alive: Arc<AtomicBool>,
-    _child: Mutex<Child>,
+    /// Ends the helper when dropped.
+    _child: Box<dyn Send + Sync>,
 }
 
 /// Where `enclave-mediad` should be: next to this executable.
@@ -45,6 +46,17 @@ pub fn mediad_binary() -> Option<std::path::PathBuf> {
 
 impl Proc {
     fn spawn(bin: &std::path::Path) -> std::io::Result<Self> {
+        // Windows: in an AppContainer with no capabilities (no network, no
+        // files of the user's), where the program is readable by it (an
+        // installed build); otherwise as an ordinary process.
+        #[cfg(windows)]
+        if let Ok(c) =
+            enclave_platform::appcontainer::spawn(bin, &[], "io.github.EnclaveChat.Enclave.mediad")
+        {
+            let stdin = tokio::fs::File::from_std(c.stdin.try_clone()?);
+            let stdout = tokio::fs::File::from_std(c.stdout.try_clone()?);
+            return Ok(Self::run(stdin, stdout, Box::new(c)));
+        }
         let mut cmd = Command::new(bin);
         enclave_platform::process::no_window(cmd.as_std_mut());
         let mut child = cmd
@@ -52,14 +64,23 @@ impl Proc {
             .stdout(std::process::Stdio::piped())
             .kill_on_drop(true)
             .spawn()?;
-        let mut stdin = child
+        let stdin = child
             .stdin
             .take()
             .ok_or_else(|| std::io::Error::other("no stdin"))?;
-        let mut stdout = child
+        let stdout = child
             .stdout
             .take()
             .ok_or_else(|| std::io::Error::other("no stdout"))?;
+        Ok(Self::run(stdin, stdout, Box::new(Mutex::new(child))))
+    }
+
+    /// Talk to a started helper over its stdin and stdout.
+    fn run(
+        mut stdin: impl tokio::io::AsyncWrite + Unpin + Send + 'static,
+        mut stdout: impl tokio::io::AsyncRead + Unpin + Send + 'static,
+        child: Box<dyn Send + Sync>,
+    ) -> Self {
         let (out, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let alive = Arc::new(AtomicBool::new(true));
@@ -86,13 +107,13 @@ impl Proc {
             a.store(false, Ordering::SeqCst);
             p.lock().await.clear();
         });
-        Ok(Self {
+        Self {
             next: AtomicU32::new(1),
             out,
             pending,
             alive,
-            _child: Mutex::new(child),
-        })
+            _child: child,
+        }
     }
 }
 

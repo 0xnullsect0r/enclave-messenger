@@ -14,11 +14,15 @@
 //!   capture.
 //! - [`biometric`] (feature `biometric`): Touch ID and Windows Hello for
 //!   the app lock.
+//! - `seatbelt` (macOS): each helper process confines itself.
+//! - `appcontainer` (Windows): mediad starts in an AppContainer.
 //!
 //! The desktop and mobile shims (keystores, capture exclusion, audio,
 //! camera) join this crate with the desktop and mobile milestones, behind
 //! features, so `enclave-crypto` keeps depending on only these two.
 
+#[cfg(windows)]
+pub mod appcontainer;
 pub mod backup;
 #[cfg(feature = "biometric")]
 pub mod biometric;
@@ -27,5 +31,7 @@ pub mod dit;
 pub mod keystore;
 pub mod mem;
 pub mod process;
+#[cfg(target_os = "macos")]
+pub mod seatbelt;
 #[cfg(feature = "window")]
 pub mod window;

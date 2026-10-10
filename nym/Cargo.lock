@@ -2092,6 +2092,7 @@ dependencies = [
 name = "enclave-sandbox"
 version = "0.1.0"
 dependencies = [
+ "enclave-platform",
  "landlock",
  "libc",
  "rustix",

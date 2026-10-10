@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The vault: its Keychain group, so each keystore secret is also sealed
+     to a Secure Enclave key (docs/14-storage.md §1.1). TEAMID is replaced
+     with the signing team when the bundle is signed (`xtask bundle-macos`). -->
+<plist version="1.0">
+<dict>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>TEAMID.io.github.EnclaveChat.Enclave</string>
+    </array>
+</dict>
+</plist>

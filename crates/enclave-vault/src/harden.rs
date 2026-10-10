@@ -27,6 +27,13 @@ pub fn paths_for(mode: &crate::Mode) -> (Vec<PathBuf>, Vec<PathBuf>) {
         rw.push(profile.clone());
         // The secret portal's keyring, in a Flatpak (`crate::keystore`).
         rw.extend(crate::keystore::writable_paths());
+        // macOS: the Keychain's own files and the security preferences,
+        // which Security.framework may read in this process.
+        #[cfg(target_os = "macos")]
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            ro.push(home.join("Library/Keychains"));
+            ro.push(home.join("Library/Preferences"));
+        }
         if let Some(k) = kt_pins {
             ro.push(k.clone());
         }

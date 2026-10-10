@@ -9,12 +9,14 @@
 //!   zone data); with netd running it also may not open or accept any TCP
 //!   connection, so the network is only reachable through netd. netd gets no
 //!   filesystem access at all.
-//! * (Linux) a seccomp filter ([`syscalls`]) that answers `EPERM` to
-//!   system calls neither process needs once it runs: starting programs,
-//!   debugging others, namespaces, kernel modules, `io_uring` (which
-//!   seccomp can't see into), and new sockets beyond what the process is
-//!   for (the vault opens none; netd only IPv4 and IPv6). Landlock can't
+//! * (Linux) a seccomp allow-list ([`syscalls`]): the calls a process of
+//!   that kind makes once it runs, and `EPERM` for every other (starting
+//!   programs, debugging others, namespaces, kernel modules, `io_uring`,
+//!   and anything new), with arguments checked where a call can do more
+//!   (`socket` only for IPv4 and IPv6 in netd, `ioctl` and `prctl` only for
+//!   harmless requests, `clone` never a new user namespace). Landlock can't
 //!   stop UDP or raw sockets; this does.
+//! * (macOS) a Seatbelt profile per process instead ([`filesystem`]).
 //!
 //! Every step is best effort: the processes keep working on kernels without
 //! a feature, and report what they got.
@@ -44,14 +46,17 @@ pub struct Report {
     pub media: &'static str,
 }
 
-/// Which system calls a process keeps.
+/// Which system calls a process keeps: an allow-list, everything else
+/// failing with `EPERM`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
-    /// The vault: no new sockets of any kind (its UI connection and netd's
-    /// pipes exist before the filter).
+    /// The vault: files (Landlock limits which), no new sockets of any
+    /// kind (its UI connection and netd's pipes exist before the filter).
     Vault,
-    /// netd: IPv4 and IPv6 sockets only.
+    /// netd, tord and nymd: the vault's, plus new IPv4 and IPv6 sockets.
     Netd,
+    /// mediad: no files and no sockets at all, only the pipes it holds.
+    Media,
 }
 
 /// Harden the running process. Call first thing.
@@ -134,6 +139,175 @@ pub fn syscalls(profile: Profile, this_thread_only: bool) -> &'static str {
     }
 }
 
+/// System calls every confined process may make: memory, threads, time,
+/// signals, polling, and reading and writing descriptors it already holds.
+#[cfg(target_os = "linux")]
+const BASE: &[libc::c_long] = &[
+    libc::SYS_read,
+    libc::SYS_write,
+    libc::SYS_readv,
+    libc::SYS_writev,
+    libc::SYS_pread64,
+    libc::SYS_pwrite64,
+    libc::SYS_preadv,
+    libc::SYS_pwritev,
+    libc::SYS_preadv2,
+    libc::SYS_pwritev2,
+    libc::SYS_lseek,
+    libc::SYS_close,
+    libc::SYS_close_range,
+    libc::SYS_dup,
+    libc::SYS_dup3,
+    libc::SYS_fcntl,
+    libc::SYS_fstat,
+    libc::SYS_futex,
+    libc::SYS_set_robust_list,
+    libc::SYS_get_robust_list,
+    libc::SYS_rseq,
+    libc::SYS_set_tid_address,
+    libc::SYS_clone3,
+    libc::SYS_gettid,
+    libc::SYS_getpid,
+    libc::SYS_getppid,
+    libc::SYS_tgkill,
+    libc::SYS_tkill,
+    libc::SYS_sched_yield,
+    libc::SYS_sched_getaffinity,
+    libc::SYS_sched_setaffinity,
+    libc::SYS_sched_getparam,
+    libc::SYS_sched_getscheduler,
+    libc::SYS_sched_get_priority_max,
+    libc::SYS_sched_get_priority_min,
+    libc::SYS_getpriority,
+    libc::SYS_exit,
+    libc::SYS_exit_group,
+    libc::SYS_restart_syscall,
+    libc::SYS_rt_sigaction,
+    libc::SYS_rt_sigprocmask,
+    libc::SYS_rt_sigreturn,
+    libc::SYS_rt_sigtimedwait,
+    libc::SYS_rt_sigsuspend,
+    libc::SYS_sigaltstack,
+    libc::SYS_clock_gettime,
+    libc::SYS_clock_getres,
+    libc::SYS_clock_nanosleep,
+    libc::SYS_nanosleep,
+    libc::SYS_gettimeofday,
+    libc::SYS_mmap,
+    libc::SYS_munmap,
+    libc::SYS_mprotect,
+    libc::SYS_mremap,
+    libc::SYS_madvise,
+    libc::SYS_msync,
+    libc::SYS_brk,
+    libc::SYS_mlock,
+    libc::SYS_mlock2,
+    libc::SYS_munlock,
+    libc::SYS_membarrier,
+    libc::SYS_epoll_create1,
+    libc::SYS_epoll_ctl,
+    libc::SYS_epoll_pwait,
+    libc::SYS_epoll_pwait2,
+    libc::SYS_eventfd2,
+    libc::SYS_pipe2,
+    libc::SYS_ppoll,
+    libc::SYS_pselect6,
+    libc::SYS_timerfd_create,
+    libc::SYS_timerfd_settime,
+    libc::SYS_timerfd_gettime,
+    libc::SYS_getrandom,
+    libc::SYS_uname,
+    libc::SYS_sysinfo,
+    libc::SYS_prlimit64,
+    libc::SYS_getuid,
+    libc::SYS_geteuid,
+    libc::SYS_getgid,
+    libc::SYS_getegid,
+    libc::SYS_getresuid,
+    libc::SYS_getresgid,
+    libc::SYS_getgroups,
+    // Children started before the filter: waited for, and ended.
+    libc::SYS_wait4,
+    libc::SYS_waitid,
+    libc::SYS_kill,
+    libc::SYS_pidfd_open,
+    libc::SYS_pidfd_send_signal,
+    // Sockets held from before the filter (the window's, netd's pipes).
+    libc::SYS_recvfrom,
+    libc::SYS_sendto,
+    libc::SYS_recvmsg,
+    libc::SYS_sendmsg,
+    libc::SYS_recvmmsg,
+    libc::SYS_sendmmsg,
+    libc::SYS_shutdown,
+    libc::SYS_getsockopt,
+    libc::SYS_setsockopt,
+    libc::SYS_getsockname,
+    libc::SYS_getpeername,
+];
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const BASE_X86: &[libc::c_long] = &[
+    libc::SYS_arch_prctl,
+    libc::SYS_poll,
+    libc::SYS_select,
+    libc::SYS_epoll_wait,
+    libc::SYS_getrlimit,
+    libc::SYS_time,
+    libc::SYS_dup2,
+    libc::SYS_pipe,
+];
+
+/// Files (within what Landlock allows): the vault's profile, tord's state.
+#[cfg(target_os = "linux")]
+const FILES: &[libc::c_long] = &[
+    libc::SYS_openat,
+    libc::SYS_newfstatat,
+    libc::SYS_statx,
+    libc::SYS_faccessat,
+    libc::SYS_faccessat2,
+    libc::SYS_getdents64,
+    libc::SYS_mkdirat,
+    libc::SYS_unlinkat,
+    libc::SYS_renameat,
+    libc::SYS_renameat2,
+    libc::SYS_readlinkat,
+    libc::SYS_fsync,
+    libc::SYS_fdatasync,
+    libc::SYS_ftruncate,
+    libc::SYS_fallocate,
+    libc::SYS_flock,
+    libc::SYS_getcwd,
+    libc::SYS_statfs,
+    libc::SYS_fstatfs,
+    libc::SYS_fchmod,
+    libc::SYS_fchmodat,
+    libc::SYS_utimensat,
+];
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const FILES_X86: &[libc::c_long] = &[
+    libc::SYS_open,
+    libc::SYS_stat,
+    libc::SYS_lstat,
+    libc::SYS_access,
+    libc::SYS_mkdir,
+    libc::SYS_rmdir,
+    libc::SYS_unlink,
+    libc::SYS_rename,
+    libc::SYS_readlink,
+];
+
+/// New connections: netd, tord and nymd (`socket` itself only for IPv4 and
+/// IPv6, below).
+#[cfg(target_os = "linux")]
+const NET: &[libc::c_long] = &[
+    libc::SYS_connect,
+    libc::SYS_bind,
+    libc::SYS_listen,
+    libc::SYS_accept4,
+];
+
 #[cfg(target_os = "linux")]
 fn filter(profile: Profile) -> Option<seccompiler::BpfProgram> {
     use seccompiler::{
@@ -143,98 +317,85 @@ fn filter(profile: Profile) -> Option<seccompiler::BpfProgram> {
     use std::collections::BTreeMap;
     let arch: TargetArch = std::env::consts::ARCH.try_into().ok()?;
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
-    let always = |rules: &mut BTreeMap<i64, Vec<SeccompRule>>, nr: libc::c_long| {
-        rules.insert(nr, Vec::new());
+    let mut allow = |set: &[libc::c_long]| {
+        for nr in set {
+            rules.insert(*nr, Vec::new());
+        }
     };
-    for nr in [
-        // Starting programs and attaching to others.
-        libc::SYS_execve,
-        libc::SYS_execveat,
-        libc::SYS_ptrace,
-        libc::SYS_process_vm_readv,
-        libc::SYS_process_vm_writev,
-        // Namespaces and mounts.
-        libc::SYS_unshare,
-        libc::SYS_setns,
-        libc::SYS_mount,
-        libc::SYS_umount2,
-        libc::SYS_pivot_root,
-        libc::SYS_chroot,
-        libc::SYS_open_by_handle_at,
-        libc::SYS_name_to_handle_at,
-        // The kernel's larger attack surfaces.
-        libc::SYS_bpf,
-        libc::SYS_perf_event_open,
-        libc::SYS_userfaultfd,
-        libc::SYS_io_uring_setup,
-        libc::SYS_io_uring_enter,
-        libc::SYS_io_uring_register,
-        libc::SYS_keyctl,
-        libc::SYS_add_key,
-        libc::SYS_request_key,
-        libc::SYS_fanotify_init,
-        libc::SYS_personality,
-        // The machine itself.
-        libc::SYS_kexec_load,
-        libc::SYS_kexec_file_load,
-        libc::SYS_init_module,
-        libc::SYS_finit_module,
-        libc::SYS_delete_module,
-        libc::SYS_reboot,
-        libc::SYS_swapon,
-        libc::SYS_swapoff,
-        libc::SYS_syslog,
-        libc::SYS_acct,
-        libc::SYS_quotactl,
-        libc::SYS_settimeofday,
-        libc::SYS_clock_settime,
-        libc::SYS_clock_adjtime,
-        libc::SYS_adjtimex,
-    ] {
-        always(&mut rules, nr);
-    }
+    allow(BASE);
     #[cfg(target_arch = "x86_64")]
-    for nr in [
-        libc::SYS_iopl,
-        libc::SYS_ioperm,
-        libc::SYS_modify_ldt,
-        libc::SYS_uselib,
-    ] {
-        always(&mut rules, nr);
+    allow(BASE_X86);
+    if profile != Profile::Media {
+        allow(FILES);
+        #[cfg(target_arch = "x86_64")]
+        allow(FILES_X86);
     }
-    // No new user namespaces through clone (clone3 passes its flags by
-    // pointer, which seccomp can't read; unshare covers the rest).
+    if profile == Profile::Netd {
+        allow(NET);
+        #[cfg(target_arch = "x86_64")]
+        allow(&[libc::SYS_accept]);
+    }
+    // Only these cases of the calls that can do more.
+    let eq = |arg: u8, v: u64| Cond::new(arg, Len::Qword, Op::Eq, v);
+    let one = |c: Result<Cond, seccompiler::BackendError>| -> Option<SeccompRule> {
+        SeccompRule::new(vec![c.ok()?]).ok()
+    };
+    // Threads, never a new user namespace (clone3 passes its flags by
+    // pointer, which seccomp can't read; unshare and setns aren't allowed).
     let newuser = libc::CLONE_NEWUSER as u64;
     rules.insert(
         libc::SYS_clone,
-        vec![
-            SeccompRule::new(vec![
-                Cond::new(0, Len::Qword, Op::MaskedEq(newuser), newuser).ok()?,
-            ])
-            .ok()?,
-        ],
+        vec![one(Cond::new(0, Len::Qword, Op::MaskedEq(newuser), 0))?],
     );
-    match profile {
-        Profile::Vault => always(&mut rules, libc::SYS_socket),
-        Profile::Netd => {
-            // Anything but IPv4 and IPv6.
-            let not = |af: libc::c_int| Cond::new(0, Len::Dword, Op::Ne, af as u64);
-            rules.insert(
-                libc::SYS_socket,
-                vec![
-                    SeccompRule::new(vec![not(libc::AF_INET).ok()?, not(libc::AF_INET6).ok()?])
-                        .ok()?,
-                ],
-            );
-        }
+    // Terminal and non-blocking checks only (request constants are u64 on
+    // glibc targets, other widths elsewhere).
+    #[allow(clippy::unnecessary_cast)]
+    rules.insert(
+        libc::SYS_ioctl,
+        [
+            libc::TCGETS,
+            libc::FIONBIO,
+            libc::FIOCLEX,
+            libc::FIONCLEX,
+            libc::FIONREAD,
+        ]
+        .iter()
+        .map(|r| one(eq(1, *r as u64)))
+        .collect::<Option<Vec<_>>>()?,
+    );
+    // Thread names and reading state: not PR_SET_DUMPABLE, PR_SET_PTRACER
+    // or anything else that would undo the hardening.
+    rules.insert(
+        libc::SYS_prctl,
+        [
+            libc::PR_SET_NAME as u64,
+            libc::PR_GET_NAME as u64,
+            libc::PR_GET_DUMPABLE as u64,
+            libc::PR_CAPBSET_READ as u64,
+            0x5356_4d41, // PR_SET_VMA (naming anonymous memory)
+        ]
+        .iter()
+        .map(|o| one(eq(0, *o)))
+        .collect::<Option<Vec<_>>>()?,
+    );
+    if profile == Profile::Netd {
+        // IPv4 and IPv6 only.
+        rules.insert(
+            libc::SYS_socket,
+            [libc::AF_INET, libc::AF_INET6]
+                .iter()
+                .map(|af| one(Cond::new(0, Len::Dword, Op::Eq, *af as u64)))
+                .collect::<Option<Vec<_>>>()?,
+        );
     }
-    let f = SeccompFilter::new(
-        rules,
-        SeccompAction::Allow,
-        SeccompAction::Errno(libc::EPERM as u32),
-        arch,
-    )
-    .ok()?;
+    // Everything else fails. `ENCLAVE_SECCOMP_LOG=1` logs instead, to find
+    // a call a new library version makes.
+    let refuse = if std::env::var_os("ENCLAVE_SECCOMP_LOG").is_some() {
+        SeccompAction::Log
+    } else {
+        SeccompAction::Errno(libc::EPERM as u32)
+    };
+    let f = SeccompFilter::new(rules, refuse, SeccompAction::Allow, arch).ok()?;
     f.try_into().ok()
 }
 
@@ -270,10 +431,80 @@ pub fn filesystem(read_write: &[PathBuf], read_only: &[PathBuf], deny_tcp: bool)
             Err(_) => "error",
         }
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        match enclave_platform::seatbelt::confine(&seatbelt_profile(
+            read_write, read_only, deny_tcp,
+        )) {
+            Ok(()) => "full",
+            Err(_) => "error",
+        }
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = (read_write, read_only, deny_tcp);
         "unavailable"
+    }
+}
+
+/// The macOS Seatbelt profile for [`filesystem`]: what Landlock and
+/// seccomp do on Linux, as far as Seatbelt reaches. No programs are
+/// started; nothing is written outside `read_write` (and the per-user
+/// temporary folder, where system frameworks keep caches); nothing in the
+/// home folder is read outside `read_write` and `read_only`; with
+/// `deny_tcp`, no IP connection is made or accepted. System libraries and
+/// services (the Keychain, through its daemon) stay reachable.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn seatbelt_profile(read_write: &[PathBuf], read_only: &[PathBuf], deny_tcp: bool) -> String {
+    let quoted = |p: &PathBuf| {
+        let p = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+        let s = p
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        format!("(subpath \"{s}\")")
+    };
+    let rw: Vec<String> = read_write.iter().map(quoted).collect();
+    let ro: Vec<String> = read_only.iter().map(quoted).collect();
+    let mut sb =
+        String::from("(version 1)\n(allow default)\n(deny process-exec*)\n(deny process-fork)\n");
+    sb.push_str(&format!(
+        "(deny file-write* (require-not (require-any (literal \"/dev/null\") (subpath \"/private/var/folders\") {})))\n",
+        rw.join(" ")
+    ));
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        let mut keep = rw.clone();
+        keep.extend(ro);
+        sb.push_str(&format!(
+            "(deny file-read* (require-all {} (require-not (require-any (literal \"/dev/null\") {}))))\n",
+            quoted(&home),
+            keep.join(" ")
+        ));
+    }
+    if deny_tcp {
+        sb.push_str("(deny network-outbound (remote ip))\n(deny network-inbound (local ip))\n(deny network-bind (local ip))\n");
+    }
+    sb
+}
+
+#[cfg(test)]
+mod profile_tests {
+    #![allow(clippy::unwrap_used)]
+
+    /// The macOS profile keeps the profile directory writable, the rest of
+    /// the home folder unreadable, and IP off when asked.
+    #[test]
+    fn seatbelt_profile_says_what_it_should() {
+        let p = super::seatbelt_profile(
+            &[std::path::PathBuf::from("/tmp/enclave \"q\"")],
+            &[std::path::PathBuf::from("/etc/localtime")],
+            true,
+        );
+        assert!(p.starts_with("(version 1)"));
+        assert!(p.contains("(deny process-exec*)"));
+        assert!(p.contains("(subpath \"/tmp/enclave \\\"q\\\"\")"), "{p}");
+        assert!(p.contains("(deny network-outbound (remote ip))"));
+        assert!(!super::seatbelt_profile(&[], &[], false).contains("network"));
     }
 }
 
@@ -367,5 +598,32 @@ mod seccomp_tests {
         assert_eq!(status, "filtered");
         assert!(tcp, "netd must reach servers");
         assert!(!unix && !exec);
+    }
+
+    /// mediad's profile: no files, no sockets, no programs, and no turning
+    /// the hardening back (`PR_SET_DUMPABLE`); threads and pipes still work.
+    #[test]
+    fn media_profile_keeps_only_its_pipes() {
+        let (status, file, tcp, exec, dumpable, thread, pipe) = in_thread(|| {
+            let (r, mut w) = std::io::pipe().unwrap();
+            let status = syscalls(Profile::Media, true);
+            let file = std::fs::File::open("/etc/hostname").is_ok();
+            let tcp = std::net::TcpStream::connect("127.0.0.1:9").is_ok();
+            let exec = std::process::Command::new("/bin/true").status().is_ok();
+            let dumpable =
+                rustix::process::set_dumpable_behavior(rustix::process::DumpableBehavior::Dumpable)
+                    .is_ok();
+            let thread = std::thread::spawn(|| 2 + 2).join().is_ok();
+            use std::io::{Read, Write};
+            let pipe = w.write_all(b"x").is_ok() && {
+                let mut b = [0u8; 1];
+                let mut r = r;
+                r.read_exact(&mut b).is_ok()
+            };
+            (status, file, tcp, exec, dumpable, thread, pipe)
+        });
+        assert_eq!(status, "filtered");
+        assert!(!file && !tcp && !exec && !dumpable);
+        assert!(thread && pipe);
     }
 }

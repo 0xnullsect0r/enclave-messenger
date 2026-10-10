@@ -128,7 +128,7 @@ fn main() -> ExitCode {
     let _ = enclave_sandbox::process();
     let _ = enclave_sandbox::memory_limit(MEMORY_LIMIT);
     let _ = enclave_sandbox::filesystem(&[], &[], true);
-    let _ = enclave_sandbox::syscalls(enclave_sandbox::Profile::Vault, false);
+    let _ = enclave_sandbox::syscalls(enclave_sandbox::Profile::Media, false);
     let mut stdin = std::io::stdin().lock();
     let mut stdout = std::io::stdout().lock();
     // One request at a time: pictures are decoded in order.
