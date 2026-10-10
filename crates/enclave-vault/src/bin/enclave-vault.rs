@@ -138,8 +138,7 @@ fn start_netd(
 ) -> Option<std::sync::Arc<dyn enclave_net::transport::Transport>> {
     let enclave_vault::Mode::Server {
         profile,
-        server,
-        route,
+        home,
         others,
         nym_env,
         ..
@@ -148,8 +147,11 @@ fn start_netd(
         return None;
     };
     let bin = enclave_vault::netd::netd_binary()?;
-    let mut servers = vec![(*server, route.to_string())];
-    servers.extend(others.iter().map(|(id, r)| (*id, r.to_string())));
+    let servers: Vec<_> = home
+        .iter()
+        .chain(others)
+        .map(|(id, r)| (*id, r.to_string()))
+        .collect();
     let mut extra: Vec<String> = if *nym_env {
         vec!["--nym-env".into()]
     } else {
@@ -165,11 +167,19 @@ fn start_netd(
         // Bridges the user set (censorship mode).
         extra.extend(enclave_vault::netd::bridge_args(profile));
     }
+    // With a server list the servers are reached over the mixnet, their
+    // routes given once the list is read: the mixnet client starts anyway.
+    let listed = mode.has_server_list();
+    if listed {
+        extra.push("--mixnet".into());
+    }
     // The mixnet client waits for its zk-nym tickets, which the vault
     // gives it once it can read its wallet (`docs/09-transport.md` §7).
-    if std::iter::once(route)
-        .chain(others.iter().map(|(_, r)| r))
-        .any(|r| matches!(r, enclave_net::transport::Route::Nym(_)))
+    if listed
+        || home
+            .iter()
+            .chain(others)
+            .any(|(_, r)| matches!(r, enclave_net::transport::Route::Nym(_)))
     {
         extra.push("--await-tickets".into());
     }

@@ -73,8 +73,9 @@ via the `jpeg-encoder` crate).
 ## Try the desktop app
 
 ```sh
-cargo build --release -p enclave-app -p enclave-vault      # the UI and the vault process that holds the keys
-target/release/enclave                                     # offline demo: local server and a demo contact
+# Offline demo (local server and a demo contact; feature demo, never in a release):
+cargo build --release -p enclave-app -p enclave-vault --features enclave-app/demo
+target/release/enclave --demo
 # Against a dev server over TCP: a development build (feature dev-transport,
 # never in a release).
 cargo build --release -p enclave-app -p enclave-vault -p enclave-netd --features enclave-net/dev-transport
@@ -85,6 +86,14 @@ target/release/enclave --server SERVER_ID=127.0.0.1:7443 --profile ~/.enclave-de
 The app starts `enclave-vault` from next to its own binary and keeps every
 key there; the window only receives what it displays. Without the vault
 binary (or with `--single-process`) the same engine runs inside the app.
+
+Without `--profile` the profile lives in the platform's data directory
+(`~/.local/share/enclave` on Linux, `~/Library/Application
+Support/io.github.EnclaveChat.Enclave` on macOS,
+`%LOCALAPPDATA%\EnclaveChat\Enclave\data` on Windows). Without `--server`
+the home server is the profile's or, when setting up, one picked from the
+server list (built into release builds; `--foundation FILE --server-list
+FILE` otherwise), which can be changed on the name screen.
 
 `SERVER_ID` is the 32-hex-digit id the dev server prints when it starts; the
 app checks that the server's request keys are signed by the identity that id

@@ -20,6 +20,10 @@ path = "src/bin/enclave-vault.rs"
 # The development TCP transport (`--server ID=HOST:PORT`); never in a
 # release build.
 dev-transport = ["enclave-net/dev-transport"]
+# The demo (`--demo`: a local server and a demo contact, all in memory),
+# for development and screenshots; never in a release build, which then
+# links no server code.
+demo = ["dep:enclave-sim", "dep:enclave-server"]
 
 [dependencies]
 subtle = "2"
@@ -35,12 +39,17 @@ zeroize = "1"
 enclave-rpc = { path = "../enclave-rpc" }
 enclave-federation = { path = "../enclave-federation" }
 async-trait = "0.1"
-enclave-sim = { path = "../enclave-sim" }
-enclave-server = { path = "../enclave-server" }
+enclave-sim = { path = "../enclave-sim", optional = true }
+enclave-server = { path = "../enclave-server", optional = true }
+directories = "6"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util", "process"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [dev-dependencies]
+# The tests run the demo.
+enclave-vault = { path = ".", features = ["demo"] }
+enclave-sim = { path = "../enclave-sim" }
+enclave-server = { path = "../enclave-server" }
 # The tests reach servers over the development transport.
 enclave-net = { path = "../enclave-net", features = ["dev-transport"] }
 jpeg-encoder = "0.7"

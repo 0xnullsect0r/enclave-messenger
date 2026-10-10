@@ -161,7 +161,7 @@ pub use backup::{BackupCheck, check_archive};
 pub use blobs::fetch_due;
 pub use braid::BRAID_DEADLINE_SECS;
 pub use gossip::{GossipItem, KtAlert};
-pub use group_hosts::HOST_VOTE_SECS;
+pub use group_hosts::{HOST_VOTE_SECS, HostVotes};
 pub use groups::{GroupInfo, GroupMessage, GroupReaction};
 pub use guard::{RecoveryAlert, RecoveryHold};
 pub use invites::{InviteInfo, JOIN_PREFIX, JoinLink};
@@ -889,6 +889,11 @@ impl Client {
     /// Our display name.
     pub fn name(&self) -> &str {
         &self.profile.name
+    }
+
+    /// The home server: where our inboxes are.
+    pub fn home_server(&self) -> ServerId {
+        self.profile.server
     }
 
     /// Our root public key.

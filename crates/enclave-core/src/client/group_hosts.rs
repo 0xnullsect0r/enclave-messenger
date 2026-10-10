@@ -26,7 +26,65 @@ fn vote_key(gid: &[u8; 32], admin: &[u8; 64]) -> Vec<u8> {
     [&gid[..], &admin[..]].concat()
 }
 
+/// Where a group's mailboxes are, and the votes to move them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostVotes {
+    /// The server the group is on today.
+    pub host: [u8; 16],
+    /// The server it moves to from tomorrow, once the admins voted.
+    pub next: Option<[u8; 16]>,
+    /// How many admins it has (a move needs more than half).
+    pub admins: usize,
+    /// Servers admins voted for in the last [`HOST_VOTE_SECS`], with how
+    /// many votes each.
+    pub votes: Vec<([u8; 16], usize)>,
+    /// The server we voted for, if our vote still counts.
+    pub mine: Option<[u8; 16]>,
+    /// We are an admin, so we may vote.
+    pub can_vote: bool,
+}
+
 impl Client {
+    /// Group `gid`'s server and the votes to move it that still count.
+    pub fn group_host_votes(&self, gid: &[u8; 32]) -> Option<HostVotes> {
+        let e = self.groups.get(gid)?;
+        let now = self.now();
+        let today = (now / 86_400) as u32;
+        let me = self.account.root_public.0;
+        let mut out = HostVotes {
+            host: e.group.state.host_for(today),
+            next: (e.group.state.host_since > today).then_some(e.group.state.host),
+            admins: 0,
+            votes: Vec::new(),
+            mine: None,
+            can_vote: self.require_admin(&e.group.state, e.group.me).is_ok(),
+        };
+        for (_, m) in e.group.state.active().filter(|(_, m)| m.admin) {
+            out.admins += 1;
+            let Ok(Some(v)) = self.store.get(NS_HOST_VOTES, &vote_key(gid, &m.root)) else {
+                continue;
+            };
+            let at = v
+                .get(16..24)
+                .and_then(|b| b.try_into().ok())
+                .map_or(0, u64::from_be_bytes);
+            let Some(host) = v.get(..16).and_then(|b| <[u8; 16]>::try_from(b).ok()) else {
+                continue;
+            };
+            if at + HOST_VOTE_SECS < now || host == out.host || Some(host) == out.next {
+                continue;
+            }
+            if m.root == me {
+                out.mine = Some(host);
+            }
+            match out.votes.iter_mut().find(|(h, _)| *h == host) {
+                Some((_, n)) => *n += 1,
+                None => out.votes.push((host, 1)),
+            }
+        }
+        Some(out)
+    }
+
     /// Make `root` an admin of group `gid`, or no longer one (admins only).
     pub async fn set_group_admin(
         &mut self,

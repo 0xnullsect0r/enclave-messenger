@@ -279,6 +279,32 @@ fn fixture() -> Snapshot {
         server_backup: false,
         server_backup_at: String::new(),
         backup_check: String::new(),
+        servers: [
+            (
+                "a1",
+                "enclave.riverside.coop",
+                "Riverside Co-op",
+                "riverside",
+            ),
+            ("b2", "mail.lantern.ch", "Lantern Foundation", "lantern"),
+            ("c3", "enclave.nordlys.no", "Nordlys", "nordlys"),
+        ]
+        .iter()
+        .map(|(id, domain, operator, family)| enclave_ipc::ServerRow {
+            id: (*id).into(),
+            domain: (*domain).into(),
+            operator: (*operator).into(),
+            family: (*family).into(),
+        })
+        .collect(),
+        home: "a1".into(),
+        moving: false,
+        can_move: true,
+        group_host: String::new(),
+        group_next: String::new(),
+        group_votes: Vec::new(),
+        group_admins: 0,
+        group_vote: String::new(),
     }
 }
 
@@ -423,9 +449,21 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.set_unlock_error("That passphrase doesn't open this profile.".into());
         shot("25-locked-phone", phone);
         ui.set_unlock_error("".into());
+        let fresh = Snapshot {
+            servers: data.servers.clone(),
+            home: "a1".into(),
+            can_join: true,
+            ..Default::default()
+        };
+        view::apply(&ui, &fresh);
         ui.set_screen(Screen::Name);
         ui.set_name_input("Robin".into());
         shot("02-name", phone);
+        ui.set_server_pick_for(0);
+        ui.set_chosen_server("a1".into());
+        ui.set_sheet(Sheet::Servers);
+        shot("56-pick-server-phone", phone);
+        ui.set_sheet(Sheet::None);
         ui.set_screen(Screen::SettingUp);
         ui.set_status_line("This takes a few seconds.".into());
         shot("03-setting-up", phone);
@@ -888,9 +926,21 @@ fn main() -> Result<(), slint::PlatformError> {
             tint: 3,
             selected: true,
         }];
+        members.group_host = "a1".into();
+        members.group_votes = vec!["c3:1".into()];
+        members.group_admins = 2;
+        members.group_vote = "c3".into();
         view::apply(&ui, &members);
         ui.set_sheet(Sheet::Members);
         shot("24-members-phone", phone);
+        ui.set_server_pick_for(2);
+        ui.set_chosen_server("c3".into());
+        ui.set_sheet(Sheet::Servers);
+        shot("54-group-server-vote-phone", phone);
+        ui.set_server_pick_for(1);
+        ui.set_chosen_server("b2".into());
+        view::apply(&ui, &data);
+        shot("55-move-server-phone", phone);
         let mut waiting = data.clone();
         waiting.joining = vec!["Book club".into()];
         waiting.current = None;

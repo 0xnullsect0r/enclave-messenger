@@ -28,11 +28,15 @@ path = "src/main.rs"
 [[bin]]
 name = "enclave-shots"
 path = "src/bin/shots.rs"
+required-features = ["demo"]
 
 [features]
 # The development TCP transport (`--server ID=HOST:PORT` against
 # `enclave-server dev`); never in a release build.
 dev-transport = ["enclave-vault/dev-transport"]
+# The demo (`enclave --demo`) and the screenshots taken from it; never in a
+# release build.
+demo = ["enclave-vault/demo"]
 
 [dependencies]
 enclave-ipc = { path = "../enclave-ipc" }
@@ -43,6 +47,10 @@ qrcodegen = "1.8"
 png = "0.17"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }
 arboard = { version = "3", default-features = false }
+
+[dev-dependencies]
+# The tests run the demo.
+enclave-vault = { path = "../enclave-vault", features = ["demo"] }
 
 [build-dependencies]
 slint-build = "1.18"

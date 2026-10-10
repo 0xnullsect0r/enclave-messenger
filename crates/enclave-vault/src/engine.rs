@@ -10,7 +10,6 @@ use enclave_ipc::{Cmd, Device, Effect, Msg, Out, Pick, Row, Snapshot, tint_for};
 use enclave_net::schedule::Profile;
 use enclave_net::shaped::{ShapedTransport, Shaping};
 use enclave_net::transport::{Route, ServerId, TcpTransport, Transport};
-use enclave_sim::LocalTransport;
 use enclave_store::{FileKeystore, MemoryKeystore};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -33,18 +32,19 @@ const OFFER_BACKUP_AFTER: u32 = 20;
 // Made once at start; its size doesn't matter (paths are larger on Windows).
 #[allow(clippy::large_enum_variant)]
 pub enum Mode {
-    /// Everything in memory with a local server and a demo contact.
+    /// Everything in memory with a local server and a demo contact (a
+    /// build with the `demo` feature).
     Demo,
     /// A profile on disk, its servers reached over the mixnet (or, in
     /// development, TCP).
     Server {
         /// Profile directory.
         profile: PathBuf,
-        /// The home server's id: its key bundle must be signed by the
-        /// identity this id is derived from.
-        server: ServerId,
-        /// How the home server is reached.
-        route: Route,
+        /// The home server and how it is reached, when named (`--server`;
+        /// its key bundle must be signed by the identity its id is derived
+        /// from). Otherwise it is the profile's, or (setting up) the one
+        /// picked from the server list, reached as the list says.
+        home: Option<(ServerId, Route)>,
         /// Other servers this build reaches directly (more `--server`
         /// flags: development routes).
         others: Vec<(ServerId, Route)>,
@@ -63,12 +63,26 @@ pub enum Mode {
     },
 }
 
+/// Where profiles live when `--profile` isn't given: the platform's local
+/// (not roaming) data directory (`~/.local/share/enclave` on Linux,
+/// `~/Library/Application Support/io.github.EnclaveChat.Enclave` on macOS,
+/// `%LOCALAPPDATA%\EnclaveChat\Enclave\data` on Windows; a Flatpak's own).
+pub fn default_profile() -> Option<PathBuf> {
+    directories::ProjectDirs::from("io.github", "EnclaveChat", "Enclave")
+        .map(|d| d.data_local_dir().to_path_buf())
+}
+
 impl Mode {
-    /// Parse `--server HEXID=ROUTE --profile DIR [--kt-pins FILE]`, a
-    /// route being `nym:ADDRESS` or (development) `HOST:PORT`
-    /// (`enclave-server show-id` prints the id); without `--server` it is
-    /// the demo. A `--server` that doesn't parse, or one without
-    /// `--profile`, is an error rather than a quiet fall back to the demo.
+    /// Parse `[--profile DIR] [--server HEXID=ROUTE]… [--route HEXID=ROUTE]…
+    /// [--kt-pins FILE] [--foundation FILE] [--server-list FILE] [--nym-env]
+    /// [--no-shaping]`, or `--demo`. A route is `nym:ADDRESS` or (development) `HOST:PORT`
+    /// (`enclave-server show-id` prints the id); the first `--server` is
+    /// home, `--route` gives a route to a server that isn't (development).
+    /// Without `--profile` the platform's data directory is used
+    /// ([`default_profile`]); without `--server` the home server is the
+    /// profile's, or one picked from the server list when setting up. A
+    /// `--server` that doesn't parse is an error rather than a quiet
+    /// fall back.
     pub fn from_args(args: &[String]) -> Result<Self, String> {
         let arg = |k: &str| {
             args.iter()
@@ -76,26 +90,36 @@ impl Mode {
                 .and_then(|i| args.get(i + 1))
                 .cloned()
         };
-        let mut servers = Vec::new();
-        for pair in args.windows(2).filter(|p| p[0] == "--server") {
-            servers.push(
-                enclave_net::transport::parse_route(&pair[1]).ok_or_else(|| {
-                    format!(
-                        "--server {}: expected SERVER_ID=nym:ADDRESS or SERVER_ID=HOST:PORT",
-                        pair[1]
-                    )
-                })?,
-            );
+        if args.iter().any(|a| a == "--demo") {
+            return if cfg!(feature = "demo") {
+                Ok(Mode::Demo)
+            } else {
+                Err("this build has no demo".into())
+            };
         }
-        if servers.is_empty() {
-            return Ok(Mode::Demo);
-        }
-        let (server, route) = servers.remove(0);
-        let profile = arg("--profile").ok_or("--server needs --profile DIR")?;
+        let routes = |flag: &str| -> Result<Vec<(ServerId, Route)>, String> {
+            args.windows(2)
+                .filter(|p| p[0] == flag)
+                .map(|p| {
+                    enclave_net::transport::parse_route(&p[1]).ok_or_else(|| {
+                        format!(
+                            "{flag} {}: expected SERVER_ID=nym:ADDRESS or SERVER_ID=HOST:PORT",
+                            p[1]
+                        )
+                    })
+                })
+                .collect()
+        };
+        let mut servers = routes("--server")?;
+        let home = (!servers.is_empty()).then(|| servers.remove(0));
+        servers.extend(routes("--route")?);
+        let profile = match arg("--profile") {
+            Some(p) => p.into(),
+            None => default_profile().ok_or("no place for the profile: use --profile DIR")?,
+        };
         Ok(Mode::Server {
-            profile: profile.into(),
-            server,
-            route,
+            profile,
+            home,
             others: servers,
             nym_env: args.iter().any(|a| a == "--nym-env"),
             kt_pins: arg("--kt-pins").map(Into::into),
@@ -105,14 +129,23 @@ impl Mode {
         })
     }
 
+    /// This build offers a server list (built in, or `--server-list`).
+    pub fn has_server_list(&self) -> bool {
+        match self {
+            Mode::Demo => false,
+            Mode::Server { server_list, .. } => {
+                server_list.is_some() || crate::built::SERVER_LIST.is_some()
+            }
+        }
+    }
+
     /// Inverse of [`Mode::from_args`].
     pub fn to_args(&self) -> Vec<String> {
         match self {
             Mode::Demo => vec!["--demo".into()],
             Mode::Server {
                 profile,
-                server,
-                route,
+                home,
                 others,
                 nym_env,
                 kt_pins,
@@ -122,14 +155,17 @@ impl Mode {
             } => {
                 let hex =
                     |id: &ServerId| -> String { id.iter().map(|b| format!("{b:02x}")).collect() };
-                let mut v = vec![
-                    "--server".into(),
-                    format!("{}={route}", hex(server)),
-                    "--profile".into(),
-                    profile.display().to_string(),
-                ];
-                for (id, a) in others {
-                    v.push("--server".into());
+                let mut v = vec!["--profile".into(), profile.display().to_string()];
+                // `--server` for home (the first), `--route` for the rest.
+                for (i, (id, a)) in home.iter().chain(others).enumerate() {
+                    v.push(
+                        if i == 0 && home.is_some() {
+                            "--server"
+                        } else {
+                            "--route"
+                        }
+                        .into(),
+                    );
                     v.push(format!("{}={a}", hex(id)));
                 }
                 for (flag, path) in [
@@ -188,6 +224,7 @@ fn federation(
     (key, read(server_list, crate::built::SERVER_LIST))
 }
 
+#[cfg(feature = "demo")]
 const DEMO_SERVER: ServerId = [0x5e; 16];
 
 const SAM_HELLO: &str = "Hi, I'm Sam. I'm a demo contact running on this computer, so you can try Enclave before inviting anyone. Accept to start talking.";
@@ -199,6 +236,7 @@ const SAM_REPLIES: [&str; 5] = [
     "People can also find you by username, if you choose one in Settings. Mine is @sam@demo.enclave.",
 ];
 
+#[cfg(feature = "demo")]
 const DEMO_DOMAIN: &str = "demo.enclave";
 
 struct Demo {
@@ -233,7 +271,12 @@ struct Engine {
     shaper: Option<Arc<ShapedTransport>>,
     /// Rounds of shaped syncing so far.
     round: u64,
+    /// The home server: the profile's, or (setting up) the one picked.
+    /// Zero when there is none to offer (a build without a server list,
+    /// started without `--server`).
     server: ServerId,
+    /// The servers in the foundation's list, checked (for the picker).
+    listed: Vec<enclave_federation::ListedServer>,
     client: Option<Client>,
     demo: Option<Demo>,
     selected: Option<[u8; 64]>,
@@ -417,6 +460,19 @@ const STICKER_SIDE: u16 = 512;
 const PICKER_SIDE: u16 = 160;
 
 /// A short opaque id for a 32-byte key (the UI never sees the key).
+fn server_row(v: &enclave_federation::ListedServer) -> enclave_ipc::ServerRow {
+    enclave_ipc::ServerRow {
+        id: hex_server(&v.id()),
+        domain: v.domain.clone(),
+        operator: v.operator.clone(),
+        family: v.family.clone(),
+    }
+}
+
+fn hex_server(id: &ServerId) -> String {
+    id.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn hex_short(k: &[u8; 32]) -> String {
     k[..12].iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -664,9 +720,12 @@ pub async fn run_with(
     out: mpsc::UnboundedSender<Out>,
 ) {
     let mut shaper: Option<Arc<ShapedTransport>> = None;
-    let (transport, server, kt): (Arc<dyn Transport>, ServerId, _) = match &mode {
+    let (transport, server, kt): (Arc<dyn Transport>, Option<ServerId>, _) = match &mode {
+        #[cfg(feature = "demo")]
         Mode::Demo => {
-            let t = LocalTransport::new();
+            // Release builds must not contain this (CI checks with `strings`).
+            std::hint::black_box("ENCLAVE-DEV-DEMO-ENABLED");
+            let t = enclave_sim::LocalTransport::new();
             let _ = t.add_server(enclave_server::Config {
                 id: DEMO_SERVER,
                 effort_request: 4,
@@ -677,17 +736,20 @@ pub async fn run_with(
                 ..Default::default()
             });
             let kt = t.enable_usernames(&DEMO_SERVER, DEMO_DOMAIN);
-            (Arc::new(t), DEMO_SERVER, kt)
+            (Arc::new(t), Some(DEMO_SERVER), kt)
+        }
+        #[cfg(not(feature = "demo"))]
+        Mode::Demo => {
+            eprintln!("enclave-vault: this build has no demo");
+            return;
         }
         Mode::Server {
-            server,
-            route,
+            home,
             others,
             kt_pins,
             shaping,
             ..
         } => {
-            let id = *server;
             let kt = kt_pins
                 .as_ref()
                 .and_then(|p| std::fs::read(p).ok())
@@ -698,12 +760,10 @@ pub async fn run_with(
                     // Without netd only the development TCP routes work:
                     // the mixnet client is netd's.
                     let mut routes = HashMap::new();
-                    for (s, r) in
-                        std::iter::once((id, route)).chain(others.iter().map(|(s, r)| (*s, r)))
-                    {
+                    for (s, r) in home.iter().chain(others) {
                         match r {
                             Route::Tcp(a) => {
-                                routes.insert(s, *a);
+                                routes.insert(*s, *a);
                             }
                             Route::Nym(_) | Route::Onion(_) => {
                                 eprintln!(
@@ -716,15 +776,20 @@ pub async fn run_with(
                 }
             };
             // Shaped on the scheduler's clock: the Standard profile until
-            // the profile's own setting is read.
+            // the profile's own setting is read. Cover goes to the servers
+            // used (the home server from its first request).
             let t: Arc<dyn Transport> = if *shaping {
-                let s = ShapedTransport::start(t, Shaping::On(Profile::Foreground), vec![id]);
+                let s = ShapedTransport::start(
+                    t,
+                    Shaping::On(Profile::Foreground),
+                    home.iter().map(|h| h.0).collect(),
+                );
                 shaper = Some(Arc::clone(&s));
                 s
             } else {
                 t
             };
-            (t, id, kt)
+            (t, home.as_ref().map(|h| h.0), kt)
         }
     };
     let (foundation, list) = federation(&mode);
@@ -738,7 +803,8 @@ pub async fn run_with(
         shaper,
         round: 0,
         transport,
-        server,
+        server: server.unwrap_or_default(),
+        listed: Vec::new(),
         client: None,
         demo: None,
         selected: None,
@@ -798,6 +864,7 @@ pub async fn run_with(
         bridges_error: String::new(),
         out,
     };
+    e.load_list();
     // Reopen an existing profile.
     if let Mode::Server { profile, .. } = &e.mode
         && profile.join("profile.redb").exists()
@@ -805,6 +872,7 @@ pub async fn run_with(
         match Client::open(e.options(None), Arc::clone(&e.transport)) {
             Ok(mut c) => {
                 e.configure(&mut c);
+                e.server = c.home_server();
                 e.client = Some(c);
             }
             // Protected by a passphrase: ask for it.
@@ -1149,6 +1217,9 @@ impl Engine {
     async fn handle_cmd(&mut self, cmd: Cmd) {
         match cmd {
             Cmd::Create(name, passphrase) => {
+                if !self.has_server() {
+                    return;
+                }
                 let name = name.trim().to_string();
                 let protect = !passphrase.is_empty() && matches!(self.mode, Mode::Server { .. });
                 match Client::create(
@@ -1250,7 +1321,51 @@ impl Engine {
                 self.restore_from(secrets, Some(archive)).await;
             }
             Cmd::RestoreFromServer(secrets) if self.client.is_none() => {
-                self.restore_from(secrets, None).await;
+                if self.has_server() {
+                    self.restore_from(secrets, None).await;
+                }
+            }
+            Cmd::PickServer(id) => {
+                if self.client.is_none()
+                    && let Some(s) = self.listed_server(&id)
+                {
+                    self.server = s;
+                }
+            }
+            Cmd::MoveHome(id) => {
+                let Some(to) = self.listed_server(&id) else {
+                    return;
+                };
+                if self.client.is_some() {
+                    self.busy = true;
+                    self.push();
+                }
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.move_home(to).await {
+                        Ok(()) => "Moving your account. Contacts and groups are told as they come online, so keep Enclave running for a while.".into(),
+                        Err(CoreError::NotAccepted) => "Only the device that holds your recovery words can move your account, and not while another move is still finishing.".into(),
+                        Err(CoreError::PinRequired) => "Enter your PIN on the recovery words sheet first.".into(),
+                        Err(CoreError::Net(_)) => "Couldn't reach that server. Try again in a moment.".into(),
+                        Err(_) => "Couldn't move your account.".into(),
+                    };
+                    self.busy = false;
+                }
+            }
+            Cmd::VoteGroupHost(id) => {
+                let (Some(to), Some(gid)) = (self.listed_server(&id), self.selected_group) else {
+                    return;
+                };
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.vote_group_host(&gid, to).await {
+                        Ok(()) => match c.group_host_votes(&gid) {
+                            Some(v) if v.next == Some(to) => "The group moves to that server tomorrow.".into(),
+                            _ => "Your vote is in. The group moves once more than half of its admins vote for the same server.".into(),
+                        },
+                        Err(CoreError::NotAccepted) => "Only admins can vote to move a group.".into(),
+                        Err(CoreError::Net(_)) => "Couldn't reach the group's server. Try again in a moment.".into(),
+                        Err(_) => "Couldn't send your vote.".into(),
+                    };
+                }
             }
             Cmd::RestoreFromServer(..) => {}
             Cmd::Restore(..) => {}
@@ -2142,6 +2257,9 @@ impl Engine {
             }
             Cmd::StartJoin => {
                 self.status.clear();
+                if !self.has_server() {
+                    return;
+                }
                 match enclave_core::LinkingDevice::start(
                     self.options(None),
                     Arc::clone(&self.transport),
@@ -2723,6 +2841,68 @@ impl Engine {
         }
     }
 
+    /// Check the server list this build offers and route to its servers,
+    /// so a new account can be set up on any of them; without a home
+    /// server named, pick one (weighted by the list), which the person can
+    /// change before setting up.
+    fn load_list(&mut self) {
+        let Some(list) = self
+            .foundation
+            .as_ref()
+            .zip(self.list.as_ref())
+            .and_then(|(k, b)| {
+                enclave_federation::ServerList::verify(b, k, self.transport.now(), 0)
+                    .map_err(|e| eprintln!("enclave-vault: server list: {e}"))
+                    .ok()
+            })
+        else {
+            return;
+        };
+        for s in &list.servers {
+            if !s.nym_address.is_empty() {
+                self.transport
+                    .set_route(s.id(), Route::Nym(s.nym_address.clone()));
+            }
+        }
+        if self.server == ServerId::default() {
+            let draw = enclave_crypto::rng::HedgedRng::new()
+                .and_then(|mut r| r.array::<8>("app/server-pick"))
+                .map(u64::from_be_bytes)
+                .unwrap_or(0);
+            if let Some(s) = list.pick(draw) {
+                self.server = s.id();
+            }
+        }
+        self.listed = list.servers;
+    }
+
+    /// The servers to pick from: the profile's list (perhaps newer than the
+    /// build's), else the build's.
+    fn servers(&self) -> Vec<enclave_federation::ListedServer> {
+        match self.client.as_ref().and_then(Client::server_list) {
+            Some(l) => l.servers.clone(),
+            None => self.listed.clone(),
+        }
+    }
+
+    /// The listed server taking new accounts with this id (hex).
+    fn listed_server(&self, id: &str) -> Option<ServerId> {
+        self.servers()
+            .iter()
+            .filter(|l| l.weight > 0)
+            .map(enclave_federation::ListedServer::id)
+            .find(|s| hex_server(s) == id)
+    }
+
+    /// Setting up needs a home server: say so when there is none.
+    fn has_server(&mut self) -> bool {
+        if self.server == ServerId::default() {
+            self.status = "This build has no server to set up on. Start it with --server, or with a server list.".into();
+            return false;
+        }
+        true
+    }
+
     /// Give a client what this build knows about the federation: the
     /// foundation key, a server list to offer, and extra pins.
     fn configure(&self, c: &mut Client) {
@@ -2808,6 +2988,10 @@ impl Engine {
     }
 
     async fn sync(&mut self) {
+        // A move (or a restore, or linking) may have changed it.
+        if let Some(c) = self.client.as_ref() {
+            self.server = c.home_server();
+        }
         // Once a day: a newer server list from the home server, if any.
         let day = self.transport.now() / 86_400;
         if self.foundation.is_some()
@@ -3296,6 +3480,18 @@ impl Engine {
             bridges: self.bridges.clone(),
             bridges_error: self.bridges_error.clone(),
             bridges_restart: self.bridges != self.bridges_at_start,
+            // Those taking new accounts (weight above 0), and home.
+            servers: self
+                .servers()
+                .iter()
+                .filter(|v| v.weight > 0 || v.id() == self.server)
+                .map(server_row)
+                .collect(),
+            home: if self.server == ServerId::default() {
+                String::new()
+            } else {
+                hex_server(&self.server)
+            },
             ..Default::default()
         };
         if let Some(r) = &self.share_request {
@@ -3360,6 +3556,8 @@ impl Engine {
         let (on, at) = c.server_backup();
         s.server_backup = on;
         s.server_backup_at = if at > 0 { day_label(at) } else { String::new() };
+        s.moving = c.move_pending();
+        s.can_move = c.holds_recovery_words() && !matches!(self.mode, Mode::Demo);
         s.removed = self.removed;
         s.has_root_pin = c.has_root_pin();
         s.securing = c.securing();
@@ -3637,6 +3835,24 @@ impl Engine {
                 s.current = Some(row.clone());
                 s.group_admin = g.admin;
                 s.on_record = g.on_record;
+                if let Some(v) = c.group_host_votes(&g.id) {
+                    s.group_host = hex_server(&v.host);
+                    s.group_next = v.next.as_ref().map(hex_server).unwrap_or_default();
+                    for h in std::iter::once(v.host).chain(v.next) {
+                        if let Some(l) = self.servers().iter().find(|l| l.id() == h)
+                            && !s.servers.iter().any(|r| r.id == hex_server(&h))
+                        {
+                            s.servers.push(server_row(l));
+                        }
+                    }
+                    s.group_votes = v
+                        .votes
+                        .iter()
+                        .map(|(h, n)| format!("{}:{n}", hex_server(h)))
+                        .collect();
+                    s.group_admins = v.admins as u32;
+                    s.group_vote = v.mine.as_ref().map(hex_server).unwrap_or_default();
+                }
                 s.held_moves = g
                     .held_moves
                     .iter()

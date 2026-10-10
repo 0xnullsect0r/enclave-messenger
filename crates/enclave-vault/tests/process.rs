@@ -159,6 +159,16 @@ fn vault_refuses_to_start_without_a_token() {
 /// A minimal dev server over TCP (the framing `enclave-server` uses), with
 /// a real identity and key bundle. Returns its address and id.
 async fn dev_server() -> (std::net::SocketAddr, [u8; 16]) {
+    let (addr, id, _) = dev_server_with_identity().await;
+    (addr, id)
+}
+
+/// [`dev_server`], with the server's identity key too (for a server list).
+async fn dev_server_with_identity() -> (
+    std::net::SocketAddr,
+    [u8; 16],
+    enclave_crypto::sig::CompositePublic,
+) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let now = || {
         std::time::SystemTime::now()
@@ -169,6 +179,7 @@ async fn dev_server() -> (std::net::SocketAddr, [u8; 16]) {
     let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
     let identity = enclave_crypto::sig::CompositeSigningKey::generate(&mut rng).unwrap();
     let id = enclave_federation::server_id(identity.public());
+    let public = identity.public().clone();
     let mut server = enclave_server::Server::new(
         enclave_server::Config {
             id,
@@ -225,7 +236,7 @@ async fn dev_server() -> (std::net::SocketAddr, [u8; 16]) {
             });
         }
     });
-    (addr, id)
+    (addr, id, public)
 }
 
 /// Start the vault binary on `profile` against `addr` and connect to it.
@@ -432,5 +443,132 @@ async fn app_lock_and_emergency_pin() {
     drop(rd);
     drop(wr);
     let _ = tokio::task::spawn_blocking(move || child.wait()).await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The server picker, moving the account and voting a group onto another
+/// server (`docs/15-client.md` §1.1a, `docs/12-servers.md` §4,
+/// `docs/07-groups.md` §4): with a signed list and no home named, the vault
+/// offers the listed servers taking accounts (not one with weight 0),
+/// picks one, takes another choice, sets up there, and moves when asked.
+#[tokio::test(flavor = "multi_thread")]
+async fn picks_a_server_from_the_list_and_moves() {
+    use enclave_federation::{FoundationKey, ListedServer, ServerList};
+    let (a_addr, a, a_pk) = dev_server_with_identity().await;
+    let (b_addr, b, b_pk) = dev_server_with_identity().await;
+    let (c_addr, c, c_pk) = dev_server_with_identity().await;
+    let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+    let foundation = FoundationKey::generate(&mut rng).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let listed = |identity, domain: &str, weight| ListedServer {
+        identity,
+        domain: domain.into(),
+        operator: format!("Operator of {domain}"),
+        family: domain.into(),
+        nym_address: String::new(),
+        weight,
+        kt: None,
+    };
+    let list = ServerList {
+        seq: 1,
+        issued: now,
+        expires: now + 30 * 86_400,
+        witness_threshold: 0,
+        servers: vec![
+            listed(a_pk, "a.example", 1),
+            listed(b_pk, "b.example", 0),
+            listed(c_pk, "c.example", 1),
+        ],
+        witnesses: Vec::new(),
+        relays: Vec::new(),
+        push: Vec::new(),
+        credgates: Vec::new(),
+    };
+    let dir = std::env::temp_dir().join(format!("enclave-vault-pick-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("list"), list.sign(&foundation, &mut rng).unwrap()).unwrap();
+    std::fs::write(dir.join("foundation"), foundation.public().encode()).unwrap();
+    let route = |addr: std::net::SocketAddr| enclave_net::transport::Route::Tcp(addr);
+    let mode = enclave_vault::Mode::Server {
+        profile: dir.join("profile"),
+        home: None,
+        // Development routes to all three (a list would give Nym ones).
+        others: vec![(a, route(a_addr)), (b, route(b_addr)), (c, route(c_addr))],
+        nym_env: false,
+        kt_pins: None,
+        foundation: Some(dir.join("foundation")),
+        server_list: Some(dir.join("list")),
+        shaping: false,
+    };
+    assert_eq!(
+        enclave_vault::Mode::from_args(&mode.to_args()).unwrap(),
+        mode,
+        "round trip without a home"
+    );
+    let (tx, mut rx) = enclave_vault::spawn(mode);
+    async fn wait(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<Out>,
+        what: &str,
+        f: impl Fn(&enclave_ipc::Snapshot) -> bool,
+    ) -> enclave_ipc::Snapshot {
+        tokio::time::timeout(Duration::from_secs(120), async {
+            loop {
+                match rx.recv().await {
+                    Some(Out::Snapshot(s)) if f(&s) => return *s,
+                    Some(_) => {}
+                    None => panic!("the engine stopped"),
+                }
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("no snapshot with {what}"))
+    }
+    tx.send(Cmd::Select(String::new())).unwrap();
+    let s = wait(&mut rx, "the picker", |s| !s.servers.is_empty()).await;
+    let ids: Vec<_> = s.servers.iter().map(|r| r.id.clone()).collect();
+    assert_eq!(ids, vec![hex(&a), hex(&c)], "b takes no new accounts");
+    assert!(
+        s.home == hex(&a) || s.home == hex(&c),
+        "picked one: {}",
+        s.home
+    );
+    // b can't be picked; c can.
+    tx.send(Cmd::PickServer(hex(&b))).unwrap();
+    tx.send(Cmd::PickServer(hex(&c))).unwrap();
+    wait(&mut rx, "c picked", |s| s.home == hex(&c)).await;
+    tx.send(Cmd::Create("Robin".into(), String::new())).unwrap();
+    let s = wait(&mut rx, "the account", |s| s.my_name == "Robin").await;
+    assert_eq!(s.home, hex(&c));
+    assert!(s.can_move && !s.moving);
+
+    // A group of one: our vote is the majority, and it moves tomorrow.
+    tx.send(Cmd::CreateGroup("Book club".into())).unwrap();
+    let s = wait(&mut rx, "the group", |s| {
+        s.contacts.iter().any(|r| r.kind == 1)
+    })
+    .await;
+    let gid = s.contacts.iter().find(|r| r.kind == 1).unwrap().id.clone();
+    tx.send(Cmd::Select(gid)).unwrap();
+    let s = wait(&mut rx, "the group's server", |s| !s.group_host.is_empty()).await;
+    assert_eq!(s.group_host, hex(&c), "made on our server");
+    tx.send(Cmd::VoteGroupHost(hex(&a))).unwrap();
+    let s = wait(&mut rx, "the vote", |s| {
+        s.status.contains("moves to that server")
+    })
+    .await;
+    assert_eq!(s.group_next, hex(&a));
+
+    // Move the account to a.
+    tx.send(Cmd::MoveHome(hex(&a))).unwrap();
+    wait(&mut rx, "the move started", |s| {
+        s.status.starts_with("Moving")
+    })
+    .await;
+    wait(&mut rx, "the new home", |s| s.home == hex(&a) && !s.moving).await;
+    drop(tx);
     let _ = std::fs::remove_dir_all(&dir);
 }

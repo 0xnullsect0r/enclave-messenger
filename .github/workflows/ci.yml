@@ -40,7 +40,7 @@ jobs:
       - name: Label registry matches code
         run: cargo xtask labels
       - name: Render UI screenshots (software renderer, light and dark)
-        run: cargo run --release -p enclave-app --bin enclave-shots -- target/shots
+        run: cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: screenshots
@@ -336,14 +336,16 @@ jobs:
       # What ships on a device, built as a release builds it: default
       # features only. Each development feature puts an `ENCLAVE-DEV-…`
       # marker in the binary (the server image's build checks its own).
+      - name: Install UI build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev libxkbcommon-dev
       - name: Build the device binaries
         run: |
-          cargo build --release --locked -p enclave-netd -p enclave-vault -p enclave-tord -p enclave-mediad
+          cargo build --release --locked -p enclave-app -p enclave-netd -p enclave-vault -p enclave-tord -p enclave-mediad
           (cd nym && cargo build --release --locked -p enclave-nymd -p enclave-ingress-bin)
       - name: No development marker in them
         run: |
           set -euo pipefail
-          bins="target/release/enclave-netd target/release/enclave-vault target/release/enclave-tord
+          bins="target/release/enclave target/release/enclave-netd target/release/enclave-vault target/release/enclave-tord
                 target/release/enclave-mediad nym/target/release/enclave-nymd nym/target/release/enclave-ingress"
           found=0
           for b in $bins; do
@@ -361,6 +363,8 @@ jobs:
         run: |
           cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
           strings -a target/release/enclave-tord | grep -q ENCLAVE-DEV-DIRECT-ENABLED
+          cargo build --release --locked -p enclave-vault --features demo
+          strings -a target/release/enclave-vault | grep -q ENCLAVE-DEV-DEMO-ENABLED
 
   done-gate:
     name: completion gate (report)

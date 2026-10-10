@@ -101,6 +101,15 @@ export struct MessageRow {
     clip-time: string,
 }
 
+// A server from the foundation's list. votes: admins of the open group who
+// voted to move it there.
+export struct ServerOption {
+    id: string,
+    domain: string,
+    operator: string,
+    votes: int,
+}
+
 export struct StickerPackRow {
     id: string,
     title: string,
@@ -116,7 +125,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account }
+export enum Sheet { none, servers, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -564,19 +573,38 @@ component SheetFrame inherits Rectangle {
     TouchArea { clicked => { root.close(); } }
     card := Rectangle {
         width: min(root.width - 2 * Tokens.space-m, root.max-card-width);
-        height: min(root.height - 2 * Tokens.space-m, inner.preferred-height);
+        // As tall as its content, up to the window; beyond that the body
+        // scrolls under a fixed title row.
+        height: min(root.height - 2 * Tokens.space-m, frame.padding-top + head.preferred-height + Tokens.space-m + inner.preferred-height);
         background: Tokens.surface;
         border-radius: Tokens.radius-sheet;
+        clip: true;
         TouchArea { }
-        inner := VerticalLayout {
-            padding: Tokens.space-l;
+        frame := VerticalLayout {
+            padding-top: Tokens.space-l;
             spacing: Tokens.space-m;
-            HorizontalLayout {
+            head := HorizontalLayout {
+                padding-left: Tokens.space-l;
+                padding-right: Tokens.space-l;
                 spacing: Tokens.space-s;
                 Title { text: root.title; vertical-alignment: center; horizontal-stretch: 1; }
                 IconButton { icon: Icons.close; label: "Close"; clicked => { root.close(); } }
             }
-            @children
+            body := Flickable {
+                vertical-stretch: 1;
+                viewport-width: self.width;
+                viewport-height: inner.preferred-height;
+                inner := VerticalLayout {
+                    x: 0;
+                    y: 0;
+                    width: body.width;
+                    padding-left: Tokens.space-l;
+                    padding-right: Tokens.space-l;
+                    padding-bottom: Tokens.space-l;
+                    spacing: Tokens.space-m;
+                    @children
+                }
+            }
         }
     }
 }
@@ -741,6 +769,20 @@ export component AppWindow inherits Window {
     callback restore(string, string, string, string, string, string, string);
     callback save-backup(bool);
     callback set-server-backup(bool);
+    // The servers to pick from, and what picking is for: 0 setting up,
+    // 1 moving the account, 2 voting to move the open group.
+    in property <[ServerOption]> servers;
+    in property <string> home-id;
+    in property <string> home-label;
+    in property <bool> moving;
+    in property <bool> can-move;
+    in property <string> group-host;
+    in property <string> group-host-label;
+    in property <string> group-vote-label;
+    in property <int> group-admins;
+    in-out property <int> server-pick-for;
+    in-out property <string> chosen-server;
+    callback pick-server(int, string);
     callback check-backup(string, string);
     in-out property <bool> backup-media;
     in property <bool> server-backup;
@@ -929,6 +971,15 @@ export component AppWindow inherits Window {
                     Field { placeholder: "Share 4 (if needed)"; mono: true; text <=> root.restore-s4; }
                     Field { placeholder: "Share 5 (if needed)"; mono: true; text <=> root.restore-s5; }
                     Field { placeholder: "Path to your backup file (or leave empty for the one on your server)"; mono: true; text <=> root.restore-file; }
+                    if root.restore-file == "" && root.home-label != "": HorizontalLayout {
+                        spacing: Tokens.space-s;
+                        Secondary { text: "Your server: " + root.home-label; horizontal-stretch: 1; }
+                        if root.servers.length > 1: QuietButton {
+                            text: "Change";
+                            accessible-label: "Choose the server your backup is on";
+                            clicked => { root.server-pick-for = 0; root.chosen-server = root.home-id; root.sheet = Sheet.servers; }
+                        }
+                    }
                     if root.restore-error != "": Text {
                         text: root.restore-error;
                         color: Tokens.danger;
@@ -968,6 +1019,15 @@ export component AppWindow inherits Window {
                     init => { self.focus(); }
                 }
                 Secondary { text: "Only people you talk to can see this."; }
+                if root.home-label != "": HorizontalLayout {
+                    spacing: Tokens.space-s;
+                    Secondary { text: "Your server: " + root.home-label; horizontal-stretch: 1; }
+                    if root.servers.length > 1: QuietButton {
+                        text: "Change";
+                        accessible-label: "Choose another server";
+                        clicked => { root.server-pick-for = 0; root.chosen-server = root.home-id; root.sheet = Sheet.servers; }
+                    }
+                }
                 if root.can-join: Field {
                     placeholder: "Passphrase for this computer (optional)";
                     secret: true;
@@ -2360,6 +2420,73 @@ export component AppWindow inherits Window {
         }
     }
 
+    if root.sheet == Sheet.servers: SheetFrame {
+        title: root.server-pick-for == 0 ? "Choose a server" : root.server-pick-for == 1 ? "Move to another server" : "Move the group";
+        close => { root.sheet = root.server-pick-for == 2 ? Sheet.members : root.server-pick-for == 1 ? Sheet.settings : Sheet.none; }
+        Secondary {
+            text: root.server-pick-for == 0
+                ? "Your messages wait on this server until your devices collect them. It sees only sealed units of one size: it can't read them or tell who sent them. You can move later."
+                : root.server-pick-for == 1
+                    ? "Your inboxes, username and invite links move with you. Contacts and groups are told as they come online; keep Enclave running until the move is done."
+                    : "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are.";
+        }
+        Flickable {
+            height: min(360px, server-list.preferred-height);
+            server-list := VerticalLayout {
+                spacing: Tokens.space-s;
+                for o in root.servers: Rectangle {
+                    property <bool> current: o.id == (root.server-pick-for == 2 ? root.group-host : root.server-pick-for == 1 ? root.home-id : "");
+                    min-height: srow.preferred-height;
+                    border-radius: Tokens.radius-control;
+                    border-width: root.chosen-server == o.id ? 2px : 1px;
+                    border-color: root.chosen-server == o.id ? Tokens.pine : Tokens.hairline;
+                    accessible-role: radio-button;
+                    accessible-checked: root.chosen-server == o.id;
+                    accessible-label: o.domain + ", run by " + o.operator;
+                    accessible-action-default => { root.chosen-server = o.id; }
+                    TouchArea { clicked => { root.chosen-server = o.id; } }
+                    srow := HorizontalLayout {
+                        padding: Tokens.space-m;
+                        spacing: Tokens.space-sm;
+                        VerticalLayout {
+                            alignment: start;
+                            Rectangle {
+                                width: 20px;
+                                height: 20px;
+                                border-radius: 10px;
+                                border-width: 2px;
+                                border-color: root.chosen-server == o.id ? Tokens.pine : Tokens.text-muted;
+                                if root.chosen-server == o.id: Rectangle { width: 10px; height: 10px; border-radius: 5px; background: Tokens.pine; }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: Tokens.space-xs;
+                            Body { text: o.domain; font-weight: 600; overflow: elide; }
+                            Secondary {
+                                text: "Run by " + o.operator
+                                    + (current ? (root.server-pick-for == 2 ? " · The group is here" : " · You're here") : "")
+                                    + (root.server-pick-for == 2 && o.votes > 0 ? " · " + o.votes + " of " + root.group-admins + " admins voted for it" : "");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            PrimaryButton {
+                text: root.server-pick-for == 0 ? "Use this server" : root.server-pick-for == 1 ? (root.busy ? "Moving…" : "Move my account") : "Vote for this server";
+                enabled: root.chosen-server != "" && !root.busy
+                    && root.chosen-server != (root.server-pick-for == 2 ? root.group-host : root.server-pick-for == 1 ? root.home-id : "");
+                clicked => {
+                    root.pick-server(root.server-pick-for, root.chosen-server);
+                    root.sheet = root.server-pick-for == 2 ? Sheet.members : root.server-pick-for == 1 ? Sheet.settings : Sheet.none;
+                }
+            }
+        }
+    }
+
     if root.sheet == Sheet.settings: SheetFrame {
         title: "Settings";
         close => { root.sheet = Sheet.none; }
@@ -2398,6 +2525,18 @@ export component AppWindow inherits Window {
             }
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
+        if root.home-label != "": Body { text: "Your server"; font-weight: 600; }
+        if root.home-label != "": Secondary {
+            text: root.home-label + (root.moving ? ". Moving: still telling your contacts and groups. Keep Enclave running until it's done." : ".");
+        }
+        if root.can-move && !root.moving && root.servers.length > 1: HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: "Move to another server";
+                outlined: true;
+                clicked => { root.server-pick-for = 1; root.chosen-server = ""; root.sheet = Sheet.servers; }
+            }
+        }
         Body { text: "Tor bridges"; font-weight: 600; }
         Secondary {
             text: root.bridges == ""
@@ -2781,8 +2920,8 @@ export component AppWindow inherits Window {
         Secondary { text: root.current.members + " people, you included. Everyone in the group can see who else is in it."; }
         for m in root.members: HorizontalLayout {
             spacing: Tokens.space-sm;
-            height: 56px;
-            VerticalLayout { alignment: center; Avatar { initials: m.initials; tint: m.tint; art: m.art; art-tint: m.art-tint; size: 36px; } }
+            min-height: 56px;
+            VerticalLayout { alignment: start; padding-top: Tokens.space-s; Avatar { initials: m.initials; tint: m.tint; art: m.art; art-tint: m.art-tint; size: 36px; } }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 1;
@@ -2790,22 +2929,22 @@ export component AppWindow inherits Window {
                 if m.met || m.verified || m.admin: Caption {
                     text: (m.admin ? "Admin" : "") + (m.admin && (m.met || m.verified) ? " · " : "") + (m.met ? "Met in person" : m.verified ? "Checked" : "");
                 }
-            }
-            if root.group-admin: VerticalLayout {
-                alignment: center;
-                QuietButton {
-                    text: m.admin ? "Not admin" : "Make admin";
-                    accessible-label: (m.admin ? "Stop " + m.name + " being an admin" : "Make " + m.name + " an admin");
-                    clicked => { root.set-group-admin(root.current-id, m.id, !m.admin); }
-                }
-            }
-            if root.group-admin: VerticalLayout {
-                alignment: center;
-                QuietButton {
-                    text: "Remove";
-                    danger: true;
-                    accessible-label: "Remove " + m.name;
-                    clicked => { root.remove-member(root.current-id, m.id); }
+                // An admin's controls go under the name, so a long name
+                // keeps its room on a phone.
+                if root.group-admin: HorizontalLayout {
+                    alignment: start;
+                    spacing: Tokens.space-s;
+                    QuietButton {
+                        text: m.admin ? "Not admin" : "Make admin";
+                        accessible-label: (m.admin ? "Stop " + m.name + " being an admin" : "Make " + m.name + " an admin");
+                        clicked => { root.set-group-admin(root.current-id, m.id, !m.admin); }
+                    }
+                    QuietButton {
+                        text: "Remove";
+                        danger: true;
+                        accessible-label: "Remove " + m.name;
+                        clicked => { root.remove-member(root.current-id, m.id); }
+                    }
                 }
             }
         }
@@ -2822,6 +2961,14 @@ export component AppWindow inherits Window {
                 ? "On the record: messages carry their sender's signature. Admins can change this."
                 : "Off the record: nobody can prove to others who wrote these messages. Admins can change this.";
             wrap: word-wrap;
+        }
+        if root.group-host-label != "": Secondary { text: root.group-host-label + root.group-vote-label; }
+        if root.group-admin && root.servers.length > 1: HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: "Vote to move the group";
+                clicked => { root.server-pick-for = 2; root.chosen-server = ""; root.sheet = Sheet.servers; }
+            }
         }
         if root.group-admin: HorizontalLayout {
             alignment: start;

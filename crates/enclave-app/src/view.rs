@@ -404,6 +404,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_server_backup(s.server_backup);
     ui.set_server_backup_at(s.server_backup_at.clone().into());
     ui.set_backup_check(s.backup_check.clone().into());
+    apply_servers(ui, s);
     ui.set_app_lock(s.app_lock);
     ui.set_lock_timeout(i32::try_from(s.lock_timeout).unwrap_or(i32::MAX));
     ui.set_invites(s.invites as i32);
@@ -446,6 +447,71 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     } else if !s.my_name.is_empty() && ui.get_screen() != Screen::Main {
         ui.set_screen(Screen::Main);
     }
+}
+
+/// The server picker and what it says about the home server and the open
+/// group's.
+fn apply_servers(ui: &AppWindow, s: &Snapshot) {
+    let named = |id: &str| -> String {
+        s.servers.iter().find(|v| v.id == id).map_or_else(
+            || format!("a server not in the list ({})", &id[..id.len().min(8)]),
+            |v| v.domain.clone(),
+        )
+    };
+    let votes = |id: &str| -> i32 {
+        s.group_votes
+            .iter()
+            .filter_map(|v| v.split_once(':'))
+            .find(|(h, _)| *h == id)
+            .and_then(|(_, n)| n.parse().ok())
+            .unwrap_or(0)
+    };
+    ui.set_servers(ModelRc::from(Rc::new(VecModel::from(
+        s.servers
+            .iter()
+            .map(|v| crate::ServerOption {
+                id: v.id.clone().into(),
+                domain: v.domain.clone().into(),
+                operator: v.operator.clone().into(),
+                votes: votes(&v.id),
+            })
+            .collect::<Vec<_>>(),
+    ))));
+    ui.set_home_id(s.home.clone().into());
+    ui.set_home_label(
+        if s.home.is_empty() {
+            String::new()
+        } else {
+            match s.servers.iter().find(|v| v.id == s.home) {
+                Some(v) => format!("{}, run by {}", v.domain, v.operator),
+                None => named(&s.home),
+            }
+        }
+        .into(),
+    );
+    ui.set_moving(s.moving);
+    ui.set_can_move(s.can_move);
+    ui.set_group_host(s.group_host.clone().into());
+    ui.set_group_admins(i32::try_from(s.group_admins).unwrap_or(i32::MAX));
+    ui.set_group_host_label(
+        if s.group_host.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "This group's messages are kept on {}.",
+                named(&s.group_host)
+            )
+        }
+        .into(),
+    );
+    ui.set_group_vote_label(
+        if s.group_vote.is_empty() {
+            String::new()
+        } else {
+            format!(" You voted to move it to {}.", named(&s.group_vote))
+        }
+        .into(),
+    );
 }
 
 /// Apply a one-off reset from the vault.

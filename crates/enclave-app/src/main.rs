@@ -1,16 +1,20 @@
 //! Desktop entry point.
 //!
-//! `enclave` runs a self-contained demo (local server, demo contact, nothing
-//! leaves the computer). Keys live in a separate `enclave-vault` process when
+//! `enclave` opens the profile in the platform's data directory (or
+//! `--profile DIR`), or sets one up on a server picked from the server
+//! list built into release builds (`--server-list FILE` and `--foundation
+//! FILE` otherwise). Keys live in a separate `enclave-vault` process when
 //! it is installed next to this binary (`--single-process` keeps them in a
-//! thread instead). `enclave --server SERVER_ID=nym:ADDRESS --profile DIR`
-//! reaches a server over the mixnet (through `enclave-netd` and
-//! `enclave-nymd`; `--nym-env` for a local mixnet or the sandbox), and
-//! `--server SERVER_ID=HOST:PORT` a dev server (`enclave-server`) over TCP
-//! in a build with the `dev-transport` feature (never a release; add
-//! `--kt-pins FILE`, written by the server, to use usernames).
-//! `enclave --profile DIR --panic-wipe` erases the profile without opening
-//! it (`docs/14-storage.md` §5), for an OS shortcut.
+//! thread instead). Servers are reached over the mixnet (through
+//! `enclave-netd` and `enclave-nymd`; `--nym-env` for a local mixnet or
+//! the sandbox); `--server SERVER_ID=nym:ADDRESS` names the home server
+//! directly, and `--server SERVER_ID=HOST:PORT` a dev server
+//! (`enclave-server`) over TCP in a build with the `dev-transport` feature
+//! (never a release; add `--kt-pins FILE`, written by the server, to use
+//! usernames). `enclave --demo` (a build with the `demo` feature) runs a
+//! self-contained demo: a local server and a demo contact, nothing leaves
+//! the computer. `enclave --panic-wipe [--profile DIR]` erases the profile
+//! without opening it (`docs/14-storage.md` §5), for an OS shortcut.
 #![deny(unsafe_code)]
 
 use enclave_app::{AppWindow, Screen, Sheet, vault, view};
@@ -77,6 +81,7 @@ fn main() -> Result<(), slint::PlatformError> {
             .position(|a| a == "--profile")
             .and_then(|i| args.get(i + 1))
             .map(std::path::PathBuf::from)
+            .or_else(enclave_vault::default_profile)
         else {
             eprintln!("enclave: --panic-wipe needs --profile DIR");
             std::process::exit(2);
@@ -238,6 +243,15 @@ fn main() -> Result<(), slint::PlatformError> {
     let t = tx.clone();
     ui.on_set_server_backup(move |on| {
         let _ = t.send(Cmd::ServerBackup(on));
+    });
+    let t = tx.clone();
+    ui.on_pick_server(move |purpose, id| {
+        let id = id.to_string();
+        let _ = t.send(match purpose {
+            0 => Cmd::PickServer(id),
+            1 => Cmd::MoveHome(id),
+            _ => Cmd::VoteGroupHost(id),
+        });
     });
     let t = tx.clone();
     let w = ui.as_weak();

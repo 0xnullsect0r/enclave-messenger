@@ -162,6 +162,20 @@ fn snapshot() -> Snapshot {
         server_backup: true,
         server_backup_at: "9 Oct".into(),
         backup_check: "ok".into(),
+        servers: vec![enclave_ipc::ServerRow {
+            id: "aa".into(),
+            domain: "b.example".into(),
+            operator: "B".into(),
+            family: "b".into(),
+        }],
+        home: "aa".into(),
+        moving: true,
+        can_move: true,
+        group_host: "bb".into(),
+        group_next: "aa".into(),
+        group_votes: vec!["aa:1".into()],
+        group_admins: 3,
+        group_vote: "aa".into(),
     }
 }
 
@@ -218,6 +232,9 @@ fn cmds() -> Vec<Cmd> {
         Cmd::ServerBackup(true),
         Cmd::CheckBackup("words".into(), vec![1, 2]),
         Cmd::RestoreFromServer(vec!["words".into()]),
+        Cmd::PickServer("aa".into()),
+        Cmd::MoveHome("aa".into()),
+        Cmd::VoteGroupHost("aa".into()),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),

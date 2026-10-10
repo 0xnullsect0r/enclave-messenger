@@ -1,4 +1,4 @@
-//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--bridge LINE]… [--builtin-bridges]] [--report]`
+//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--bridge LINE]… [--builtin-bridges]] [--report]`
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
@@ -410,9 +410,12 @@ fn main() -> ExitCode {
     if args.iter().any(|a| a == "--builtin-bridges") {
         bridges.push("--builtin-bridges".into());
     }
+    // The mixnet client starts for Nym routes given now, or (`--mixnet`)
+    // for ones the vault gives later, from the server list.
+    let mixnet = !over_nym.is_empty() || args.iter().any(|a| a == "--mixnet");
     let mut tor_blocked = false;
     let tor = match flag("--tor") {
-        Some(state) if !over_nym.is_empty() => {
+        Some(state) if mixnet => {
             let bin = flag("--tord").map(std::path::PathBuf::from).or_else(|| {
                 std::env::current_exe().ok().map(|e| {
                     e.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX))
@@ -446,7 +449,7 @@ fn main() -> ExitCode {
         }
         _ => None,
     };
-    let nymd = if over_nym.is_empty() || tor_blocked {
+    let nymd = if !mixnet || tor_blocked {
         None
     } else {
         let bin = args

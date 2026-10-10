@@ -62,6 +62,20 @@ pub struct StickerPackRow {
     pub count: u32,
 }
 
+/// A server from the foundation's list, to pick as home (setting up,
+/// moving) or to vote a group onto.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ServerRow {
+    /// Its id (hex).
+    pub id: String,
+    /// Its domain.
+    pub domain: String,
+    /// Who runs it.
+    pub operator: String,
+    /// The operator family (servers in one family are run together).
+    pub family: String,
+}
+
 /// A contact that can be picked for a new group.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Pick {
@@ -347,6 +361,25 @@ pub struct Snapshot {
     pub server_backup_at: String,
     /// What checking a backup found, or empty.
     pub backup_check: String,
+    /// The servers in the foundation's list.
+    pub servers: Vec<ServerRow>,
+    /// The home server's id (hex): the profile's, or (setting up) the one
+    /// picked. Empty when this build has no server to offer.
+    pub home: String,
+    /// Our move to another server is still reaching contacts and groups.
+    pub moving: bool,
+    /// This device can move the account (it holds the recovery words).
+    pub can_move: bool,
+    /// The open group's server (id, hex).
+    pub group_host: String,
+    /// The server the open group moves to tomorrow (id, hex), or empty.
+    pub group_next: String,
+    /// Votes to move the open group: "id:votes", the server ids in hex.
+    pub group_votes: Vec<String>,
+    /// How many admins the open group has.
+    pub group_admins: u32,
+    /// The server we voted to move the open group to, or empty.
+    pub group_vote: String,
 }
 
 /// UI → vault.
@@ -537,6 +570,13 @@ pub enum Cmd {
     /// Set the emergency PIN (empty: none): entered where a PIN or the
     /// passphrase is asked for, it erases this device.
     SetEmergencyPin(String),
+    /// Setting up: use this server (id, hex) as home.
+    PickServer(String),
+    /// Move the account to this server (id, hex) (`docs/12-servers.md` §4).
+    MoveHome(String),
+    /// Vote to move the open group to this server (id, hex) (admins;
+    /// `docs/07-groups.md` §4).
+    VoteGroupHost(String),
 }
 
 /// One-off UI resets after a request succeeded.
@@ -827,6 +867,18 @@ impl Snapshot {
             .bool(self.server_backup)
             .str(&self.server_backup_at)
             .str(&self.backup_check);
+        w.len(self.servers.len());
+        for v in &self.servers {
+            w.str(&v.id).str(&v.domain).str(&v.operator).str(&v.family);
+        }
+        w.str(&self.home)
+            .bool(self.moving)
+            .bool(self.can_move)
+            .str(&self.group_host)
+            .str(&self.group_next)
+            .strs(&self.group_votes)
+            .u32(self.group_admins)
+            .str(&self.group_vote);
         w.0
     }
 
@@ -1049,6 +1101,27 @@ impl Snapshot {
             server_backup: r.bool()?,
             server_backup_at: r.str()?,
             backup_check: r.str()?,
+            servers: {
+                let n = r.len()?;
+                (0..n)
+                    .map(|_| {
+                        Ok(ServerRow {
+                            id: r.str()?,
+                            domain: r.str()?,
+                            operator: r.str()?,
+                            family: r.str()?,
+                        })
+                    })
+                    .collect::<Result<_>>()?
+            },
+            home: r.str()?,
+            moving: r.bool()?,
+            can_move: r.bool()?,
+            group_host: r.str()?,
+            group_next: r.str()?,
+            group_votes: r.strs()?,
+            group_admins: r.u32()?,
+            group_vote: r.str()?,
         };
         r.end()?;
         Ok(s)
@@ -1147,6 +1220,9 @@ impl Cmd {
             Cmd::ServerBackup(on) => w.u8(80).bool(*on),
             Cmd::CheckBackup(words, a) => w.u8(81).str(words).bytes(a),
             Cmd::RestoreFromServer(s) => w.u8(82).strs(s),
+            Cmd::PickServer(s) => w.u8(83).str(s),
+            Cmd::MoveHome(s) => w.u8(84).str(s),
+            Cmd::VoteGroupHost(s) => w.u8(85).str(s),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1241,6 +1317,9 @@ impl Cmd {
             80 => Cmd::ServerBackup(r.bool()?),
             81 => Cmd::CheckBackup(r.str()?, r.bytes()?),
             82 => Cmd::RestoreFromServer(r.strs()?),
+            83 => Cmd::PickServer(r.str()?),
+            84 => Cmd::MoveHome(r.str()?),
+            85 => Cmd::VoteGroupHost(r.str()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };

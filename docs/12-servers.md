@@ -348,7 +348,7 @@ Day `d`'s key is valid from the start of day `d` to the end of day `d + 1`. A ze
 
 ### 4.4 Moving an account
 
-An account moves to another server from the device that holds the recovery words (`Client::move_home`, `enclave-core/src/client/moves.rs`). The new server gets fresh inboxes with fresh owner secrets, since the old operator knows the old ones and must not be able to read or empty the new inboxes. The move is staged once and then carried out step by step, each step safe to repeat and retried from `sync` until done (`move_pending`):
+An account moves to another server from the device that holds the recovery words (`Client::move_home`, `enclave-core/src/client/moves.rs`; in the app, Settings → Your server → Move to another server, choosing among the listed servers that take new accounts, with "Moving" shown until `move_pending` clears). The new server gets fresh inboxes with fresh owner secrets, since the old operator knows the old ones and must not be able to read or empty the new inboxes. The move is staged once and then carried out step by step, each step safe to repeat and retried from `sync` until done (`move_pending`):
 
 1. Create the account inbox and the request inbox on the new server.
 2. Publish a new manifest version naming the new request inbox, signed once and posted to both servers, with this device's co-signature.
