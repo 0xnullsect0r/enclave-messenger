@@ -1,4 +1,4 @@
-//! `enclave-tord --state DIR [--bridge LINE]… [--builtin-bridges] [--direct] [--report]`
+//! `enclave-tord --state DIR [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--direct] [--report]`
 //!
 //! Reads the SOCKS5 secret from its stdin (one line), confines itself
 //! (IP sockets only; the filesystem limited to `DIR` and what TLS needs),
@@ -6,9 +6,11 @@
 //! and prints `ready PORT`. It exits when its stdin closes (netd went away).
 //! If Tor isn't up within [`BOOTSTRAP`], it prints `blocked` and exits: the
 //! network may be blocking Tor, and bridges may get through. `--bridge`
-//! (obfs4 bridge lines, from bridges.torproject.org) and
-//! `--builtin-bridges` (the Tor Project's built-in ones) reach Tor through
-//! obfs4 bridges, run in this process (`docs/09-transport.md` §7).
+//! (bridge lines, from bridges.torproject.org), `--builtin-bridges` (the
+//! Tor Project's built-in obfs4 bridges) and `--snowflake` (its built-in
+//! Snowflake bridges) reach Tor through bridges (`docs/09-transport.md`
+//! §7): obfs4 in this process, Snowflake and WebTunnel through lyrebird
+//! (`--pt`, or next to this program), started before confinement.
 //! `--direct` dials without Tor, in a `dev-direct` build only (tests and
 //! the local mixnet).
 
@@ -16,8 +18,12 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 
-/// What TLS and name resolution read (arti's own TLS to the Tor network).
+/// What TLS and name resolution read (arti's own TLS to the Tor network),
+/// and the user and group databases (arti checks who owns its state
+/// directory before trusting it).
 const READ_ONLY: &[&str] = &[
+    "/etc/passwd",
+    "/etc/group",
     "/etc/ssl",
     "/etc/pki",
     "/etc/ca-certificates",
@@ -32,6 +38,8 @@ const READ_ONLY: &[&str] = &[
 
 fn main() -> ExitCode {
     let _ = enclave_sandbox::process();
+    #[cfg(feature = "tor")]
+    enclave_tord::install_tls_provider();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |n: &str| {
         args.iter()
@@ -49,6 +57,10 @@ fn main() -> ExitCode {
     if args.iter().any(|a| a == "--builtin-bridges") {
         bridges.extend(enclave_tord::obfs4pt::builtin());
     }
+    if args.iter().any(|a| a == "--snowflake") {
+        bridges.extend(enclave_tord::managed::builtin_snowflake());
+    }
+    let report = args.iter().any(|a| a == "--report");
     let Some(state) = flag("--state").map(std::path::PathBuf::from) else {
         eprintln!("enclave-tord: --state DIR is required");
         return ExitCode::FAILURE;
@@ -57,6 +69,30 @@ fn main() -> ExitCode {
         eprintln!("enclave-tord: can't create {}", state.display());
         return ExitCode::FAILURE;
     }
+    // Snowflake and WebTunnel run in lyrebird, started now: once confined,
+    // this process can't start programs.
+    let needed = enclave_tord::managed::needed(&bridges);
+    let managed = if needed.is_empty() || direct {
+        None
+    } else {
+        let bin = flag("--pt")
+            .map(std::path::PathBuf::from)
+            .or_else(enclave_tord::managed::binary);
+        let started = bin
+            .ok_or_else(|| std::io::Error::other("no lyrebird"))
+            .and_then(|b| enclave_tord::managed::launch(&b, &state, &needed, PT_START, report));
+        match started {
+            Ok(m) => Some(m),
+            Err(e) => {
+                eprintln!("enclave-tord: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
+    let methods = managed
+        .as_ref()
+        .map(|m| m.methods.clone())
+        .unwrap_or_default();
     let ro: Vec<std::path::PathBuf> = READ_ONLY
         .iter()
         .map(std::path::PathBuf::from)
@@ -64,7 +100,7 @@ fn main() -> ExitCode {
         .collect();
     let fs = enclave_sandbox::filesystem(std::slice::from_ref(&state), &ro, false);
     let sc = enclave_sandbox::syscalls(enclave_sandbox::Profile::Netd, false);
-    if args.iter().any(|a| a == "--report") {
+    if report {
         eprintln!("enclave-tord: filesystem {fs}, syscalls {sc}");
         enclave_tord::socks::REPORT.store(true, std::sync::atomic::Ordering::Relaxed);
     }
@@ -83,7 +119,7 @@ fn main() -> ExitCode {
         }
         let secret = Arc::new(secret.trim().to_string());
         let dialer: Arc<dyn enclave_tord::Dialer> =
-            match tokio::time::timeout(BOOTSTRAP, dialer(direct, &state, &bridges)).await {
+            match tokio::time::timeout(BOOTSTRAP, dialer(direct, &state, &bridges, &methods)).await {
                 Ok(Ok(d)) => d,
                 Ok(Err(e)) => {
                     eprintln!("enclave-tord: {e}");
@@ -107,9 +143,13 @@ fn main() -> ExitCode {
             // netd closed our stdin: it's gone, so are we.
             _ = async { let mut l = String::new(); while stdin.read_line(&mut l).await.is_ok_and(|n| n > 0) { l.clear(); } } => {}
         }
+        drop(managed);
         ExitCode::SUCCESS
     })
 }
+
+/// How long lyrebird may take to name its transports' ports.
+const PT_START: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// How long Tor may take to come up before this says the network may be
 /// blocking it.
@@ -119,6 +159,7 @@ async fn dialer(
     direct: bool,
     state: &std::path::Path,
     bridges: &[String],
+    managed: &[(String, std::net::SocketAddr)],
 ) -> std::io::Result<Arc<dyn enclave_tord::Dialer>> {
     if direct {
         #[cfg(feature = "dev-direct")]
@@ -128,12 +169,12 @@ async fn dialer(
     }
     #[cfg(feature = "tor")]
     {
-        let d = enclave_tord::ArtiDialer::bootstrap(state, bridges).await?;
+        let d = enclave_tord::ArtiDialer::bootstrap(state, bridges, managed).await?;
         Ok(Arc::new(d))
     }
     #[cfg(not(feature = "tor"))]
     {
-        let _ = (state, bridges);
+        let _ = (state, bridges, managed);
         Err(std::io::Error::other("built without Tor"))
     }
 }

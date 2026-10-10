@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Enclave
+GenericName=Private messenger
+Comment=Messages that only you and the people you talk to can read
+Exec=enclave
+Icon=io.github.EnclaveChat.Enclave
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+Keywords=messenger;chat;private;encrypted;secure;
+StartupNotify=true
+StartupWMClass=io.github.EnclaveChat.Enclave
+SingleMainWindow=true

@@ -2609,10 +2609,12 @@ export component AppWindow inherits Window {
         Body { text: "Tor bridges"; font-weight: 600; }
         Secondary {
             text: root.bridges == ""
-                ? "Off. If your network blocks Tor, a bridge gets around it. Use Tor's built-in bridges, or paste obfs4 bridge lines from bridges.torproject.org."
+                ? "Off. If your network blocks Tor, a bridge gets around it. Use Tor's built-in bridges or Snowflake, or paste obfs4 or WebTunnel bridge lines from bridges.torproject.org."
                 : root.bridges == "builtin"
                     ? "Using Tor's built-in bridges."
-                    : "Using your own bridges.";
+                    : root.bridges == "snowflake"
+                        ? "Using Snowflake: Tor traffic passes through volunteers' browsers, and looks like a video call."
+                        : "Using your own bridges.";
         }
         Field { placeholder: "obfs4 … cert=… iat-mode=0"; mono: true; multiline: true; text <=> root.bridges-input; }
         HorizontalLayout {
@@ -2620,6 +2622,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton { text: "Save"; enabled: root.bridges-input != ""; clicked => { root.set-bridges(root.bridges-input); } }
             QuietButton { text: "Built-in"; clicked => { root.set-bridges("builtin"); } }
+            QuietButton { text: "Snowflake"; clicked => { root.set-bridges("snowflake"); } }
             if root.bridges != "": QuietButton { text: "Turn off"; clicked => { root.set-bridges(""); } }
         }
         if root.bridges-error != "": Text {

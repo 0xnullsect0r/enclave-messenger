@@ -342,7 +342,7 @@ pub struct Snapshot {
     pub route: u8,
     /// Tor didn't come up: the network may be blocking it.
     pub tor_blocked: bool,
-    /// Tor bridges set here: empty, `builtin`, or bridge lines.
+    /// Tor bridges set here: empty, `builtin`, `snowflake`, or bridge lines.
     pub bridges: String,
     /// Why the bridges given weren't taken.
     pub bridges_error: String,
@@ -533,7 +533,7 @@ pub enum Cmd {
     /// Use the backup route (true), or the mixnet again (false: "Keep
     /// waiting", "Back to the private route").
     BackupRoute(bool),
-    /// Tor bridges: empty (none), `builtin`, or bridge lines.
+    /// Tor bridges: empty (none), `builtin`, `snowflake`, or bridge lines.
     SetBridges(String),
     /// Put the current conversation on the record (or off it).
     SetOnRecord(bool),

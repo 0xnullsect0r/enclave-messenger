@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (Flathub, GNOME Software, KDE Discover). The first
+     release must be the workspace version: `cargo xtask version` checks. -->
+<component type="desktop-application">
+  <id>io.github.EnclaveChat.Enclave</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Enclave</name>
+  <summary>Private messages without a phone number</summary>
+  <developer id="io.github.enclavechat">
+    <name>The Enclave contributors</name>
+  </developer>
+  <description>
+    <p>
+      Enclave is a messenger for chats, groups, photos, voice notes and calls
+      that hides not only what you say but who you talk to and when.
+    </p>
+    <ul>
+      <li>No phone number or email: your account is a key, and a username is optional.</li>
+      <li>Post-quantum encryption from the first message.</li>
+      <li>Traffic goes through Tor and the Nym mixnet, every message is the same size, and cover traffic hides when you are talking.</li>
+      <li>Servers are run by independent operators, and none of them can read messages, see your contacts or change your keys without being caught.</li>
+      <li>Your messages stay on your devices, encrypted, with an optional app lock and an emergency PIN.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.EnclaveChat.Enclave.desktop</launchable>
+  <icon type="stock">io.github.EnclaveChat.Enclave</icon>
+  <url type="homepage">https://github.com/EnclaveChat/Enclave</url>
+  <url type="bugtracker">https://github.com/EnclaveChat/Enclave/issues</url>
+  <url type="vcs-browser">https://github.com/EnclaveChat/Enclave</url>
+  <url type="contribute">https://github.com/EnclaveChat/Enclave/blob/main/CONTRIBUTING.md</url>
+  <categories>
+    <category>Network</category>
+    <category>InstantMessaging</category>
+    <category>Chat</category>
+  </categories>
+  <keywords>
+    <keyword>messenger</keyword>
+    <keyword>chat</keyword>
+    <keyword>encrypted</keyword>
+    <keyword>private</keyword>
+  </keywords>
+  <provides>
+    <binary>enclave</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A conversation</caption>
+      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/05-conversation-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A group</caption>
+      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/14-group-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Checking a contact's security code</caption>
+      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/08-check-code-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Privacy settings</caption>
+      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/11-privacy-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Dark appearance</caption>
+      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/05-conversation-dark.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-audio">intense</content_attribute>
+    <content_attribute id="social-contacts">intense</content_attribute>
+  </content_rating>
+  <branding>
+    <color type="primary" scheme_preference="light">#F6F3EC</color>
+    <color type="primary" scheme_preference="dark">#111412</color>
+  </branding>
+  <releases>
+    <release version="0.1.0" date="2026-10-10">
+      <description>
+        <p>The first release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

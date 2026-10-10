@@ -53,7 +53,7 @@ pub const BLOCKED: &str = "enclave-tord: Tor didn't come up; the network may be 
 /// least 32 characters, from the caller's own randomness), and wait up to
 /// `within` for Tor to be up. `direct` (a `dev-direct` build) dials without
 /// Tor; `report` logs each connection's destination; `extra` are more
-/// arguments (`--bridge LINE`, `--builtin-bridges`).
+/// arguments (`--bridge LINE`, `--builtin-bridges`, `--snowflake`).
 pub async fn start(
     bin: &std::path::Path,
     state: &std::path::Path,

@@ -35,6 +35,8 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 
 fn main() -> ExitCode {
     let _ = enclave_sandbox::process();
+    #[cfg(feature = "tor")]
+    enclave_tord::install_tls_provider();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let public =
         PathBuf::from(flag(&args, "--public").unwrap_or_else(|| "/var/lib/enclave/public".into()));

@@ -3283,6 +3283,7 @@ dependencies = [
  "enclave-sandbox",
  "futures",
  "obfs4",
+ "rustls",
  "safelog 0.9.1",
  "tokio",
  "tor-cell 0.46.0",

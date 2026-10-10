@@ -1,0 +1,4 @@
+#!/bin/sh
+# Enclave's programs live together (the window starts the others from its
+# own folder), so the command on the PATH runs the one installed there.
+exec /usr/lib/enclave-messenger/enclave "$@"

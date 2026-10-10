@@ -16,6 +16,13 @@ name: Live networks
 on:
   schedule:
     - cron: '23 3 * * *'
+  # Changes to the Tor side are tried against the real network at once
+  # (still never blocking).
+  push:
+    paths:
+      - crates/enclave-tord/**
+      - ci/tor/**
+      - .github/workflows/nym-live.yml
   workflow_dispatch:
     inputs:
       network:
@@ -67,6 +74,23 @@ jobs:
           mkfifo "$state.in"
           (echo "$secret"; sleep 900) > "$state.in" &
           target/release/enclave-tord --state "$state" --builtin-bridges --report < "$state.in" > "$state.out" &
+          for _ in $(seq 300); do grep -q 'ready\|blocked' "$state.out" && break; sleep 1; done
+          cat "$state.out"
+          port=$(awk '/ready/{print $2}' "$state.out")
+          test -n "$port"
+          curl -sS --max-time 120 --socks5-hostname "enclave:$secret@127.0.0.1:$port" \
+            https://check.torproject.org/api/ip | tee "$state.json"
+          grep -q '"IsTor":true' "$state.json"
+      - name: Build lyrebird (Snowflake and WebTunnel)
+        run: ci/tor/lyrebird.sh build target/release/lyrebird
+      - name: Through Tor's built-in Snowflake bridges (lyrebird, started by enclave-tord)
+        run: |
+          set -euo pipefail
+          secret=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          state=$(mktemp -d)
+          mkfifo "$state.in"
+          (echo "$secret"; sleep 900) > "$state.in" &
+          target/release/enclave-tord --state "$state" --snowflake --report < "$state.in" > "$state.out" &
           for _ in $(seq 300); do grep -q 'ready\|blocked' "$state.out" && break; sleep 1; done
           cat "$state.out"
           port=$(awk '/ready/{print $2}' "$state.out")

@@ -218,6 +218,14 @@ fn main() -> Result<(), slint::PlatformError> {
     // Started from a terminal, its messages still show there.
     enclave_platform::process::attach_parent_console();
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("enclave {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{USAGE}");
+        return Ok(());
+    }
     // The panic wipe from outside the window (an OS shortcut can run it):
     // erase the profile without opening it, and stop. Only `--profile`
     // matters (no server needs to be named).
@@ -248,6 +256,10 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     };
     let single_process = args.iter().any(|a| a == "--single-process");
+    // Install checks: quit once the vault's first state is shown.
+    let smoke = args.iter().any(|a| a == "--smoke-exit");
+    // Wayland matches the window to its .desktop file by this id.
+    let _ = slint::set_xdg_app_id("io.github.EnclaveChat.Enclave");
     let ui = AppWindow::new()?;
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
     // Outputs from the vault, applied on the UI thread.
@@ -324,7 +336,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     other => other,
                 };
                 let _ = w.upgrade_in_event_loop(move |ui| match o {
-                    Out::Snapshot(s) => view::apply(&ui, &s),
+                    Out::Snapshot(s) => {
+                        view::apply(&ui, &s);
+                        if smoke {
+                            println!("enclave: started");
+                            let _ = slint::quit_event_loop();
+                        }
+                    }
                     Out::Effect(e) => view::apply_effect(&ui, e),
                     Out::Preview(p) => view::apply_preview(&ui, p),
                     Out::Clip(c) => view::apply_clip(&ui, c),
@@ -941,8 +959,23 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     let _ = Sheet::None;
+    if smoke {
+        slint::Timer::single_shot(Duration::from_secs(60), || {
+            eprintln!("enclave: the vault didn't start within 60 s");
+            std::process::exit(1);
+        });
+    }
     ui.run()
 }
+
+const USAGE: &str = "\
+usage: enclave [options]
+
+  --profile DIR        the profile to open (default: the system's app data folder)
+  --panic-wipe         erase the profile without opening it, and quit
+  --single-process     run the vault inside the window's process
+  --smoke-exit         quit once started (install checks)
+  --version            print the version";
 
 /// Copy, then clear the clipboard after 60 s if it still holds our text.
 fn copy_with_timeout(text: String) {

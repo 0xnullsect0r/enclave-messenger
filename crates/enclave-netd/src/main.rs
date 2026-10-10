@@ -1,4 +1,4 @@
-//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--bridge LINE]… [--builtin-bridges]] [--report]`
+//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--bridge LINE]… [--builtin-bridges] [--snowflake]] [--report]`
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
@@ -408,8 +408,10 @@ fn main() -> ExitCode {
         .filter(|p| p[0] == "--bridge")
         .flat_map(|p| ["--bridge".to_string(), p[1].clone()])
         .collect();
-    if args.iter().any(|a| a == "--builtin-bridges") {
-        bridges.push("--builtin-bridges".into());
+    for f in ["--builtin-bridges", "--snowflake"] {
+        if args.iter().any(|a| a == f) {
+            bridges.push(f.into());
+        }
     }
     // The mixnet client starts for Nym routes given now, or (`--mixnet`)
     // for ones the vault gives later, from the server list.

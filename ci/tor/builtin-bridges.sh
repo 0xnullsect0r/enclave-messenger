@@ -1,29 +1,36 @@
 #!/usr/bin/env bash
 # Refresh Enclave's built-in Tor bridges from the Tor Project's
 # Circumvention Settings API (the list Tor Browser uses):
-#   ci/tor/builtin-bridges.sh            write crates/enclave-tord/bridges/obfs4.txt
-#   ci/tor/builtin-bridges.sh --check    fail if the committed list is out of date
-# Only obfs4 bridges: enclave-tord runs obfs4 in its own process
+#   ci/tor/builtin-bridges.sh            write crates/enclave-tord/bridges/{obfs4,snowflake}.txt
+#   ci/tor/builtin-bridges.sh --check    fail if a committed list is out of date
+# obfs4 runs in enclave-tord's own process, Snowflake through lyrebird
 # (docs/09-transport.md §7). Standard tools only (curl, python3).
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=$ROOT/crates/enclave-tord/bridges/obfs4.txt
 json=$(curl -fsS --max-time 60 -X POST -H 'Content-Type: application/vnd.api+json' \
   https://bridges.torproject.org/moat/circumvention/builtin -d '{}')
-new=$(printf '%s' "$json" | python3 -c '
+stale=0
+for kind in obfs4 snowflake; do
+  OUT=$ROOT/crates/enclave-tord/bridges/$kind.txt
+  new=$(printf '%s' "$json" | python3 -c '
 import json, sys
-lines = sorted(json.load(sys.stdin).get("obfs4", []))
-assert lines and all(l.startswith("obfs4 ") for l in lines), "no obfs4 bridges"
+kind = sys.argv[1]
+lines = sorted(json.load(sys.stdin).get(kind, []))
+assert lines and all(l.startswith(kind + " ") for l in lines), "no " + kind + " bridges"
 print("\n".join(lines))
-')
-if [ "${1:-}" = --check ]; then
-  if [ "$new" != "$(cat "$OUT")" ]; then
-    echo "::warning::The Tor Project's built-in obfs4 bridges changed: run ci/tor/builtin-bridges.sh"
-    diff <(cat "$OUT") <(printf '%s\n' "$new") || true
-    exit 1
+' "$kind")
+  if [ "${1:-}" = --check ]; then
+    if [ "$new" != "$(cat "$OUT")" ]; then
+      echo "::warning::The Tor Project's built-in $kind bridges changed: run ci/tor/builtin-bridges.sh"
+      diff <(cat "$OUT") <(printf '%s\n' "$new") || true
+      stale=1
+    fi
+  else
+    printf '%s\n' "$new" > "$OUT"
+    echo "$(wc -l < "$OUT") $kind bridges → $OUT"
   fi
+done
+if [ "${1:-}" = --check ]; then
+  [ "$stale" = 0 ] || exit 1
   echo "built-in bridges are current"
-else
-  printf '%s\n' "$new" > "$OUT"
-  echo "$(wc -l < "$OUT") obfs4 bridges → $OUT"
 fi
