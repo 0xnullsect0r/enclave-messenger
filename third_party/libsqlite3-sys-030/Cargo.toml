@@ -1,0 +1,32 @@
+# ENCLAVE PATCH (third_party/PATCHES.md): `libsqlite3-sys` 0.30.1 as a
+# re-export of 0.37. sqlx 0.8 (nym-sdk's storage) asks for 0.30 and
+# rusqlite 0.39 (arti's directory cache) for 0.37; both declare
+# `links = "sqlite3"`, so cargo won't put them in one program. With this in
+# place of 0.30 there is one SQLite, and the Nym client and Tor can share a
+# process, as they must on iOS (no helper processes).
+[package]
+name = "libsqlite3-sys"
+version = "0.30.1"
+edition = "2021"
+description = "libsqlite3-sys 0.30 for sqlx, answered by libsqlite3-sys 0.37"
+license = "MIT"
+publish = false
+
+[lib]
+name = "libsqlite3_sys"
+path = "src/lib.rs"
+
+[dependencies]
+sqlite = { package = "libsqlite3-sys", version = "=0.37.0" }
+
+[features]
+default = []
+bundled = ["sqlite/bundled"]
+bundled_bindings = ["sqlite/bundled_bindings"]
+bundled-windows = ["sqlite/bundled-windows"]
+unlock_notify = ["sqlite/unlock_notify"]
+cc = []
+pkg-config = []
+vcpkg = []
+min_sqlite_version_3_14_0 = []
+buildtime_bindgen = ["sqlite/buildtime_bindgen"]

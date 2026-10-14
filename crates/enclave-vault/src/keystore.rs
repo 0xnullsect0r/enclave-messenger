@@ -68,6 +68,10 @@ enum Platform {
         ring: &'static enclave_platform::keystore::secret_service::Keyring,
         prefix: String,
     },
+    /// Android and iOS: their keystores come with A1 and I1 (the file
+    /// keystore until then); no value of this exists.
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    None(std::convert::Infallible),
 }
 
 impl Platform {
@@ -150,10 +154,14 @@ impl Platform {
                 .into_iter()
                 .filter_map(|a| a.strip_prefix(prefix.as_str()).map(String::from))
                 .collect()),
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            Platform::None(never) => match *never {},
         }
     }
 }
 
+// On Android and iOS no platform keystore exists yet, so nothing here runs.
+#[cfg_attr(any(target_os = "ios", target_os = "android"), allow(unused_variables))]
 impl Keystore for Platform {
     fn create(&self, name: &str, secret: &[u8; 32]) -> Result<()> {
         let name = spelled(name);
@@ -178,12 +186,14 @@ impl Keystore for Platform {
             Platform::SecretService { ring, prefix } => {
                 ring.set(&format!("{prefix}{name}"), secret).map_err(ks_err)
             }
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            Platform::None(never) => match *never {},
         }
     }
 
     fn load(&self, name: &str) -> Result<Zeroizing<[u8; 32]>> {
         let name = spelled(name);
-        let bytes = match self {
+        let bytes: Zeroizing<Vec<u8>> = match self {
             #[cfg(target_os = "macos")]
             Platform::Keychain { prefix } => {
                 enclave_platform::keystore::keychain::get(&format!("{prefix}{name}"))
@@ -203,6 +213,8 @@ impl Keystore for Platform {
             Platform::SecretService { ring, prefix } => {
                 ring.get(&format!("{prefix}{name}")).map_err(ks_err)?
             }
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            Platform::None(never) => match *never {},
         };
         secret32(&bytes)
     }
@@ -231,6 +243,8 @@ impl Keystore for Platform {
             Platform::SecretService { ring, prefix } => {
                 ring.delete(&format!("{prefix}{name}")).map_err(ks_err)
             }
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            Platform::None(never) => match *never {},
         }
     }
 }

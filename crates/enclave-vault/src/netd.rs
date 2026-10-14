@@ -14,7 +14,7 @@ use enclave_rpc::ServerKey;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 type Pending = Arc<Mutex<HashMap<u32, oneshot::Sender<Result<Vec<u8>, String>>>>>;
@@ -102,11 +102,15 @@ struct Link {
     // Kept with the transport. When it goes, netd's stdin closes and netd
     // exits by itself once what was sent one way has left (at most 10 s),
     // so it isn't killed.
-    _child: Mutex<Child>,
+    _child: Box<dyn Send + Sync>,
 }
 
-/// Where `enclave-netd` should be: next to this executable.
+/// Where `enclave-netd` should be: next to this executable (or linked
+/// into it, where helpers run as threads: `enclave_platform::process`).
 pub fn netd_binary() -> Option<std::path::PathBuf> {
+    if enclave_platform::process::registered("enclave-netd") {
+        return Some("enclave-netd".into());
+    }
     let exe = std::env::current_exe().ok()?;
     let p = exe.with_file_name(format!("enclave-netd{}", std::env::consts::EXE_SUFFIX));
     p.exists().then_some(p)
@@ -118,25 +122,46 @@ impl Link {
         servers: &[(ServerId, String)],
         extra: &[String],
     ) -> std::io::Result<Self> {
-        let mut cmd = Command::new(bin);
-        enclave_platform::process::no_window(cmd.as_std_mut());
-        cmd.args(extra);
+        let mut args: Vec<String> = extra.to_vec();
         for (id, addr) in servers {
             let hex: String = id.iter().map(|b| format!("{b:02x}")).collect();
-            cmd.args(["--server", &format!("{hex}={addr}")]);
+            args.extend(["--server".to_string(), format!("{hex}={addr}")]);
         }
-        let mut child = cmd
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .spawn()?;
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| std::io::Error::other("no stdin"))?;
-        let mut stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| std::io::Error::other("no stdout"))?;
+        type Pipes = (
+            Box<dyn tokio::io::AsyncWrite + Send + Unpin>,
+            Box<dyn tokio::io::AsyncRead + Send + Unpin>,
+            Box<dyn Send + Sync>,
+        );
+        let (mut stdin, mut stdout, child): Pipes =
+            match enclave_platform::process::start("enclave-netd", args.clone())? {
+                // A thread of this process (Android, iOS).
+                Some(p) => {
+                    let (w, r) = enclave_ipc::stdio::pipes(p);
+                    (Box::new(w), Box::new(r), Box::new(()))
+                }
+                None => {
+                    let mut cmd = Command::new(bin);
+                    enclave_platform::process::no_window(cmd.as_std_mut());
+                    cmd.args(&args);
+                    let mut child = cmd
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .spawn()?;
+                    let stdin = child
+                        .stdin
+                        .take()
+                        .ok_or_else(|| std::io::Error::other("no stdin"))?;
+                    let stdout = child
+                        .stdout
+                        .take()
+                        .ok_or_else(|| std::io::Error::other("no stdout"))?;
+                    (
+                        Box::new(stdin),
+                        Box::new(stdout),
+                        Box::new(Mutex::new(child)),
+                    )
+                }
+            };
         let (out, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let alive = Arc::new(AtomicBool::new(true));
@@ -168,7 +193,7 @@ impl Link {
             out,
             pending,
             alive,
-            _child: Mutex::new(child),
+            _child: child,
         })
     }
 }

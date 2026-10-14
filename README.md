@@ -477,6 +477,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo xtask labels
 ```
 
+The packages are built the way the release workflow builds them
+(`.github/workflows/release.yml`):
+
+```
+cargo xtask dist                         # the desktop programs and a .tar.gz/.zip (needs Go for lyrebird)
+cargo xtask packager --formats wix,nsis  # Windows installers; --formats appimage on Linux
+cargo xtask bundle-macos                 # Enclave.app and the .dmg (on a Mac)
+apps/android/build.sh out                # APKs and the app bundle (Android SDK, NDK r28, cargo-ndk)
+apps/ios/bundle.sh out                   # the .ipa (on a Mac with Xcode); --simulator for the simulator
+```
+
 ## Cryptography at a glance
 
 | Role | Primitive |

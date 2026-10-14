@@ -19,7 +19,7 @@
 //! * `checksums DIR`: `SHA256SUMS` and `SHA3-512SUMS` for the files in `DIR`.
 //! * `version [TAG]`: print the version; with a tag (`vX.Y.Z[-pre]`), check
 //!   it names the workspace version and the AppStream metadata's newest
-//!   release.
+//!   release. `version --android-code [V]`: Android's `versionCode`.
 //!
 //! The version in file names and packages is `ENCLAVE_VERSION` when set
 //! (the release tag without its `v`), else the workspace's.
@@ -650,7 +650,45 @@ pub fn check_tag(tag: &str, workspace: &str, metainfo: &str) -> Result<(), Strin
     Ok(())
 }
 
+/// Android's `versionCode` for a version: X.Y.Z as XXYYZZ, then two
+/// digits that put release candidates before their release (`rc.N` is N,
+/// another pre-release 0, the release 99), so every later build is larger.
+pub fn android_code(v: &str) -> Result<u32, String> {
+    let (core, pre) = match v.split_once('-') {
+        Some((c, p)) => (c, Some(p)),
+        None => (v.split('+').next().unwrap_or(v), None),
+    };
+    let n: Vec<u32> = core
+        .split('.')
+        .map(|p| p.parse().map_err(|_| format!("{v}: not X.Y.Z")))
+        .collect::<Result<_, _>>()?;
+    let [x, y, z] = n[..] else {
+        return Err(format!("{v}: not X.Y.Z"));
+    };
+    if x > 2000 || y > 99 || z > 99 {
+        return Err(format!("{v}: too large for a versionCode"));
+    }
+    let tail = match pre {
+        None => 99,
+        Some(p) => p
+            .strip_prefix("rc.")
+            .and_then(|n| n.parse::<u32>().ok())
+            .map_or(0, |n| n.min(98)),
+    };
+    Ok(x * 1_000_000 + y * 10_000 + z * 100 + tail)
+}
+
 pub fn version_task(args: &[String]) -> ExitCode {
+    if args.first().map(String::as_str) == Some("--android-code") {
+        return exit((|| {
+            let v = match args.get(1) {
+                Some(v) => v.trim_start_matches('v').to_string(),
+                None => version()?,
+            };
+            println!("{}", android_code(&v)?);
+            Ok(())
+        })());
+    }
     exit((|| {
         let w = workspace_version()?;
         if let Some(tag) = args.first() {
@@ -812,6 +850,24 @@ mod tests {
         assert!(check_tag("1.2.3", "1.2.3", "1.2.3").is_err());
         assert!(check_tag("v1.2.3", "1.2.3", "1.2.2").is_err());
         assert_eq!(numeric("0.1.0-rc.1"), "0.1.0");
+    }
+
+    #[test]
+    fn android_codes_grow() {
+        let codes: Vec<u32> = [
+            "0.1.0-dryrun.abc",
+            "0.1.0-rc.1",
+            "0.1.0-rc.2",
+            "0.1.0",
+            "0.1.1",
+            "1.0.0",
+        ]
+        .iter()
+        .map(|v| android_code(v).unwrap())
+        .collect();
+        assert!(codes.windows(2).all(|w| w[0] < w[1]), "{codes:?}");
+        assert_eq!(android_code("1.2.3").unwrap(), 1_020_399);
+        assert!(android_code("1.2").is_err());
     }
 
     #[test]

@@ -127,6 +127,18 @@ allow-build-scripts = [
     "snow",
     "system-configuration-sys",
     "vergen",
+    # The app and its desktop helpers, built here too for Android and iOS
+    # (enclave-mobile), with the same reasons as ../deny.toml.
+    "atomic-polyfill",  # target-atomics cfg; obfs4 bridges (enclave-tord)
+    "core-foundation-sys",  # links CoreFoundation (camera, via nokhwa on macOS)
+    "curve25519-elligator2",  # backend cfg, as curve25519-dalek; obfs4 bridges
+    "derive-adhoc-macros",  # empty build script; obfs4 bridges (old tor-* crates)
+    "heapless",  # target cfg; obfs4 bridges (enclave-tord)
+    "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
+    "nokhwa-bindings-macos",  # links AVFoundation, CoreMedia, CoreVideo (camera scanning)
+    "objc_exception",  # one small Objective-C file catching exceptions (nokhwa on macOS)
+    "rfd",  # links AppKit on macOS; checks one dialog backend is chosen
+    "v4l2-sys-mit",  # bindgen over the kernel's videodev2.h (camera scanning on Linux)
     "ahash",
     "akd_core",
     "android-activity",  # Android entry point (Slint backend)

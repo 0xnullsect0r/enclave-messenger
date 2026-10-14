@@ -105,7 +105,8 @@ pub fn reduce_motion() -> bool {
     {
         portal_animations().is_some_and(|on| !on)
     }
-    #[cfg(not(any(unix, windows)))]
+    // Android and iOS read theirs with A1 and I1.
+    #[cfg(any(target_os = "ios", target_os = "android", not(any(unix, windows))))]
     false
 }
 

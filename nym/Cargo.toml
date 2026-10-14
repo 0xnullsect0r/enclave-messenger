@@ -4,7 +4,7 @@
 # anyway (docs/09-transport.md §1, docs/spikes/m4-network.md).
 [workspace]
 resolver = "3"
-members = ["enclave-nym-sdk", "enclave-ingress-bin", "enclave-nymd", "enclave-dev-proxy"]
+members = ["enclave-nym-sdk", "enclave-ingress-bin", "enclave-nymd", "enclave-dev-proxy", "enclave-mobile"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,3 +25,4 @@ nym-client-core = { path = "../third_party/nym-client-core" }
 nym-gateway-client = { path = "../third_party/nym-gateway-client" }
 nym-gateway-requests = { path = "../third_party/nym-gateway-requests" }
 nym-credential-storage = { path = "../third_party/nym-credential-storage" }
+libsqlite3-sys = { path = "../third_party/libsqlite3-sys-030" }

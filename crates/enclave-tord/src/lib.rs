@@ -18,6 +18,8 @@ pub mod obfs4pt;
 
 pub mod managed;
 
+pub mod daemon;
+
 #[cfg(feature = "launch")]
 pub mod launch;
 

@@ -4,7 +4,7 @@
 //! committed file is current.
 //!
 //! From `cargo metadata` of the main workspace (the app, vault, netd,
-//! mediad and tord) and of `nym/` (nymd): every package their normal
+//! mediad and tord) and of `nym/` (nymd, and the phone app): every package their normal
 //! dependencies reach on any platform (not build or dev dependencies, which
 //! don't ship), with its licence expression, and each licence file it
 //! carries (`LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`, `UNLICENSE`).
@@ -15,13 +15,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::ExitCode;
 
-const ROOTS: [&str; 6] = [
+const ROOTS: [&str; 7] = [
     "enclave-app",
     "enclave-vault",
     "enclave-netd",
     "enclave-mediad",
     "enclave-tord",
     "enclave-nymd",
+    "enclave-mobile",
 ];
 
 struct Pkg {
@@ -100,7 +101,12 @@ fn shipped(meta: &serde_json::Value) -> Vec<Pkg> {
         let Some(p) = by_id.get(id) else { continue };
         // Our own crates are under the licence at the top of the file (the
         // patched crates in third_party/ are not ours, and are listed).
-        if members.contains(id) {
+        let ours = p["source"].is_null()
+            && !p["manifest_path"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("third_party");
+        if members.contains(id) || ours {
             continue;
         }
         let dir = Path::new(p["manifest_path"].as_str().unwrap_or_default())

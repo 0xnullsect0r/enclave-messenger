@@ -1,11 +1,11 @@
-//! Every callback the UI declares is connected in `main.rs`. Slint lets an
+//! Every callback the UI declares is connected in `shell.rs`. Slint lets an
 //! unconnected callback compile and do nothing, which is how buttons go dead.
 
 #[test]
 fn every_ui_callback_is_connected() {
     let dir = env!("CARGO_MANIFEST_DIR");
     let ui = std::fs::read_to_string(format!("{dir}/ui/app.slint")).unwrap_or_default();
-    let main = std::fs::read_to_string(format!("{dir}/src/main.rs")).unwrap_or_default();
+    let main = std::fs::read_to_string(format!("{dir}/src/shell.rs")).unwrap_or_default();
     assert!(!ui.is_empty() && !main.is_empty());
     let mut missing = Vec::new();
     // Callbacks of the window itself: four-space indent inside AppWindow.

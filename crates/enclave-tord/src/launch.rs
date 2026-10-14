@@ -8,8 +8,9 @@ pub struct Running {
     /// Its loopback SOCKS5 port.
     pub port: u16,
     secret: String,
-    _stdin: tokio::process::ChildStdin,
-    _child: tokio::process::Child,
+    _stdin: Box<dyn tokio::io::AsyncWrite + Send + Unpin>,
+    /// The process (none when tord runs as a thread of this one).
+    _child: Option<tokio::process::Child>,
 }
 
 impl Running {
@@ -63,26 +64,51 @@ pub async fn start(
     extra: &[String],
     within: std::time::Duration,
 ) -> Result<Running, String> {
-    let mut cmd = tokio::process::Command::new(bin);
-    enclave_platform::process::no_window(cmd.as_std_mut());
-    cmd.arg("--state").arg(state).args(extra);
+    let mut args: Vec<String> = vec!["--state".into(), state.display().to_string()];
+    args.extend(extra.iter().cloned());
     if direct {
-        cmd.arg("--direct");
+        args.push("--direct".into());
     }
     if report {
-        cmd.arg("--report");
+        args.push("--report".into());
     }
-    let mut child = cmd
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("{}: {e}", bin.display()))?;
-    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
-        return Err("no pipes to enclave-tord".into());
+    type Pipes = (
+        Box<dyn tokio::io::AsyncWrite + Send + Unpin>,
+        Box<dyn tokio::io::AsyncRead + Send + Unpin>,
+        Option<tokio::process::Child>,
+    );
+    // A thread of this process where the helpers are linked in (Android,
+    // iOS), the program next to this one elsewhere.
+    let in_process = enclave_platform::process::start("enclave-tord", args.clone())
+        .map_err(|e| format!("enclave-tord: {e}"))?;
+    let (mut stdin, stdout, child): Pipes = match in_process {
+        Some(p) => (
+            Box::new(tokio::fs::File::from_std(p.stdin)),
+            Box::new(tokio::fs::File::from_std(p.stdout)),
+            None,
+        ),
+        None => {
+            let mut cmd = tokio::process::Command::new(bin);
+            enclave_platform::process::no_window(cmd.as_std_mut());
+            cmd.args(&args);
+            let mut child = cmd
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .map_err(|e| format!("{}: {e}", bin.display()))?;
+            let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+                return Err("no pipes to enclave-tord".into());
+            };
+            (Box::new(stdin), Box::new(stdout), Some(child))
+        }
     };
     stdin
         .write_all(format!("{secret}\n").as_bytes())
+        .await
+        .map_err(|e| format!("enclave-tord: {e}"))?;
+    stdin
+        .flush()
         .await
         .map_err(|e| format!("enclave-tord: {e}"))?;
     let mut line = String::new();
@@ -107,4 +133,33 @@ pub async fn start(
         _stdin: stdin,
         _child: child,
     })
+}
+
+#[cfg(all(test, feature = "dev-direct"))]
+mod tests {
+    /// Where the helpers share the app's process (Android, iOS), tord runs
+    /// as a thread and answers on its pipes as the program does.
+    #[tokio::test]
+    async fn starts_as_a_thread() {
+        enclave_platform::process::register("enclave-tord", crate::daemon::main_with);
+        let state =
+            std::env::temp_dir().join(format!("enclave-tord-thread-{}", std::process::id()));
+        let running = super::start(
+            std::path::Path::new("enclave-tord"),
+            &state,
+            "a".repeat(64),
+            true,
+            false,
+            &[],
+            std::time::Duration::from_secs(20),
+        )
+        .await
+        .unwrap();
+        assert_ne!(running.port, 0);
+        // Its SOCKS port answers.
+        tokio::net::TcpStream::connect(("127.0.0.1", running.port))
+            .await
+            .unwrap();
+        let _ = std::fs::remove_dir_all(state);
+    }
 }

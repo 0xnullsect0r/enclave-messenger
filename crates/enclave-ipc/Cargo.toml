@@ -13,7 +13,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-tokio = { version = "1", features = ["io-util"] }
+enclave-platform = { path = "../enclave-platform" }
+tokio = { version = "1", features = ["io-util", "fs"] }
 thiserror = "2"
 
 [dev-dependencies]

@@ -300,3 +300,38 @@ async fn learns_nym_routes() {
     assert_eq!(r.id, 2);
     assert_eq!(r.result.unwrap().len(), 4 + 56 + 1568);
 }
+
+/// Where helpers share the app's process (Android, iOS), netd runs as a
+/// thread on pipes and answers as the program does.
+#[tokio::test]
+async fn carries_requests_as_a_thread() {
+    enclave_platform::process::register("enclave-netd", enclave_netd::main_with);
+    let identity = CompositeSigningKey::generate(&mut HedgedRng::new().unwrap()).unwrap();
+    let server = enclave_federation::server_id(identity.public());
+    let addr = fake_server(identity).await;
+    let hex: String = server.iter().map(|b| format!("{b:02x}")).collect();
+    let p = enclave_platform::process::start(
+        "enclave-netd",
+        vec!["--server".into(), format!("{hex}={addr}")],
+    )
+    .unwrap()
+    .expect("registered");
+    let (mut stdin, mut stdout) = enclave_ipc::stdio::pipes(p);
+    let req = NetRequest::Exchange {
+        id: 7,
+        server,
+        bytes: vec![4, 5, 6],
+    };
+    frame::write_frame(&mut stdin, &req.encode()).await.unwrap();
+    let reply = NetReply::decode(&frame::read_frame(&mut stdout).await.unwrap()).unwrap();
+    assert_eq!((reply.id, reply.result), (7, Ok(vec![6, 5, 4])));
+    // Closing its input ends it, as with the program.
+    drop(stdin);
+    let end = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        frame::read_frame(&mut stdout),
+    )
+    .await
+    .unwrap();
+    assert!(end.is_err());
+}

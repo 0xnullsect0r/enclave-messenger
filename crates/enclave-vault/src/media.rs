@@ -37,8 +37,12 @@ struct Proc {
     _child: Box<dyn Send + Sync>,
 }
 
-/// Where `enclave-mediad` should be: next to this executable.
+/// Where `enclave-mediad` should be: next to this executable (or linked
+/// into it, where helpers run as threads: `enclave_platform::process`).
 pub fn mediad_binary() -> Option<std::path::PathBuf> {
+    if enclave_platform::process::registered("enclave-mediad") {
+        return Some("enclave-mediad".into());
+    }
     let exe = std::env::current_exe().ok()?;
     let p = exe.with_file_name(format!("enclave-mediad{}", std::env::consts::EXE_SUFFIX));
     p.exists().then_some(p)
@@ -46,6 +50,11 @@ pub fn mediad_binary() -> Option<std::path::PathBuf> {
 
 impl Proc {
     fn spawn(bin: &std::path::Path) -> std::io::Result<Self> {
+        // A thread of this process where the helpers are linked in.
+        if let Some(p) = enclave_platform::process::start("enclave-mediad", Vec::new())? {
+            let (w, r) = enclave_ipc::stdio::pipes(p);
+            return Ok(Self::run(w, r, Box::new(())));
+        }
         // Windows: in an AppContainer with no capabilities (no network, no
         // files of the user's), where the program is readable by it (an
         // installed build); otherwise as an ordinary process.

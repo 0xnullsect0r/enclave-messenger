@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Build Enclave for Android (release.yml `android`): the native library
+# for arm64-v8a and x86_64 (cargo-ndk, nym/ workspace), then the APKs and
+# the app bundle (Gradle), named for the release in OUT.
+#
+#   apps/android/build.sh OUT
+#
+# Needs ANDROID_HOME (SDK with platform 36 and build-tools), ANDROID_NDK_HOME
+# (r28), cargo-ndk, a JDK 17+, and the targets aarch64-linux-android and
+# x86_64-linux-android. The release key comes from ANDROID_KEYSTORE_FILE,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD;
+# without them a key is made for this run (it installs, but can't update a
+# release).
+set -euo pipefail
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+OUT=$(mkdir -p "$1" && cd "$1" && pwd)
+APP=$ROOT/apps/android
+V=${ENCLAVE_VERSION:-$(cd "$ROOT" && cargo xtask version)}
+export ENCLAVE_VERSION=$V
+ENCLAVE_VERSION_CODE=$(cd "$ROOT" && cargo xtask version --android-code "$V")
+export ENCLAVE_VERSION_CODE
+
+# Gradle, at a fixed version and checksum (no wrapper jar in the repository).
+GRADLE_VERSION=8.14.3
+GRADLE_SHA256=bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531
+GRADLE_DIR=$ROOT/target/gradle-$GRADLE_VERSION
+if [ ! -x "$GRADLE_DIR/bin/gradle" ]; then
+  mkdir -p "$ROOT/target"
+  zip=$ROOT/target/gradle-$GRADLE_VERSION-bin.zip
+  curl -fsSL "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip" -o "$zip"
+  echo "$GRADLE_SHA256  $zip" | sha256sum -c -
+  (cd "$ROOT/target" && unzip -q -o "$zip")
+fi
+
+# Slint's Android backend compiles a little Java against the platform.
+export ANDROID_JAR=${ANDROID_JAR:-$ANDROID_HOME/platforms/android-36/android.jar}
+
+# The native library, reproducibly (paths remapped, as `cargo xtask dist`).
+epoch=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}
+export SOURCE_DATE_EPOCH=$epoch
+export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$ROOT=/src"
+(cd "$ROOT/nym" && cargo ndk --platform 28 -t arm64-v8a -t x86_64 \
+  -o "$APP/app/src/main/jniLibs" build --release --locked -p enclave-mobile)
+
+if [ -z "${ANDROID_KEYSTORE_FILE:-}" ]; then
+  mkdir -p "$APP/app/build"
+  rm -f "$APP/app/build/run.keystore"
+  keytool -genkeypair -keystore "$APP/app/build/run.keystore" -storepass enclave-run -keypass enclave-run \
+    -alias enclave-run -keyalg EC -groupname secp384r1 -validity 30 -dname "CN=Enclave dry run" > /dev/null
+fi
+
+(cd "$APP" && "$GRADLE_DIR/bin/gradle" --no-daemon --console=plain assembleRelease bundleRelease)
+apks=$APP/app/build/outputs/apk/release
+cp "$apks/app-universal-release.apk" "$OUT/Enclave-$V-android.apk"
+cp "$apks/app-arm64-v8a-release.apk" "$OUT/Enclave-$V-android-arm64-v8a.apk"
+cp "$apks/app-x86_64-release.apk" "$OUT/Enclave-$V-android-x86_64.apk"
+cp "$APP/app/build/outputs/bundle/release/app-release.aab" "$OUT/Enclave-$V.aab"
+ls -la "$OUT"

@@ -11,6 +11,11 @@
 //!   `enclave-maskable.svg` (full bleed; the stores cut the shape).
 //! - `enclave.svg` and `enclave-symbolic.svg` copied as they are (Linux
 //!   scalable and symbolic icons).
+//! - `android/`: launcher icons for each screen density (`mipmap-*`), the
+//!   shaped icon for older Androids and, from Android 8, an adaptive icon
+//!   whose layer is the full-bleed one (the launcher cuts its shape).
+//! - `ios/AppIcon.appiconset`: the one 1024 px icon iOS scales from (full
+//!   bleed; iOS rounds the corners).
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -28,6 +33,31 @@ const ICNS_TYPES: [(&[u8; 4], u32); 8] = [
     (b"ic09", 512),
     (b"ic10", 1024),
 ];
+
+/// Android's adaptive icon: the full-bleed picture as the background layer.
+const ADAPTIVE: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_layer" />
+    <foreground android:drawable="@android:color/transparent" />
+</adaptive-icon>
+"#;
+
+/// The iOS app icon set: one universal 1024 px image.
+const IOS_CONTENTS: &str = r#"{
+  "images" : [
+    {
+      "filename" : "icon-1024.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
+"#;
 
 fn render(svg: &[u8], size: u32) -> Result<Vec<u8>, String> {
     use resvg::{tiny_skia, usvg};
@@ -110,6 +140,43 @@ fn outputs(design: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
     ));
     out.push(("store/ios-1024.png".into(), render(&maskable, 1024)?));
     out.push(("store/play-512.png".into(), render(&maskable, 512)?));
+    for (density, px) in [
+        ("mdpi", 48),
+        ("hdpi", 72),
+        ("xhdpi", 96),
+        ("xxhdpi", 144),
+        ("xxxhdpi", 192),
+    ] {
+        out.push((
+            format!("android/mipmap-{density}/ic_launcher.png"),
+            render(&main, px)?,
+        ));
+    }
+    // Adaptive icons are 108 dp, of which the launcher shows the middle 72.
+    for (density, px) in [
+        ("mdpi", 108),
+        ("hdpi", 162),
+        ("xhdpi", 216),
+        ("xxhdpi", 324),
+        ("xxxhdpi", 432),
+    ] {
+        out.push((
+            format!("android/mipmap-{density}/ic_launcher_layer.png"),
+            render(&maskable, px)?,
+        ));
+    }
+    out.push((
+        "android/mipmap-anydpi-v26/ic_launcher.xml".into(),
+        ADAPTIVE.as_bytes().to_vec(),
+    ));
+    out.push((
+        "ios/AppIcon.appiconset/icon-1024.png".into(),
+        render(&maskable, 1024)?,
+    ));
+    out.push((
+        "ios/AppIcon.appiconset/Contents.json".into(),
+        IOS_CONTENTS.as_bytes().to_vec(),
+    ));
     out.push(("enclave.svg".into(), main));
     out.push(("enclave-symbolic.svg".into(), mono));
     Ok(out)

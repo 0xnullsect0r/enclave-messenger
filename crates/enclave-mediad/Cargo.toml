@@ -12,6 +12,9 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "enclave-mediad"
 path = "src/main.rs"
@@ -20,6 +23,7 @@ path = "src/main.rs"
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-media = { path = "../enclave-media", features = ["av1"] }
 enclave-sandbox = { path = "../enclave-sandbox" }
+enclave-platform = { path = "../enclave-platform" }
 
 [dev-dependencies]
 png = "0.18"

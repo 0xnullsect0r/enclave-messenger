@@ -12,6 +12,9 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "enclave-netd"
 path = "src/main.rs"
@@ -31,7 +34,7 @@ enclave-rpc = { path = "../enclave-rpc" }
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-tord = { path = "../enclave-tord", default-features = false, features = ["launch"] }
 async-trait = "0.1"
-tokio = { version = "1", features = ["rt", "macros", "sync", "io-util", "io-std", "process", "time"] }
+tokio = { version = "1", features = ["rt", "macros", "sync", "io-util", "io-std", "process", "time", "fs"] }
 
 [dev-dependencies]
 # The tests reach servers over the development transport.

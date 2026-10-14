@@ -111,10 +111,15 @@ enclave-platform = { path = "../enclave-platform", features = ["window"] }
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-vault = { path = "../enclave-vault" }
 enclave-crypto = { path = "../enclave-crypto" }
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility", "raw-window-handle-06", "unstable-winit-030"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "accessibility", "raw-window-handle-06"] }
 qrcodegen = "1.8"
 png = "0.17"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }
+
+# Desktop: winit with OpenGL (femtovg, the software renderer as fallback),
+# and the system's dialogs, notifications, camera and clipboard.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-femtovg", "unstable-winit-030"] }
 arboard = { version = "3", default-features = false }
 # The system's file dialogs (the desktop portal on Linux, so they work in a
 # Flatpak too).
@@ -129,6 +134,15 @@ notify-rust = "4"
 nokhwa = { version = "0.10", default-features = false, features = ["input-native"] }
 rqrr = "0.11"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+
+# Android: Slint's own backend on the activity (OpenGL ES through femtovg).
+[target.'cfg(target_os = "android")'.dependencies]
+slint = { version = "1.18", default-features = false, features = ["backend-android-activity-06", "renderer-femtovg"] }
+
+# iOS: winit with the software renderer (no OpenGL on iOS, and no Skia
+# binaries to download).
+[target.'cfg(target_os = "ios")'.dependencies]
+slint = { version = "1.18", default-features = false, features = ["backend-winit", "unstable-winit-030"] }
 
 [dev-dependencies]
 # The tests run the demo.

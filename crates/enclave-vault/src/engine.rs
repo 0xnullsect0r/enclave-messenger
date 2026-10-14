@@ -402,7 +402,19 @@ pub fn spawn(mode: Mode) -> (mpsc::UnboundedSender<Cmd>, mpsc::UnboundedReceiver
             else {
                 return;
             };
-            rt.block_on(run(mode, rx, out_tx));
+            rt.block_on(async move {
+                // The helpers too where they run as threads of this process
+                // (Android, iOS): the network is theirs.
+                let helpers = if enclave_platform::process::registered("enclave-netd") {
+                    if matches!(mode, Mode::Server { .. }) {
+                        crate::keystore::prepare();
+                    }
+                    crate::helpers::start(&mode)
+                } else {
+                    Helpers::default()
+                };
+                run_with(mode, helpers, rx, out_tx).await;
+            });
         })
         .ok();
     (tx, out_rx)

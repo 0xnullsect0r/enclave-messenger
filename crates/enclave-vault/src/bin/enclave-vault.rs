@@ -110,88 +110,26 @@ where
     if matches!(mode, enclave_vault::Mode::Server { .. }) {
         enclave_vault::keystore::prepare();
     }
-    let net = start_netd(&mode);
-    if net.is_some() {
+    let helpers = enclave_vault::helpers::start(&mode);
+    if helpers.net.is_some() {
         report.network = "netd";
     }
-    let media = enclave_vault::media::mediad_binary()
-        .and_then(|b| enclave_vault::media::Media::spawn(&b, enclave_vault::media::SPARES).ok());
-    if media.is_some() {
+    if helpers.media.is_some() {
         report.media = "mediad";
     }
     // From here on only the profile is reachable, and (with netd) no TCP
     // connection can be opened (Linux; elsewhere this reports
     // "unavailable").
     let (rw, ro) = enclave_vault::harden::paths_for(&mode);
-    report.filesystem = enclave_vault::harden::filesystem(&rw, &ro, net.is_some());
+    report.filesystem = enclave_vault::harden::filesystem(&rw, &ro, helpers.net.is_some());
     // And no new sockets (or IP sockets only, when the network stayed in
     // this process), no programs, no debugging.
-    let profile = match (&mode, net.is_some()) {
+    let profile = match (&mode, helpers.net.is_some()) {
         (enclave_vault::Mode::Server { .. }, false) => enclave_vault::harden::Profile::Netd,
         _ => enclave_vault::harden::Profile::Vault,
     };
     report.syscalls = enclave_vault::harden::syscalls(profile, false);
-    let helpers = enclave_vault::Helpers { net, media };
     enclave_vault::serve_with(mode, helpers, s, &token)
         .await
         .is_ok()
-}
-
-fn start_netd(
-    mode: &enclave_vault::Mode,
-) -> Option<std::sync::Arc<dyn enclave_net::transport::Transport>> {
-    let enclave_vault::Mode::Server {
-        profile,
-        home,
-        others,
-        nym_env,
-        ..
-    } = mode
-    else {
-        return None;
-    };
-    let bin = enclave_vault::netd::netd_binary()?;
-    let servers: Vec<_> = home
-        .iter()
-        .chain(others)
-        .map(|(id, r)| (*id, r.to_string()))
-        .collect();
-    let mut extra: Vec<String> = if *nym_env {
-        vec!["--nym-env".into()]
-    } else {
-        Vec::new()
-    };
-    // Tor in front of the mixnet whenever this build ships enclave-tord
-    // (`docs/09-transport.md` §1): netd starts it, keeping Tor's state in
-    // the profile.
-    let tord = bin.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX));
-    if tord.exists() {
-        extra.push("--tor".into());
-        extra.push(profile.join("tor").to_string_lossy().into_owned());
-        // Bridges the user set (censorship mode).
-        extra.extend(enclave_vault::netd::bridge_args(profile));
-    }
-    // With a server list the servers are reached over the mixnet, their
-    // routes given once the list is read: the mixnet client starts anyway.
-    let listed = mode.has_server_list();
-    if listed {
-        extra.push("--mixnet".into());
-    }
-    // The mixnet client waits for its zk-nym tickets, which the vault
-    // gives it once it can read its wallet (`docs/09-transport.md` §7).
-    if listed
-        || home
-            .iter()
-            .chain(others)
-            .any(|(_, r)| matches!(r, enclave_net::transport::Route::Nym(_)))
-    {
-        extra.push("--await-tickets".into());
-    }
-    match enclave_vault::netd::PipeTransport::spawn(&bin, &servers, &extra) {
-        Ok(t) => Some(std::sync::Arc::new(t)),
-        Err(e) => {
-            eprintln!("enclave-vault: netd didn't start ({e}); using the network directly");
-            None
-        }
-    }
 }

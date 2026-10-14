@@ -20,6 +20,11 @@ LIST
 done
 cat <<LIST
 enclave-$V-universal2-apple-darwin.tar.gz
+Enclave-$V-android.apk
+Enclave-$V-android-arm64-v8a.apk
+Enclave-$V-android-x86_64.apk
+Enclave-$V.aab
+Enclave-$V-ios.ipa
 Enclave-$V-macos.dmg
 Enclave-$V-macos.app.zip
 enclave-operator-kit.tar.gz

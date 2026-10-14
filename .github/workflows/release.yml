@@ -1,7 +1,7 @@
 name: Release
 # Every artifact of a release (docs/completion-plan.md, R1): the desktop
 # programs for Linux, macOS and Windows with their packages and
-# installers, the service images on GHCR, the compose stack as an OCI
+# installers, the Android APKs and app bundle, the iOS app (and TestFlight), the service images on GHCR, the compose stack as an OCI
 # artifact, SBOMs, checksums with Sigstore bundles and build provenance,
 # then install tests and the AUR.
 #
@@ -12,8 +12,11 @@ name: Release
 #
 # Signing secrets live in environments with required reviewers:
 # release-apple (APPLE_DEVELOPER_ID_P12_BASE64, APPLE_DEVELOPER_ID_P12_PASSWORD,
-# APPLE_TEAM_ID, ASC_API_KEY_P8_BASE64, ASC_API_KEY_ID, ASC_API_KEY_ISSUER_ID)
-# and aur (AUR_SSH_PRIVATE_KEY, AUR_KNOWN_HOSTS). Windows ships unsigned
+# APPLE_TEAM_ID, ASC_API_KEY_P8_BASE64, ASC_API_KEY_ID, ASC_API_KEY_ISSUER_ID,
+# and for iOS IOS_DISTRIBUTION_P12_BASE64, IOS_DISTRIBUTION_P12_PASSWORD,
+# IOS_PROVISIONING_PROFILE_BASE64), release-android (ANDROID_KEYSTORE_BASE64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) and aur
+# (AUR_SSH_PRIVATE_KEY, AUR_KNOWN_HOSTS). Windows ships unsigned
 # until a certificate exists: the repository variable ENCLAVE_WIN_SIGN_CMD
 # (a command with %1 for the file) signs every program and installer.
 
@@ -300,6 +303,150 @@ jobs:
             target/dist/*.zip
           if-no-files-found: error
 
+  android:
+    name: Android (.apk, .aab)
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: ${{ needs.prepare.outputs.dry == 'true' && 'dry-run' || 'release-android' }}
+    env:
+      ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: SDK platform, build tools, NDK r28, Rust targets, cargo-ndk
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install --locked cargo-ndk@4.1.2
+      - name: Release key
+        if: needs.prepare.outputs.dry != 'true'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+      - name: Build (apps/android/build.sh)
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: apps/android/build.sh out
+      - name: Signed, 16 KB aligned
+        run: |
+          set -euo pipefail
+          bt=$ANDROID_HOME/build-tools/36.0.0
+          for apk in out/*.apk; do
+            "$bt/apksigner" verify --print-certs "$apk" | head -3
+            "$bt/zipalign" -c -P 16 4 "$apk"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-android
+          path: |
+            out/*.apk
+            out/*.aab
+          if-no-files-found: error
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+  install-android:
+    name: Install on an Android emulator (API 34)
+    needs: [prepare, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-android
+          path: dist
+      - name: KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Install, start, still running after 20 s, uninstall
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          script: |
+            adb install -r dist/Enclave-${{ needs.prepare.outputs.version }}-android.apk
+            adb shell am start -W -n io.github.enclavechat.enclave/android.app.NativeActivity
+            sleep 20
+            adb shell pidof io.github.enclavechat.enclave
+            adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | grep -q io.github.enclavechat.enclave
+            adb uninstall io.github.enclavechat.enclave
+
+  ios:
+    name: iOS (.ipa; TestFlight on a release)
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 180
+    environment: ${{ needs.prepare.outputs.dry == 'true' && 'dry-run' || 'release-apple' }}
+    env:
+      ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+      - name: Distribution certificate, provisioning profile, App Store Connect key
+        if: needs.prepare.outputs.dry != 'true'
+        env:
+          P12: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          ASC_P8: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          kc="$RUNNER_TEMP/ios.keychain-db"
+          kcpw=$(head -c 24 /dev/urandom | base64)
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
+          rm "$RUNNER_TEMP/dist.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          id=$(security find-identity -v -p codesigning "$kc" | awk '/Apple Distribution/{print $2; exit}')
+          test -n "$id"
+          echo "IOS_SIGN_IDENTITY=$id" >> "$GITHUB_ENV"
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/enclave.mobileprovision"
+          echo "IOS_PROFILE=$RUNNER_TEMP/enclave.mobileprovision" >> "$GITHUB_ENV"
+          echo "$ASC_P8" | base64 --decode > "$RUNNER_TEMP/asc.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
+      - name: The app for the simulator, started until its vault shows its first state
+        run: |
+          set -euo pipefail
+          apps/ios/bundle.sh sim --simulator
+          device=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              if "iOS" in runtime:
+                  for d in devices:
+                      if d["name"].startswith("iPhone"):
+                          print(d["udid"]); sys.exit()')
+          xcrun simctl boot "$device"
+          rm -rf sim/x && mkdir sim/x && (cd sim/x && unzip -q ../*.ipa)
+          xcrun simctl install "$device" sim/x/Payload/Enclave.app
+          timeout 180 xcrun simctl launch --console-pty "$device" io.github.enclavechat.enclave --smoke-exit | tee sim/launch.log
+          grep -q 'enclave: started' sim/launch.log
+      - name: The app for devices (signed and sent to TestFlight on a release)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+        run: apps/ios/bundle.sh out
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-ios
+          path: out/*.ipa
+          if-no-files-found: error
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8" "$RUNNER_TEMP/enclave.mobileprovision"; security delete-keychain "$RUNNER_TEMP/ios.keychain-db" 2>/dev/null || true
+
   images:
     name: Service image ${{ matrix.image }} (${{ matrix.platform }})
     needs: prepare
@@ -518,7 +665,7 @@ jobs:
 
   finalize:
     name: Checksums, signatures, provenance, publish
-    needs: [prepare, linux, flatpak, macos, windows, operator-kit, sbom, repro-check]
+    needs: [prepare, linux, flatpak, macos, windows, android, ios, operator-kit, sbom, repro-check]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

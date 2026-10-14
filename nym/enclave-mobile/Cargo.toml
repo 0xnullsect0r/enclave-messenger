@@ -1,0 +1,35 @@
+[package]
+name = "enclave-mobile"
+description = "Enclave on Android and iOS: the app with its vault and helpers in one process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+# The workspace forbids `unsafe`; this crate needs it twice, each marked:
+# the entry point Android looks up by name, and setting the proxy
+# variables once at start.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "deny"
+
+[lib]
+# Android loads libenclave_mobile.so; the rlib serves the iOS program.
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "enclave-ios"
+path = "src/bin/enclave-ios.rs"
+
+[dependencies]
+enclave-app = { path = "../../crates/enclave-app" }
+enclave-crypto = { path = "../../crates/enclave-crypto" }
+enclave-mediad = { path = "../../crates/enclave-mediad" }
+enclave-netd = { path = "../../crates/enclave-netd" }
+enclave-platform = { path = "../../crates/enclave-platform" }
+enclave-tord = { path = "../../crates/enclave-tord" }
+enclave-nymd = { path = "../enclave-nymd" }
+slint = { version = "1.18", default-features = false }

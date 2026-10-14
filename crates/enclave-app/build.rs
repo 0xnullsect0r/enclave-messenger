@@ -2,6 +2,15 @@
 #![allow(clippy::expect_used, clippy::panic)]
 
 fn main() {
+    // `desktop`: Linux, macOS and Windows, where the app has the system's
+    // file dialogs, notifications, camera and clipboard through desktop
+    // crates; Android and iOS get theirs from the platform (milestones A1
+    // and I1).
+    println!("cargo::rustc-check-cfg=cfg(desktop)");
+    let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if os != "android" && os != "ios" {
+        println!("cargo::rustc-cfg=desktop");
+    }
     let tokens_path = "../../design/tokens.toml";
     println!("cargo:rerun-if-changed={tokens_path}");
     let text = std::fs::read_to_string(tokens_path).expect("design/tokens.toml");
