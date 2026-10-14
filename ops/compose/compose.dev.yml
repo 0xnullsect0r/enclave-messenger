@@ -12,6 +12,14 @@ services:
   front:
     environment:
       ENCLAVE_FRONT__TLS: self-signed
+  # Over TCP the stack needs no Nym clients (`--profile nym` adds them),
+  # and a development stack isn't updated behind its developer's back.
+  ingress:
+    profiles: [nym]
+  push-egress:
+    profiles: [nym]
+  updater:
+    profiles: [updater]
 
 networks:
   dev: {}

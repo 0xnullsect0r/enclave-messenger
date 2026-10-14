@@ -306,7 +306,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [server, nym]
+        image: [server, nym, updater]
         platform: [amd64, arm64]
         include:
           - { platform: amd64, runner: ubuntu-24.04 }
@@ -383,7 +383,7 @@ jobs:
           PRE: ${{ needs.prepare.outputs.prerelease }}
         run: |
           set -euo pipefail
-          for image in server nym; do
+          for image in server nym updater; do
             repo=$REGISTRY/enclave-$image
             tags=(-t "$repo:$V")
             [ "$PRE" = true ] || tags+=(-t "$repo:latest")
@@ -403,14 +403,17 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/enclave-nym
           subject-digest: ${{ steps.merge.outputs.nym }}
           push-to-registry: true
-      - name: The compose stack as an OCI artifact, its images pinned by digest
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/enclave-updater
+          subject-digest: ${{ steps.merge.outputs.updater }}
+          push-to-registry: true
+      - name: The compose stack as an OCI artifact
         env:
           V: ${{ needs.prepare.outputs.version }}
-          SERVER: ${{ steps.merge.outputs.server }}
-          NYM: ${{ steps.merge.outputs.nym }}
         run: |
           set -euo pipefail
-          ci/release/stack.sh "$V" "$SERVER" "$NYM" stack
+          ci/release/stack.sh "$V" stack
           (cd stack && docker compose -f compose.yml publish --yes "$REGISTRY/enclave-stack:$V")
           echo "Operators: docker compose -f oci://$REGISTRY/enclave-stack:$V up -d" >> "$GITHUB_STEP_SUMMARY"
 
@@ -425,12 +428,15 @@ jobs:
           V: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          # Digests are filled in by images-merge; here the tags stand in.
-          ci/release/stack.sh "$V" "" "" stack
-          (cd stack && cp .env.example .env && docker compose -f compose.yml config -q)
+          # enclave-stack/: the production compose files, .env.example,
+          # config examples and the operator guide. A fixed name, so
+          # releases/latest/download/enclave-operator-kit.tar.gz always works.
+          ci/release/stack.sh "$V" enclave-stack
+          cp -r ops/operator-kit enclave-stack/guide
+          (cd enclave-stack && cp .env.example .env && docker compose -f compose.yml config -q && rm .env)
           mkdir -p out
           tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
-            -czf "out/enclave-operator-kit-$V.tar.gz" ops/operator-kit ops/compose
+            -czf out/enclave-operator-kit.tar.gz enclave-stack
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-operator-kit

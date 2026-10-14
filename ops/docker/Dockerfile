@@ -4,6 +4,7 @@
 #
 #   docker build -f ops/docker/Dockerfile --target server -t enclave-server .
 #   docker build -f ops/docker/Dockerfile --target nym -t enclave-nym .
+#   docker build -f ops/docker/Dockerfile --target updater -t enclave-updater .
 #
 # `server` holds every service an operator's stack runs except the Nym
 # sidecar: enclave-server, enclave-witness, enclave-front, enclave-relay,
@@ -21,6 +22,8 @@
 
 ARG RUST_IMAGE=rust:1.94.1-slim-bookworm@sha256:cf9dd0ec73e75f827fe59123fff9dc65af1a1c8363c3c31ee8d7f8ad0b6a5fb2
 ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
+ARG DOCKER_CLI_IMAGE=docker:28.5-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d
+ARG COSIGN_IMAGE=ghcr.io/sigstore/cosign/cosign:v3.1.3@sha256:9e5c2f2edc34351160407ca3416c61855bdf9403c3c5936e0f0be7fc261611b8
 
 FROM ${RUST_IMAGE} AS build
 ENV CARGO_HOME=/cargo \
@@ -102,3 +105,17 @@ USER nonroot:nonroot
 WORKDIR /var/lib/enclave
 ENTRYPOINT ["/usr/local/bin/enclave-ingress"]
 CMD ["run"]
+
+# The stack's updater (ops/updater/update.sh, compose service `updater`):
+# the Docker CLI with compose, and cosign to check each release image's
+# signature before it runs.
+FROM ${COSIGN_IMAGE} AS cosign
+
+FROM ${DOCKER_CLI_IMAGE} AS updater
+LABEL org.opencontainers.image.title="enclave-updater" \
+      org.opencontainers.image.description="Keeps an Enclave stack on the newest signed release" \
+      org.opencontainers.image.source="https://github.com/EnclaveChat/Enclave" \
+      org.opencontainers.image.licenses="GPL-3.0-only"
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+COPY ops/updater/update.sh /usr/local/bin/enclave-updater
+ENTRYPOINT ["/usr/local/bin/enclave-updater"]

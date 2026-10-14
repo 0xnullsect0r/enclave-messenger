@@ -404,6 +404,9 @@ jobs:
           cargo xtask version
           ci/release/manifest.sh "$(cargo xtask version)" | sort | uniq -d | (! grep .)
           python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" packaging/flatpak/io.github.EnclaveChat.Enclave.yml
+          ci/readme-compose.sh --check
+          shellcheck ops/updater/update.sh ci/readme-compose.sh packaging/flatpak/flathub.sh
+          (cd ops/compose && cp .env.example .env && docker compose config -q && rm .env)
       - id: changes
         name: Did packaging change? (then the release workflow runs as a dry run)
         env:
@@ -413,7 +416,7 @@ jobs:
           changed=true
           if git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
             files=$(git diff --name-only "$BEFORE" HEAD)
-            if ! echo "$files" | grep -Eq '^(packaging/|ci/release/|ci/tor/lyrebird\.sh|xtask/src/dist\.rs|\.github/workflows/release\.yml|crates/enclave-app/(build\.rs|Cargo\.toml)|ops/docker/|ops/compose/compose\.yml)'; then
+            if ! echo "$files" | grep -Eq '^(packaging/|apps/|crates/enclave-mobile/|ci/release/|ci/tor/lyrebird\.sh|xtask/src/dist\.rs|\.github/workflows/release\.yml|crates/enclave-app/(build\.rs|Cargo\.toml)|ops/docker/|ops/updater/|ops/compose/compose\.yml)'; then
               changed=false
             fi
           fi

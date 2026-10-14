@@ -26,6 +26,9 @@ services:
   # the host.
   credgate:
     extra_hosts: ["host.docker.internal:host-gateway"]
+  # The stacks run the images this commit built, not a release.
+  updater:
+    profiles: [updater]
 
 networks:
   federation:

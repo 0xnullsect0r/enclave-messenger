@@ -2,7 +2,7 @@
 # egress join `enclave-nymnet` and use the localnet's topology and nym-api
 # stand-in instead of mainnet. Development and CI only.
 #
-#   docker compose -f compose.yml -f compose.localnet-stack.yml --profile nym up -d
+#   docker compose -f compose.yml -f compose.localnet-stack.yml up -d
 
 x-localnet: &localnet
   environment:

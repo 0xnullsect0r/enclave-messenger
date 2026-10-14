@@ -3,15 +3,12 @@
 One operator runs one stack: the server (keys, inboxes, key-transparency
 log), a witness (cosigns other operators' logs), the front (the stack's
 only HTTPS surface), a call relay and, optionally, a push relay. They come
-as one image, `ghcr.io/enclavechat/enclave-server`, and one compose file,
-`ops/compose/compose.yml`. See `docs/12-servers.md` for what each part does.
-
-> **Status.** Production servers are reached only through the Nym mixnet,
-> by the ingress sidecar (`ghcr.io/enclavechat/enclave-nym`, compose
-> profile `nym`). It becomes the only way in once milestone S4 makes the
-> production compose Nym-only. Until then a stack can be run and tested
-> (the CI job `federation-e2e-tcp` runs three), but it is not ready for
-> users.
+as images on GHCR, `ghcr.io/enclavechat/enclave-server` (every service but
+the Nym client), `ghcr.io/enclavechat/enclave-nym` (the Nym ingress, the
+only way devices reach the server) and `ghcr.io/enclavechat/enclave-updater`,
+and one compose file, `ops/compose/compose.yml`, also published with each
+release as `oci://ghcr.io/enclavechat/enclave-stack:<version>`. See
+`docs/12-servers.md` for what each part does.
 
 ## What you need
 
@@ -78,12 +75,27 @@ They take it only if it verifies and is newer.
 
 ## Updating the software
 
-Set `ENCLAVE_VERSION` in `.env` to the new release (or pin a digest:
-`ENCLAVE_VERSION=1.2.0@sha256:…`), then:
+By default the stack updates itself. The `updater` service checks every
+hour (`ENCLAVE_UPDATE_INTERVAL`) whether `ENCLAVE_VERSION` (`latest`)
+names new images; it takes them only when every one carries a valid
+Sigstore signature from this repository's release workflow, pulls exactly
+the digests it checked, recreates the containers whose image changed, and
+then replaces itself. Its log says what it did:
+
+```sh
+docker compose logs updater
+```
+
+To stay on one release, set `ENCLAVE_VERSION=1.2.0` in `.env`. To update by
+hand instead, set `ENCLAVE_AUTO_UPDATE=0` and run:
 
 ```sh
 docker compose pull && docker compose up -d
 ```
+
+The updater holds the Docker socket, which is root on the host; that is the
+price of updating unattended. Run compose from the stack's folder (the
+folder is mounted at the same path inside the updater).
 
 Releases are reproducible: building the published commit with
 `ops/docker/Dockerfile` gives the same binaries (`cargo xtask repro`). From
@@ -203,7 +215,7 @@ to your server through Tor, never in Maximum privacy. It needs your stack to
 run the onion service (profile `onion`, recommended):
 
 ```sh
-docker compose --profile nym --profile onion up -d
+docker compose --profile onion up -d
 ```
 
 `onion` publishes an onion service in front of the server and writes its

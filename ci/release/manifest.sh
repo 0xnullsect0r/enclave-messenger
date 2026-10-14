@@ -22,6 +22,6 @@ cat <<LIST
 enclave-$V-universal2-apple-darwin.tar.gz
 Enclave-$V-macos.dmg
 Enclave-$V-macos.app.zip
-enclave-operator-kit-$V.tar.gz
+enclave-operator-kit.tar.gz
 enclave-$V-sbom.tar.gz
 LIST
