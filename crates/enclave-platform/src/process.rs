@@ -75,9 +75,10 @@ pub fn registered(name: &str) -> bool {
     registry().lock().is_ok_and(|r| r.contains_key(name))
 }
 
-/// Whether this code runs as a helper thread ([`start`]) rather than in a
-/// process of its own: process-wide steps (confining the process) are left
-/// to the process.
+/// Whether this code runs as a helper thread ([`start`], [`serve`]) rather
+/// than as a program of its own: process-wide steps (confining the
+/// process) are left to the process, or to the system's sandbox for the
+/// app's helper processes (Android's `isolatedProcess`).
 pub fn in_process() -> bool {
     IN_PROCESS.with(std::cell::Cell::get)
 }
@@ -118,10 +119,24 @@ pub struct InProcess {
     pub stdout: std::fs::File,
 }
 
-/// Start the registered helper `name` with `args` on a thread of its own,
-/// connected by pipes as a child process would be (`None` when it isn't
-/// registered: start the program instead). It ends when its input closes,
-/// as the programs do.
+/// Where a helper can run in a process of its own though the app starts
+/// no programs (Android: a service of the app's in another process,
+/// `HelperService`): given the helper's name and arguments, the app's ends
+/// of its connection, or `None` to run it as a thread instead.
+pub type Remote = fn(&str, &[String]) -> Option<InProcess>;
+
+static REMOTE: std::sync::OnceLock<Remote> = std::sync::OnceLock::new();
+
+/// Start registered helpers through `f` first ([`Remote`]; once, at start).
+pub fn set_remote(f: Remote) {
+    let _ = REMOTE.set(f);
+}
+
+/// Start the registered helper `name` with `args`: in a process of the
+/// app's where there is a way ([`set_remote`]), else on a thread of its
+/// own, connected by pipes as a child process would be (`None` when it
+/// isn't registered: start the program instead). It ends when its input
+/// closes, as the programs do.
 pub fn start(name: &str, args: Vec<String>) -> std::io::Result<Option<InProcess>> {
     let entry = match registry().lock() {
         Ok(r) => match r.get(name) {
@@ -130,12 +145,37 @@ pub fn start(name: &str, args: Vec<String>) -> std::io::Result<Option<InProcess>
         },
         Err(_) => return Ok(None),
     };
+    if let Some(remote) = REMOTE.get()
+        && let Some(p) = remote(name, &args)
+    {
+        return Ok(Some(p));
+    }
     let (child_in, parent_in) = std::io::pipe()?;
     let (parent_out, child_out) = std::io::pipe()?;
     let assigned = Stdio {
         input: file_from_reader(child_in),
         output: file_from_writer(child_out),
     };
+    run(name, entry, args, assigned)?;
+    Ok(Some(InProcess {
+        stdin: file_from_writer(parent_in),
+        stdout: file_from_reader(parent_out),
+    }))
+}
+
+/// Run the registered helper `name` with `args` on a thread of its own,
+/// reading and writing `io`: in a helper process of the app's, on the
+/// connection the app handed over ([`Remote`]).
+pub fn serve(name: &str, args: Vec<String>, io: Stdio) -> std::io::Result<()> {
+    let entry = registry()
+        .lock()
+        .ok()
+        .and_then(|r| r.get(name).copied())
+        .ok_or_else(|| std::io::Error::other(format!("no helper {name}")))?;
+    run(name, entry, args, io)
+}
+
+fn run(name: &str, entry: Entry, args: Vec<String>, assigned: Stdio) -> std::io::Result<()> {
     std::thread::Builder::new()
         .name(name.to_string())
         .spawn(move || {
@@ -145,10 +185,7 @@ pub fn start(name: &str, args: Vec<String>) -> std::io::Result<Option<InProcess>
             // The helper's pipe ends close with it (if it didn't take them).
             ASSIGNED.with(|a| a.borrow_mut().take());
         })?;
-    Ok(Some(InProcess {
-        stdin: file_from_writer(parent_in),
-        stdout: file_from_reader(parent_out),
-    }))
+    Ok(())
 }
 
 #[cfg(unix)]

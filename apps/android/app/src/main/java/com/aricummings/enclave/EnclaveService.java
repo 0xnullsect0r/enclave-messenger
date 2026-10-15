@@ -159,6 +159,11 @@ public class EnclaveService extends Service {
                 .build());
     }
 
+    /** A helper in its own process (HelperService.start). */
+    public int startHelper(String name, String[] args) {
+        return HelperService.start(this, name, args);
+    }
+
     public boolean keySet(String account, byte[] secret) {
         return Keys.set(this, account, secret);
     }

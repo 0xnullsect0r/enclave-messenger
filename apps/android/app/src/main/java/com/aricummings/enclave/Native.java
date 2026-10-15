@@ -30,6 +30,9 @@ final class Native {
     /** Start the vault on `profile` with no window, `service` serving it. */
     static native void start(Object service, String profile);
 
+    /** In a helper process: run helper `name` on the socket `fd` (HelperService). */
+    static native void helper(String name, String[] args, int fd);
+
     /** Hand the vault an event (see the constants). */
     static native void event(int kind, String data);
 }

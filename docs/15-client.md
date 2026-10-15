@@ -44,6 +44,7 @@ Today the desktop app runs as **four** processes: the Slint UI (`enclave`), the 
 - The network service runs in its own `android:process` (the netd role).
 - Decoders run in an `isolatedProcess` service (the mediad role).
 - The app process holds the vault role and the Slint UI (the UI never receives key material through the command API).
+- **As implemented** (A1, A2): the app is one library (`nym/enclave-mobile`) with every helper linked in (`enclave_platform::process`). The vault runs in the app's process, on a thread that outlives the window (`enclave_app::vault::phone`). When it starts netd or mediad, `HelperService.start` binds `HelperService$Net` (`android:process=":net"`) or `HelperService$Media` (`android:isolatedProcess="true"`, `:media`) from the application context and hands the service one end of a socket pair over Binder (`ParcelFileDescriptor`); the service loads the same library and runs the helper on that socket (`Native.helper`, `process::serve`), speaking its usual protocol as a program would on its standard input and output. netd brings tord and nymd with it as threads of `:net`; mediad has no network, no files and no permissions. Neither confines itself further (`process::in_process`): Android's sandbox for the process does that. When the bind fails the helper runs as a thread of the app, and says so in the log. A closed socket ends the helper, as a closed pipe does on the desktop; a crash is a dead connection, so the vault moves to netd's spare or restarts mediad.
 
 ### 1.3 iOS
 

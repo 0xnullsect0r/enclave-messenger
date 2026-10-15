@@ -41,9 +41,23 @@ fn args(profile: &std::path::Path) -> Vec<String> {
     ]
 }
 
-/// The helpers as threads and Tor's variables, once per process (the
-/// service and each new window both come here).
+/// The helpers, Tor's variables and (Android) the helper processes, once
+/// per process (the service and each new window both come here).
 fn prepare() {
+    register_helpers();
+    #[cfg(target_os = "android")]
+    {
+        static REMOTE: std::sync::Once = std::sync::Once::new();
+        REMOTE.call_once(|| {
+            enclave_platform::process::set_remote(enclave_platform::phone::android::helper_process)
+        });
+    }
+    tor_once();
+}
+
+/// The helpers linked into the app, runnable as threads or in a helper
+/// process.
+fn register_helpers() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         enclave_platform::process::register("enclave-netd", enclave_netd::main_with);
@@ -51,8 +65,12 @@ fn prepare() {
         enclave_platform::process::register("enclave-nymd", enclave_nymd::main_with);
         enclave_platform::process::register("enclave-mediad", enclave_mediad::main_with);
         enclave_tord::managed::set_in_process(lyrebird::start);
-        tor_variables();
     });
+}
+
+fn tor_once() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(tor_variables);
 }
 
 /// Snowflake and WebTunnel (`docs/09-transport.md` §7): lyrebird's clients
@@ -207,4 +225,40 @@ extern "system" fn Java_com_aricummings_enclave_Native_event(
 ) {
     let data: String = env.get_string(&data).map(String::from).unwrap_or_default();
     enclave_platform::phone::android::event(kind, &data);
+}
+
+/// Java's `Native.helper(name, args, fd)`, in a helper process of the
+/// app's (`HelperService`): run that helper on the socket the app handed
+/// over. netd (in `:net`) brings Tor and the mixnet client with it as
+/// threads; mediad runs in the `isolatedProcess` `:media`, with no network
+/// and no files.
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+extern "system" fn Java_com_aricummings_enclave_Native_helper(
+    mut env: jni::JNIEnv<'_>,
+    _class: jni::objects::JClass<'_>,
+    name: jni::objects::JString<'_>,
+    args: jni::objects::JObjectArray<'_>,
+    fd: jni::sys::jint,
+) {
+    register_helpers();
+    let Ok(name) = env.get_string(&name).map(String::from) else {
+        return;
+    };
+    let n = env.get_array_length(&args).unwrap_or(0);
+    let args: Vec<String> = (0..n)
+        .filter_map(|i| {
+            let o = env.get_object_array_element(&args, i).ok()?;
+            env.get_string(&jni::objects::JString::from(o))
+                .ok()
+                .map(String::from)
+        })
+        .collect();
+    if name == "enclave-netd" {
+        tor_once();
+    }
+    if let Err(e) = enclave_platform::phone::android::serve_helper(&name, args, fd) {
+        eprintln!("enclave: {name}: {e}");
+    }
 }

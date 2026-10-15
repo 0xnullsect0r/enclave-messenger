@@ -259,3 +259,68 @@ pub fn event(kind: i32, data: &str) {
     };
     super::emit(e);
 }
+
+/// Android: start helper `name` in a process of the app's
+/// (`HelperService`: netd in `:net`, mediad in the `isolatedProcess`
+/// `:media`), connected by a socket handed over through Binder
+/// (`EnclaveActivity.startHelper`, on the activity or the service). `None`
+/// when that isn't possible (another helper, or no activity or service
+/// yet): it then runs as a thread.
+pub fn helper_process(name: &str, args: &[String]) -> Option<crate::process::InProcess> {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    if !matches!(name, "enclave-netd" | "enclave-mediad") {
+        return None;
+    }
+    let fd = with_any(|env, a| {
+        let n = env.new_string(name)?;
+        let arr = env.new_object_array(
+            i32::try_from(args.len()).unwrap_or(0),
+            "java/lang/String",
+            jni::objects::JObject::null(),
+        )?;
+        for (i, s) in args.iter().enumerate() {
+            let s = env.new_string(s)?;
+            env.set_object_array_element(&arr, i32::try_from(i).unwrap_or(0), s)?;
+        }
+        env.call_method(
+            a,
+            "startHelper",
+            "(Ljava/lang/String;[Ljava/lang/String;)I",
+            &[JValue::Object(&n), JValue::Object(&arr)],
+        )?
+        .i()
+    })?;
+    if fd < 0 {
+        eprintln!("enclave: {name} runs in the app's process (its own couldn't start)");
+        return None;
+    }
+    // SAFETY: Java detached this descriptor (its end of the socket pair)
+    // and handed it to us; nothing else owns or closes it.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let other = fd.try_clone().ok()?;
+    Some(crate::process::InProcess {
+        stdin: fd.into(),
+        stdout: other.into(),
+    })
+}
+
+/// In a helper process: run helper `name` on the socket `fd` the app
+/// handed over (`Native.helper`).
+pub fn serve_helper(name: &str, args: Vec<String>, fd: i32) -> std::io::Result<()> {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    if fd < 0 {
+        return Err(std::io::Error::other("no connection"));
+    }
+    // SAFETY: Java detached the descriptor it received and gave it to us
+    // alone.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let input = fd.try_clone()?;
+    crate::process::serve(
+        name,
+        args,
+        crate::process::Stdio {
+            input: input.into(),
+            output: fd.into(),
+        },
+    )
+}

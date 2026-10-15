@@ -62,6 +62,18 @@
                 android:value="Keeps an end-to-end encrypted messenger connected to its mixnet so messages arrive without Google's push service, or fetches them after a push woke it." />
         </service>
 
+        <!-- The helpers in processes of their own (HelperService): the
+             network in ":net", the media parsers isolated in ":media". -->
+        <service
+            android:name=".HelperService$Net"
+            android:process=":net"
+            android:exported="false" />
+        <service
+            android:name=".HelperService$Media"
+            android:process=":media"
+            android:isolatedProcess="true"
+            android:exported="false" />
+
         <receiver
             android:name=".EnclaveService$Boot"
             android:exported="false">

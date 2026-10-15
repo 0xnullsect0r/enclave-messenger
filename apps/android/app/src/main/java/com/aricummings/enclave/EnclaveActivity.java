@@ -468,6 +468,11 @@ public class EnclaveActivity extends android.app.NativeActivity {
     // Keystore --------------------------------------------------------------
 
     /** Keep `secret` under `account`, sealed to a key in the Android Keystore. */
+    /** A helper in its own process (HelperService.start). */
+    public int startHelper(String name, String[] args) {
+        return HelperService.start(this, name, args);
+    }
+
     public boolean keySet(String account, byte[] secret) {
         return Keys.set(this, account, secret);
     }
