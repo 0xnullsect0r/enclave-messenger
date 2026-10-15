@@ -396,8 +396,15 @@ impl Deliverer {
         let url = format!("{}/3/device/{device}", cfg.endpoint.trim_end_matches('/'));
         // The generic alert; the notification extension replaces it with
         // the capsule's name and preview when it opens (`10-push.md` §5.1).
+        // `content-available` also lets the app, if it is still in memory,
+        // fetch at once.
         let mut body = serde_json::json!({
-            "aps": {"alert": {"body": "New message"}, "mutable-content": 1, "sound": "default"},
+            "aps": {
+                "alert": {"body": "New message"},
+                "mutable-content": 1,
+                "content-available": 1,
+                "sound": "default",
+            },
         });
         if !d.capsule.is_empty() {
             body["c"] = serde_json::Value::String(b64(&d.capsule, false));

@@ -57,6 +57,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Enclave uses the camera only to scan codes (invites, meeting in person, linking a device). Frames never leave the app.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Enclave sends your message history straight to your other device on this network when you link them.</string>
 </dict>

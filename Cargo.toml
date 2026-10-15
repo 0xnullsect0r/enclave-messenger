@@ -17,6 +17,7 @@ members = [
     "crates/enclave-vault",
     "crates/enclave-sandbox",
     "crates/enclave-platform",
+    "crates/enclave-nse",
     "crates/enclave-netd",
     "crates/enclave-av1",
     "crates/enclave-media",

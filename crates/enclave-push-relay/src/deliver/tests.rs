@@ -199,6 +199,7 @@ async fn apns_over_http2_with_a_provider_token() {
     assert_eq!(header(s, "apns-push-type"), "alert");
     let body: serde_json::Value = serde_json::from_slice(&s.body).unwrap();
     assert_eq!(body["aps"]["mutable-content"], 1);
+    assert_eq!(body["aps"]["content-available"], 1);
     assert_eq!(body["aps"]["alert"]["body"], "New message");
     assert_eq!(b64_decode(body["c"].as_str().unwrap()).unwrap(), capsule);
     let none: serde_json::Value = serde_json::from_slice(&seen[1].body).unwrap();

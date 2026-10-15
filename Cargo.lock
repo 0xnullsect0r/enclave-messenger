@@ -3091,6 +3091,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "enclave-nse"
+version = "0.1.0"
+dependencies = [
+ "enclave-crypto",
+ "enclave-platform",
+ "enclave-proto",
+]
+
+[[package]]
 name = "enclave-nym"
 version = "0.1.0"
 dependencies = [

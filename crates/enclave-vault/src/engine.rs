@@ -267,6 +267,9 @@ struct Engine {
     media: crate::media::Media,
     /// Previews already sent to the UI (conversation, message position).
     previews: std::collections::HashSet<(String, u64)>,
+    /// iOS: the notification key table last shared with the extension.
+    #[cfg(target_os = "ios")]
+    shared_table: Option<zeroize::Zeroizing<Vec<u8>>>,
     /// Voice notes' duration and waveform, by (conversation, position),
     /// read by mediad.
     voice: HashMap<(String, u64), (u32, Vec<u8>)>,
@@ -936,6 +939,8 @@ pub async fn run_with(
             .media
             .unwrap_or_else(crate::media::Media::in_process),
         previews: std::collections::HashSet::new(),
+        #[cfg(target_os = "ios")]
+        shared_table: None,
         voice: HashMap::new(),
         shaper,
         round: 0,
@@ -3460,6 +3465,8 @@ impl Engine {
                 None => {}
             }
         }
+        #[cfg(target_os = "ios")]
+        self.share_notify_table();
         if let Some(d) = self.demo.as_mut()
             && let Ok(events) = d.sam.sync().await
         {
@@ -3741,6 +3748,13 @@ impl Engine {
         if let Some(c) = self.client.take() {
             let _ = c.erase();
         }
+        #[cfg(target_os = "ios")]
+        {
+            enclave_platform::keystore::shared::delete(
+                enclave_platform::keystore::shared::NOTIFY_TABLE,
+            );
+            self.shared_table = None;
+        }
         if let Mode::Server { profile, .. } = &self.mode {
             // Every keystore secret left (all of them, if the profile was
             // closed by its passphrase) overwritten, then the files.
@@ -3753,6 +3767,30 @@ impl Engine {
         self.reveal_share = None;
         self.share_release = None;
         self.effect(Effect::Erased);
+    }
+
+    /// iOS: the notification extension's key table (each contact's and
+    /// group's keys for today and yesterday, nothing else), in the Keychain
+    /// item it shares with the app, whenever it changed
+    /// (`docs/10-push.md` §5.1).
+    #[cfg(target_os = "ios")]
+    fn share_notify_table(&mut self) {
+        use enclave_platform::keystore::shared;
+        let Some(c) = self.client.as_ref() else {
+            return;
+        };
+        let table = zeroize::Zeroizing::new(c.notify_table(self.transport.now()).encode());
+        if self
+            .shared_table
+            .as_ref()
+            .is_some_and(|t| t[..] == table[..])
+        {
+            return;
+        }
+        match shared::set(shared::NOTIFY_TABLE, &table) {
+            Ok(()) => self.shared_table = Some(table),
+            Err(e) => eprintln!("enclave-vault: notification keys: {e}"),
+        }
     }
 
     fn effect(&self, e: Effect) {

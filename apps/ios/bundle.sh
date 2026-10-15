@@ -7,7 +7,11 @@
 #
 # Signing: IOS_SIGN_IDENTITY (an "Apple Distribution" certificate in the
 # keychain) and IOS_PROFILE (its App Store provisioning profile) sign for
-# the App Store and TestFlight; without them the app is signed ad hoc,
+# the App Store and TestFlight, and IOS_NSE_PROFILE (the profile for
+# com.aricummings.enclave.nse) adds the notification service extension,
+# which shows who wrote with previews on; signed without it, the app ships
+# without the extension ("New message" only). Without them the app is
+# signed ad hoc, with the extension,
 # which a sideloading tool (AltStore, SideStore) re-signs with its user's
 # Apple ID, and which the simulator runs. With ASC_KEY_ID, ASC_ISSUER_ID and
 # ASC_KEY_PATH (an App Store Connect API key) a signed .ipa is uploaded to
@@ -28,6 +32,7 @@ epoch=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}
 export SOURCE_DATE_EPOCH=$epoch
 export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$ROOT=/src"
 (cd "$ROOT/nym" && cargo build --release --locked --target "$TARGET" -p enclave-mobile --bin enclave-ios)
+(cd "$ROOT" && cargo build --release --locked --target "$TARGET" -p enclave-nse)
 
 work=$ROOT/nym/target/$TARGET/release/ios
 app=$work/Enclave.app
@@ -47,29 +52,60 @@ xcrun actool "$work/Assets.xcassets" --compile "$app" --platform "$SDK" \
 /usr/libexec/PlistBuddy -c "Merge $work/icon.plist" "$app/Info.plist"
 
 # What Xcode records about the build (App Store processing checks them).
-plist() { /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$app/Info.plist"; }
-plist CFBundleSupportedPlatforms array ""
-/usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string $PLATFORM" "$app/Info.plist"
-plist DTPlatformName string "$SDK"
-plist DTPlatformVersion string "$(xcrun --sdk "$SDK" --show-sdk-version)"
-plist DTSDKName string "$SDK$(xcrun --sdk "$SDK" --show-sdk-version)"
-plist DTSDKBuild string "$(xcrun --sdk "$SDK" --show-sdk-build-version)"
-plist DTXcode string "$(xcodebuild -version | awk '/Xcode/{gsub(/\./,""); printf "%04d", $2}')"
-plist DTXcodeBuild string "$(xcodebuild -version | awk '/Build version/{print $3}')"
-plist DTCompiler string com.apple.compilers.llvm.clang.1_0
-plist BuildMachineOSBuild string "$(sw_vers -buildVersion)"
+built() {
+  local info=$1
+  plist() { /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$info"; }
+  plist CFBundleSupportedPlatforms array ""
+  /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string $PLATFORM" "$info"
+  plist DTPlatformName string "$SDK"
+  plist DTPlatformVersion string "$(xcrun --sdk "$SDK" --show-sdk-version)"
+  plist DTSDKName string "$SDK$(xcrun --sdk "$SDK" --show-sdk-version)"
+  plist DTSDKBuild string "$(xcrun --sdk "$SDK" --show-sdk-build-version)"
+  plist DTXcode string "$(xcodebuild -version | awk '/Xcode/{gsub(/\./,""); printf "%04d", $2}')"
+  plist DTXcodeBuild string "$(xcodebuild -version | awk '/Build version/{print $3}')"
+  plist DTCompiler string com.apple.compilers.llvm.clang.1_0
+  plist BuildMachineOSBuild string "$(sw_vers -buildVersion)"
+}
+built "$app/Info.plist"
+
+# The notification service extension (docs/10-push.md §5.1): the Swift
+# class calling crates/enclave-nse, as an .appex in PlugIns.
+nse=$app/PlugIns/EnclaveNSE.appex
+swift_target=arm64-apple-ios16.0
+[ "$SIM" = --simulator ] && swift_target=arm64-apple-ios16.0-simulator
+mkdir -p "$nse"
+xcrun --sdk "$SDK" swiftc -target "$swift_target" -O -parse-as-library -application-extension \
+  -module-name EnclaveNSE "$ROOT/apps/ios/nse/NotificationService.swift" \
+  -L "$ROOT/target/$TARGET/release" -lenclave_nse \
+  -framework Foundation -framework Security -framework UserNotifications -framework CoreFoundation \
+  -Xlinker -e -Xlinker _NSExtensionMain -o "$nse/EnclaveNSE"
+sed -e "s/@VERSION@/${V%%-*}/" -e "s/@BUILD@/$BUILD/" "$ROOT/apps/ios/nse/Info.plist" > "$nse/Info.plist"
+built "$nse/Info.plist"
+
+# The entitlements a profile grants, to sign with.
+entitlements() {
+  security cms -D -i "$1" > "$work/$2.plist"
+  /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' "$work/$2.plist" > "$work/$2-entitlements.plist"
+  echo "$work/$2-entitlements.plist"
+}
 
 if [ -n "${IOS_SIGN_IDENTITY:-}" ] && [ -n "${IOS_PROFILE:-}" ] && [ "$SIM" != --simulator ]; then
+  if [ -n "${IOS_NSE_PROFILE:-}" ]; then
+    cp "$IOS_NSE_PROFILE" "$nse/embedded.mobileprovision"
+    codesign --force --timestamp --sign "$IOS_SIGN_IDENTITY" --entitlements "$(entitlements "$IOS_NSE_PROFILE" nse)" "$nse"
+  else
+    echo "bundle: no IOS_NSE_PROFILE; the app ships without its notification extension"
+    rm -rf "$app/PlugIns"
+  fi
   cp "$IOS_PROFILE" "$app/embedded.mobileprovision"
-  security cms -D -i "$IOS_PROFILE" > "$work/profile.plist"
-  /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' "$work/profile.plist" > "$work/entitlements.plist"
-  codesign --force --timestamp --sign "$IOS_SIGN_IDENTITY" --entitlements "$work/entitlements.plist" "$app"
+  codesign --force --timestamp --sign "$IOS_SIGN_IDENTITY" --entitlements "$(entitlements "$IOS_PROFILE" app)" "$app"
   signed=yes
 else
+  codesign --force --sign - "$nse"
   codesign --force --sign - "$app"
   signed=no
 fi
-codesign --verify --strict --verbose=2 "$app"
+codesign --verify --deep --strict --verbose=2 "$app"
 
 suffix=ios
 [ "$SIM" = --simulator ] && suffix=ios-simulator

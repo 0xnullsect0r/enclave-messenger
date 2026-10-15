@@ -1,0 +1,36 @@
+[package]
+name = "enclave-nse"
+description = "Enclave's iOS notification service extension: opens a push's capsule with the notification keys the app shares, symmetric crypto only, well within the extension's 24 MB."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+# Not the workspace lints: the C entry point the Swift extension calls
+# takes raw pointers (one marked unsafe function, with a SAFETY comment).
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[lib]
+# Linked into the extension's program (apps/ios/nse); the rlib for tests.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+enclave-proto = { path = "../enclave-proto" }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+enclave-platform = { path = "../enclave-platform", features = ["keystores"] }
+
+[dev-dependencies]
+enclave-crypto = { path = "../enclave-crypto" }

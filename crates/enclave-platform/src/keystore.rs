@@ -179,6 +179,64 @@ pub mod keychain {
     }
 }
 
+/// iOS: items the app shares with its notification service extension,
+/// in the app group's Keychain access group: readable from the first
+/// unlock after a restart (a notification can come while the phone is
+/// locked), never backed up or synced off the device (`docs/10-push.md`
+/// §5.1). Only the notification key table goes here.
+#[cfg(target_os = "ios")]
+pub mod shared {
+    use super::{Error, SERVICE};
+    use security_framework::access_control::{ProtectionMode, SecAccessControl};
+    use security_framework::passwords::{self, PasswordOptions};
+
+    /// The app group (the app's and the extension's profiles both carry
+    /// it).
+    pub const APP_GROUP: &str = "group.com.aricummings.enclave";
+    /// The notification key table (`enclave_proto::notify::KeyTable`).
+    pub const NOTIFY_TABLE: &str = "notify-table";
+
+    fn options(account: &str) -> PasswordOptions {
+        let mut o = PasswordOptions::new_generic_password(SERVICE, account);
+        o.set_access_group(APP_GROUP);
+        o.set_access_synchronized(Some(false));
+        o
+    }
+
+    fn map(e: security_framework::base::Error) -> Error {
+        if e.code() == -25300 {
+            Error::NotFound
+        } else {
+            Error::Unavailable(e.to_string())
+        }
+    }
+
+    /// Keep `data` under `account` (replacing what was there).
+    pub fn set(account: &str, data: &[u8]) -> Result<(), Error> {
+        let _ = passwords::delete_generic_password_options(options(account));
+        let mut o = options(account);
+        let access = SecAccessControl::create_with_protection(
+            Some(ProtectionMode::AccessibleAfterFirstUnlockThisDeviceOnly),
+            0,
+        )
+        .map_err(map)?;
+        o.set_access_control(access);
+        passwords::set_generic_password_options(data, o).map_err(map)
+    }
+
+    /// What is under `account`.
+    pub fn get(account: &str) -> Result<zeroize::Zeroizing<Vec<u8>>, Error> {
+        passwords::generic_password(options(account))
+            .map(zeroize::Zeroizing::new)
+            .map_err(map)
+    }
+
+    /// Remove `account` (none there is fine).
+    pub fn delete(account: &str) {
+        let _ = passwords::delete_generic_password_options(options(account));
+    }
+}
+
 /// Windows: DPAPI, bound to the user's logon credentials.
 #[cfg(windows)]
 pub mod dpapi {
