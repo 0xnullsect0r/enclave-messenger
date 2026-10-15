@@ -132,7 +132,7 @@ jobs:
           cargo generate-rpm -p crates/enclave-app --target "$TARGET" -s "version = \"$debv\"" -o target/dist/
           cargo xtask packager --target "$TARGET" --formats appimage
           ls -la target/dist
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-linux-${{ matrix.arch }}
           path: |
@@ -178,7 +178,7 @@ jobs:
           set -euo pipefail
           flatpak install --user -y --noninteractive "out/Enclave-$V-${{ matrix.arch }}.flatpak"
           flatpak run com.aricummings.Enclave --version | grep '^enclave ' 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-flatpak-${{ matrix.arch }}
           path: out/*.flatpak
@@ -245,7 +245,7 @@ jobs:
             spctl -a -vv "$app"
             xcrun stapler validate "target/dist/Enclave-$V-macos.dmg"
           fi
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-macos
           path: |
@@ -294,7 +294,7 @@ jobs:
           cargo install --locked cargo-packager@0.11.8
           cargo xtask packager --target "$TARGET" --formats wix,nsis
           ls -la target/dist
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-windows-${{ matrix.arch }}
           path: |
@@ -343,7 +343,7 @@ jobs:
             "$bt/apksigner" verify --print-certs "$apk" | head -3
             "$bt/zipalign" -c -P 16 4 "$apk"
           done
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-android
           path: |
@@ -439,7 +439,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
         run: apps/ios/bundle.sh out
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-ios
           path: out/*.ipa
@@ -494,7 +494,7 @@ jobs:
           mkdir -p digests
           echo "${{ steps.build.outputs.digest }}" > "digests/${{ matrix.image }}-${{ matrix.platform }}"
       - if: needs.prepare.outputs.dry != 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digest-${{ matrix.image }}-${{ matrix.platform }}
           path: digests/*
@@ -584,7 +584,7 @@ jobs:
           mkdir -p out
           tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
             -czf out/enclave-operator-kit.tar.gz enclave-stack
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-operator-kit
           path: out/*.tar.gz
@@ -616,7 +616,7 @@ jobs:
           done
           (cd out && tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$(git log -1 --format=%ct)" \
             -czf "enclave-$V-sbom.tar.gz" sbom)
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-sbom
           path: out/*.tar.gz
@@ -714,7 +714,7 @@ jobs:
           flags=(--verify-tag --title "Enclave ${TAG#v}" --notes-file ci/release/notes.md)
           [ "$PRE" = true ] && flags+=(--prerelease)
           gh release create "$TAG" "${flags[@]}" dist/*
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ needs.prepare.outputs.version }}
           path: dist/*
