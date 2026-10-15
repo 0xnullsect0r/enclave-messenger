@@ -58,7 +58,7 @@ export component Seal inherits Rectangle {
     width: root.size;
     height: root.size;
     accessible-role: image;
-    accessible-label: root.state == SealState.checked ? "Checked" : root.state == SealState.changed ? "Security code changed" : "Not checked yet";
+    accessible-label: root.state == SealState.checked ? @tr("Checked") : root.state == SealState.changed ? @tr("Security code changed") : @tr("Not checked yet");
 
     // A round seal pressed over an envelope flap. Changed = the ring is broken.
     Path {
@@ -93,7 +93,7 @@ export component SealClose inherits Rectangle {
     width: root.size;
     height: root.size;
     accessible-role: image;
-    accessible-label: root.closed ? "Sealed" : "Waiting for both codes";
+    accessible-label: root.closed ? @tr("Sealed") : @tr("Waiting for both codes");
     property <length> apart: root.closed ? 0px : root.size * 0.16;
     property <duration> time: Tokens.reduce-motion ? 0ms : Tokens.motion-seal-close;
     left := Path {

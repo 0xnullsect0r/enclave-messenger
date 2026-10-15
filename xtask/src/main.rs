@@ -17,6 +17,7 @@
 
 mod dist;
 mod done;
+mod i18n;
 mod icons;
 mod licenses;
 
@@ -39,6 +40,13 @@ fn main() -> ExitCode {
         "proverif" => proverif(),
         "done" => done::done(std::env::args().any(|a| a == "--report")),
         "icons" => icons::icons(std::env::args().any(|a| a == "--check")),
+        "i18n" => match i18n::i18n(std::env::args().any(|a| a == "--check")) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        },
         "licenses" => licenses::licenses(std::env::args().any(|a| a == "--check")),
         "dist" | "packager" | "bundle-macos" | "checksums" | "version" => {
             let args: Vec<String> = std::env::args().skip(2).collect();
@@ -52,7 +60,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | licenses [--check] | dist [--target T] [--no-build] | packager --target T --formats F | bundle-macos [--target T] | checksums DIR | version [TAG]"
+                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | i18n [--check] | licenses [--check] | dist [--target T] [--no-build] | packager --target T --formats F | bundle-macos [--target T] | checksums DIR | version [TAG]"
             );
             ExitCode::FAILURE
         }

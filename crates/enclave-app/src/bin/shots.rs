@@ -417,6 +417,13 @@ fn main() -> Result<(), slint::PlatformError> {
         .map_err(|e| slint::PlatformError::Other(e.to_string()))?;
     let ui = AppWindow::new()?;
     ui.show()?;
+    // A language to render in (`ENCLAVE_LANG`: CI renders the pseudo-locales
+    // en-XA and ar-XB, to see text that runs long or right to left).
+    if let Ok(lang) = std::env::var("ENCLAVE_LANG") {
+        enclave_app::i18n::set_language(&lang);
+        slint::select_bundled_translation(&lang)
+            .map_err(|e| slint::PlatformError::Other(e.to_string()))?;
+    }
 
     let desktop = (1180, 780);
     let phone = (390, 844);

@@ -114,6 +114,8 @@ enclave-crypto = { path = "../enclave-crypto" }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "accessibility", "raw-window-handle-06"] }
 qrcodegen = "1.8"
 png = "0.17"
+# The system's language, for the translations (`src/i18n.rs`).
+sys-locale = "0.3"
 # Reading QR codes from the camera's frames (every platform).
 rqrr = "0.11"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }

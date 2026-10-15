@@ -50,8 +50,13 @@ jobs:
         run: cargo xtask icons --check
       - name: The app's open-source notices are current
         run: cargo xtask licenses --check
-      - name: Render UI screenshots (software renderer, light and dark)
-        run: cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots
+      - name: Translations extracted, catalogs merged, every shown string translatable
+        run: cargo xtask i18n --check
+      - name: Render UI screenshots (software renderer, light and dark; and the pseudo-locales)
+        run: |
+          cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots
+          ENCLAVE_LANG=en-XA cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/en-XA
+          ENCLAVE_LANG=ar-XB cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/ar-XB
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: screenshots

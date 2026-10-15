@@ -22,9 +22,114 @@ fn main() {
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     std::fs::write(out.join("tokens.slint"), tokens.to_slint().expect("tokens"))
         .expect("write tokens.slint");
-    let config = slint_build::CompilerConfiguration::new().with_include_paths(vec![out.clone()]);
+    // Every string the window shows is `@tr(…)`; the catalogs in ui/lang
+    // (`<lang>/LC_MESSAGES/enclave-app.po`, `cargo xtask i18n`) are built in.
+    println!("cargo:rerun-if-changed=ui/lang");
+    let config = slint_build::CompilerConfiguration::new()
+        .with_include_paths(vec![out.clone()])
+        .with_bundled_translations("ui/lang")
+        .with_default_translation_context(slint_build::DefaultTranslationContext::None);
     slint_build::compile_with_config("ui/app.slint", config).expect("Slint UI compiles");
+    catalogs(&out);
     windows_resources(&out);
+}
+
+/// The same catalogs for what the app's Rust code shows (the vault's
+/// status lines, errors and notices; `src/i18n.rs`): `OUT_DIR/catalogs.rs`
+/// holds `(language, [(msgid, msgstr)])`, sorted by msgid, untranslated
+/// entries left out.
+fn catalogs(out: &std::path::Path) {
+    let mut langs: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    let mut dirs: Vec<_> = std::fs::read_dir("ui/lang")
+        .map(|d| d.filter_map(|e| e.ok()).collect())
+        .unwrap_or_default();
+    dirs.sort_by_key(|e| e.file_name());
+    for d in dirs {
+        let po = d.path().join("LC_MESSAGES/enclave-app.po");
+        let Ok(text) = std::fs::read_to_string(&po) else {
+            continue;
+        };
+        println!("cargo:rerun-if-changed={}", po.display());
+        let mut entries = parse_po(&text);
+        entries.retain(|(id, s)| !id.is_empty() && !s.is_empty());
+        entries.sort();
+        entries.dedup_by(|a, b| a.0 == b.0);
+        langs.push((d.file_name().to_string_lossy().into_owned(), entries));
+    }
+    let mut code = String::from(
+        "/// Every catalog: language, then (msgid, msgstr) sorted by msgid.\npub static CATALOGS: &[(&str, &[(&str, &str)])] = &[\n",
+    );
+    for (lang, entries) in &langs {
+        code.push_str(&format!("    ({lang:?}, &[\n"));
+        for (id, s) in entries {
+            code.push_str(&format!("        ({id:?}, {s:?}),\n"));
+        }
+        code.push_str("    ]),\n");
+    }
+    code.push_str("];\n");
+    std::fs::write(out.join("catalogs.rs"), code).expect("write catalogs.rs");
+}
+
+/// `msgid`/`msgstr` pairs of a gettext catalog (no plurals or contexts:
+/// the app's catalogs have none; fuzzy entries count as untranslated).
+fn parse_po(text: &str) -> Vec<(String, String)> {
+    fn unquote(s: &str) -> String {
+        let s = s.trim();
+        let inner = s
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'))
+            .unwrap_or("");
+        let mut out = String::new();
+        let mut it = inner.chars();
+        while let Some(c) = it.next() {
+            if c == '\\' {
+                match it.next() {
+                    Some('n') => out.push('\n'),
+                    Some('t') => out.push('\t'),
+                    Some(o) => out.push(o),
+                    None => {}
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+    let mut out = Vec::new();
+    let (mut id, mut msg, mut field, mut fuzzy) = (String::new(), String::new(), 0, false);
+    let mut flush = |id: &mut String, msg: &mut String, fuzzy: &mut bool| {
+        if !*fuzzy {
+            out.push((std::mem::take(id), std::mem::take(msg)));
+        }
+        id.clear();
+        msg.clear();
+        *fuzzy = false;
+    };
+    for line in text.lines() {
+        let l = line.trim();
+        if l.starts_with("#,") && l.contains("fuzzy") {
+            fuzzy = true;
+        } else if let Some(r) = l.strip_prefix("msgid ") {
+            if field != 0 {
+                flush(&mut id, &mut msg, &mut fuzzy);
+            }
+            id = unquote(r);
+            field = 1;
+        } else if let Some(r) = l.strip_prefix("msgstr ") {
+            msg = unquote(r);
+            field = 2;
+        } else if l.starts_with('"') {
+            match field {
+                1 => id.push_str(&unquote(l)),
+                2 => msg.push_str(&unquote(l)),
+                _ => {}
+            }
+        }
+    }
+    if field != 0 {
+        flush(&mut id, &mut msg, &mut fuzzy);
+    }
+    out
 }
 
 /// On Windows the window's executable carries the app icon and its

@@ -72,7 +72,7 @@ fn save_with_dialog(ui: &AppWindow, name: String, bytes: Vec<u8>) {
             None => format!("{name} wasn't saved."),
         };
         if let Some(ui) = w.upgrade() {
-            ui.set_file_note(note.into());
+            ui.set_file_note(crate::i18n::tr(&note).into());
         }
     });
 }
@@ -180,7 +180,7 @@ fn scan(ui: &AppWindow, target: i32) {
                     put_code(&ui, target, &code);
                     stop_scan(&ui);
                 }
-                Event::Failed(why) => ui.set_scan_error(why.into()),
+                Event::Failed(why) => ui.set_scan_error(crate::i18n::tr(&why).into()),
             }
         });
     });
@@ -204,20 +204,23 @@ fn browse(ui: &AppWindow, what: i32) {
         let d = rfd::AsyncFileDialog::new().set_directory(downloads());
         let paths: Vec<String> = match what {
             0 | 1 => d
-                .add_filter("Enclave backup", &["enclave"])
-                .set_title("Choose your backup")
+                .add_filter(crate::i18n::tr("Enclave backup"), &["enclave"])
+                .set_title(crate::i18n::tr("Choose your backup"))
                 .pick_file()
                 .await
                 .into_iter()
                 .collect(),
             3 => d
-                .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp"])
-                .set_title("Choose pictures for the pack")
+                .add_filter(
+                    crate::i18n::tr("Pictures"),
+                    &["png", "jpg", "jpeg", "gif", "webp"],
+                )
+                .set_title(crate::i18n::tr("Choose pictures for the pack"))
                 .pick_files()
                 .await
                 .unwrap_or_default(),
             _ => d
-                .set_title("Choose a file to send")
+                .set_title(crate::i18n::tr("Choose a file to send"))
                 .pick_file()
                 .await
                 .into_iter()
@@ -280,6 +283,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // Wayland matches the window to its .desktop file by this id.
     let _ = slint::set_xdg_app_id("com.aricummings.Enclave");
     let ui = AppWindow::new()?;
+    // The person's language, for the window and for what the vault writes.
+    let lang = crate::i18n::set_language(&crate::i18n::system_language());
+    let _ = slint::select_bundled_translation(lang.unwrap_or(""));
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
     // Outputs from the vault, applied on the UI thread.
     let w = ui.as_weak();
@@ -303,6 +309,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         continue;
                     }
                     Out::Notify(n) => {
+                        let n = crate::i18n::notice(n);
                         let _ = w.upgrade_in_event_loop(move |ui| notify(&ui, n));
                         continue;
                     }
@@ -346,11 +353,14 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     Out::Invite(link) => {
                         let copied = copy_with_timeout(link.clone());
                         let _ = w.upgrade_in_event_loop(move |ui| {
-                            ui.set_status_line(if copied {
-                                "Invite link copied. It works for one person, for 7 days, and is cleared from the clipboard after 60 seconds.".into()
-                            } else {
-                                format!("Your invite link (it works for one person, for 7 days): {link}").into()
-                            })
+                            ui.set_status_line(
+                                crate::i18n::tr(&if copied {
+                                    "Invite link copied. It works for one person, for 7 days, and is cleared from the clipboard after 60 seconds.".to_string()
+                                } else {
+                                    format!("Your invite link (it works for one person, for 7 days): {link}")
+                                })
+                                .into(),
+                            )
                         });
                         continue;
                     }
@@ -395,7 +405,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         }
         if let Some(ui) = w.upgrade() {
             ui.set_screen(Screen::SettingUp);
-            ui.set_status_line("This takes a few seconds.".into());
+            ui.set_status_line(crate::i18n::tr("This takes a few seconds.").into());
         }
         let passphrase = w
             .upgrade()
@@ -458,13 +468,17 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             Ok(b) if b.len() as u64 <= MAX_FILE => b,
             Ok(_) => {
                 if let Some(ui) = w.upgrade() {
-                    ui.set_restore_error("That file is too large to be an Enclave backup.".into());
+                    ui.set_restore_error(
+                        crate::i18n::tr("That file is too large to be an Enclave backup.").into(),
+                    );
                 }
                 return;
             }
             Err(e) => {
                 if let Some(ui) = w.upgrade() {
-                    ui.set_restore_error(format!("Couldn't open that file: {e}").into());
+                    ui.set_restore_error(
+                        crate::i18n::tr(&format!("Couldn't open that file: {e}")).into(),
+                    );
                 }
                 return;
             }
@@ -558,7 +572,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                 Ok(b) if b.len() as u64 <= MAX_FILE => b,
                 _ => {
                     if let Some(ui) = w.upgrade() {
-                        ui.set_backup_check("Couldn't open that file.".into());
+                        ui.set_backup_check(crate::i18n::tr("Couldn't open that file.").into());
                     }
                     return;
                 }
@@ -788,13 +802,13 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             match read {
                 Ok(b) => pictures.push(b),
                 Err(e) => {
-                    ui.set_pack_error(format!("Couldn't read {p}: {e}.").into());
+                    ui.set_pack_error(crate::i18n::tr(&format!("Couldn't read {p}: {e}.")).into());
                     return;
                 }
             }
         }
         if pictures.is_empty() || pictures.len() > 40 {
-            ui.set_pack_error("A pack needs 1 to 40 pictures.".into());
+            ui.set_pack_error(crate::i18n::tr("A pack needs 1 to 40 pictures.").into());
             return;
         }
         let _ = t.send(Cmd::CreatePack(title.trim().to_string(), pictures));
@@ -906,7 +920,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             }
             Err(e) => {
                 if let Some(ui) = w.upgrade() {
-                    ui.set_attach_error(format!("Couldn't read that file: {e}.").into());
+                    ui.set_attach_error(
+                        crate::i18n::tr(&format!("Couldn't read that file: {e}.")).into(),
+                    );
                 }
             }
         }
@@ -976,11 +992,14 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     ui.on_copy_text(move |text| {
         let copied = copy_with_timeout(text.to_string());
         if let Some(ui) = w.upgrade() {
-            ui.set_status_line(if copied {
-                "Copied. It's cleared from the clipboard after 60 seconds.".into()
-            } else {
-                "Couldn't copy it.".into()
-            });
+            ui.set_status_line(
+                crate::i18n::tr(if copied {
+                    "Copied. It's cleared from the clipboard after 60 seconds."
+                } else {
+                    "Couldn't copy it."
+                })
+                .into(),
+            );
         }
     });
     let _ = Sheet::None;
@@ -1048,7 +1067,8 @@ mod phone {
                 Err(e) if e.is_empty() => format!("{shown} wasn't saved."),
                 Err(e) => format!("Couldn't save {shown}: {e}"),
             };
-            let _ = w.upgrade_in_event_loop(move |ui| ui.set_file_note(note.into()));
+            let _ =
+                w.upgrade_in_event_loop(move |ui| ui.set_file_note(crate::i18n::tr(&note).into()));
         });
     }
 
@@ -1084,7 +1104,9 @@ mod phone {
                 });
             }
             Camera::Failed(why) => {
-                let _ = w.upgrade_in_event_loop(move |ui| ui.set_scan_error(why.into()));
+                let _ = w.upgrade_in_event_loop(move |ui| {
+                    ui.set_scan_error(crate::i18n::tr(&why).into())
+                });
             }
         });
     }

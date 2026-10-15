@@ -297,7 +297,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_code_groups(strings(&s.code_groups));
     ui.set_code_words(strings(&s.code_words));
     ui.set_code_words_english(s.code_words_english);
-    ui.set_status_line(s.status.clone().into());
+    ui.set_status_line(crate::i18n::tr(&s.status).into());
     ui.set_recovery_words(strings(&s.recovery_words));
     ui.set_recovery_saved(s.recovery_saved);
     ui.set_words_language(s.words_language.clone().into());
@@ -306,10 +306,10 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_gap(s.gap);
     ui.set_on_record(s.on_record);
     ui.set_closed(s.closed);
-    ui.set_add_error(s.add_error.clone().into());
+    ui.set_add_error(crate::i18n::tr(&s.add_error).into());
     ui.set_my_username(s.my_username.clone().into());
     ui.set_usernames(s.usernames);
-    ui.set_username_error(s.username_error.clone().into());
+    ui.set_username_error(crate::i18n::tr(&s.username_error).into());
     ui.set_busy(s.busy);
     let pick: Vec<PickRow> = s.pick.iter().map(pick_row).collect();
     ui.set_pick(ModelRc::from(Rc::new(VecModel::from(pick))));
@@ -326,7 +326,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
         .collect();
     ui.set_devices(ModelRc::from(Rc::new(VecModel::from(devices))));
     ui.set_link_choices(strings(&s.link_choices));
-    ui.set_link_status(s.link_status.clone().into());
+    ui.set_link_status(crate::i18n::tr(&s.link_status).into());
     ui.set_can_link(s.can_link);
     ui.set_can_join(s.can_join);
     if ui.get_join_code().as_str() != s.join_code {
@@ -336,20 +336,20 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
         }
     }
     ui.set_join_words(s.join_words.clone().into());
-    ui.set_recovery_alert(s.recovery_alert.clone().into());
-    ui.set_recovery_hold(s.recovery_hold.clone().into());
+    ui.set_recovery_alert(crate::i18n::tr(&s.recovery_alert).into());
+    ui.set_recovery_hold(crate::i18n::tr(&s.recovery_hold).into());
     ui.set_recovery_stopped(s.recovery_stopped);
-    ui.set_username_problem(s.username_problem.clone().into());
-    ui.set_kt_split(s.kt_split.clone().into());
+    ui.set_username_problem(crate::i18n::tr(&s.username_problem).into());
+    ui.set_kt_split(crate::i18n::tr(&s.kt_split).into());
     ui.set_route(i32::from(s.route));
     ui.set_tor_blocked(s.tor_blocked);
     ui.set_bridges(s.bridges.clone().into());
     ui.set_bridges_error(s.bridges_error.clone().into());
     ui.set_bridges_restart(s.bridges_restart);
-    ui.set_clock_skew(s.clock_skew.clone().into());
+    ui.set_clock_skew(crate::i18n::tr(&s.clock_skew).into());
     ui.set_new_device(s.new_device.clone().into());
     ui.set_joining(s.joining.join(", ").into());
-    ui.set_restore_error(s.restore_error.clone().into());
+    ui.set_restore_error(crate::i18n::tr(&s.restore_error).into());
     ui.set_friends(ModelRc::from(Rc::new(VecModel::from(
         s.friends.iter().map(pick_row).collect::<Vec<_>>(),
     ))));
@@ -398,12 +398,12 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
         })
         .collect();
     ui.set_sticker_cells(ModelRc::from(Rc::new(VecModel::from(cells))));
-    ui.set_unlock_error(s.unlock_error.clone().into());
+    ui.set_unlock_error(crate::i18n::tr(&s.unlock_error).into());
     ui.set_can_lock(s.can_lock);
     ui.set_pin_lock(s.pin_lock);
     ui.set_server_backup(s.server_backup);
     ui.set_server_backup_at(s.server_backup_at.clone().into());
-    ui.set_backup_check(s.backup_check.clone().into());
+    ui.set_backup_check(crate::i18n::tr(&s.backup_check).into());
     apply_servers(ui, s);
     ui.set_file_keys(s.file_keys);
     ui.set_biometric(s.biometric.clone().into());
@@ -422,7 +422,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_has_root_pin(s.has_root_pin);
     ui.set_securing(s.securing);
     ui.set_previews(s.previews);
-    ui.set_pin_error(s.pin_error.clone().into());
+    ui.set_pin_error(crate::i18n::tr(&s.pin_error).into());
     ui.set_held_moves(s.held_moves.join(", ").into());
     ui.set_words_pending(s.words_pending);
     ui.set_moved(i32::from(s.moved));
@@ -449,7 +449,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     }
     ui.set_meet_words(s.meet_words.clone().into());
     ui.set_meet_name(s.meet_name.clone().into());
-    ui.set_meet_error(s.meet_error.clone().into());
+    ui.set_meet_error(crate::i18n::tr(&s.meet_error).into());
     ui.set_meet_done(s.meet_done.clone().into());
     if s.locked {
         if ui.get_screen() != Screen::Locked {

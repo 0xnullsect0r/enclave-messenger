@@ -4,6 +4,7 @@
 //! separate process ([`vault`]); elsewhere it is a thread.
 
 pub mod camera;
+pub mod i18n;
 pub mod lan;
 pub mod shell;
 pub mod vault;

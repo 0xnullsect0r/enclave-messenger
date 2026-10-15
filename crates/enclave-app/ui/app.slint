@@ -143,11 +143,11 @@ component DeliveryMark inherits Rectangle {
     border-color: root.status == 4 ? Tokens.danger : Tokens.meta-on-bubble-out;
     background: root.status == 2 || root.status == 3 ? Tokens.meta-on-bubble-out : transparent;
     accessible-role: image;
-    accessible-label: root.status == 0 ? "Sending privately"
-        : root.status == 1 ? "On its way"
-        : root.status == 2 ? "Delivered"
-        : root.status == 3 ? "Read"
-        : "Not delivered yet";
+    accessible-label: root.status == 0 ? @tr("Sending privately")
+        : root.status == 1 ? @tr("On its way")
+        : root.status == 2 ? @tr("Delivered")
+        : root.status == 3 ? @tr("Read")
+        : @tr("Not delivered yet");
     // Read: a second ring around the filled mark.
     if root.status == 3: Rectangle {
         x: -3px;
@@ -191,7 +191,7 @@ component Bubble inherits HorizontalLayout {
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
         border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
         accessible-role: text;
-        accessible-label: (root.msg.outgoing ? "You: " : "") + (root.msg.picture ? "Photo: " + root.msg.file + ". " : "") + (root.msg.sticker ? "Sticker. " : "") + (root.msg.voice ? "Voice note, " + (root.msg.voice-time != "" ? root.msg.voice-time : "length unknown") + ". Select it to save it as a sound file. " : "") + (root.msg.contact-name != "" ? "Contact: " + root.msg.contact-name + ". " : "") + (root.msg.location != "" ? "Location: " + root.msg.location-label + " " + root.msg.location + ". " : "") + root.msg.text + ", " + root.msg.time;
+        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + root.msg.text + ", " + root.msg.time;
         accessible-action-default => { root.tapped(); }
         VerticalLayout {
             padding-left: Tokens.space-sm;
@@ -231,7 +231,7 @@ component Bubble inherits HorizontalLayout {
                             background: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.pine;
                         }
                     }
-                    if root.msg.waveform.length == 0: Caption { text: "Voice note"; vertical-alignment: center; }
+                    if root.msg.waveform.length == 0: Caption { text: @tr("Voice note"); vertical-alignment: center; }
                 }
                 Text {
                     text: root.msg.voice-time;
@@ -245,7 +245,7 @@ component Bubble inherits HorizontalLayout {
                 height: 120px;
                 border-radius: Tokens.radius-control;
                 background: Tokens.bubble-in;
-                Caption { text: "Sticker"; }
+                Caption { text: @tr("Sticker"); }
             }
             if root.msg.has-image: Rectangle {
                 // Natural size, narrowed to the bubble, aspect kept; stickers
@@ -260,7 +260,7 @@ component Bubble inherits HorizontalLayout {
                     height: parent.height;
                     image-fit: fill;
                     accessible-role: image;
-                    accessible-label: "Picture: " + root.msg.file;
+                    accessible-label: @tr("Picture: {}", root.msg.file);
                 }
             }
             if root.msg.contact-name != "": HorizontalLayout {
@@ -279,7 +279,7 @@ component Bubble inherits HorizontalLayout {
                         color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
                     }
                     Text {
-                        text: root.msg.outgoing ? "Contact you shared" : root.msg.contact-known ? "Someone you already talk to" : "Contact. Check their code when you meet.";
+                        text: root.msg.outgoing ? @tr("Contact you shared") : root.msg.contact-known ? @tr("Someone you already talk to") : @tr("Contact. Check their code when you meet.");
                         font-size: Tokens.type-caption;
                         color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
                         wrap: word-wrap;
@@ -287,13 +287,13 @@ component Bubble inherits HorizontalLayout {
                 }
                 if !root.msg.outgoing && !root.msg.contact-known: VerticalLayout {
                     alignment: center;
-                    QuietButton { text: "Add"; outlined: true; clicked => { root.add-contact(); } }
+                    QuietButton { text: @tr("Add"); outlined: true; clicked => { root.add-contact(); } }
                 }
             }
             if root.msg.location != "": VerticalLayout {
                 spacing: 2px;
                 Text {
-                    text: root.msg.location-label != "" ? root.msg.location-label : "Location";
+                    text: root.msg.location-label != "" ? root.msg.location-label : @tr("Location");
                     font-size: Tokens.type-body;
                     font-weight: 600;
                     color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
@@ -307,8 +307,8 @@ component Bubble inherits HorizontalLayout {
                 HorizontalLayout {
                     alignment: start;
                     QuietButton {
-                        text: "Copy coordinates";
-                        accessible-label: "Copy coordinates " + root.msg.location;
+                        text: @tr("Copy coordinates");
+                        accessible-label: @tr("Copy coordinates {}", root.msg.location);
                         clicked => { root.copy(root.msg.location); }
                     }
                 }
@@ -316,13 +316,13 @@ component Bubble inherits HorizontalLayout {
             if root.msg.clip-time != "" && !root.msg.deleted: HorizontalLayout {
                 alignment: start;
                 QuietButton {
-                    text: "Play · " + root.msg.clip-time;
-                    accessible-label: "Play animated picture, " + root.msg.clip-time;
+                    text: @tr("Play · {}", root.msg.clip-time);
+                    accessible-label: @tr("Play animated picture, {}", root.msg.clip-time);
                     clicked => { root.play-clip(); }
                 }
             }
             if root.msg.picture && !root.msg.has-image: Text {
-                text: "Photo: " + root.msg.file;
+                text: @tr("Photo: {}", root.msg.file);
                 font-size: Tokens.type-body;
                 color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
                 wrap: word-wrap;
@@ -330,8 +330,8 @@ component Bubble inherits HorizontalLayout {
             if root.msg.sticker && !root.msg.outgoing && !root.msg.pack-added && !root.msg.deleted: HorizontalLayout {
                 alignment: start;
                 QuietButton {
-                    text: "Add pack";
-                    accessible-label: "Add this sticker pack";
+                    text: @tr("Add pack");
+                    accessible-label: @tr("Add this sticker pack");
                     clicked => { root.add-pack(); }
                 }
             }
@@ -349,7 +349,7 @@ component Bubble inherits HorizontalLayout {
                 border-width: o.mine ? 2px : 1px;
                 border-color: o.mine ? Tokens.pine : Tokens.hairline;
                 accessible-role: button;
-                accessible-label: o.text + ", " + o.count + (o.count == 1 ? " vote" : " votes") + (o.mine ? ", your vote" : "");
+                accessible-label: o.text + ", " + o.count + (o.count == 1 ? @tr(" vote") : @tr(" votes")) + (o.mine ? @tr(", your vote") : "");
                 accessible-action-default => { if root.msg.poll-state == 1 { root.vote(i); } }
                 TouchArea {
                     enabled: root.msg.poll-state == 1;
@@ -378,14 +378,14 @@ component Bubble inherits HorizontalLayout {
                 }
             }
             if root.msg.poll-state >= 2: Text {
-                text: root.msg.poll-state == 2 ? "Closed." : "Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone.";
+                text: root.msg.poll-state == 2 ? @tr("Closed.") : @tr("Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone.");
                 font-size: Tokens.type-caption;
                 color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
                 wrap: word-wrap;
             }
             if root.msg.poll-state == 1 && root.msg.poll-ours: HorizontalLayout {
                 alignment: start;
-                QuietButton { text: "Close poll"; clicked => { root.close-poll(); } }
+                QuietButton { text: @tr("Close poll"); clicked => { root.close-poll(); } }
             }
             HorizontalLayout {
                 alignment: end;
@@ -414,7 +414,7 @@ component ContactItem inherits Rectangle {
     background: root.selected ? Tokens.bubble-in : touch.has-hover ? Tokens.surface : transparent;
     border-radius: Tokens.radius-control;
     accessible-role: list-item;
-    accessible-label: root.item.name + (root.item.pinned ? ", pinned" : "") + (root.item.muted ? ", muted" : "") + (root.item.unread > 0 ? ", " + root.item.unread + " unread" : "") + ", " + root.item.preview;
+    accessible-label: root.item.name + (root.item.pinned ? @tr(", pinned") : "") + (root.item.muted ? @tr(", muted") : "") + (root.item.unread > 0 ? @tr(", {} unread", root.item.unread) : "") + ", " + root.item.preview;
     accessible-action-default => { clicked(); }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -462,7 +462,7 @@ component ContactItem inherits Rectangle {
             HorizontalLayout {
                 spacing: Tokens.space-s;
                 Text {
-                    text: root.item.blocked ? "Blocked" : root.item.state == 1 ? "Wants to talk" : root.item.state == 0 ? "Waiting for them to accept" : root.item.preview;
+                    text: root.item.blocked ? @tr("Blocked") : root.item.state == 1 ? @tr("Wants to talk") : root.item.state == 0 ? @tr("Waiting for them to accept") : root.item.preview;
                     font-size: Tokens.type-secondary;
                     color: Tokens.text-muted;
                     overflow: elide;
@@ -595,7 +595,7 @@ component SheetFrame inherits Rectangle {
                 padding-right: Tokens.space-l;
                 spacing: Tokens.space-s;
                 Title { text: root.title; vertical-alignment: center; horizontal-stretch: 1; }
-                IconButton { icon: Icons.close; label: "Close"; clicked => { root.close(); } }
+                IconButton { icon: Icons.close; label: @tr("Close"); clicked => { root.close(); } }
             }
             body := Flickable {
                 vertical-stretch: 1;
@@ -617,7 +617,7 @@ component SheetFrame inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "Enclave";
+    title: @tr("Enclave");
     // Rendered by `cargo xtask icons` from design/icon/enclave.svg.
     icon: @image-url("../../../packaging/icons/png/enclave-256.png");
     preferred-width: 1180px;
@@ -949,23 +949,23 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     spacing: Tokens.space-s;
                     Text {
-                        text: "Talk privately.";
+                        text: @tr("Talk privately.");
                         font-size: Tokens.type-onboarding;
                         font-weight: 600;
                         color: Tokens.text;
                         wrap: word-wrap;
                     }
-                    Body { text: "No phone number. No email. Only the people you choose can reach you."; color: Tokens.text-muted; }
+                    Body { text: @tr("No phone number. No email. Only the people you choose can reach you."); color: Tokens.text-muted; }
                 }
                 HorizontalLayout {
                     alignment: start;
                     spacing: Tokens.space-s;
-                    PrimaryButton { text: "Get started"; clicked => { root.get-started(); } }
-                    if root.can-join: QuietButton { text: "I already have Enclave"; clicked => { root.start-join(); } }
+                    PrimaryButton { text: @tr("Get started"); clicked => { root.get-started(); } }
+                    if root.can-join: QuietButton { text: @tr("I already have Enclave"); clicked => { root.start-join(); } }
                 }
                 if root.can-join: HorizontalLayout {
                     alignment: start;
-                    QuietButton { text: "Restore from a backup"; clicked => { root.screen = Screen.restore; } }
+                    QuietButton { text: @tr("Restore from a backup"); clicked => { root.screen = Screen.restore; } }
                 }
             }
         }
@@ -981,13 +981,13 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     width: min(480px, root.width - 2 * Tokens.space-l);
                     spacing: Tokens.space-m;
-                    ScreenTitle { text: "Bring your account back"; }
-                    Secondary { text: "You need your backup file, and either your 24 recovery words or enough shares from the friends who hold them."; }
-                    Field { placeholder: "Your 24 recovery words"; mono: true; text <=> root.restore-words; }
-                    Caption { text: "Or get your friends' shares: meet each of them, let them scan the code below, and scan the code they show you back, one in each box."; wrap: word-wrap; }
+                    ScreenTitle { text: @tr("Bring your account back"); }
+                    Secondary { text: @tr("You need your backup file, and either your 24 recovery words or enough shares from the friends who hold them."); }
+                    Field { placeholder: @tr("Your 24 recovery words"); mono: true; text <=> root.restore-words; }
+                    Caption { text: @tr("Or get your friends' shares: meet each of them, let them scan the code below, and scan the code they show you back, one in each box."); wrap: word-wrap; }
                     if root.share-request == "": HorizontalLayout {
                         alignment: start;
-                        QuietButton { text: "Ask a friend in person"; outlined: true; clicked => { root.ask-shares(); } }
+                        QuietButton { text: @tr("Ask a friend in person"); outlined: true; clicked => { root.ask-shares(); } }
                     }
                     if root.share-request != "": HorizontalLayout {
                         alignment: center;
@@ -1002,33 +1002,33 @@ export component AppWindow inherits Window {
                                 source: root.share-request-qr;
                                 image-rendering: pixelated;
                                 accessible-role: image;
-                                accessible-label: "Code for a friend who holds part of your recovery";
+                                accessible-label: @tr("Code for a friend who holds part of your recovery");
                             }
                         }
                     }
                     if root.share-request != "": Secondary {
-                        text: "Their screen should show: " + root.share-request-words + ". Each friend scans this same code.";
+                        text: @tr("Their screen should show: {}. Each friend scans this same code.", root.share-request-words);
                     }
-                    Field { placeholder: "Share 1 (the code a friend shows you)"; mono: true; text <=> root.restore-s1; }
+                    Field { placeholder: @tr("Share 1 (the code a friend shows you)"); mono: true; text <=> root.restore-s1; }
                     if root.can-scan: HorizontalLayout {
                         alignment: start;
-                        QuietButton { text: "Scan a friend's code"; outlined: true; clicked => { root.scan(10); } }
+                        QuietButton { text: @tr("Scan a friend's code"); outlined: true; clicked => { root.scan(10); } }
                     }
-                    Field { placeholder: "Share 2"; mono: true; text <=> root.restore-s2; }
-                    Field { placeholder: "Share 3 (if needed)"; mono: true; text <=> root.restore-s3; }
-                    Field { placeholder: "Share 4 (if needed)"; mono: true; text <=> root.restore-s4; }
-                    Field { placeholder: "Share 5 (if needed)"; mono: true; text <=> root.restore-s5; }
+                    Field { placeholder: @tr("Share 2"); mono: true; text <=> root.restore-s2; }
+                    Field { placeholder: @tr("Share 3 (if needed)"); mono: true; text <=> root.restore-s3; }
+                    Field { placeholder: @tr("Share 4 (if needed)"); mono: true; text <=> root.restore-s4; }
+                    Field { placeholder: @tr("Share 5 (if needed)"); mono: true; text <=> root.restore-s5; }
                     HorizontalLayout {
                         spacing: Tokens.space-s;
-                        Field { placeholder: "Path to your backup file (or leave empty for the one on your server)"; mono: true; text <=> root.restore-file; horizontal-stretch: 1; }
-                        QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose your backup file"; clicked => { root.browse(0); } }
+                        Field { placeholder: @tr("Path to your backup file (or leave empty for the one on your server)"); mono: true; text <=> root.restore-file; horizontal-stretch: 1; }
+                        QuietButton { text: @tr("Choose…"); outlined: true; accessible-label: @tr("Choose your backup file"); clicked => { root.browse(0); } }
                     }
                     if root.restore-file == "" && root.home-label != "": HorizontalLayout {
                         spacing: Tokens.space-s;
-                        Secondary { text: "Your server: " + root.home-label; horizontal-stretch: 1; }
+                        Secondary { text: @tr("Your server: {}", root.home-label); horizontal-stretch: 1; }
                         if root.servers.length > 1: QuietButton {
-                            text: "Change";
-                            accessible-label: "Choose the server your backup is on";
+                            text: @tr("Change");
+                            accessible-label: @tr("Choose the server your backup is on");
                             clicked => { root.server-pick-for = 0; root.chosen-server = root.home-id; root.sheet = Sheet.servers; }
                         }
                     }
@@ -1038,16 +1038,16 @@ export component AppWindow inherits Window {
                         font-size: Tokens.type-secondary;
                         wrap: word-wrap;
                     }
-                    Secondary { text: "Your contacts accept this device after 72 hours, unless one of your other devices stops it. That wait protects you if someone else has your words."; }
+                    Secondary { text: @tr("Your contacts accept this device after 72 hours, unless one of your other devices stops it. That wait protects you if someone else has your words."); }
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
                         PrimaryButton {
-                            text: root.busy ? "Restoring…" : (root.restore-file == "" ? "Restore from my server" : "Restore");
+                            text: root.busy ? @tr("Restoring…") : (root.restore-file == "" ? @tr("Restore from my server") : @tr("Restore"));
                             enabled: (root.restore-words != "" || (root.restore-s1 != "" && root.restore-s2 != "")) && !root.busy;
                             clicked => { root.restore(root.restore-words, root.restore-s1, root.restore-s2, root.restore-s3, root.restore-s4, root.restore-s5, root.restore-file); }
                         }
-                        QuietButton { text: "Back"; clicked => { root.screen = Screen.welcome; } }
+                        QuietButton { text: @tr("Back"); clicked => { root.screen = Screen.welcome; } }
                     }
                 }
             }
@@ -1063,38 +1063,38 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 width: min(440px, root.width - 2 * Tokens.space-l);
                 spacing: Tokens.space-m;
-                ScreenTitle { text: "What should people call you?"; }
+                ScreenTitle { text: @tr("What should people call you?"); }
                 name-field := Field {
-                    placeholder: "Your name";
+                    placeholder: @tr("Your name");
                     text <=> root.name-input;
                     accepted => { if root.name-input != "" { root.create-account(root.name-input); } }
                     init => { self.focus(); }
                 }
-                Secondary { text: "Only people you talk to can see this."; }
+                Secondary { text: @tr("Only people you talk to can see this."); }
                 if root.home-label != "": HorizontalLayout {
                     spacing: Tokens.space-s;
-                    Secondary { text: "Your server: " + root.home-label; horizontal-stretch: 1; }
+                    Secondary { text: @tr("Your server: {}", root.home-label); horizontal-stretch: 1; }
                     if root.servers.length > 1: QuietButton {
-                        text: "Change";
-                        accessible-label: "Choose another server";
+                        text: @tr("Change");
+                        accessible-label: @tr("Choose another server");
                         clicked => { root.server-pick-for = 0; root.chosen-server = root.home-id; root.sheet = Sheet.servers; }
                     }
                 }
                 if root.can-join: Field {
-                    placeholder: "Passphrase for this computer (optional)";
+                    placeholder: @tr("Passphrase for this computer (optional)");
                     secret: true;
                     text <=> root.new-passphrase;
                 }
                 if root.can-join && root.file-keys && root.new-passphrase == "": Secondary {
-                    text: "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files.";
+                    text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files.");
                 }
                 if root.can-join && root.new-passphrase != "": Secondary {
-                    text: "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.";
+                    text: @tr("You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.");
                 }
                 HorizontalLayout {
                     alignment: start;
                     PrimaryButton {
-                        text: "Continue";
+                        text: @tr("Continue");
                         enabled: root.name-input != "";
                         clicked => { root.create-account(root.name-input); }
                     }
@@ -1113,10 +1113,10 @@ export component AppWindow inherits Window {
                 width: min(440px, root.width - 2 * Tokens.space-l);
                 spacing: Tokens.space-m;
                 HorizontalLayout { alignment: start; Seal { state: SealState.checked; size: 48px; } }
-                ScreenTitle { text: "Enclave is locked"; }
-                Secondary { text: root.pin-lock ? "Type your PIN to open Enclave." : "Type your passphrase to open your messages on this computer."; }
+                ScreenTitle { text: @tr("Enclave is locked"); }
+                Secondary { text: root.pin-lock ? @tr("Type your PIN to open Enclave.") : @tr("Type your passphrase to open your messages on this computer."); }
                 unlock-field := Field {
-                    placeholder: root.pin-lock ? "PIN" : "Passphrase";
+                    placeholder: root.pin-lock ? @tr("PIN") : @tr("Passphrase");
                     secret: true;
                     text <=> root.passphrase-input;
                     accepted => { if root.passphrase-input != "" { root.unlock(root.passphrase-input); root.passphrase-input = ""; } }
@@ -1132,12 +1132,12 @@ export component AppWindow inherits Window {
                     alignment: start;
                     spacing: Tokens.space-s;
                     PrimaryButton {
-                        text: root.busy ? "Opening…" : "Unlock";
+                        text: root.busy ? @tr("Opening…") : @tr("Unlock");
                         enabled: root.passphrase-input != "" && !root.busy;
                         clicked => { root.unlock(root.passphrase-input); root.passphrase-input = ""; }
                     }
                     if root.pin-lock && root.biometric-on: QuietButton {
-                        text: "Use " + root.biometric;
+                        text: @tr("Use {}", root.biometric);
                         clicked => { root.unlock-biometric(); }
                     }
                 }
@@ -1151,7 +1151,7 @@ export component AppWindow inherits Window {
         padding: Tokens.space-l;
         spacing: Tokens.space-m;
         HorizontalLayout { alignment: center; Seal { size: 48px; } }
-        Body { text: "Setting up your private address…"; horizontal-alignment: center; }
+        Body { text: @tr("Setting up your private address…"); horizontal-alignment: center; }
         Secondary { text: root.status-line; horizontal-alignment: center; }
     }
 
@@ -1164,11 +1164,11 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 width: min(440px, root.width - 2 * Tokens.space-l);
                 spacing: Tokens.space-m;
-                ScreenTitle { text: root.join-words == "" ? "Link this device" : "Pick these words"; }
+                ScreenTitle { text: root.join-words == "" ? @tr("Link this device") : @tr("Pick these words"); }
                 Secondary {
                     text: root.join-words == ""
-                        ? "On the device you already use, open Settings → Your devices and paste this code. Only use it with your own account."
-                        : "Your other device now shows four sets of words. Pick the set that matches these.";
+                        ? @tr("On the device you already use, open Settings → Your devices and paste this code. Only use it with your own account.")
+                        : @tr("Your other device now shows four sets of words. Pick the set that matches these.");
                 }
                 if root.join-words == "" && root.join-code != "": HorizontalLayout {
                     alignment: center;
@@ -1183,7 +1183,7 @@ export component AppWindow inherits Window {
                             source: root.join-qr;
                             image-rendering: pixelated;
                             accessible-role: image;
-                            accessible-label: "QR code of this device's link code";
+                            accessible-label: @tr("QR code of this device's link code");
                         }
                     }
                 }
@@ -1197,14 +1197,14 @@ export component AppWindow inherits Window {
                 if root.join-words != "": Code {
                     text: root.join-words;
                     wrap: word-wrap;
-                    accessible-label: "Words: " + root.join-words;
+                    accessible-label: @tr("Words: {}", root.join-words);
                 }
                 if root.status-line != "": Secondary { text: root.status-line; }
                 HorizontalLayout {
                     alignment: start;
                     spacing: Tokens.space-s;
-                    if root.join-words == "" && root.join-code != "": PrimaryButton { text: "Copy code"; clicked => { root.copy-text(root.join-code); } }
-                    QuietButton { text: "Cancel"; clicked => { root.cancel-join(); } }
+                    if root.join-words == "" && root.join-code != "": PrimaryButton { text: @tr("Copy code"); clicked => { root.copy-text(root.join-code); } }
+                    QuietButton { text: @tr("Cancel"); clicked => { root.cancel-join(); } }
                 }
             }
         }
@@ -1225,132 +1225,132 @@ export component AppWindow inherits Window {
                     Title { text: root.my-name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                     IconButton {
                         icon: Icons.settings;
-                        label: "Settings";
+                        label: @tr("Settings");
                         clicked => { root.open-sheet(Sheet.settings); }
                     }
                 }
                 HorizontalLayout {
                     spacing: Tokens.space-s;
                     vertical-stretch: 0;
-                    ActionTile { text: "My code"; icon: Icons.qr; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.my-code); } }
-                    ActionTile { text: "Add"; icon: Icons.link; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.add); } }
-                    ActionTile { text: "Group"; icon: Icons.group; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.new-group); } }
+                    ActionTile { text: @tr("My code"); icon: Icons.qr; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.my-code); } }
+                    ActionTile { text: @tr("Add"); icon: Icons.link; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.add); } }
+                    ActionTile { text: @tr("Group"); icon: Icons.group; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.new-group); } }
                 }
                 if root.recovery-alert != "": Notice {
-                    title: "Someone is setting up your account on another device";
-                    text: "They used your recovery words. If this isn't you, stop it now. Otherwise your contacts will accept that device on " + root.recovery-alert + ".";
+                    title: @tr("Someone is setting up your account on another device");
+                    text: @tr("They used your recovery words. If this isn't you, stop it now. Otherwise your contacts will accept that device on {}.", root.recovery-alert);
                     kind: 2;
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
                         PrimaryButton {
-                            text: "Stop it";
+                            text: @tr("Stop it");
                             danger: true;
                             enabled: !root.busy;
                             clicked => { root.stop-recovery(); }
                         }
-                        QuietButton { text: "It's me"; clicked => { root.approve-recovery(); } }
+                        QuietButton { text: @tr("It's me"); clicked => { root.approve-recovery(); } }
                     }
                 }
                 if root.recovery-stopped: Notice {
-                    title: "One of your other devices stopped this change";
-                    text: "Your contacts won't accept this device, so it can't send. If this was you, link this device from your other one instead.";
+                    title: @tr("One of your other devices stopped this change");
+                    text: @tr("Your contacts won't accept this device, so it can't send. If this was you, link this device from your other one instead.");
                     kind: 2;
                 }
                 if root.recovery-hold != "" && !root.recovery-stopped: Notice {
-                    title: "Your contacts are checking this device";
-                    text: "You restored your account without one of your other devices, so contacts wait until " + root.recovery-hold + " before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then.";
+                    title: @tr("Your contacts are checking this device");
+                    text: @tr("You restored your account without one of your other devices, so contacts wait until {} before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then.", root.recovery-hold);
                     kind: 1;
                 }
                 if root.removed: Notice {
-                    title: "This device was removed from your account";
-                    text: "It can't get new messages any more. Erase it to remove your conversations from it.";
+                    title: @tr("This device was removed from your account");
+                    text: @tr("It can't get new messages any more. Erase it to remove your conversations from it.");
                     kind: 2;
                     HorizontalLayout {
                         alignment: start;
-                        PrimaryButton { text: "Erase this device"; danger: true; clicked => { root.erase-device(); } }
+                        PrimaryButton { text: @tr("Erase this device"); danger: true; clicked => { root.erase-device(); } }
                     }
                 }
                 if root.joining != "": Notice {
-                    title: "Waiting to join " + root.joining;
-                    text: "An admin needs to let you in. You'll see the group here when they do.";
+                    title: @tr("Waiting to join {}", root.joining);
+                    text: @tr("An admin needs to let you in. You'll see the group here when they do.");
                     kind: 0;
                 }
                 if root.tor-blocked && !root.bridges-restart: Notice {
-                    title: "This network seems to block Tor";
-                    text: "Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block.";
+                    title: @tr("This network seems to block Tor");
+                    text: @tr("Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block.");
                     kind: 2;
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
-                        PrimaryButton { text: "Use a bridge"; clicked => { root.set-bridges("builtin"); } }
-                        QuietButton { text: "Enter my own"; clicked => { root.open-sheet(Sheet.settings); } }
+                        PrimaryButton { text: @tr("Use a bridge"); clicked => { root.set-bridges("builtin"); } }
+                        QuietButton { text: @tr("Enter my own"); clicked => { root.open-sheet(Sheet.settings); } }
                     }
                 }
                 if root.bridges-restart: Notice {
-                    title: "Restart Enclave to use the new bridge settings";
-                    text: "Tor picks up bridges when it starts.";
+                    title: @tr("Restart Enclave to use the new bridge settings");
+                    text: @tr("Tor picks up bridges when it starts.");
                     kind: 1;
                 }
                 if root.route == 1: Notice {
-                    title: "Backup route: slower to hide who you talk to";
-                    text: "Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk.";
+                    title: @tr("Backup route: slower to hide who you talk to");
+                    text: @tr("Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk.");
                     kind: 1;
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
-                        PrimaryButton { text: "Use it"; clicked => { root.backup-route(true); } }
-                        QuietButton { text: "Keep waiting"; clicked => { root.backup-route(false); } }
+                        PrimaryButton { text: @tr("Use it"); clicked => { root.backup-route(true); } }
+                        QuietButton { text: @tr("Keep waiting"); clicked => { root.backup-route(false); } }
                     }
                 }
                 if root.route == 2: Notice {
-                    title: "On the backup route";
-                    text: "Messages go to your server through Tor instead of the private network. Switch back when the private network works again.";
+                    title: @tr("On the backup route");
+                    text: @tr("Messages go to your server through Tor instead of the private network. Switch back when the private network works again.");
                     kind: 1;
                     HorizontalLayout {
                         alignment: start;
-                        QuietButton { text: "Back to the private route"; clicked => { root.backup-route(false); } }
+                        QuietButton { text: @tr("Back to the private route"); clicked => { root.backup-route(false); } }
                     }
                 }
                 if root.kt-split != "": Notice {
-                    title: "A username server showed people different lists";
-                    text: root.kt-split + " gave you and one of your contacts two different signed versions of its public list of usernames. Someone may be trying to send you, or them, to the wrong person. Check security codes, ideally in person, before sharing anything private.";
+                    title: @tr("A username server showed people different lists");
+                    text: @tr("{} gave you and one of your contacts two different signed versions of its public list of usernames. Someone may be trying to send you, or them, to the wrong person. Check security codes, ideally in person, before sharing anything private.", root.kt-split);
                     kind: 2;
                 }
                 if root.new-device != "": Notice {
-                    title: "New device linked";
-                    text: "Your account was linked to " + root.new-device + ". If that wasn't you, remove it now: it can read your new messages.";
+                    title: @tr("New device linked");
+                    text: @tr("Your account was linked to {}. If that wasn't you, remove it now: it can read your new messages.", root.new-device);
                     kind: 1;
                     HorizontalLayout {
                         alignment: start;
-                        QuietButton { text: "Your devices"; clicked => { root.open-sheet(Sheet.devices); } }
+                        QuietButton { text: @tr("Your devices"); clicked => { root.open-sheet(Sheet.devices); } }
                     }
                 }
                 if root.clock-skew != "": Notice {
-                    title: "This device's clock is wrong";
-                    text: "It is " + root.clock-skew + " compared with the time Enclave's independent witnesses sign. Set the date and time to automatic in your device's settings. Until then, message times may look wrong and some checks may fail.";
+                    title: @tr("This device's clock is wrong");
+                    text: @tr("It is {} compared with the time Enclave's independent witnesses sign. Set the date and time to automatic in your device's settings. Until then, message times may look wrong and some checks may fail.", root.clock-skew);
                     kind: 1;
                 }
                 if root.username-problem != "": Notice {
-                    title: "Your username no longer leads to you";
-                    text: "The server's public log now shows " + root.username-problem + " pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private.";
+                    title: @tr("Your username no longer leads to you");
+                    text: @tr("The server's public log now shows {} pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private.", root.username-problem);
                     kind: 2;
                     HorizontalLayout {
                         alignment: start;
-                        QuietButton { text: "Choose a new username"; clicked => { root.open-sheet(Sheet.settings); } }
+                        QuietButton { text: @tr("Choose a new username"); clicked => { root.open-sheet(Sheet.settings); } }
                     }
                 }
                 if !root.recovery-saved: Notice {
-                    title: "Save your recovery words";
-                    text: "They bring your account back if you lose this device.";
+                    title: @tr("Save your recovery words");
+                    text: @tr("They bring your account back if you lose this device.");
                     kind: 0;
                     HorizontalLayout {
                         alignment: start;
-                        QuietButton { text: "Show words"; clicked => { root.open-sheet(Sheet.recovery); } }
+                        QuietButton { text: @tr("Show words"); clicked => { root.open-sheet(Sheet.recovery); } }
                     }
                 }
                 Field {
-                    placeholder: "Search messages";
+                    placeholder: @tr("Search messages");
                     text <=> root.search-query;
                     edited => { root.search(root.search-query); }
                 }
@@ -1362,8 +1362,8 @@ export component AppWindow inherits Window {
                         spacing: 2px;
                         if root.search-query != "": Caption {
                             text: root.search-results.length == 0
-                                ? (root.search-query.character-count < 2 ? "Keep typing…" : "No messages found. Search only looks on this device.")
-                                : "Messages";
+                                ? (root.search-query.character-count < 2 ? @tr("Keep typing…") : @tr("No messages found. Search only looks on this device."))
+                                : @tr("Messages");
                             font-weight: 600;
                             height: 28px;
                             vertical-alignment: center;
@@ -1377,7 +1377,7 @@ export component AppWindow inherits Window {
                             }
                         }
                         if root.search-query == "" && root.requests.length > 0: Caption {
-                            text: "Message requests";
+                            text: @tr("Message requests");
                             font-weight: 600;
                             height: 28px;
                             vertical-alignment: center;
@@ -1390,7 +1390,7 @@ export component AppWindow inherits Window {
                                 clicked => { root.select(r.id); }
                             }
                             if root.requests.length > 0 && root.contacts.length > 0: Caption {
-                                text: "Conversations";
+                                text: @tr("Conversations");
                                 font-weight: 600;
                                 height: 28px;
                                 vertical-alignment: center;
@@ -1405,7 +1405,7 @@ export component AppWindow inherits Window {
                                 border-radius: Tokens.radius-control;
                                 background: archived-touch.has-hover ? Tokens.surface : transparent;
                                 accessible-role: button;
-                                accessible-label: (root.show-archived ? "Hide archived, " : "Show archived, ") + root.archived.length;
+                                accessible-label: (root.show-archived ? @tr("Hide archived, ") : @tr("Show archived, ")) + root.archived.length;
                                 accessible-action-default => { root.show-archived = !root.show-archived; }
                                 archived-touch := TouchArea {
                                     mouse-cursor: pointer;
@@ -1415,14 +1415,14 @@ export component AppWindow inherits Window {
                                     padding-left: Tokens.space-sm;
                                     padding-right: Tokens.space-sm;
                                     Text {
-                                        text: "Archived (" + root.archived.length + ")";
+                                        text: @tr("Archived ({})", root.archived.length);
                                         font-size: Tokens.type-secondary;
                                         font-weight: 600;
                                         color: Tokens.pine;
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                     }
-                                    Caption { text: root.show-archived ? "Hide" : "Show"; vertical-alignment: center; }
+                                    Caption { text: root.show-archived ? @tr("Hide") : @tr("Show"); vertical-alignment: center; }
                                 }
                             }
                             if root.show-archived: VerticalLayout {
@@ -1455,9 +1455,9 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         width: min(420px, parent.width - 2 * Tokens.space-xl);
                         spacing: Tokens.space-m;
-                        Title { text: root.contacts.length + root.requests.length == 0 ? "Start your first conversation" : "Choose a conversation"; }
+                        Title { text: root.contacts.length + root.requests.length == 0 ? @tr("Start your first conversation") : @tr("Choose a conversation"); }
                         Secondary {
-                            text: "Show your code to someone next to you, or send them your invite link. Meeting in person is the strongest way to check it's really them.";
+                            text: @tr("Show your code to someone next to you, or send them your invite link. Meeting in person is the strongest way to check it's really them.");
                         }
                     }
                 }
@@ -1473,7 +1473,7 @@ export component AppWindow inherits Window {
                         spacing: Tokens.space-sm;
                         if !root.wide: VerticalLayout {
                             alignment: center;
-                            IconButton { icon: Icons.back; label: "Back"; clicked => { root.current-id = ""; } }
+                            IconButton { icon: Icons.back; label: @tr("Back"); clicked => { root.current-id = ""; } }
                         }
                         VerticalLayout {
                             alignment: center;
@@ -1488,18 +1488,18 @@ export component AppWindow inherits Window {
                                 spacing: Tokens.space-xs;
                                 if root.current.kind == 0: Seal { state: root.current.verified ? SealState.checked : SealState.unchecked; size: 16px; }
                                 if root.typing && root.current.kind == 0: Caption {
-                                    text: "typing…";
+                                    text: @tr("typing…");
                                     color: Tokens.pine;
                                     vertical-alignment: center;
                                     horizontal-stretch: 1;
-                                    accessible-label: root.current.name + " is typing";
+                                    accessible-label: @tr("{} is typing", root.current.name);
                                 }
                                 if !(root.typing && root.current.kind == 0): Caption {
                                     text: root.current.kind == 2
-                                        ? "Only you, on your devices"
+                                        ? @tr("Only you, on your devices")
                                         : root.current.kind == 1
-                                        ? root.current.members + (root.on-record ? " people · On the record" : " people · Off the record")
-                                        : (root.current.met ? "Met in person" : root.current.verified ? "Checked" : "Not checked yet") + (root.on-record ? " · On the record" : " · Off the record");
+                                        ? root.current.members + (root.on-record ? @tr(" people · On the record") : @tr(" people · Off the record"))
+                                        : (root.current.met ? @tr("Met in person") : root.current.verified ? @tr("Checked") : @tr("Not checked yet")) + (root.on-record ? @tr(" · On the record") : @tr(" · Off the record"));
                                     vertical-alignment: center;
                                     overflow: elide;
                                     horizontal-stretch: 1;
@@ -1510,14 +1510,14 @@ export component AppWindow inherits Window {
                             alignment: center;
                             IconButton {
                                 icon: Icons.more;
-                                label: "Conversation settings";
+                                label: @tr("Conversation settings");
                                 clicked => { root.open-sheet(Sheet.conversation); }
                             }
                         }
                         if root.current.kind == 1: VerticalLayout {
                             alignment: center;
                             QuietButton {
-                                text: "Members";
+                                text: @tr("Members");
                                 clicked => { root.open-sheet(Sheet.members); }
                             }
                         }
@@ -1526,14 +1526,14 @@ export component AppWindow inherits Window {
                             alignment: center;
                             IconButton {
                                 icon: Icons.timer;
-                                label: root.timer > 0 ? "Disappearing messages: on" : "Disappearing messages: off";
+                                label: root.timer > 0 ? @tr("Disappearing messages: on") : @tr("Disappearing messages: off");
                                 clicked => { root.open-sheet(Sheet.timer); }
                             }
                         }
                         if root.current.state == 2 && root.current.kind == 0: VerticalLayout {
                             alignment: center;
                             QuietButton {
-                                text: !root.wide ? "Code" : root.current.verified ? "Security code" : "Check code";
+                                text: !root.wide ? @tr("Code") : root.current.verified ? @tr("Security code") : @tr("Check code");
                                 clicked => { root.open-sheet(Sheet.check-code); }
                             }
                         }
@@ -1545,7 +1545,7 @@ export component AppWindow inherits Window {
                 if root.pins.length > 0: Rectangle {
                     background: Tokens.surface;
                     accessible-role: text;
-                    accessible-label: (root.pins.length == 1 ? "Pinned message: " : root.pins.length + " pinned messages. Latest: ") + root.pins[0];
+                    accessible-label: (root.pins.length == 1 ? @tr("Pinned message: ") : @tr("{} pinned messages. Latest: ", root.pins.length)) + root.pins[0];
                     HorizontalLayout {
                         padding-left: Tokens.space-m;
                         padding-right: Tokens.space-m;
@@ -1556,7 +1556,7 @@ export component AppWindow inherits Window {
                         VerticalLayout {
                             spacing: 2px;
                             horizontal-stretch: 1;
-                            Caption { text: root.pins.length == 1 ? "Pinned" : "Pinned · " + root.pins.length; }
+                            Caption { text: root.pins.length == 1 ? @tr("Pinned") : @tr("Pinned · {}", root.pins.length); }
                             Text {
                                 text: root.pins[0];
                                 font-size: Tokens.type-secondary;
@@ -1579,7 +1579,7 @@ export component AppWindow inherits Window {
                         padding: Tokens.space-m;
                         spacing: Tokens.space-s;
                         if root.show-delivery-hint && root.current.state == 2 && root.current.kind != 2: Caption {
-                            text: "Private delivery takes a few seconds. That pause is part of what hides who you talk to.";
+                            text: @tr("Private delivery takes a few seconds. That pause is part of what hides who you talk to.");
                             horizontal-alignment: center;
                             wrap: word-wrap;
                         }
@@ -1609,8 +1609,8 @@ export component AppWindow inherits Window {
                         padding-right: Tokens.space-m;
                         padding-top: Tokens.space-s;
                         Notice {
-                            title: "A message may not have arrived";
-                            text: "Later messages from " + root.current.name + " came over a minute ago, but an earlier one hasn't. If it comes, it's marked “delivered late”. Their app sends it again if it was lost.";
+                            title: @tr("A message may not have arrived");
+                            text: @tr("Later messages from {} came over a minute ago, but an earlier one hasn't. If it comes, it's marked “delivered late”. Their app sends it again if it was lost.", root.current.name);
                             kind: 1;
                         }
                     }
@@ -1620,23 +1620,23 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         padding: Tokens.space-m;
                         Notice {
-                            title: root.current.name + " wants to talk";
-                            text: "You haven't talked before. They can't see whether you've read this until you accept. The name is what they typed; check their security code before sharing anything private.";
+                            title: @tr("{} wants to talk", root.current.name);
+                            text: @tr("You haven't talked before. They can't see whether you've read this until you accept. The name is what they typed; check their security code before sharing anything private.");
                             HorizontalLayout {
                                 spacing: Tokens.space-s;
                                 alignment: start;
-                                PrimaryButton { text: "Accept"; clicked => { root.accept(root.current-id); } }
-                                QuietButton { text: "Delete"; danger: true; clicked => { root.decline(root.current-id); } }
+                                PrimaryButton { text: @tr("Accept"); clicked => { root.accept(root.current-id); } }
+                                QuietButton { text: @tr("Delete"); danger: true; clicked => { root.decline(root.current-id); } }
                                 QuietButton {
-                                    text: "Block";
+                                    text: @tr("Block");
                                     danger: true;
-                                    accessible-label: "Block " + root.current.name;
+                                    accessible-label: @tr("Block {}", root.current.name);
                                     clicked => { root.block(root.current-id, true); }
                                 }
                                 QuietButton {
-                                    text: "Report";
+                                    text: @tr("Report");
                                     danger: true;
-                                    accessible-label: "Report " + root.current.name;
+                                    accessible-label: @tr("Report {}", root.current.name);
                                     clicked => { root.open-sheet(Sheet.report); }
                                 }
                             }
@@ -1647,8 +1647,8 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         padding: Tokens.space-m;
                         Notice {
-                            title: "Waiting for " + root.current.name + " to accept";
-                            text: "You can write again once they accept your request.";
+                            title: @tr("Waiting for {} to accept", root.current.name);
+                            text: @tr("You can write again once they accept your request.");
                         }
                     }
                 }
@@ -1667,7 +1667,7 @@ export component AppWindow inherits Window {
                             border-radius: Tokens.radius-control;
                             background: react-touch.has-hover ? Tokens.bubble-in : transparent;
                             accessible-role: button;
-                            accessible-label: "React " + e;
+                            accessible-label: @tr("React {}", e);
                             accessible-action-default => {
                                 root.react(root.current-id, root.selected-seq, e);
                                 root.selected-seq = "";
@@ -1691,15 +1691,15 @@ export component AppWindow inherits Window {
                         for m in root.messages: HorizontalLayout {
                             spacing: Tokens.space-xs;
                             if m.seq == root.selected-seq && root.current.kind != 2: QuietButton {
-                                text: m.pinned ? "Unpin" : "Pin";
-                                accessible-label: m.pinned ? "Unpin for everyone" : "Pin for everyone";
+                                text: m.pinned ? @tr("Unpin") : @tr("Pin");
+                                accessible-label: m.pinned ? @tr("Unpin for everyone") : @tr("Pin for everyone");
                                 clicked => {
                                     root.pin(root.current-id, m.seq, !m.pinned);
                                     root.selected-seq = "";
                                 }
                             }
                             if m.seq == root.selected-seq && m.can-edit: QuietButton {
-                                text: "Edit";
+                                text: @tr("Edit");
                                 clicked => {
                                     root.editing-seq = m.seq;
                                     root.draft = m.text;
@@ -1707,17 +1707,17 @@ export component AppWindow inherits Window {
                                 }
                             }
                             if m.seq == root.selected-seq && m.outgoing && !m.deleted: QuietButton {
-                                text: "Delete";
+                                text: @tr("Delete");
                                 danger: true;
-                                accessible-label: root.current.kind == 2 ? "Delete note" : "Delete for everyone";
+                                accessible-label: root.current.kind == 2 ? @tr("Delete note") : @tr("Delete for everyone");
                                 clicked => {
                                     root.delete-message(root.current-id, m.seq);
                                     root.selected-seq = "";
                                 }
                             }
                             if m.seq == root.selected-seq && m.file != "": QuietButton {
-                                text: "Save";
-                                accessible-label: "Save " + m.file;
+                                text: @tr("Save");
+                                accessible-label: @tr("Save {}", m.file);
                                 clicked => {
                                     root.save-file(root.current-id, m.seq);
                                     root.selected-seq = "";
@@ -1731,15 +1731,15 @@ export component AppWindow inherits Window {
                     padding-right: Tokens.space-m;
                     Notice {
                         title: root.moved == 1
-                            ? root.current.name + " changed their recovery words"
-                            : root.current.name + "'s account moved to a new key";
+                            ? @tr("{} changed their recovery words", root.current.name)
+                            : @tr("{}'s account moved to a new key", root.current.name);
                         text: root.moved == 1
-                            ? "Their security code changed too. Check it again before sharing anything private."
-                            : "Enclave can't confirm it was them who did this. Check the security code in person before sharing anything private.";
+                            ? @tr("Their security code changed too. Check it again before sharing anything private.")
+                            : @tr("Enclave can't confirm it was them who did this. Check the security code in person before sharing anything private.");
                         kind: 1;
                         HorizontalLayout {
                             alignment: start;
-                            QuietButton { text: "Check now"; clicked => { root.open-sheet(Sheet.check-code); } }
+                            QuietButton { text: @tr("Check now"); clicked => { root.open-sheet(Sheet.check-code); } }
                         }
                     }
                 }
@@ -1747,8 +1747,8 @@ export component AppWindow inherits Window {
                     padding-left: Tokens.space-m;
                     padding-right: Tokens.space-m;
                     Notice {
-                        title: root.held-moves + " changed their recovery words, but this device didn't hear it from them";
-                        text: "Their new key is on hold in this group until it does. Ask them to open Enclave, and check with them another way before sharing anything private.";
+                        title: @tr("{} changed their recovery words, but this device didn't hear it from them", root.held-moves);
+                        text: @tr("Their new key is on hold in this group until it does. Ask them to open Enclave, and check with them another way before sharing anything private.");
                         kind: 1;
                     }
                 }
@@ -1756,12 +1756,12 @@ export component AppWindow inherits Window {
                     padding-left: Tokens.space-m;
                     padding-right: Tokens.space-m;
                     Notice {
-                        title: "You hold part of " + root.current.name + "'s recovery";
-                        text: "If they lose every device, meet them: their new phone shows a code, and you give them your part by scanning it. Only in person.";
+                        title: @tr("You hold part of {}'s recovery", root.current.name);
+                        text: @tr("If they lose every device, meet them: their new phone shows a code, and you give them your part by scanning it. Only in person.");
                         kind: 0;
                         HorizontalLayout {
                             alignment: start;
-                            QuietButton { text: "Help them get back in"; clicked => { root.share-request-input = ""; root.reveal-share(root.current-id); root.open-sheet(Sheet.share); } }
+                            QuietButton { text: @tr("Help them get back in"); clicked => { root.share-request-input = ""; root.reveal-share(root.current-id); root.open-sheet(Sheet.share); } }
                         }
                     }
                 }
@@ -1774,11 +1774,11 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         padding: Tokens.space-m;
                         Notice {
-                            title: "You blocked " + root.current.name;
-                            text: "They can't send you messages, and they aren't told. Anything they send is dropped.";
+                            title: @tr("You blocked {}", root.current.name);
+                            text: @tr("They can't send you messages, and they aren't told. Anything they send is dropped.");
                             HorizontalLayout {
                                 alignment: start;
-                                QuietButton { text: "Unblock"; outlined: true; clicked => { root.block(root.current-id, false); } }
+                                QuietButton { text: @tr("Unblock"); outlined: true; clicked => { root.block(root.current-id, false); } }
                             }
                         }
                     }
@@ -1787,8 +1787,8 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         padding: Tokens.space-m;
                         Notice {
-                            title: root.current.name + " closed their account";
-                            text: "You can still read this conversation. Nothing more can be sent to them.";
+                            title: @tr("{} closed their account", root.current.name);
+                            text: @tr("You can still read this conversation. Nothing more can be sent to them.");
                         }
                     }
                 }
@@ -1798,21 +1798,21 @@ export component AppWindow inherits Window {
                         spacing: Tokens.space-s;
                         if root.current.kind != 2 && root.editing-seq == "": IconButton {
                             icon: Icons.attach;
-                            label: "Send a file";
+                            label: @tr("Send a file");
                             clicked => { root.attach-error = ""; root.open-sheet(Sheet.attach); }
                         }
                         if root.current.kind == 1: IconButton {
                             icon: Icons.poll;
-                            label: "Ask a question";
+                            label: @tr("Ask a question");
                             clicked => { root.open-sheet(Sheet.poll); }
                         }
                         if root.current.kind != 2 && root.editing-seq == "": IconButton {
                             icon: Icons.sticker;
-                            label: "Stickers";
+                            label: @tr("Stickers");
                             clicked => { root.load-stickers(); root.open-sheet(Sheet.stickers); }
                         }
                         composer := Field {
-                            placeholder: root.editing-seq != "" ? "Edit your message" : "Message";
+                            placeholder: root.editing-seq != "" ? @tr("Edit your message") : @tr("Message");
                             text <=> root.draft;
                             horizontal-stretch: 1;
                             edited => {
@@ -1833,12 +1833,12 @@ export component AppWindow inherits Window {
                             }
                         }
                         if root.editing-seq != "": QuietButton {
-                            text: "Cancel";
+                            text: @tr("Cancel");
                             clicked => { root.editing-seq = ""; root.draft = ""; }
                         }
                         IconButton {
                             icon: Icons.send;
-                            label: root.editing-seq != "" ? "Save edit" : "Send";
+                            label: root.editing-seq != "" ? @tr("Save edit") : @tr("Send");
                             filled: true;
                             clicked => {
                                 if root.draft != "" {
@@ -1860,9 +1860,9 @@ export component AppWindow inherits Window {
 
     // ----------------------------------------------------------------- sheets
     if root.sheet == Sheet.my-code: SheetFrame {
-        title: "Your code";
+        title: @tr("Your code");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."; }
+        Secondary { text: @tr("Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."); }
         HorizontalLayout {
             alignment: center;
             Rectangle {
@@ -1876,13 +1876,13 @@ export component AppWindow inherits Window {
                     source: root.my-qr;
                     image-rendering: pixelated;
                     accessible-role: image;
-                    accessible-label: "QR code of your contact code";
+                    accessible-label: @tr("QR code of your contact code");
                 }
             }
         }
         if root.my-username != "": HorizontalLayout {
             spacing: Tokens.space-s;
-            Secondary { text: "Or they can look you up as"; vertical-alignment: center; horizontal-stretch: 0; }
+            Secondary { text: @tr("Or they can look you up as"); vertical-alignment: center; horizontal-stretch: 0; }
             Text {
                 text: root.my-username;
                 font-family: "Atkinson Hyperlegible Mono";
@@ -1895,30 +1895,30 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
-            PrimaryButton { text: "Copy invite link"; enabled: !root.busy; clicked => { root.new-invite(); } }
-            if root.my-username != "": QuietButton { text: "Copy username"; clicked => { root.copy-text(root.my-username); } }
+            PrimaryButton { text: @tr("Copy invite link"); enabled: !root.busy; clicked => { root.new-invite(); } }
+            if root.my-username != "": QuietButton { text: @tr("Copy username"); clicked => { root.copy-text(root.my-username); } }
         }
         if root.invites > 0: HorizontalLayout {
             spacing: Tokens.space-s;
             Caption {
-                text: root.invites == 1 ? "1 invite link hasn't been used yet." : root.invites + " invite links haven't been used yet.";
+                text: root.invites == 1 ? @tr("1 invite link hasn't been used yet.") : @tr("{} invite links haven't been used yet.", root.invites);
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
-            QuietButton { text: "Cancel them"; horizontal-stretch: 0; clicked => { root.cancel-invites(); } }
+            QuietButton { text: @tr("Cancel them"); horizontal-stretch: 0; clicked => { root.cancel-invites(); } }
         }
     }
 
     if root.sheet == Sheet.add: SheetFrame {
-        title: "Add someone";
+        title: @tr("Add someone");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: root.usernames ? "Paste the invite link they sent you, or type their username." : "Paste the invite link they sent you."; }
+        Secondary { text: root.usernames ? @tr("Paste the invite link they sent you, or type their username.") : @tr("Paste the invite link they sent you."); }
         HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: root.usernames ? "enclave:add#…  or  @name@server" : "enclave:add#…"; mono: true; text <=> root.add-link; horizontal-stretch: 1; }
-            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan their invite code with the camera"; clicked => { root.scan(1); } }
+            Field { placeholder: root.usernames ? @tr("enclave:add#…  or  @name@server") : @tr("enclave:add#…"); mono: true; text <=> root.add-link; horizontal-stretch: 1; }
+            if root.can-scan: QuietButton { text: @tr("Scan"); outlined: true; accessible-label: @tr("Scan their invite code with the camera"); clicked => { root.scan(1); } }
         }
-        Field { placeholder: "Say hello (optional)"; text <=> root.add-text; }
+        Field { placeholder: @tr("Say hello (optional)"); text <=> root.add-text; }
         if root.add-error != "": HorizontalLayout {
             spacing: Tokens.space-s;
             Rectangle {
@@ -1928,7 +1928,7 @@ export component AppWindow inherits Window {
                 background: Tokens.danger;
                 Text { text: "!"; color: Tokens.surface; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
             }
-            Text { text: "Couldn't add them"; color: Tokens.danger; font-size: Tokens.type-body; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+            Text { text: @tr("Couldn't add them"); color: Tokens.danger; font-size: Tokens.type-body; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
         }
         if root.add-error != "": Text {
             text: root.add-error;
@@ -1940,14 +1940,14 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             PrimaryButton {
-                text: root.busy ? "Sending request…" : "Send request";
+                text: root.busy ? @tr("Sending request…") : @tr("Send request");
                 enabled: root.add-link != "" && !root.busy;
                 clicked => { root.add-contact(root.add-link, root.add-text); }
             }
         }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Together right now? Meet in person"; outlined: true; clicked => { root.open-sheet(Sheet.meet); } }
+            QuietButton { text: @tr("Together right now? Meet in person"); outlined: true; clicked => { root.open-sheet(Sheet.meet); } }
         }
     }
 
@@ -1957,36 +1957,36 @@ export component AppWindow inherits Window {
         // Contact info: the McEliece braid isn't done (`docs/17-design.md`
         // keeps this off the conversation itself).
         if root.finishing: Notice {
-            title: "Extra protection: finishing…";
-            text: "Maximum privacy holds what you write until all three kinds of encryption protect this conversation. It goes out on its own once " + root.current.name + "'s app has finished setting it up.";
+            title: @tr("Extra protection: finishing…");
+            text: @tr("Maximum privacy holds what you write until all three kinds of encryption protect this conversation. It goes out on its own once {}'s app has finished setting it up.", root.current.name);
         }
         if root.current.kind == 0: SwitchRow {
-            label: "On the record";
+            label: @tr("On the record");
             detail: root.on-record
-                ? "Your messages carry your signature. Anyone who gets a copy can prove you wrote them."
-                : "Nobody can prove to others who wrote these messages.";
+                ? @tr("Your messages carry your signature. Anyone who gets a copy can prove you wrote them.")
+                : @tr("Nobody can prove to others who wrote these messages.");
             on: root.on-record;
             toggled => { root.set-on-record(!root.on-record); }
         }
         if root.current.kind == 0: Caption {
-            text: "Both of you see when this changes, and who changed it.";
+            text: @tr("Both of you see when this changes, and who changed it.");
             wrap: word-wrap;
         }
         SwitchRow {
-            label: "Pin to top";
-            detail: "Keep it above your other conversations. Up to 4.";
+            label: @tr("Pin to top");
+            detail: @tr("Keep it above your other conversations. Up to 4.");
             on: root.current.pinned;
             toggled => { root.conv-prefs(root.current-id, false, !root.current.pinned, root.current.muted); }
         }
         SwitchRow {
-            label: "Mute";
-            detail: "New messages are counted quietly and don't bring it back from the archive.";
+            label: @tr("Mute");
+            detail: @tr("New messages are counted quietly and don't bring it back from the archive.");
             on: root.current.muted;
             toggled => { root.conv-prefs(root.current-id, root.current.archived, root.current.pinned, !root.current.muted); }
         }
         SwitchRow {
-            label: "Archive";
-            detail: "Move it out of your list until someone writes.";
+            label: @tr("Archive");
+            detail: @tr("Move it out of your list until someone writes.");
             on: root.current.archived;
             toggled => {
                 root.conv-prefs(root.current-id, !root.current.archived, root.current.pinned, root.current.muted);
@@ -1994,13 +1994,13 @@ export component AppWindow inherits Window {
             }
         }
         Caption {
-            text: "These choices stay on this device. Nobody in the conversation sees them.";
+            text: @tr("These choices stay on this device. Nobody in the conversation sees them.");
             wrap: word-wrap;
         }
         if root.gallery-count > 0: HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: "Photos and files (" + root.gallery-count + ")";
+                text: @tr("Photos and files ({})", root.gallery-count);
                 outlined: true;
                 clicked => { root.sheet = Sheet.gallery; }
             }
@@ -2009,20 +2009,20 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             QuietButton {
-                text: root.timer > 0 ? "Disappearing messages: on" : "Disappearing messages: off";
+                text: root.timer > 0 ? @tr("Disappearing messages: on") : @tr("Disappearing messages: off");
                 outlined: true;
                 clicked => { root.open-sheet(Sheet.timer); }
             }
             QuietButton {
-                text: "Report";
+                text: @tr("Report");
                 danger: true;
-                accessible-label: "Report " + root.current.name;
+                accessible-label: @tr("Report {}", root.current.name);
                 clicked => { root.sheet = Sheet.report; }
             }
             QuietButton {
-                text: root.current.blocked ? "Unblock" : "Block";
+                text: root.current.blocked ? @tr("Unblock") : @tr("Block");
                 danger: !root.current.blocked;
-                accessible-label: (root.current.blocked ? "Unblock " : "Block ") + root.current.name;
+                accessible-label: (root.current.blocked ? @tr("Unblock ") : @tr("Block ")) + root.current.name;
                 clicked => {
                     root.block(root.current-id, !root.current.blocked);
                     root.sheet = Sheet.none;
@@ -2032,15 +2032,15 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.timer: SheetFrame {
-        title: "Disappearing messages";
+        title: @tr("Disappearing messages");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."; }
+        Secondary { text: @tr("New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."); }
         for option in [
-            { label: "Off", secs: 0 },
-            { label: "5 minutes", secs: 300 },
-            { label: "1 hour", secs: 3600 },
-            { label: "1 day", secs: 86400 },
-            { label: "1 week", secs: 604800 },
+            { label: @tr("Off"), secs: 0 },
+            { label: @tr("5 minutes"), secs: 300 },
+            { label: @tr("1 hour"), secs: 3600 },
+            { label: @tr("1 day"), secs: 86400 },
+            { label: @tr("1 week"), secs: 604800 },
         ]: Rectangle {
             height: Tokens.space-touch-target-min;
             border-radius: Tokens.radius-control;
@@ -2071,15 +2071,15 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.attach: SheetFrame {
-        title: "Send a file";
+        title: @tr("Send a file");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "Files are sealed before they leave this device and padded so their size doesn't give them away. " + (root.current.kind == 1 ? "Each member downloads them" : root.current.name + " downloads them") + " only when they choose to. A WAV recording is sent as a voice note."; }
+        Secondary { text: @tr("Files are sealed before they leave this device and padded so their size doesn't give them away. ") + (root.current.kind == 1 ? @tr("Each member downloads them") : @tr("{} downloads them", root.current.name)) + @tr(" only when they choose to. A WAV recording is sent as a voice note."); }
         HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "Path to the file"; mono: true; text <=> root.attach-path; horizontal-stretch: 1; }
-            QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose a file to send"; clicked => { root.browse(2); } }
+            Field { placeholder: @tr("Path to the file"); mono: true; text <=> root.attach-path; horizontal-stretch: 1; }
+            QuietButton { text: @tr("Choose…"); outlined: true; accessible-label: @tr("Choose a file to send"); clicked => { root.browse(2); } }
         }
-        Field { placeholder: "Add a caption (optional)"; text <=> root.attach-caption; }
+        Field { placeholder: @tr("Add a caption (optional)"); text <=> root.attach-caption; }
         if root.attach-error != "": Text {
             text: root.attach-error;
             color: Tokens.danger;
@@ -2089,25 +2089,25 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Sending…" : "Send";
+                text: root.busy ? @tr("Sending…") : @tr("Send");
                 enabled: root.attach-path != "" && !root.busy;
                 clicked => { root.send-file(root.current-id, root.attach-path, root.attach-caption); }
             }
             if root.current.kind == 0: QuietButton {
-                text: "Share a contact instead";
+                text: @tr("Share a contact instead");
                 clicked => { root.sheet = Sheet.share-contact; }
             }
             if root.current.kind == 0: QuietButton {
-                text: "Share a location";
+                text: @tr("Share a location");
                 clicked => { root.sheet = Sheet.location; }
             }
         }
     }
 
     if root.sheet == Sheet.stickers: SheetFrame {
-        title: "Stickers";
+        title: @tr("Stickers");
         close => { root.sheet = Sheet.none; }
-        if root.sticker-packs.length == 0: Secondary { text: "No sticker packs yet. Make one from your own pictures, or add one from a sticker someone sends you."; }
+        if root.sticker-packs.length == 0: Secondary { text: @tr("No sticker packs yet. Make one from your own pictures, or add one from a sticker someone sends you."); }
         for p in root.sticker-packs: VerticalLayout {
             spacing: Tokens.space-xs;
             Caption { text: p.title; font-weight: 600; }
@@ -2123,7 +2123,7 @@ export component AppWindow inherits Window {
                         border-radius: Tokens.radius-control;
                         background: cell-touch.has-hover ? Tokens.bubble-in : transparent;
                         accessible-role: button;
-                        accessible-label: "Send sticker " + (c.index + 1) + " from " + p.title;
+                        accessible-label: @tr("Send sticker {} from {}", (c.index + 1), p.title);
                         accessible-action-default => { root.send-sticker(root.current-id, c.pack, c.index); root.sheet = Sheet.none; }
                         cell-touch := TouchArea {
                             mouse-cursor: pointer;
@@ -2142,19 +2142,19 @@ export component AppWindow inherits Window {
         }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Make a pack"; outlined: true; clicked => { root.pack-error = ""; root.sheet = Sheet.new-pack; } }
+            QuietButton { text: @tr("Make a pack"); outlined: true; clicked => { root.pack-error = ""; root.sheet = Sheet.new-pack; } }
         }
     }
 
     if root.sheet == Sheet.new-pack: SheetFrame {
-        title: "Make a sticker pack";
+        title: @tr("Make a sticker pack");
         close => { root.sheet = Sheet.stickers; }
-        Secondary { text: "Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."; }
-        Field { placeholder: "Pack name"; text <=> root.pack-title; }
+        Secondary { text: @tr("Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."); }
+        Field { placeholder: @tr("Pack name"); text <=> root.pack-title; }
         HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "Paths to pictures, separated by ;"; mono: true; text <=> root.pack-paths; horizontal-stretch: 1; }
-            QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose pictures for the pack"; clicked => { root.browse(3); } }
+            Field { placeholder: @tr("Paths to pictures, separated by ;"); mono: true; text <=> root.pack-paths; horizontal-stretch: 1; }
+            QuietButton { text: @tr("Choose…"); outlined: true; accessible-label: @tr("Choose pictures for the pack"); clicked => { root.browse(3); } }
         }
         if root.pack-error != "": Text {
             text: root.pack-error;
@@ -2165,7 +2165,7 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Making…" : "Make pack";
+                text: root.busy ? @tr("Making…") : @tr("Make pack");
                 enabled: root.pack-title != "" && root.pack-paths != "" && !root.busy;
                 clicked => { root.create-pack(root.pack-title, root.pack-paths); }
             }
@@ -2173,13 +2173,13 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.report: SheetFrame {
-        title: "Report " + root.current.name;
+        title: @tr("Report {}", root.current.name);
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "The report goes to the people who run " + root.current.name + "'s server. It doesn't say who you are. They can close the account's message requests; they can't read your conversations."; }
+        Secondary { text: @tr("The report goes to the people who run {}'s server. It doesn't say who you are. They can close the account's message requests; they can't read your conversations.", root.current.name); }
         for option in [
-            { label: "Spam", value: 1 },
-            { label: "Harassment or threats", value: 2 },
-            { label: "Something else", value: 3 },
+            { label: @tr("Spam"), value: 1 },
+            { label: @tr("Harassment or threats"), value: 2 },
+            { label: @tr("Something else"), value: 3 },
         ]: Rectangle {
             height: Tokens.space-touch-target-min;
             border-radius: Tokens.radius-control;
@@ -2196,27 +2196,27 @@ export component AppWindow inherits Window {
             }
         }
         SwitchRow {
-            label: "Include their last messages";
-            detail: "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them.";
+            label: @tr("Include their last messages");
+            detail: @tr("Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them.");
             on: root.report-quote;
             toggled => { root.report-quote = !root.report-quote; }
         }
         SwitchRow {
-            label: "Also block them";
-            detail: "They can't send you anything more, and they aren't told.";
+            label: @tr("Also block them");
+            detail: @tr("They can't send you anything more, and they aren't told.");
             on: root.report-block;
             toggled => { root.report-block = !root.report-block; }
         }
         if root.report-reason == 1: SwitchRow {
-            label: "Make message requests cost more";
-            detail: "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through.";
+            label: @tr("Make message requests cost more");
+            detail: @tr("For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through.");
             on: root.report-costlier;
             toggled => { root.report-costlier = !root.report-costlier; }
         }
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Sending…" : "Send report";
+                text: root.busy ? @tr("Sending…") : @tr("Send report");
                 enabled: !root.busy;
                 clicked => {
                     root.report(root.current-id, root.report-reason, root.report-quote, root.report-block, root.report-costlier);
@@ -2227,16 +2227,16 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.gallery: SheetFrame {
-        title: "Photos and files";
+        title: @tr("Photos and files");
         close => { root.sheet = Sheet.conversation; }
-        Secondary { text: "Everything sent in this conversation, newest last. Files stay sealed on this device until you save them."; }
+        Secondary { text: @tr("Everything sent in this conversation, newest last. Files stay sealed on this device until you save them."); }
         VerticalLayout {
             spacing: Tokens.space-xs;
             for m in root.messages: Rectangle {
                 visible: m.file != "" && !m.deleted;
                 height: self.visible ? 64px : 0px;
                 accessible-role: list-item;
-                accessible-label: (m.picture ? "Photo: " : "File: ") + m.file + ", " + m.time;
+                accessible-label: (m.picture ? @tr("Photo: ") : @tr("File: ")) + m.file + ", " + m.time;
                 HorizontalLayout {
                     spacing: Tokens.space-sm;
                     Rectangle {
@@ -2266,13 +2266,13 @@ export component AppWindow inherits Window {
                         spacing: 2px;
                         horizontal-stretch: 1;
                         Body { text: m.file; overflow: elide; }
-                        Caption { text: (m.picture ? "Photo" : "File") + " · " + (m.outgoing ? "you sent it" : "received") + " · " + m.time; overflow: elide; }
+                        Caption { text: (m.picture ? @tr("Photo") : @tr("File")) + " · " + (m.outgoing ? @tr("you sent it") : "received") + " · " + m.time; overflow: elide; }
                     }
                     VerticalLayout {
                         alignment: center;
                         QuietButton {
-                            text: "Save";
-                            accessible-label: "Save " + m.file;
+                            text: @tr("Save");
+                            accessible-label: @tr("Save {}", m.file);
                             clicked => { root.save-file(root.current-id, m.seq); }
                         }
                     }
@@ -2282,16 +2282,16 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.location: SheetFrame {
-        title: "Share a location";
+        title: @tr("Share a location");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "Type or paste the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."; }
-        Field { placeholder: "Latitude, like 52.5200"; mono: true; text <=> root.location-lat; }
-        Field { placeholder: "Longitude, like 13.4050"; mono: true; text <=> root.location-lon; }
-        Field { placeholder: "Name it (optional)"; text <=> root.location-name; }
+        Secondary { text: @tr("Type or paste the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."); }
+        Field { placeholder: @tr("Latitude, like 52.5200"); mono: true; text <=> root.location-lat; }
+        Field { placeholder: @tr("Longitude, like 13.4050"); mono: true; text <=> root.location-lon; }
+        Field { placeholder: @tr("Name it (optional)"); text <=> root.location-name; }
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: "Send";
+                text: @tr("Send");
                 enabled: root.location-lat != "" && root.location-lon != "";
                 clicked => {
                     root.share-location(root.current-id, root.location-lat, root.location-lon, root.location-name);
@@ -2305,16 +2305,16 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.share-contact: SheetFrame {
-        title: "Share a contact";
+        title: @tr("Share a contact");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: root.current.name + " gets their code and can send them a request. Nobody is told who shared it."; }
+        Secondary { text: @tr("{} gets their code and can send them a request. Nobody is told who shared it.", root.current.name); }
         for p in root.friends: Rectangle {
             visible: p.id != root.current-id;
             height: self.visible ? 56px : 0px;
             border-radius: Tokens.radius-control;
             background: share-touch.has-hover ? Tokens.bubble-in : transparent;
             accessible-role: button;
-            accessible-label: "Share " + p.name;
+            accessible-label: @tr("Share {}", p.name);
             accessible-action-default => { root.share-contact(root.current-id, p.id); root.sheet = Sheet.none; }
             share-touch := TouchArea {
                 mouse-cursor: pointer;
@@ -2328,22 +2328,22 @@ export component AppWindow inherits Window {
                 Body { text: p.name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
             }
         }
-        if root.friends.length < 2: Secondary { text: "You can share people you already talk to."; }
+        if root.friends.length < 2: Secondary { text: @tr("You can share people you already talk to."); }
     }
 
     if root.sheet == Sheet.poll: SheetFrame {
-        title: "Ask a question";
+        title: @tr("Ask a question");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "Everyone in " + root.current.name + " can vote and see how everyone else voted. Only you can close it."; }
-        Field { placeholder: "Question"; text <=> root.poll-question; }
-        Field { placeholder: "Option 1"; text <=> root.poll-a; }
-        Field { placeholder: "Option 2"; text <=> root.poll-b; }
-        Field { placeholder: "Option 3 (optional)"; text <=> root.poll-c; }
-        Field { placeholder: "Option 4 (optional)"; text <=> root.poll-d; }
+        Secondary { text: @tr("Everyone in {} can vote and see how everyone else voted. Only you can close it.", root.current.name); }
+        Field { placeholder: @tr("Question"); text <=> root.poll-question; }
+        Field { placeholder: @tr("Option 1"); text <=> root.poll-a; }
+        Field { placeholder: @tr("Option 2"); text <=> root.poll-b; }
+        Field { placeholder: @tr("Option 3 (optional)"); text <=> root.poll-c; }
+        Field { placeholder: @tr("Option 4 (optional)"); text <=> root.poll-d; }
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Sending…" : "Ask";
+                text: root.busy ? @tr("Sending…") : @tr("Ask");
                 enabled: root.poll-question != "" && root.poll-a != "" && root.poll-b != "" && !root.busy;
                 clicked => { root.create-poll(root.current-id, root.poll-question, root.poll-a, root.poll-b, root.poll-c, root.poll-d); }
             }
@@ -2351,20 +2351,20 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.meet: SheetFrame {
-        title: root.meet-done != "" ? "You and " + root.meet-done + " are checked in person" : root.meet-words != "" ? "Do you both see these words?" : "Meet in person";
+        title: root.meet-done != "" ? @tr("You and {} are checked in person", root.meet-done) : root.meet-words != "" ? @tr("Do you both see these words?") : @tr("Meet in person");
         close => { root.sheet = Sheet.none; }
         HorizontalLayout {
             alignment: start;
             SealClose { closed: root.meet-done != "" || root.meet-words != ""; size: 56px; }
         }
-        if root.meet-done != "": Secondary { text: "If anything changes, we'll tell you before you send anything. Your conversation now also rests on a secret that only crossed the room between your two screens."; }
+        if root.meet-done != "": Secondary { text: @tr("If anything changes, we'll tell you before you send anything. Your conversation now also rests on a secret that only crossed the room between your two screens."); }
         if root.meet-done != "": HorizontalLayout {
             alignment: start;
-            PrimaryButton { text: "Done"; clicked => { root.sheet = Sheet.none; } }
+            PrimaryButton { text: @tr("Done"); clicked => { root.sheet = Sheet.none; } }
         }
 
         if root.meet-done == "" && root.meet-words == "": Secondary {
-            text: "Show this code to the other person and scan theirs. It only works face to face: codes sent over a message or a call don't count.";
+            text: @tr("Show this code to the other person and scan theirs. It only works face to face: codes sent over a message or a call don't count.");
         }
         if root.meet-done == "" && root.meet-words == "" && root.meet-code != "": HorizontalLayout {
             alignment: center;
@@ -2379,14 +2379,14 @@ export component AppWindow inherits Window {
                     source: root.meet-qr;
                     image-rendering: pixelated;
                     accessible-role: image;
-                    accessible-label: "Your in-person code";
+                    accessible-label: @tr("Your in-person code");
                 }
             }
         }
         if root.meet-done == "" && root.meet-words == "": HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "Their code: enclave:meet#…"; mono: true; text <=> root.meet-input; horizontal-stretch: 1; }
-            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan their code with the camera"; clicked => { root.scan(2); } }
+            Field { placeholder: @tr("Their code: enclave:meet#…"); mono: true; text <=> root.meet-input; horizontal-stretch: 1; }
+            if root.can-scan: QuietButton { text: @tr("Scan"); outlined: true; accessible-label: @tr("Scan their code with the camera"); clicked => { root.scan(2); } }
         }
         if root.meet-done == "" && root.meet-words == "" && root.meet-error != "": Text {
             text: root.meet-error;
@@ -2397,7 +2397,7 @@ export component AppWindow inherits Window {
         if root.meet-done == "" && root.meet-words == "": HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: "Continue";
+                text: @tr("Continue");
                 enabled: root.meet-input != "";
                 clicked => { root.meet-scan(root.meet-input); root.meet-input = ""; }
             }
@@ -2409,11 +2409,11 @@ export component AppWindow inherits Window {
             Code {
                 text: root.meet-words;
                 vertical-alignment: center;
-                accessible-label: "Seal words: " + root.meet-words;
+                accessible-label: @tr("Seal words: {}", root.meet-words);
             }
         }
         if root.meet-done == "" && root.meet-words != "": Secondary {
-            text: root.meet-name + "'s phone should show the same three words. If it does, you scanned each other and nobody else.";
+            text: @tr("{}'s phone should show the same three words. If it does, you scanned each other and nobody else.", root.meet-name);
         }
         if root.meet-done == "" && root.meet-words != "" && root.meet-error != "": Text {
             text: root.meet-error;
@@ -2425,21 +2425,21 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             PrimaryButton {
-                text: root.busy ? "Checking…" : "They match";
+                text: root.busy ? @tr("Checking…") : @tr("They match");
                 enabled: !root.busy;
                 clicked => { root.meet-confirm(); }
             }
-            QuietButton { text: "They don't"; clicked => { root.sheet = Sheet.none; } }
+            QuietButton { text: @tr("They don't"); clicked => { root.sheet = Sheet.none; } }
         }
     }
 
     if root.sheet == Sheet.check-code: SheetFrame {
-        title: root.current.verified ? "You and " + root.current.name + " are checked" : "Check it's really " + root.current.name;
+        title: root.current.verified ? @tr("You and {} are checked", root.current.name) : @tr("Check it's really {}", root.current.name);
         close => { root.sheet = Sheet.none; }
         Secondary {
             text: root.current.verified
-                ? "If anything changes, we'll tell you before you send anything."
-                : "Compare these numbers with " + root.current.name + " in person or on a call. If every group matches, tap They match.";
+                ? @tr("If anything changes, we'll tell you before you send anything.")
+                : @tr("Compare these numbers with {} in person or on a call. If every group matches, tap They match.", root.current.name);
         }
         HorizontalLayout {
             alignment: center;
@@ -2454,14 +2454,14 @@ export component AppWindow inherits Window {
                     text: g;
                     row: i / 3;
                     col: mod(i, 3);
-                    accessible-label: "Group " + (i + 1) + ": " + g;
+                    accessible-label: @tr("Group {}: {}", (i + 1), g);
                 }
             }
         }
         // The same code to read aloud on a call.
         if root.code-words.length > 0: VerticalLayout {
             spacing: Tokens.space-xs;
-            Caption { text: "Or read these words to each other:"; }
+            Caption { text: @tr("Or read these words to each other:"); }
             Text {
                 text: root.code-words[0] + " " + root.code-words[1] + " " + root.code-words[2] + " " + root.code-words[3] + " " + root.code-words[4] + " · " + root.code-words[5] + " " + root.code-words[6] + " " + root.code-words[7] + " " + root.code-words[8] + " " + root.code-words[9];
                 font-family: "Atkinson Hyperlegible Mono";
@@ -2472,7 +2472,7 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 alignment: start;
                 QuietButton {
-                    text: root.code-words-english ? "Show in my language" : "Show in English";
+                    text: root.code-words-english ? @tr("Show in my language") : @tr("Show in English");
                     clicked => { root.code-words-english-toggled(!root.code-words-english); }
                 }
             }
@@ -2481,29 +2481,29 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             Seal { state: SealState.checked; size: 24px; }
-            Body { text: root.current.met ? "Checked in person" : "Checked"; vertical-alignment: center; }
+            Body { text: root.current.met ? @tr("Checked in person") : @tr("Checked"); vertical-alignment: center; }
         }
         if !root.current.verified: HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
-            PrimaryButton { text: "They match"; clicked => { root.mark-checked(root.current-id); } }
-            QuietButton { text: "Not now"; clicked => { root.sheet = Sheet.none; } }
+            PrimaryButton { text: @tr("They match"); clicked => { root.mark-checked(root.current-id); } }
+            QuietButton { text: @tr("Not now"); clicked => { root.sheet = Sheet.none; } }
         }
         if !root.current.met: HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Together right now? Meet in person"; outlined: true; clicked => { root.open-sheet(Sheet.meet); } }
+            QuietButton { text: @tr("Together right now? Meet in person"); outlined: true; clicked => { root.open-sheet(Sheet.meet); } }
         }
     }
 
     if root.sheet == Sheet.servers: SheetFrame {
-        title: root.server-pick-for == 0 ? "Choose a server" : root.server-pick-for == 1 ? "Move to another server" : "Move the group";
+        title: root.server-pick-for == 0 ? @tr("Choose a server") : root.server-pick-for == 1 ? @tr("Move to another server") : @tr("Move the group");
         close => { root.sheet = root.server-pick-for == 2 ? Sheet.members : root.server-pick-for == 1 ? Sheet.settings : Sheet.none; }
         Secondary {
             text: root.server-pick-for == 0
-                ? "Your messages wait on this server until your devices collect them. It sees only sealed units of one size: it can't read them or tell who sent them. You can move later."
+                ? @tr("Your messages wait on this server until your devices collect them. It sees only sealed units of one size: it can't read them or tell who sent them. You can move later.")
                 : root.server-pick-for == 1
-                    ? "Your inboxes, username and invite links move with you. Contacts and groups are told as they come online; keep Enclave running until the move is done."
-                    : "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are.";
+                    ? @tr("Your inboxes, username and invite links move with you. Contacts and groups are told as they come online; keep Enclave running until the move is done.")
+                    : @tr("The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are.");
         }
         Flickable {
             height: min(360px, server-list.preferred-height);
@@ -2517,7 +2517,7 @@ export component AppWindow inherits Window {
                     border-color: root.chosen-server == o.id ? Tokens.pine : Tokens.hairline;
                     accessible-role: radio-button;
                     accessible-checked: root.chosen-server == o.id;
-                    accessible-label: o.domain + ", run by " + o.operator;
+                    accessible-label: @tr("{}, run by {}", o.domain, o.operator);
                     accessible-action-default => { root.chosen-server = o.id; }
                     TouchArea { clicked => { root.chosen-server = o.id; } }
                     srow := HorizontalLayout {
@@ -2538,9 +2538,9 @@ export component AppWindow inherits Window {
                             spacing: Tokens.space-xs;
                             Body { text: o.domain; font-weight: 600; overflow: elide; }
                             Secondary {
-                                text: "Run by " + o.operator
-                                    + (current ? (root.server-pick-for == 2 ? " · The group is here" : " · You're here") : "")
-                                    + (root.server-pick-for == 2 && o.votes > 0 ? " · " + o.votes + " of " + root.group-admins + " admins voted for it" : "");
+                                text: @tr("Run by ") + o.operator
+                                    + (current ? (root.server-pick-for == 2 ? @tr(" · The group is here") : @tr(" · You're here")) : "")
+                                    + (root.server-pick-for == 2 && o.votes > 0 ? @tr(" · {} of {} admins voted for it", o.votes, root.group-admins) : "");
                             }
                         }
                     }
@@ -2551,7 +2551,7 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             PrimaryButton {
-                text: root.server-pick-for == 0 ? "Use this server" : root.server-pick-for == 1 ? (root.busy ? "Moving…" : "Move my account") : "Vote for this server";
+                text: root.server-pick-for == 0 ? @tr("Use this server") : root.server-pick-for == 1 ? (root.busy ? @tr("Moving…") : @tr("Move my account")) : @tr("Vote for this server");
                 enabled: root.chosen-server != "" && !root.busy
                     && root.chosen-server != (root.server-pick-for == 2 ? root.group-host : root.server-pick-for == 1 ? root.home-id : "");
                 clicked => {
@@ -2563,11 +2563,11 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.settings: SheetFrame {
-        title: "Settings";
+        title: @tr("Settings");
         close => { root.sheet = Sheet.none; }
         for option[i] in [
-            { title: "Standard", text: "Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background." },
-            { title: "Maximum", text: "Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly." },
+            { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background.") },
+            { title: @tr("Maximum"), text: @tr("Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly.") },
         ]: Rectangle {
             min-height: row.preferred-height;
             border-radius: Tokens.radius-control;
@@ -2600,36 +2600,36 @@ export component AppWindow inherits Window {
             }
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
-        if root.home-label != "": Body { text: "Your server"; font-weight: 600; }
+        if root.home-label != "": Body { text: @tr("Your server"); font-weight: 600; }
         if root.home-label != "": Secondary {
-            text: root.home-label + (root.moving ? ". Moving: still telling your contacts and groups. Keep Enclave running until it's done." : ".");
+            text: root.home-label + (root.moving ? @tr(". Moving: still telling your contacts and groups. Keep Enclave running until it's done.") : ".");
         }
         if root.can-move && !root.moving && root.servers.length > 1: HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: "Move to another server";
+                text: @tr("Move to another server");
                 outlined: true;
                 clicked => { root.server-pick-for = 1; root.chosen-server = ""; root.sheet = Sheet.servers; }
             }
         }
-        Body { text: "Tor bridges"; font-weight: 600; }
+        Body { text: @tr("Tor bridges"); font-weight: 600; }
         Secondary {
             text: root.bridges == ""
-                ? "Off. If your network blocks Tor, a bridge gets around it. Use Tor's built-in bridges or Snowflake, or paste obfs4 or WebTunnel bridge lines from bridges.torproject.org."
+                ? @tr("Off. If your network blocks Tor, a bridge gets around it. Use Tor's built-in bridges or Snowflake, or paste obfs4 or WebTunnel bridge lines from bridges.torproject.org.")
                 : root.bridges == "builtin"
-                    ? "Using Tor's built-in bridges."
+                    ? @tr("Using Tor's built-in bridges.")
                     : root.bridges == "snowflake"
-                        ? "Using Snowflake: Tor traffic passes through volunteers' browsers, and looks like a video call."
-                        : "Using your own bridges.";
+                        ? @tr("Using Snowflake: Tor traffic passes through volunteers' browsers, and looks like a video call.")
+                        : @tr("Using your own bridges.");
         }
-        Field { placeholder: "obfs4 … cert=… iat-mode=0"; mono: true; multiline: true; text <=> root.bridges-input; }
+        Field { placeholder: @tr("obfs4 … cert=… iat-mode=0"); mono: true; multiline: true; text <=> root.bridges-input; }
         HorizontalLayout {
             spacing: Tokens.space-s;
             alignment: start;
-            PrimaryButton { text: "Save"; enabled: root.bridges-input != ""; clicked => { root.set-bridges(root.bridges-input); } }
-            QuietButton { text: "Built-in"; clicked => { root.set-bridges("builtin"); } }
-            QuietButton { text: "Snowflake"; clicked => { root.set-bridges("snowflake"); } }
-            if root.bridges != "": QuietButton { text: "Turn off"; clicked => { root.set-bridges(""); } }
+            PrimaryButton { text: @tr("Save"); enabled: root.bridges-input != ""; clicked => { root.set-bridges(root.bridges-input); } }
+            QuietButton { text: @tr("Built-in"); clicked => { root.set-bridges("builtin"); } }
+            QuietButton { text: @tr("Snowflake"); clicked => { root.set-bridges("snowflake"); } }
+            if root.bridges != "": QuietButton { text: @tr("Turn off"); clicked => { root.set-bridges(""); } }
         }
         if root.bridges-error != "": Text {
             text: root.bridges-error;
@@ -2639,40 +2639,40 @@ export component AppWindow inherits Window {
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
         if root.can-hide-capture: SwitchRow {
-            label: "Hide from screenshots";
-            detail: "Screenshots, screen recordings and screen sharing show a blank window instead of your messages.";
+            label: @tr("Hide from screenshots");
+            detail: @tr("Screenshots, screen recordings and screen sharing show a blank window instead of your messages.");
             on: root.screen-security;
             toggled => { root.set-screen-security(!root.screen-security); }
         }
         if !root.can-hide-capture: Secondary {
-            text: "On Linux any program you run can capture the screen, and Enclave can't stop it. Close Enclave before sharing your screen.";
+            text: @tr("On Linux any program you run can capture the screen, and Enclave can't stop it. Close Enclave before sharing your screen.");
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
         SwitchRow {
-            label: "Typing indicators";
-            detail: "Show people when you're typing, and see when they are. They only replace cover traffic, so they never use more data, and some may not arrive.";
+            label: @tr("Typing indicators");
+            detail: @tr("Show people when you're typing, and see when they are. They only replace cover traffic, so they never use more data, and some may not arrive.");
             on: root.typing-setting;
             toggled => { root.set-typing-setting(!root.typing-setting); }
         }
         if root.usernames: Rectangle { height: 1px; background: Tokens.hairline; }
-        if root.usernames: Body { text: "Username"; font-weight: 600; }
+        if root.usernames: Body { text: @tr("Username"); font-weight: 600; }
         if root.usernames && root.my-username != "": Text {
             text: root.my-username;
             font-family: "Atkinson Hyperlegible Mono";
             font-size: Tokens.type-body;
             color: Tokens.text;
-            accessible-label: "Your username: " + root.my-username;
+            accessible-label: @tr("Your username: {}", root.my-username);
         }
         if root.usernames: Secondary {
             text: root.my-username == ""
-                ? "Optional. A username is public, like an email address: anyone who knows it can send you a message request."
-                : "Anyone who knows it can send you a message request. Choosing a new one retires this one.";
+                ? @tr("Optional. A username is public, like an email address: anyone who knows it can send you a message request.")
+                : @tr("Anyone who knows it can send you a message request. Choosing a new one retires this one.");
         }
         if root.usernames: HorizontalLayout {
             spacing: Tokens.space-s;
             Field { placeholder: "name"; mono: true; text <=> root.username-input; horizontal-stretch: 1; }
             PrimaryButton {
-                text: root.busy ? "Checking…" : (root.my-username == "" ? "Choose" : "Change");
+                text: root.busy ? @tr("Checking…") : (root.my-username == "" ? @tr("Choose") : @tr("Change"));
                 enabled: root.username-input != "" && !root.busy;
                 clicked => { root.claim-username(root.username-input); }
             }
@@ -2686,30 +2686,30 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             spacing: Tokens.space-s;
             QuietButton {
-                text: "Recovery words";
+                text: @tr("Recovery words");
                 outlined: true;
                 horizontal-stretch: 1;
                 clicked => { root.open-sheet(Sheet.recovery); }
             }
             QuietButton {
-                text: "Your devices";
+                text: @tr("Your devices");
                 outlined: true;
                 horizontal-stretch: 1;
                 clicked => { root.open-sheet(Sheet.devices); }
             }
         }
         if root.can-join: Rectangle { height: 1px; background: Tokens.hairline; }
-        if root.can-join: Body { text: "Passphrase"; font-weight: 600; }
+        if root.can-join: Body { text: @tr("Passphrase"); font-weight: 600; }
         if root.can-join: Secondary {
             text: root.can-lock
-                ? "Enclave asks for it each time it starts on this computer."
-                : "Optional. Enclave would ask for it each time it starts on this computer.";
+                ? @tr("Enclave asks for it each time it starts on this computer.")
+                : @tr("Optional. Enclave would ask for it each time it starts on this computer.");
         }
         if root.can-join: HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: root.can-lock ? "New passphrase" : "Passphrase"; secret: true; text <=> root.new-passphrase; horizontal-stretch: 1; }
+            Field { placeholder: root.can-lock ? @tr("New passphrase") : @tr("Passphrase"); secret: true; text <=> root.new-passphrase; horizontal-stretch: 1; }
             PrimaryButton {
-                text: root.busy ? "Saving…" : (root.can-lock ? "Change" : "Set");
+                text: root.busy ? @tr("Saving…") : (root.can-lock ? @tr("Change") : @tr("Set"));
                 enabled: root.new-passphrase != "" && !root.busy;
                 clicked => { root.set-passphrase(root.new-passphrase); }
             }
@@ -2717,113 +2717,113 @@ export component AppWindow inherits Window {
         if root.can-lock: HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
-            QuietButton { text: "Lock now"; outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
-            QuietButton { text: "Remove passphrase"; danger: true; clicked => { root.set-passphrase(""); } }
+            QuietButton { text: @tr("Lock now"); outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
+            QuietButton { text: @tr("Remove passphrase"); danger: true; clicked => { root.set-passphrase(""); } }
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
-        Body { text: "Screen lock"; font-weight: 600; }
+        Body { text: @tr("Screen lock"); font-weight: 600; }
         Secondary {
             text: root.can-lock
-                ? "Enclave locks itself when you haven't used it for a while, and your passphrase opens it again."
+                ? @tr("Enclave locks itself when you haven't used it for a while, and your passphrase opens it again.")
                 : root.app-lock
-                    ? "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
-                    : "Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked.";
+                    ? @tr("Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked.")
+                    : @tr("Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked.");
         }
         if !root.can-lock: HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: root.app-lock ? "New PIN" : "PIN (at least 4 digits)"; secret: true; text <=> root.app-pin-input; horizontal-stretch: 1; }
+            Field { placeholder: root.app-lock ? @tr("New PIN") : @tr("PIN (at least 4 digits)"); secret: true; text <=> root.app-pin-input; horizontal-stretch: 1; }
             PrimaryButton {
-                text: root.app-lock ? "Change" : "Set";
+                text: root.app-lock ? @tr("Change") : @tr("Set");
                 enabled: root.app-pin-input != "";
                 clicked => { root.set-app-lock(root.app-pin-input); root.app-pin-input = ""; }
             }
         }
-        if root.can-lock || root.app-lock: Caption { text: "Lock after"; }
+        if root.can-lock || root.app-lock: Caption { text: @tr("Lock after"); }
         if root.can-lock || root.app-lock: HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-xs;
             for t in [
-                { secs: 60, name: "1 minute" }, { secs: 300, name: "5 minutes" },
-                { secs: 900, name: "15 minutes" }, { secs: 3600, name: "1 hour" },
-                { secs: 0, name: "Never" },
+                { secs: 60, name: @tr("1 minute") }, { secs: 300, name: @tr("5 minutes") },
+                { secs: 900, name: @tr("15 minutes") }, { secs: 3600, name: @tr("1 hour") },
+                { secs: 0, name: @tr("Never") },
             ]: QuietButton {
                 text: t.name;
                 outlined: root.lock-timeout == t.secs;
-                accessible-label: "Lock after " + t.name;
+                accessible-label: @tr("Lock after {}", t.name);
                 clicked => { root.set-lock-timeout(t.secs); }
             }
         }
         if root.app-lock && !root.can-lock && root.biometric != "": SwitchRow {
-            label: "Unlock with " + root.biometric;
-            detail: "Opens the screen lock only. Removing a device, new recovery words and deleting your account still need your PIN.";
+            label: @tr("Unlock with {}", root.biometric);
+            detail: @tr("Opens the screen lock only. Removing a device, new recovery words and deleting your account still need your PIN.");
             on: root.biometric-on;
             toggled => { root.set-biometric(!root.biometric-on); }
         }
         if root.app-lock && !root.can-lock: HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
-            QuietButton { text: "Lock now"; outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
-            QuietButton { text: "Turn off"; danger: true; clicked => { root.set-app-lock(""); } }
+            QuietButton { text: @tr("Lock now"); outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
+            QuietButton { text: @tr("Turn off"); danger: true; clicked => { root.set-app-lock(""); } }
         }
-        Body { text: "Emergency PIN"; font-weight: 600; }
+        Body { text: @tr("Emergency PIN"); font-weight: 600; }
         Secondary {
-            text: "If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected.";
+            text: @tr("If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected.");
         }
         HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "Emergency PIN (at least 4 digits)"; secret: true; text <=> root.emergency-pin-input; horizontal-stretch: 1; }
+            Field { placeholder: @tr("Emergency PIN (at least 4 digits)"); secret: true; text <=> root.emergency-pin-input; horizontal-stretch: 1; }
             PrimaryButton {
-                text: "Set";
+                text: @tr("Set");
                 enabled: root.emergency-pin-input != "";
                 clicked => { root.set-emergency-pin(root.emergency-pin-input); root.emergency-pin-input = ""; }
             }
-            QuietButton { text: "Remove"; clicked => { root.set-emergency-pin(""); } }
+            QuietButton { text: @tr("Remove"); clicked => { root.set-emergency-pin(""); } }
         }
-        Body { text: "Backup"; font-weight: 600; }
-        Secondary { text: "An encrypted copy of your contacts, messages and notes. Only your recovery words open it."; }
+        Body { text: @tr("Backup"); font-weight: 600; }
+        Secondary { text: @tr("An encrypted copy of your contacts, messages and notes. Only your recovery words open it."); }
         if root.can-change-words: SwitchRow {
-            label: "Keep a backup on my server";
+            label: @tr("Keep a backup on my server");
             detail: root.server-backup
-                ? (root.server-backup-at != "" ? "Renewed every week. Last: " + root.server-backup-at + "." : "Renewed every week.")
-                : "Renewed every week. Your server sees only an encrypted file; your words alone bring it back.";
+                ? (root.server-backup-at != "" ? @tr("Renewed every week. Last: {}.", root.server-backup-at) : @tr("Renewed every week."))
+                : @tr("Renewed every week. Your server sees only an encrypted file; your words alone bring it back.");
             on: root.server-backup;
             toggled => { if !root.busy { root.set-server-backup(!root.server-backup); } }
         }
         SwitchRow {
-            label: "Include photos and files";
-            detail: "In backups you save here. They can get large.";
+            label: @tr("Include photos and files");
+            detail: @tr("In backups you save here. They can get large.");
             on: root.backup-media;
             toggled => { root.backup-media = !root.backup-media; }
         }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Save a backup"; outlined: true; clicked => { root.save-backup(root.backup-media); } }
+            QuietButton { text: @tr("Save a backup"); outlined: true; clicked => { root.save-backup(root.backup-media); } }
         }
-        Caption { text: "Check my backup"; }
-        Secondary { text: "Make sure the words you wrote down open your backup, without restoring anything."; }
-        Field { placeholder: "Your 24 recovery words"; mono: true; secret: true; text <=> root.check-words; }
+        Caption { text: @tr("Check my backup"); }
+        Secondary { text: @tr("Make sure the words you wrote down open your backup, without restoring anything."); }
+        Field { placeholder: @tr("Your 24 recovery words"); mono: true; secret: true; text <=> root.check-words; }
         HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "Path to a backup file (or leave empty for the one on your server)"; mono: true; text <=> root.check-file; horizontal-stretch: 1; }
-            QuietButton { text: "Choose…"; outlined: true; accessible-label: "Choose a backup file to check"; clicked => { root.browse(1); } }
+            Field { placeholder: @tr("Path to a backup file (or leave empty for the one on your server)"); mono: true; text <=> root.check-file; horizontal-stretch: 1; }
+            QuietButton { text: @tr("Choose…"); outlined: true; accessible-label: @tr("Choose a backup file to check"); clicked => { root.browse(1); } }
         }
         HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: root.busy ? "Checking…" : "Check";
+                text: root.busy ? @tr("Checking…") : @tr("Check");
                 outlined: true;
                 clicked => { if root.check-words != "" && !root.busy { root.check-backup(root.check-words, root.check-file); root.check-words = ""; } }
             }
         }
         if root.backup-check != "": Secondary { text: root.backup-check; }
-        Body { text: "PIN"; font-weight: 600; }
-        Secondary { text: root.has-root-pin ? "Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account." : "Set a PIN, and Enclave asks for it before removing a device, changing your recovery words or deleting your account. Someone who picks up your unlocked phone can't do those."; }
-        if root.has-root-pin: Field { placeholder: "Current PIN"; secret: true; text <=> root.root-pin-input; }
+        Body { text: @tr("PIN"); font-weight: 600; }
+        Secondary { text: root.has-root-pin ? @tr("Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account.") : @tr("Set a PIN, and Enclave asks for it before removing a device, changing your recovery words or deleting your account. Someone who picks up your unlocked phone can't do those."); }
+        if root.has-root-pin: Field { placeholder: @tr("Current PIN"); secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: root.has-root-pin ? "New PIN" : "PIN (at least 6)"; secret: true; text <=> root.new-pin-input; horizontal-stretch: 1; }
+            Field { placeholder: root.has-root-pin ? @tr("New PIN") : @tr("PIN (at least 6)"); secret: true; text <=> root.new-pin-input; horizontal-stretch: 1; }
             QuietButton {
-                text: root.has-root-pin ? "Change PIN" : "Set PIN";
+                text: root.has-root-pin ? @tr("Change PIN") : @tr("Set PIN");
                 outlined: true;
                 clicked => {
                     if root.has-root-pin { root.unlock-root(root.root-pin-input); }
@@ -2834,63 +2834,63 @@ export component AppWindow inherits Window {
             }
         }
         if root.pin-error != "": Text { text: root.pin-error; color: Tokens.danger; font-size: Tokens.type-secondary; wrap: word-wrap; }
-        Body { text: "Notifications"; font-weight: 600; }
-        Secondary { text: root.previews ? "Notifications on your phone show who wrote and the start of the message. Only your devices can read them; Apple and Google see nothing." : "Notifications say \"New message\" only. Turn previews on to see who wrote and the start of the message, readable only by your devices."; }
+        Body { text: @tr("Notifications"); font-weight: 600; }
+        Secondary { text: root.previews ? @tr("Notifications on your phone show who wrote and the start of the message. Only your devices can read them; Apple and Google see nothing.") : @tr("Notifications say \"New message\" only. Turn previews on to see who wrote and the start of the message, readable only by your devices."); }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: root.previews ? "Turn previews off" : "Show previews"; outlined: true; clicked => { root.set-previews(!root.previews); } }
+            QuietButton { text: root.previews ? @tr("Turn previews off") : @tr("Show previews"); outlined: true; clicked => { root.set-previews(!root.previews); } }
         }
-        if root.can-unifiedpush || root.can-firebase: Body { text: "With the app closed"; font-weight: 600; }
+        if root.can-unifiedpush || root.can-firebase: Body { text: @tr("With the app closed"); font-weight: 600; }
         if root.can-unifiedpush || root.can-firebase: Secondary {
             text: root.delivery == 1
-                ? "Your push service (UnifiedPush) wakes Enclave when something arrives. It learns only that something arrived, not what or from whom."
+                ? @tr("Your push service (UnifiedPush) wakes Enclave when something arrives. It learns only that something arrived, not what or from whom.")
                 : root.delivery == 3
-                ? "Google's push service wakes Enclave when something arrives. Google learns only that something arrived, not what or from whom."
-                : "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery.";
+                ? @tr("Google's push service wakes Enclave when something arrives. Google learns only that something arrived, not what or from whom.")
+                : @tr("Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery.");
         }
         if root.can-unifiedpush || root.can-firebase: HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
-            if root.delivery != 0: QuietButton { text: "Stay connected"; outlined: true; clicked => { root.set-delivery(0); } }
-            if root.delivery != 1 && root.can-unifiedpush: QuietButton { text: "Use UnifiedPush"; outlined: true; clicked => { root.set-delivery(1); } }
-            if root.delivery != 3 && root.can-firebase: QuietButton { text: "Use Google's push"; outlined: true; clicked => { root.set-delivery(3); } }
+            if root.delivery != 0: QuietButton { text: @tr("Stay connected"); outlined: true; clicked => { root.set-delivery(0); } }
+            if root.delivery != 1 && root.can-unifiedpush: QuietButton { text: @tr("Use UnifiedPush"); outlined: true; clicked => { root.set-delivery(1); } }
+            if root.delivery != 3 && root.can-firebase: QuietButton { text: @tr("Use Google's push"); outlined: true; clicked => { root.set-delivery(3); } }
         }
-        Body { text: "Secure my account"; font-weight: 600; }
-        Secondary { text: root.securing ? "Securing your account. This finishes on its own." : "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."; }
-        if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
+        Body { text: @tr("Secure my account"); font-weight: 600; }
+        Secondary { text: root.securing ? @tr("Securing your account. This finishes on its own.") : @tr("Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."); }
+        if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
         if root.can-change-words && !root.securing: HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: root.busy ? "Securing…" : "Secure my account";
+                text: root.busy ? @tr("Securing…") : @tr("Secure my account");
                 outlined: true;
                 clicked => { if !root.busy { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.secure-account(); } }
             }
         }
-        Body { text: "Delete"; font-weight: 600; }
-        Secondary { text: root.can-change-words ? "Delete your account for everyone, or only erase this device." : "Erase this device. Deleting the account is done on the device that holds your recovery words."; }
+        Body { text: @tr("Delete"); font-weight: 600; }
+        Secondary { text: root.can-change-words ? @tr("Delete your account for everyone, or only erase this device.") : @tr("Erase this device. Deleting the account is done on the device that holds your recovery words."); }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: root.can-change-words ? "Delete my account" : "Erase this device"; danger: true; clicked => { root.delete-confirm = ""; root.open-sheet(Sheet.delete-account); } }
+            QuietButton { text: root.can-change-words ? @tr("Delete my account") : @tr("Erase this device"); danger: true; clicked => { root.delete-confirm = ""; root.open-sheet(Sheet.delete-account); } }
         }
-        Body { text: "Recovery with friends"; font-weight: 600; }
+        Body { text: @tr("Recovery with friends"); font-weight: 600; }
         Secondary {
             text: root.share-threshold > 0
-                ? "Any " + root.share-threshold + " of the " + root.share-holders.length + " people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
-                : "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone.";
+                ? @tr("Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone.", root.share-threshold, root.share-holders.length)
+                : @tr("Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone.");
         }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: root.share-threshold > 0 ? "Choose again" : "Choose friends"; outlined: true; clicked => { root.open-sheet(Sheet.friends); } }
+            QuietButton { text: root.share-threshold > 0 ? @tr("Choose again") : @tr("Choose friends"); outlined: true; clicked => { root.open-sheet(Sheet.friends); } }
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
         HorizontalLayout {
             alignment: start;
-            QuietButton { text: "About Enclave"; clicked => { root.sheet = Sheet.about; } }
+            QuietButton { text: @tr("About Enclave"); clicked => { root.sheet = Sheet.about; } }
         }
     }
 
     if root.sheet == Sheet.about: SheetFrame {
-        title: "About Enclave";
+        title: @tr("About Enclave");
         close => { root.sheet = Sheet.settings; }
         HorizontalLayout {
             spacing: Tokens.space-m;
@@ -2900,21 +2900,21 @@ export component AppWindow inherits Window {
                 height: 64px;
                 source: @image-url("../../../packaging/icons/png/enclave-128.png");
                 accessible-role: image;
-                accessible-label: "Enclave";
+                accessible-label: @tr("Enclave");
             }
             VerticalLayout {
                 alignment: center;
-                Body { text: "Enclave"; font-weight: 600; }
-                Secondary { text: "Version " + root.version; }
+                Body { text: @tr("Enclave"); font-weight: 600; }
+                Secondary { text: @tr("Version {}", root.version); }
             }
         }
-        Secondary { text: "Free software under the GNU General Public License, version 3, with additional permissions for app stores. Anyone can read, build and check it: github.com/0xnullsect0r/enclave-messenger."; }
-        Secondary { text: "No single company runs its servers: independent operators do, and the foundation only signs the list of them."; }
+        Secondary { text: @tr("Free software under the GNU General Public License, version 3, with additional permissions for app stores. Anyone can read, build and check it: github.com/0xnullsect0r/enclave-messenger."); }
+        Secondary { text: @tr("No single company runs its servers: independent operators do, and the foundation only signs the list of them."); }
         HorizontalLayout { alignment: start; AboutSlint { } }
         HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: "Open-source licences";
+                text: @tr("Open-source licences");
                 outlined: true;
                 clicked => { root.load-licences(); root.sheet = Sheet.licences; }
             }
@@ -2922,10 +2922,10 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.licences: SheetFrame {
-        title: "Open-source licences";
+        title: @tr("Open-source licences");
         max-card-width: 720px;
         close => { root.sheet = Sheet.about; }
-        Secondary { text: "Enclave is built with the work of these projects, under the licences below."; }
+        Secondary { text: @tr("Enclave is built with the work of these projects, under the licences below."); }
         ListView {
             height: min(root.height * 0.6, 640px);
             for e in root.licences: VerticalLayout {
@@ -2946,10 +2946,10 @@ export component AppWindow inherits Window {
 
     if root.sheet == Sheet.friends: SheetFrame {
         property <int> chosen: root.friends-chosen;
-        title: "Recovery with friends";
+        title: @tr("Recovery with friends");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: "Choose 3 to 5 people you trust and can meet. Each gets a share by message, and can only give it back to you in person."; }
-        if root.share-threshold > 0: Secondary { text: "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."; }
+        Secondary { text: @tr("Choose 3 to 5 people you trust and can meet. Each gets a share by message, and can only give it back to you in person."); }
+        if root.share-threshold > 0: Secondary { text: @tr("Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."); }
         for p in root.friends: Rectangle {
             height: 56px;
             border-radius: Tokens.radius-control;
@@ -2965,15 +2965,15 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-sm;
                 VerticalLayout { alignment: center; Avatar { initials: p.initials; tint: p.tint; size: 36px; } }
                 Body { text: p.name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                Text { text: p.selected ? "Chosen" : ""; font-size: Tokens.type-caption; color: Tokens.pine; vertical-alignment: center; }
+                Text { text: p.selected ? @tr("Chosen") : ""; font-size: Tokens.type-caption; color: Tokens.pine; vertical-alignment: center; }
             }
         }
-        if root.friends.length < 2: Secondary { text: "You need at least two conversations with people you trust first."; }
-        if root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
+        if root.friends.length < 2: Secondary { text: @tr("You need at least two conversations with people you trust first."); }
+        if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Sharing…" : (chosen >= 2 ? "Share with " + chosen + " (" + (floor(chosen / 2) + 1) + " needed)" : "Share");
+                text: root.busy ? @tr("Sharing…") : (chosen >= 2 ? @tr("Share with {} ({} needed)", chosen, (floor(chosen / 2) + 1)) : @tr("Share"));
                 enabled: chosen >= 2 && !root.busy;
                 clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.give-shares(floor(chosen / 2) + 1); root.sheet = Sheet.none; }
             }
@@ -2981,41 +2981,41 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.share: SheetFrame {
-        title: "Part of " + root.current.name + "'s recovery";
+        title: @tr("Part of {}'s recovery", root.current.name);
         close => { root.reveal-share(""); root.sheet = Sheet.none; }
         if root.share-release == "": Body {
-            text: root.current.name + " asked for your part of their recovery. Only continue if you're with " + root.current.name + " right now.";
+            text: @tr("{} asked for your part of their recovery. Only continue if you're with {} right now.", root.current.name, root.current.name);
             wrap: word-wrap;
         }
         if root.share-release == "": Secondary {
-            text: "Anyone who collects enough of these can take over their account. Never give it over a message or a call, even if it seems to be them.";
+            text: @tr("Anyone who collects enough of these can take over their account. Never give it over a message or a call, even if it seems to be them.");
         }
         if root.share-release == "": HorizontalLayout {
             spacing: Tokens.space-s;
             Field {
-                placeholder: "Scan or paste the code on their new device";
+                placeholder: @tr("Scan or paste the code on their new device");
                 mono: true;
                 text <=> root.share-request-input;
                 horizontal-stretch: 1;
             }
-            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan the code on their new device with the camera"; clicked => { root.scan(3); } }
+            if root.can-scan: QuietButton { text: @tr("Scan"); outlined: true; accessible-label: @tr("Scan the code on their new device with the camera"); clicked => { root.scan(3); } }
         }
         if root.share-release == "": HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
             PrimaryButton {
-                text: "I'm with them: continue";
+                text: @tr("I'm with them: continue");
                 enabled: root.share-request-input != "";
                 clicked => { root.release-share(root.share-request-input); }
             }
-            QuietButton { text: "Not now"; clicked => { root.reveal-share(""); root.sheet = Sheet.none; } }
+            QuietButton { text: @tr("Not now"); clicked => { root.reveal-share(""); root.sheet = Sheet.none; } }
         }
         if root.share-release != "": Body {
-            text: "Check their screen shows these words: " + root.share-release-words;
+            text: @tr("Check their screen shows these words: {}", root.share-release-words);
             wrap: word-wrap;
         }
         if root.share-release != "": Secondary {
-            text: "If the words differ, close this: you scanned the wrong screen. If they match, let " + root.current.name + " scan this code.";
+            text: @tr("If the words differ, close this: you scanned the wrong screen. If they match, let {} scan this code.", root.current.name);
         }
         if root.share-release != "": HorizontalLayout {
             alignment: center;
@@ -3030,21 +3030,21 @@ export component AppWindow inherits Window {
                     source: root.share-release-qr;
                     image-rendering: pixelated;
                     accessible-role: image;
-                    accessible-label: "Your part of " + root.current.name + "'s recovery, sealed for their new device";
+                    accessible-label: @tr("Your part of {}'s recovery, sealed for their new device", root.current.name);
                 }
             }
         }
         if root.share-release != "": HorizontalLayout {
             alignment: start;
-            PrimaryButton { text: "Done"; clicked => { root.reveal-share(""); root.sheet = Sheet.none; } }
+            PrimaryButton { text: @tr("Done"); clicked => { root.reveal-share(""); root.sheet = Sheet.none; } }
         }
     }
 
     if root.sheet == Sheet.new-group: SheetFrame {
-        title: "New group";
+        title: @tr("New group");
         close => { root.sheet = Sheet.none; }
-        Field { placeholder: "Group name"; text <=> root.group-name; }
-        Secondary { text: root.pick.length == 0 ? "Add people as contacts first. Groups are made from people who have accepted you." : "Choose who to add. Everyone in the group can see who else is in it."; }
+        Field { placeholder: @tr("Group name"); text <=> root.group-name; }
+        Secondary { text: root.pick.length == 0 ? @tr("Add people as contacts first. Groups are made from people who have accepted you.") : @tr("Choose who to add. Everyone in the group can see who else is in it."); }
         for p in root.pick: Rectangle {
             height: 56px;
             border-radius: Tokens.radius-control;
@@ -3085,7 +3085,7 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Creating…" : "Create group";
+                text: root.busy ? @tr("Creating…") : @tr("Create group");
                 enabled: root.group-name != "" && !root.busy;
                 clicked => { root.create-group(root.group-name); }
             }
@@ -3095,7 +3095,7 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.members: SheetFrame {
         title: root.current.name;
         close => { root.sheet = Sheet.none; root.confirm-leave = ""; }
-        Secondary { text: root.current.members + " people, you included. Everyone in the group can see who else is in it."; }
+        Secondary { text: @tr("{} people, you included. Everyone in the group can see who else is in it.", root.current.members); }
         for m in root.members: HorizontalLayout {
             spacing: Tokens.space-sm;
             min-height: 56px;
@@ -3105,7 +3105,7 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 Body { text: m.name; overflow: elide; }
                 if m.met || m.verified || m.admin: Caption {
-                    text: (m.admin ? "Admin" : "") + (m.admin && (m.met || m.verified) ? " · " : "") + (m.met ? "Met in person" : m.verified ? "Checked" : "");
+                    text: (m.admin ? @tr("Admin") : "") + (m.admin && (m.met || m.verified) ? " · " : "") + (m.met ? @tr("Met in person") : m.verified ? @tr("Checked") : "");
                 }
                 // An admin's controls go under the name, so a long name
                 // keeps its room on a phone.
@@ -3113,38 +3113,38 @@ export component AppWindow inherits Window {
                     alignment: start;
                     spacing: Tokens.space-s;
                     QuietButton {
-                        text: m.admin ? "Not admin" : "Make admin";
-                        accessible-label: (m.admin ? "Stop " + m.name + " being an admin" : "Make " + m.name + " an admin");
+                        text: m.admin ? @tr("Not admin") : @tr("Make admin");
+                        accessible-label: (m.admin ? @tr("Stop {} being an admin", m.name) : @tr("Make {} an admin", m.name));
                         clicked => { root.set-group-admin(root.current-id, m.id, !m.admin); }
                     }
                     QuietButton {
-                        text: "Remove";
+                        text: @tr("Remove");
                         danger: true;
-                        accessible-label: "Remove " + m.name;
+                        accessible-label: @tr("Remove {}", m.name);
                         clicked => { root.remove-member(root.current-id, m.id); }
                     }
                 }
             }
         }
         if root.group-admin: SwitchRow {
-            label: "On the record";
+            label: @tr("On the record");
             detail: root.on-record
-                ? "Messages carry their sender's signature. Anyone who gets a copy can prove who wrote them."
-                : "Nobody can prove to others who wrote these messages.";
+                ? @tr("Messages carry their sender's signature. Anyone who gets a copy can prove who wrote them.")
+                : @tr("Nobody can prove to others who wrote these messages.");
             on: root.on-record;
             toggled => { root.set-on-record(!root.on-record); }
         }
         if !root.group-admin: Caption {
             text: root.on-record
-                ? "On the record: messages carry their sender's signature. Admins can change this."
-                : "Off the record: nobody can prove to others who wrote these messages. Admins can change this.";
+                ? @tr("On the record: messages carry their sender's signature. Admins can change this.")
+                : @tr("Off the record: nobody can prove to others who wrote these messages. Admins can change this.");
             wrap: word-wrap;
         }
         if root.group-host-label != "": Secondary { text: root.group-host-label + root.group-vote-label; }
         if root.group-admin && root.servers.length > 1: HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: "Vote to move the group";
+                text: @tr("Vote to move the group");
                 clicked => { root.server-pick-for = 2; root.chosen-server = ""; root.sheet = Sheet.servers; }
             }
         }
@@ -3152,17 +3152,17 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             QuietButton {
-                text: "Copy invite link";
-                accessible-label: "Copy a group invite link";
+                text: @tr("Copy invite link");
+                accessible-label: @tr("Copy a group invite link");
                 clicked => { root.new-group-invite(root.current-id); }
             }
         }
         if root.group-admin: Caption {
-            text: "Each link works for one person, for 7 days. You approve them before they join, and they see only new messages.";
+            text: @tr("Each link works for one person, for 7 days. You approve them before they join, and they see only new messages.");
             wrap: word-wrap;
         }
-        if root.group-admin && root.addable.length > 0: Body { text: "Add people"; font-weight: 600; }
-        if root.group-admin && root.addable.length > 0: Secondary { text: "They'll see new messages from now on, not what was said before they joined."; }
+        if root.group-admin && root.addable.length > 0: Body { text: @tr("Add people"); font-weight: 600; }
+        if root.group-admin && root.addable.length > 0: Secondary { text: @tr("They'll see new messages from now on, not what was said before they joined."); }
         if root.group-admin: VerticalLayout {
         for p in root.addable: Rectangle {
             height: 56px;
@@ -3205,30 +3205,30 @@ export component AppWindow inherits Window {
         if root.group-admin && root.addable.length > 0: HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Adding…" : "Add to group";
+                text: root.busy ? @tr("Adding…") : @tr("Add to group");
                 enabled: !root.busy;
                 clicked => { root.add-members(root.current-id); }
             }
         }
         if root.confirm-leave == "": HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Leave group"; danger: true; clicked => { root.confirm-leave = root.current-id; } }
+            QuietButton { text: @tr("Leave group"); danger: true; clicked => { root.confirm-leave = root.current-id; } }
         }
         if root.confirm-leave != "": Notice {
-            title: "Leave " + root.current.name + "?";
-            text: "You'll stop getting its messages. Someone would have to add you again.";
+            title: @tr("Leave {}?", root.current.name);
+            text: @tr("You'll stop getting its messages. Someone would have to add you again.");
             kind: 2;
             HorizontalLayout {
                 alignment: start;
                 spacing: Tokens.space-s;
-                PrimaryButton { text: "Leave"; danger: true; clicked => { root.leave-group(root.current-id); root.confirm-leave = ""; } }
-                QuietButton { text: "Stay"; clicked => { root.confirm-leave = ""; } }
+                PrimaryButton { text: @tr("Leave"); danger: true; clicked => { root.leave-group(root.current-id); root.confirm-leave = ""; } }
+                QuietButton { text: @tr("Stay"); clicked => { root.confirm-leave = ""; } }
             }
         }
     }
 
     if root.sheet == Sheet.devices: SheetFrame {
-        title: "Your devices";
+        title: @tr("Your devices");
         close => { root.sheet = Sheet.none; }
         for d in root.devices: Rectangle {
             min-height: dev.preferred-height;
@@ -3242,8 +3242,8 @@ export component AppWindow inherits Window {
                     Secondary { text: d.detail; }
                 }
                 if d.removable && root.confirm-remove != d.id: QuietButton {
-                    text: "Remove";
-                    accessible-label: "Remove " + d.label;
+                    text: @tr("Remove");
+                    accessible-label: @tr("Remove {}", d.label);
                     clicked => { root.confirm-remove = d.id; }
                 }
             }
@@ -3264,43 +3264,43 @@ export component AppWindow inherits Window {
                 confirm := VerticalLayout {
                     padding: Tokens.space-m;
                     spacing: Tokens.space-s;
-                    Body { text: "Remove this device?"; font-weight: 600; }
-                    Secondary { text: "It stops getting new messages, and your contacts stop sending to it. Messages already on it stay there until it's erased."; }
-                    if root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
+                    Body { text: @tr("Remove this device?"); font-weight: 600; }
+                    Secondary { text: @tr("It stops getting new messages, and your contacts stop sending to it. Messages already on it stay there until it's erased."); }
+                    if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
                         PrimaryButton {
-                            text: root.busy ? "Removing…" : "Remove device";
+                            text: root.busy ? @tr("Removing…") : @tr("Remove device");
                             danger: true;
                             enabled: !root.busy;
                             clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.remove-device(d.id); }
                         }
-                        QuietButton { text: "Keep it"; clicked => { root.confirm-remove = ""; } }
+                        QuietButton { text: @tr("Keep it"); clicked => { root.confirm-remove = ""; } }
                     }
                 }
             }
         }
         }
         if root.can-link && root.link-choices.length == 0: Secondary {
-            text: "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device.";
+            text: @tr("To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device.");
         }
         if root.can-link && root.link-choices.length == 0: HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "enclave:link#…"; mono: true; text <=> root.link-code; horizontal-stretch: 1; }
-            if root.can-scan: QuietButton { text: "Scan"; outlined: true; accessible-label: "Scan the new device's code with the camera"; clicked => { root.scan(4); } }
+            Field { placeholder: @tr("enclave:link#…"); mono: true; text <=> root.link-code; horizontal-stretch: 1; }
+            if root.can-scan: QuietButton { text: @tr("Scan"); outlined: true; accessible-label: @tr("Scan the new device's code with the camera"); clicked => { root.scan(4); } }
         }
         if root.can-link && root.link-choices.length == 0: HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.busy ? "Checking…" : "Continue";
+                text: root.busy ? @tr("Checking…") : @tr("Continue");
                 enabled: root.link-code != "" && !root.busy;
                 clicked => { root.link-scan(root.link-code); }
             }
         }
         if root.link-choices.length > 0: VerticalLayout {
             spacing: Tokens.space-s;
-            Body { text: "Which words does your new device show?"; font-weight: 600; }
+            Body { text: @tr("Which words does your new device show?"); font-weight: 600; }
             for c[i] in root.link-choices: QuietButton {
                 text: c;
                 outlined: true;
@@ -3308,46 +3308,46 @@ export component AppWindow inherits Window {
             }
         }
         if root.link-status != "": Secondary { text: root.link-status; }
-        if !root.can-link: Secondary { text: "Only your first device can link new ones."; }
+        if !root.can-link: Secondary { text: @tr("Only your first device can link new ones."); }
     }
 
     if root.sheet == Sheet.recovery: SheetFrame {
-        title: "Your recovery words";
+        title: @tr("Your recovery words");
         max-card-width: 640px;
         close => { root.sheet = Sheet.none; }
         Secondary {
-            text: "If you lose this device, these 24 words bring your account back. Anyone who has them can become you. Write them down on paper and keep them somewhere safe.";
+            text: @tr("If you lose this device, these 24 words bring your account back. Anyone who has them can become you. Write them down on paper and keep them somewhere safe.");
         }
         // The same words in any of BIP-39's lists: whichever is written
         // down brings the same account back.
-        Caption { text: "Show them in:"; }
+        Caption { text: @tr("Show them in:"); }
         GridLayout {
             spacing: Tokens.space-xs;
             for l[i] in [
-                { code: "en", name: "English" }, { code: "es", name: "Español" },
-                { code: "fr", name: "Français" }, { code: "it", name: "Italiano" },
-                { code: "pt", name: "Português" }, { code: "cs", name: "Čeština" },
+                { code: "en", name: @tr("English") }, { code: "es", name: @tr("Español") },
+                { code: "fr", name: @tr("Français") }, { code: "it", name: @tr("Italiano") },
+                { code: "pt", name: @tr("Português") }, { code: "cs", name: @tr("Čeština") },
                 { code: "ja", name: "日本語" }, { code: "ko", name: "한국어" },
-                { code: "zh-Hans", name: "简体中文" }, { code: "zh-Hant", name: "繁體中文" },
+                { code: @tr("zh-Hans"), name: "简体中文" }, { code: @tr("zh-Hant"), name: "繁體中文" },
             ]: QuietButton {
                 row: root.wide ? i / 5 : i / 2;
                 col: root.wide ? mod(i, 5) : mod(i, 2);
                 text: l.name;
                 outlined: l.code == root.words-language;
-                accessible-label: "Show the words in " + l.name;
+                accessible-label: @tr("Show the words in {}", l.name);
                 clicked => { root.choose-words-language(l.code); }
             }
         }
         // Behind a PIN the words are wrapped: they show for two minutes
         // after it is entered.
         if root.can-change-words && root.has-root-pin && root.recovery-words.length == 0 && !root.busy: Secondary {
-            text: "Your words are locked with your PIN.";
+            text: @tr("Your words are locked with your PIN.");
         }
         if root.can-change-words && root.has-root-pin && root.recovery-words.length == 0 && !root.busy: HorizontalLayout {
             spacing: Tokens.space-s;
-            Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; horizontal-stretch: 1; }
+            Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; horizontal-stretch: 1; }
             PrimaryButton {
-                text: "Show";
+                text: @tr("Show");
                 clicked => { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; }
             }
         }
@@ -3373,38 +3373,38 @@ export component AppWindow inherits Window {
                 }
             }
         }
-        if root.busy: Secondary { text: "Making your new words…"; }
+        if root.busy: Secondary { text: @tr("Making your new words…"); }
         if !root.busy: HorizontalLayout {
             alignment: start;
             PrimaryButton {
-                text: root.recovery-saved ? "Done" : "I've written them down";
+                text: root.recovery-saved ? @tr("Done") : @tr("I've written them down");
                 clicked => { root.words-saved(); root.sheet = Sheet.none; }
             }
         }
         if root.words-pending && !root.busy: Caption {
-            text: "Telling your contacts and groups about your new words. This finishes on its own.";
+            text: @tr("Telling your contacts and groups about your new words. This finishes on its own.");
             wrap: word-wrap;
         }
         if root.can-change-words && !root.busy && !root.words-pending: Rectangle { height: 1px; background: Tokens.hairline; }
         if root.can-change-words && !root.busy && !root.words-pending: Secondary {
-            text: "Think someone may have seen them? You can replace them with new words.";
+            text: @tr("Think someone may have seen them? You can replace them with new words.");
         }
         if root.can-change-words && !root.busy && !root.words-pending: HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: "Change my words";
+                text: @tr("Change my words");
                 outlined: true;
                 clicked => { root.open-sheet(Sheet.change-words); }
             }
         }
         // A linked device: the words live on the first device.
         if !root.can-change-words && root.recovery-words.length == 0 && !root.busy && !root.words-pending: Secondary {
-            text: "Your recovery words are on the device you set Enclave up on first, not this one. Lost the words and that device too? You can make new words here.";
+            text: @tr("Your recovery words are on the device you set Enclave up on first, not this one. Lost the words and that device too? You can make new words here.");
         }
         if !root.can-change-words && root.recovery-words.length == 0 && !root.busy && !root.words-pending: HorizontalLayout {
             alignment: start;
             QuietButton {
-                text: "Make new words";
+                text: @tr("Make new words");
                 outlined: true;
                 clicked => { root.open-sheet(Sheet.change-words); }
             }
@@ -3412,9 +3412,9 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.player: SheetFrame {
-        title: "Animated picture";
+        title: @tr("Animated picture");
         close => { root.sheet = Sheet.none; }
-        if root.player-frames.length == 0: Secondary { text: root.busy ? "Getting it ready…" : "Enclave couldn't play this one."; }
+        if root.player-frames.length == 0: Secondary { text: root.busy ? @tr("Getting it ready…") : @tr("Enclave couldn't play this one."); }
         if root.player-frames.length > 0: Rectangle {
             height: self.width * root.player-frames[0].height / max(1, root.player-frames[0].width);
             border-radius: Tokens.radius-control;
@@ -3425,7 +3425,7 @@ export component AppWindow inherits Window {
                 height: parent.height;
                 image-fit: contain;
                 accessible-role: image;
-                accessible-label: "Animated picture";
+                accessible-label: @tr("Animated picture");
             }
         }
         // Plays on a loop while the sheet is open; reduce-motion shows the
@@ -3438,65 +3438,65 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.delete-account: SheetFrame {
-        title: root.can-change-words ? "Delete your account" : "Erase this device";
+        title: root.can-change-words ? @tr("Delete your account") : @tr("Erase this device");
         close => { root.sheet = Sheet.none; }
         if root.can-change-words: Body {
-            text: "This deletes your account for everyone. Your contacts see that you closed it, you leave every group, your username is withdrawn for good, and your server deletes your inboxes. Then everything on this device is erased, and your other devices erase themselves. It can't be undone.";
+            text: @tr("This deletes your account for everyone. Your contacts see that you closed it, you leave every group, your username is withdrawn for good, and your server deletes your inboxes. Then everything on this device is erased, and your other devices erase themselves. It can't be undone.");
             wrap: word-wrap;
         }
         if !root.can-change-words: Body {
-            text: "This erases your conversations and keys from this device only. Your account goes on on your other devices.";
+            text: @tr("This erases your conversations and keys from this device only. Your account goes on on your other devices.");
             wrap: word-wrap;
         }
-        Field { placeholder: "Type delete to confirm"; text <=> root.delete-confirm; }
-        if root.has-root-pin && root.can-change-words: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
+        Field { placeholder: @tr("Type delete to confirm"); text <=> root.delete-confirm; }
+        if root.has-root-pin && root.can-change-words: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
             PrimaryButton {
-                text: root.busy ? "Deleting…" : (root.can-change-words ? "Delete my account" : "Erase this device");
+                text: root.busy ? @tr("Deleting…") : (root.can-change-words ? @tr("Delete my account") : @tr("Erase this device"));
                 danger: true;
                 enabled: root.delete-confirm == "delete" && !root.busy;
                 clicked => { if root.can-change-words { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.delete-account(); } else { root.erase-device(); } }
             }
-            QuietButton { text: "Keep it"; clicked => { root.sheet = Sheet.none; } }
+            QuietButton { text: @tr("Keep it"); clicked => { root.sheet = Sheet.none; } }
         }
         if root.can-change-words: Rectangle { height: 1px; background: Tokens.hairline; }
-        if root.can-change-words: Secondary { text: "Only want Enclave gone from this device? Erase it instead; your account stays on your other devices."; }
+        if root.can-change-words: Secondary { text: @tr("Only want Enclave gone from this device? Erase it instead; your account stays on your other devices."); }
         if root.can-change-words: HorizontalLayout {
             alignment: start;
-            QuietButton { text: "Erase only this device"; outlined: true; clicked => { if root.delete-confirm == "delete" && !root.busy { root.erase-device(); } } }
+            QuietButton { text: @tr("Erase only this device"); outlined: true; clicked => { if root.delete-confirm == "delete" && !root.busy { root.erase-device(); } } }
         }
     }
 
     if root.sheet == Sheet.change-words: SheetFrame {
-        title: root.can-change-words ? "Change your recovery words" : "Make new recovery words";
+        title: root.can-change-words ? @tr("Change your recovery words") : @tr("Make new recovery words");
         close => { root.sheet = Sheet.none; }
         Body {
             text: root.can-change-words
-                ? "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working."
-                : "Do this only if your words are lost and so is the device that had them. This device gets 24 new words and becomes the one that holds them.";
+                ? @tr("Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working.")
+                : @tr("Do this only if your words are lost and so is the device that had them. This device gets 24 new words and becomes the one that holds them.");
             wrap: word-wrap;
         }
         Secondary {
             text: root.can-change-words
-                ? "Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are."
-                : "Without the old words Enclave can't prove to your contacts that this was you, so each of them is asked to check your security code in person. Your conversations, groups and devices stay as they are, and your username stays with the old words.";
+                ? @tr("Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are.")
+                : @tr("Without the old words Enclave can't prove to your contacts that this was you, so each of them is asked to check your security code in person. Your conversations, groups and devices stay as they are, and your username stays with the old words.");
         }
         Secondary {
             text: root.can-change-words
-                ? "Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards."
-                : "Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards.";
+                ? @tr("Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards.")
+                : @tr("Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards.");
         }
-        if root.has-root-pin: Field { placeholder: "Your PIN"; secret: true; text <=> root.root-pin-input; }
+        if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
         HorizontalLayout {
             spacing: Tokens.space-s;
             alignment: start;
             PrimaryButton {
-                text: root.can-change-words ? "Change my words" : "Make new words";
+                text: root.can-change-words ? @tr("Change my words") : @tr("Make new words");
                 clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.change-words(); root.open-sheet(Sheet.recovery); }
             }
-            QuietButton { text: "Not now"; clicked => { root.sheet = Sheet.recovery; } }
+            QuietButton { text: @tr("Not now"); clicked => { root.sheet = Sheet.recovery; } }
         }
     }
 
@@ -3504,7 +3504,7 @@ export component AppWindow inherits Window {
     if root.scanning: Rectangle {
         background: #000000d9;
         accessible-role: groupbox;
-        accessible-label: "Scanning a code";
+        accessible-label: @tr("Scanning a code");
         TouchArea { }
         VerticalLayout {
             alignment: center;
@@ -3524,7 +3524,7 @@ export component AppWindow inherits Window {
                         source: root.scan-frame;
                         image-fit: cover;
                         accessible-role: image;
-                        accessible-label: "Camera";
+                        accessible-label: @tr("Camera");
                     }
                     // The frame to hold the code in.
                     Rectangle {
@@ -3537,14 +3537,14 @@ export component AppWindow inherits Window {
                 }
             }
             Text {
-                text: root.scan-error != "" ? root.scan-error : "Hold their code up to the camera.";
+                text: root.scan-error != "" ? root.scan-error : @tr("Hold their code up to the camera.");
                 color: #ffffff;
                 horizontal-alignment: center;
                 wrap: word-wrap;
             }
             HorizontalLayout {
                 alignment: center;
-                PrimaryButton { text: "Cancel"; clicked => { root.stop-scan(); } }
+                PrimaryButton { text: @tr("Cancel"); clicked => { root.stop-scan(); } }
             }
         }
     }

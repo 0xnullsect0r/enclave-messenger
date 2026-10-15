@@ -301,6 +301,7 @@ pub mod phone {
                             None => out,
                         };
                         if let Out::Notify(n) = out {
+                            let n = crate::i18n::notice(n);
                             enclave_platform::phone::notify(&n.title, &n.body);
                         }
                     }

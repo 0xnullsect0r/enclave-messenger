@@ -2796,6 +2796,7 @@ dependencies = [
  "rqrr",
  "slint",
  "slint-build",
+ "sys-locale",
  "tokio",
 ]
 

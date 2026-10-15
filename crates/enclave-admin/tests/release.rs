@@ -18,7 +18,11 @@ fn admin(dir: &Path, args: &[&str]) -> std::process::Output {
 
 fn ok(dir: &Path, args: &[&str]) {
     let o = admin(dir, args);
-    assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(
+        o.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
 }
 
 #[test]
@@ -29,7 +33,15 @@ fn release_ceremony() {
     std::fs::create_dir_all(tmp.join("files")).unwrap();
     let d = tmp.as_path();
     for k in ["m1", "m2", "m3", "online"] {
-        ok(d, &["release", "keygen", &format!("{k}.key"), &format!("{k}.pub")]);
+        ok(
+            d,
+            &[
+                "release",
+                "keygen",
+                &format!("{k}.key"),
+                &format!("{k}.pub"),
+            ],
+        );
     }
     let w = "11".repeat(32);
     std::fs::write(
@@ -41,28 +53,125 @@ fn release_ceremony() {
         ),
     )
     .unwrap();
-    ok(d, &["release", "root", "root.toml", "--out", "root.unsigned"]);
-    ok(d, &["release", "sign", "root.unsigned", "--key", "m1.key", "--index", "0", "--out", "root.1"]);
-    ok(d, &["release", "sign", "root.1", "--key", "m3.key", "--index", "2", "--out", "root.bin"]);
+    ok(
+        d,
+        &["release", "root", "root.toml", "--out", "root.unsigned"],
+    );
+    ok(
+        d,
+        &[
+            "release",
+            "sign",
+            "root.unsigned",
+            "--key",
+            "m1.key",
+            "--index",
+            "0",
+            "--out",
+            "root.1",
+        ],
+    );
+    ok(
+        d,
+        &[
+            "release", "sign", "root.1", "--key", "m3.key", "--index", "2", "--out", "root.bin",
+        ],
+    );
     std::fs::write(d.join("files/Enclave-1.0.0.tar.gz"), b"the release").unwrap();
     std::fs::write(d.join("files/SHA256SUMS"), b"sums").unwrap();
-    ok(d, &["release", "targets", "files", "--tag", "v1.0.0", "--version", "1", "--out", "targets.unsigned"]);
+    ok(
+        d,
+        &[
+            "release",
+            "targets",
+            "files",
+            "--tag",
+            "v1.0.0",
+            "--version",
+            "1",
+            "--out",
+            "targets.unsigned",
+        ],
+    );
     // One maintainer: refused.
-    ok(d, &["release", "sign", "targets.unsigned", "--key", "m2.key", "--index", "1", "--out", "out/targets.bin"]);
-    ok(d, &["release", "online", "out/targets.bin", "--key", "online.key", "--index", "3", "--out-dir", "out"]);
-    let o = admin(d, &["release", "verify", "--root", "root.bin", "--dir", "out"]);
+    ok(
+        d,
+        &[
+            "release",
+            "sign",
+            "targets.unsigned",
+            "--key",
+            "m2.key",
+            "--index",
+            "1",
+            "--out",
+            "out/targets.bin",
+        ],
+    );
+    ok(
+        d,
+        &[
+            "release",
+            "online",
+            "out/targets.bin",
+            "--key",
+            "online.key",
+            "--index",
+            "3",
+            "--out-dir",
+            "out",
+        ],
+    );
+    let o = admin(
+        d,
+        &["release", "verify", "--root", "root.bin", "--dir", "out"],
+    );
     assert!(!o.status.success());
     assert!(String::from_utf8_lossy(&o.stderr).contains("needs 2"));
     // Two maintainers: accepted.
-    ok(d, &["release", "sign", "out/targets.bin", "--key", "m1.key", "--index", "0", "--out", "out/targets.bin"]);
+    ok(
+        d,
+        &[
+            "release",
+            "sign",
+            "out/targets.bin",
+            "--key",
+            "m1.key",
+            "--index",
+            "0",
+            "--out",
+            "out/targets.bin",
+        ],
+    );
     std::fs::remove_file(d.join("out/snapshot.bin")).unwrap();
     std::fs::remove_file(d.join("out/timestamp.bin")).unwrap();
-    ok(d, &["release", "online", "out/targets.bin", "--key", "online.key", "--index", "3", "--out-dir", "out"]);
-    let o = admin(d, &["release", "verify", "--root", "root.bin", "--dir", "out"]);
+    ok(
+        d,
+        &[
+            "release",
+            "online",
+            "out/targets.bin",
+            "--key",
+            "online.key",
+            "--index",
+            "3",
+            "--out-dir",
+            "out",
+        ],
+    );
+    let o = admin(
+        d,
+        &["release", "verify", "--root", "root.bin", "--dir", "out"],
+    );
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    assert!(String::from_utf8_lossy(&o.stdout).contains("release v1.0.0 (targets version 1): 2 files"));
+    assert!(
+        String::from_utf8_lossy(&o.stdout).contains("release v1.0.0 (targets version 1): 2 files")
+    );
     // A root signed by one maintainer isn't one.
-    let o = admin(d, &["release", "verify", "--root", "root.1", "--dir", "out"]);
+    let o = admin(
+        d,
+        &["release", "verify", "--root", "root.1", "--dir", "out"],
+    );
     assert!(!o.status.success());
     let _ = std::fs::remove_dir_all(&tmp);
 }
