@@ -19,6 +19,7 @@ on:
   # Changes to the Tor side are tried against the real network at once
   # (still never blocking).
   push:
+    branches: ['**']
     paths:
       - crates/enclave-tord/**
       - ci/tor/**

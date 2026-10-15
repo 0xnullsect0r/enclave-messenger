@@ -72,6 +72,7 @@ sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.llvm20
 command: enclave
 finish-args:
   - --share=ipc
@@ -85,8 +86,10 @@ modules:
   - name: enclave
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/golang/bin
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/golang/bin:/usr/lib/sdk/llvm20/bin
       env:
+        # bindgen (the camera's V4L2 bindings) needs libclang.
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
         CARGO_HOME: /run/build/enclave/cargo
         CARGO_NET_OFFLINE: 'true'
         GOFLAGS: -mod=vendor

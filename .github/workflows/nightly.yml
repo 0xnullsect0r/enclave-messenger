@@ -10,6 +10,9 @@ on:
     - cron: '41 2 * * *'
   workflow_dispatch:
   push:
+    # Branches only: path filters don't apply to tag pushes, and a release
+    # tag has its own workflow.
+    branches: ['**']
     paths:
       - packaging/flatpak/**
       - .github/workflows/nightly.yml
@@ -32,7 +35,8 @@ jobs:
           sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder python3-venv python3-yaml
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 \
-            org.freedesktop.Sdk.Extension.rust-stable//25.08 org.freedesktop.Sdk.Extension.golang//25.08
+            org.freedesktop.Sdk.Extension.rust-stable//25.08 org.freedesktop.Sdk.Extension.golang//25.08 \
+            org.freedesktop.Sdk.Extension.llvm20//25.08
       - name: The manifest and its sources, for this commit
         run: |
           git tag -f nightly-flathub HEAD
