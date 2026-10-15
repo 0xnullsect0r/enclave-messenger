@@ -111,9 +111,102 @@ pub fn reduce_motion() -> bool {
     {
         portal_animations().is_some_and(|on| !on)
     }
-    // Android and iOS read theirs with A1 and I1.
-    #[cfg(any(target_os = "ios", target_os = "android", not(any(unix, windows))))]
+    #[cfg(all(feature = "phone", any(target_os = "ios", target_os = "android")))]
+    {
+        crate::phone::reduce_motion()
+    }
+    #[cfg(any(
+        all(not(feature = "phone"), any(target_os = "ios", target_os = "android")),
+        not(any(unix, windows))
+    ))]
     false
+}
+
+/// How much larger the person asked the system to make text (1.0 none,
+/// at most 2.0, `docs/18-a11y-i18n.md` A-5): GNOME's text scaling factor
+/// (the desktop portal), Windows' Accessibility → Text size, Android's
+/// font size, iOS's Dynamic Type. macOS has no system-wide text size.
+pub fn text_scale() -> f32 {
+    let scale: f32 = {
+        #[cfg(windows)]
+        {
+            windows_text_scale().unwrap_or(1.0)
+        }
+        #[cfg(all(
+            unix,
+            not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+        ))]
+        {
+            portal_text_scale().unwrap_or(1.0)
+        }
+        #[cfg(all(feature = "phone", any(target_os = "ios", target_os = "android")))]
+        {
+            crate::phone::text_scale()
+        }
+        #[cfg(any(
+            target_os = "macos",
+            all(not(feature = "phone"), any(target_os = "ios", target_os = "android")),
+            not(any(unix, windows))
+        ))]
+        {
+            1.0
+        }
+    };
+    if scale.is_finite() {
+        scale.clamp(1.0, 2.0)
+    } else {
+        1.0
+    }
+}
+
+/// Windows' Settings → Accessibility → Text size (100 to 225 percent).
+#[cfg(windows)]
+fn windows_text_scale() -> Option<f32> {
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    let key: Vec<u16> = "Software\\Microsoft\\Accessibility\0"
+        .encode_utf16()
+        .collect();
+    let name: Vec<u16> = "TextScaleFactor\0".encode_utf16().collect();
+    let mut value: u32 = 0;
+    let mut size: u32 = 4;
+    // SAFETY: both names are NUL-terminated UTF-16; RegGetValueW writes at
+    // most `size` (4) bytes to `value` and updates `size`.
+    let r = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            name.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            (&raw mut value).cast(),
+            &raw mut size,
+        )
+    };
+    (r == 0 && value >= 100).then(|| value as f32 / 100.0)
+}
+
+/// GNOME's "text-scaling-factor", through the desktop portal's settings.
+#[cfg(all(
+    unix,
+    not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+))]
+fn portal_text_scale() -> Option<f32> {
+    let conn = zbus::blocking::Connection::session().ok()?;
+    let proxy = zbus::blocking::Proxy::new(
+        &conn,
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings",
+    )
+    .ok()?;
+    let reply = proxy
+        .call_method(
+            "ReadOne",
+            &("org.gnome.desktop.interface", "text-scaling-factor"),
+        )
+        .ok()?;
+    let value: zbus::zvariant::OwnedValue = reply.body().deserialize().ok()?;
+    f64::try_from(value).ok().map(|v| v as f32)
 }
 
 /// GNOME's "enable-animations", through the desktop portal's settings.

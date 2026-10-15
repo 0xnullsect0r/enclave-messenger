@@ -186,6 +186,22 @@ component Bubble inherits HorizontalLayout {
         border-width: root.selected ? 2px : 0px;
         border-color: Tokens.focus-ring;
         TouchArea { clicked => { root.tapped(); } }
+        // Each message is reached with Tab and selected with Enter or
+        // Space, which opens its actions (A-3).
+        bubble-focus := FocusScope {
+            key-pressed(e) => {
+                if e.text == " " || e.text == "\n" { root.tapped(); return accept; }
+                reject
+            }
+        }
+        if bubble-focus.has-focus: Rectangle {
+            border-top-left-radius: Tokens.radius-bubble;
+            border-top-right-radius: Tokens.radius-bubble;
+            border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
+            border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
+            border-width: Tokens.icon-focus-ring-width;
+            border-color: Tokens.focus-ring;
+        }
         border-top-left-radius: Tokens.radius-bubble;
         border-top-right-radius: Tokens.radius-bubble;
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
@@ -419,6 +435,18 @@ component ContactItem inherits Rectangle {
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+    // Reached with Tab, opened with Enter or Space (A-3).
+    focus := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
+            reject
+        }
+    }
+    if focus.has-focus: Rectangle {
+        border-radius: parent.border-radius;
+        border-width: Tokens.icon-focus-ring-width;
+        border-color: Tokens.focus-ring;
     }
     HorizontalLayout {
         padding-left: Tokens.space-sm;
@@ -2462,12 +2490,18 @@ export component AppWindow inherits Window {
         if root.code-words.length > 0: VerticalLayout {
             spacing: Tokens.space-xs;
             Caption { text: @tr("Or read these words to each other:"); }
-            Text {
-                text: root.code-words[0] + " " + root.code-words[1] + " " + root.code-words[2] + " " + root.code-words[3] + " " + root.code-words[4] + " · " + root.code-words[5] + " " + root.code-words[6] + " " + root.code-words[7] + " " + root.code-words[8] + " " + root.code-words[9];
-                font-family: "Atkinson Hyperlegible Mono";
-                font-size: Tokens.type-body;
-                color: Tokens.text;
-                wrap: word-wrap;
+            // Two rows of five, each word read on its own with its place
+            // (A-11).
+            for row in [0, 5]: HorizontalLayout {
+                alignment: start;
+                spacing: Tokens.space-s;
+                for w[k] in [root.code-words[row], root.code-words[row + 1], root.code-words[row + 2], root.code-words[row + 3], root.code-words[row + 4]]: Text {
+                    text: w;
+                    font-family: "Atkinson Hyperlegible Mono";
+                    font-size: Tokens.type-body;
+                    color: Tokens.text;
+                    accessible-label: @tr("Word {} of 10: {}", row + k + 1, w);
+                }
             }
             HorizontalLayout {
                 alignment: start;
@@ -3360,16 +3394,22 @@ export component AppWindow inherits Window {
         GridLayout {
             spacing-horizontal: Tokens.space-m;
             spacing-vertical: Tokens.space-xs;
-            for w[i] in root.recovery-words: HorizontalLayout {
+            // Read one word at a time, with its place (A-11).
+            for w[i] in root.recovery-words: Rectangle {
                 row: root.wide ? mod(i, 6) : i / 2;
                 col: root.wide ? i / 6 : mod(i, 2);
-                spacing: Tokens.space-s;
-                Caption { text: i + 1; width: 20px; horizontal-alignment: right; vertical-alignment: center; }
-                Text {
-                    text: w;
-                    font-family: "Atkinson Hyperlegible Mono";
-                    font-size: Tokens.type-body;
-                    color: Tokens.text;
+                accessible-role: text;
+                accessible-label: @tr("Word {} of {}: {}", i + 1, root.recovery-words.length, w);
+                HorizontalLayout {
+                    spacing: Tokens.space-s;
+                    Caption { text: i + 1; width: 20px; horizontal-alignment: right; vertical-alignment: center; accessible-role: none; }
+                    Text {
+                        text: w;
+                        font-family: "Atkinson Hyperlegible Mono";
+                        font-size: Tokens.type-body;
+                        color: Tokens.text;
+                        accessible-role: none;
+                    }
                 }
             }
         }

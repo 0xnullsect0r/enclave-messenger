@@ -220,6 +220,14 @@ pub(super) fn set_screen_security(on: bool) {
     });
 }
 
+pub(super) fn text_scale() -> f32 {
+    with_any(|env, a| env.call_method(a, "fontScale", "()F", &[])?.f()).unwrap_or(1.0)
+}
+
+pub(super) fn reduce_motion() -> bool {
+    with_any(|env, a| env.call_method(a, "reduceMotion", "()Z", &[])?.z()).unwrap_or(false)
+}
+
 pub(super) fn delivery() -> (u8, u8) {
     let way = with(|env, a| env.call_method(a, "delivery", "()I", &[])?.i()).unwrap_or(0);
     let ways = with(|env, a| env.call_method(a, "deliveryChoices", "()I", &[])?.i()).unwrap_or(1);

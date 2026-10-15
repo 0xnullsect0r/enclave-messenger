@@ -603,3 +603,40 @@ pub(super) fn delivery() -> (u8, u8) {
 }
 
 pub(super) fn set_delivery(_: u8) {}
+
+/// Dynamic Type: the content size category the person chose, as a scale.
+pub(super) fn text_scale() -> f32 {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return 1.0;
+    };
+    let app = UIApplication::sharedApplication(mtm);
+    // SAFETY: preferredContentSizeCategory is a UIApplication property
+    // returning an NSString (a UIContentSizeCategory constant), read on
+    // the main thread.
+    let category: Retained<NSString> =
+        unsafe { objc2::msg_send![&app, preferredContentSizeCategory] };
+    match category.to_string().as_str() {
+        "UICTContentSizeCategoryXS"
+        | "UICTContentSizeCategoryS"
+        | "UICTContentSizeCategoryM"
+        | "UICTContentSizeCategoryL" => 1.0,
+        "UICTContentSizeCategoryXL" => 1.12,
+        "UICTContentSizeCategoryXXL" => 1.24,
+        "UICTContentSizeCategoryXXXL" => 1.35,
+        "UICTContentSizeCategoryAccessibilityM" => 1.65,
+        "UICTContentSizeCategoryAccessibilityL" => 1.94,
+        c if c.starts_with("UICTContentSizeCategoryAccessibility") => 2.0,
+        _ => 1.0,
+    }
+}
+
+#[link(name = "UIKit", kind = "framework")]
+unsafe extern "C" {
+    fn UIAccessibilityIsReduceMotionEnabled() -> objc2::runtime::Bool;
+}
+
+/// Settings → Accessibility → Motion → Reduce Motion.
+pub(super) fn reduce_motion() -> bool {
+    // SAFETY: a UIKit function with no arguments that only reads a setting.
+    unsafe { UIAccessibilityIsReduceMotionEnabled() }.as_bool()
+}

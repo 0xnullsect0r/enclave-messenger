@@ -57,6 +57,8 @@ jobs:
           cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots
           ENCLAVE_LANG=en-XA cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/en-XA
           ENCLAVE_LANG=ar-XB cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/ar-XB
+          ENCLAVE_TEXT_SCALE=1.5 cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/text-150
+          ENCLAVE_TEXT_SCALE=2.0 cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/text-200
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: screenshots

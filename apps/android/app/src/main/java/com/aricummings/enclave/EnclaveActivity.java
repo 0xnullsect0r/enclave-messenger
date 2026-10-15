@@ -149,6 +149,17 @@ public class EnclaveActivity extends android.app.NativeActivity {
         });
     }
 
+    /** The system's font size (1.0 is the default). */
+    public float fontScale() {
+        return getResources().getConfiguration().fontScale;
+    }
+
+    /** Animations are off in the system's settings. */
+    public boolean reduceMotion() {
+        return android.provider.Settings.Global.getFloat(
+                getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f;
+    }
+
     /** Screen security on or off (Settings → Hide from screenshots). */
     public void setSecure(boolean on) {
         runOnUiThread(() -> {

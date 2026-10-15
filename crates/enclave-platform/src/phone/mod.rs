@@ -168,6 +168,18 @@ pub(crate) fn delivery_changed(way: u8) {
     }
 }
 
+/// The system's text size (1.0 = default): Android's font scale, iOS's
+/// Dynamic Type size.
+pub fn text_scale() -> f32 {
+    imp::text_scale()
+}
+
+/// The person asked the system for less motion (Android: animations off
+/// in the developer or accessibility settings; iOS: Reduce Motion).
+pub fn reduce_motion() -> bool {
+    imp::reduce_motion()
+}
+
 /// Whether a camera frame needs mirroring to look right (the back camera
 /// doesn't).
 pub const MIRROR: bool = false;

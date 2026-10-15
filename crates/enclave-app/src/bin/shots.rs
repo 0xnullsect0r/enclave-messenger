@@ -434,6 +434,14 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.global::<Tokens>().set_dark(dark);
         // Final states, not the first frame of an animation.
         ui.global::<Tokens>().set_reduce_motion(true);
+        // Text as large as the system asks (`ENCLAVE_TEXT_SCALE`: CI renders
+        // 1.5 and 2.0, A-5).
+        if let Some(scale) = std::env::var("ENCLAVE_TEXT_SCALE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+        {
+            ui.global::<Tokens>().set_text_scale(scale);
+        }
         let shot =
             |name: &str, size| render(&window, &ui, size, &out.join(format!("{name}-{mode}.png")));
 

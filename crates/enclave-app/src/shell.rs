@@ -497,6 +497,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // The system's reduce-motion setting (`docs/17-design.md` §5).
     ui.global::<crate::Tokens>()
         .set_reduce_motion(enclave_platform::window::reduce_motion());
+    // And its text size, up to 200% (`docs/18-a11y-i18n.md` A-5).
+    ui.global::<crate::Tokens>()
+        .set_text_scale(enclave_platform::window::text_scale());
     // Notifications come from the app's bundle (an unbundled build keeps
     // the system's default sender).
     #[cfg(all(desktop, target_os = "macos"))]
