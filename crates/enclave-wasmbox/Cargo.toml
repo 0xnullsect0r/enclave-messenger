@@ -1,0 +1,24 @@
+[package]
+name = "enclave-wasmbox"
+description = "Runs Enclave's media process as WebAssembly in an interpreter (wasmi, no JIT): the iOS app's sandbox for parsing other people's pictures, clips and voice notes, where it can't start a process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+wasmi = { version = "1.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+wat = "1"
+# mediad's own build, checked against the same code run natively.
+enclave-ipc = { path = "../enclave-ipc" }
+enclave-media = { path = "../enclave-media", features = ["av1"] }
+png = "0.18"
+gif = "0.14"

@@ -23,6 +23,7 @@ pub mod frame;
 pub mod media;
 mod model;
 pub mod net;
+#[cfg(not(target_os = "wasi"))]
 pub mod stdio;
 
 pub use model::*;

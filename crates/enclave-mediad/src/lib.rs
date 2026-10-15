@@ -16,6 +16,7 @@ use std::io::{Read, Write};
 use std::process::ExitCode;
 
 /// Address-space cap: a 25-megapixel picture plus shrinking buffers.
+#[cfg(not(target_os = "wasi"))]
 const MEMORY_LIMIT: u64 = 2 << 30;
 
 fn handle(req: MediaRequest) -> MediaReply {
@@ -127,6 +128,7 @@ fn write_frame(w: &mut impl Write, body: &[u8]) -> bool {
 /// The program, given its arguments (none). As a thread of the app
 /// (Android, iOS; `enclave_platform::process`) it leaves confining the
 /// process alone and talks over the pipes it was given.
+#[cfg(not(target_os = "wasi"))]
 pub fn main_with(_args: Vec<String>) -> ExitCode {
     if !enclave_platform::process::in_process() {
         let _ = enclave_sandbox::process();
@@ -137,8 +139,20 @@ pub fn main_with(_args: Vec<String>) -> ExitCode {
     let Ok(io) = enclave_platform::process::stdio() else {
         return ExitCode::FAILURE;
     };
-    let mut stdin = std::io::BufReader::new(io.input);
-    let mut stdout = std::io::BufWriter::new(io.output);
+    serve(io.input, io.output)
+}
+
+/// In WebAssembly (`enclave-wasmbox`): standard input and output are the
+/// host's pipes, and the interpreter is the confinement.
+#[cfg(target_os = "wasi")]
+pub fn main_with(_args: Vec<String>) -> ExitCode {
+    serve(std::io::stdin(), std::io::stdout())
+}
+
+/// Answer requests from `input` on `output` until `input` closes.
+fn serve(input: impl Read, output: impl Write) -> ExitCode {
+    let mut stdin = std::io::BufReader::new(input);
+    let mut stdout = std::io::BufWriter::new(output);
     // One request at a time: pictures are decoded in order.
     while let Some(body) = read_frame(&mut stdin) {
         let Ok(req) = MediaRequest::decode(&body) else {

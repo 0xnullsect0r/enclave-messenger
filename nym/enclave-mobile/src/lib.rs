@@ -63,9 +63,32 @@ fn register_helpers() {
         enclave_platform::process::register("enclave-netd", enclave_netd::main_with);
         enclave_platform::process::register("enclave-tord", enclave_tord::daemon::main_with);
         enclave_platform::process::register("enclave-nymd", enclave_nymd::main_with);
+        #[cfg(enclave_mediad_wasm)]
+        enclave_platform::process::register("enclave-mediad", sandboxed_mediad);
+        #[cfg(not(enclave_mediad_wasm))]
         enclave_platform::process::register("enclave-mediad", enclave_mediad::main_with);
         enclave_tord::managed::set_in_process(lyrebird::start);
     });
+}
+
+/// iOS: mediad as WebAssembly in the interpreter sandbox
+/// (`enclave-wasmbox`, `docs/15-client.md` §1.3), on the pipes the vault
+/// gave this thread. Other people's pictures, clips and voice notes are
+/// parsed only there.
+#[cfg(enclave_mediad_wasm)]
+fn sandboxed_mediad(_args: Vec<String>) -> std::process::ExitCode {
+    static MODULE: &[u8] = include_bytes!(env!("ENCLAVE_MEDIAD_WASM_PATH"));
+    let Ok(io) = enclave_platform::process::stdio() else {
+        return std::process::ExitCode::FAILURE;
+    };
+    match enclave_wasmbox::run(MODULE, io.input, io.output) {
+        Ok(0) => std::process::ExitCode::SUCCESS,
+        Ok(_) => std::process::ExitCode::FAILURE,
+        Err(e) => {
+            eprintln!("enclave-mediad (sandbox): {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 fn tor_once() {

@@ -39,3 +39,7 @@ slint = { version = "1.18", default-features = false }
 jni = "0.21"
 # liblyrebird.so (Snowflake and WebTunnel), loaded from the APK.
 libloading = "0.8"
+
+# The media process as WebAssembly in an interpreter (iOS's sandbox).
+[target.'cfg(target_os = "ios")'.dependencies]
+enclave-wasmbox = { path = "../../crates/enclave-wasmbox" }

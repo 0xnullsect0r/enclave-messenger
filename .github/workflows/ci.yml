@@ -38,6 +38,12 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --release
+      - name: mediad as WebAssembly matches native (iOS's sandbox)
+        run: |
+          rustup target add wasm32-wasip1
+          cargo build --release --locked --target wasm32-wasip1 -p enclave-mediad --bin enclave-mediad
+          ENCLAVE_MEDIAD_WASM=$PWD/target/wasm32-wasip1/release/enclave-mediad.wasm \
+            cargo test --release --locked -p enclave-wasmbox
       - name: Label registry matches code
         run: cargo xtask labels
       - name: App icons match their design

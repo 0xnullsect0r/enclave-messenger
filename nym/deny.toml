@@ -265,6 +265,7 @@ allow-build-scripts = [
     "valuable",
     "wasm-bindgen",
     "wasm-bindgen-shared",
+    "wasmparser",  # iOS media sandbox (wasmi): reads the rustc version for a cfg
     "wayland-backend",  # Linux windowing
     "wayland-client",
     "wayland-sys",  # Linux windowing (dlopen)

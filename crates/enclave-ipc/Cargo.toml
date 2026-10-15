@@ -13,9 +13,14 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+tokio = { version = "1", features = ["io-util"] }
+thiserror = "2"
+
+# The helpers' standard input and output (`stdio`); not in mediad's
+# WebAssembly build, which has only the codecs.
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
 enclave-platform = { path = "../enclave-platform" }
 tokio = { version = "1", features = ["io-util", "fs"] }
-thiserror = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-util", "macros", "rt", "net"] }

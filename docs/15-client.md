@@ -51,6 +51,7 @@ Today the desktop app runs as **four** processes: the Slint UI (`enclave`), the 
 - A single app process plus the Notification Service Extension. This is an accepted residual risk (RT-14).
 - Image and audio parsers run inside a **WASM isolation sandbox** (wasmi or the Pulley interpreter; no JIT) in `enclave-sandbox`.
 - The NSE (`enclave-nse`) decrypts capsules only (`10-push.md` §5.1).
+- **As implemented** (I1, I2): the app is one program (`nym/enclave-mobile`, bin `enclave-ios`) with its helpers as threads. mediad is built for `wasm32-wasip1` (`apps/ios/bundle.sh`; its loop over standard input and output, nothing else) and embedded in the program; its thread runs it in `enclave-wasmbox`: wasmi, an interpreter with no JIT, with linear memory capped at 1 GiB, one instance, and the smallest WASI (standard input and output are the vault's pipes; no arguments, environment, files, preopened folders, sockets or randomness; `path_open` is refused). A decoder bug can then reach only the module's own memory, and a trap is an error for that one request's stream (the vault restarts mediad), not a crash of the app. Pictures, AV1 clips and voice notes all go through it; the same code natively is the oracle (`mediad_in_the_sandbox_matches_native`, CI, and the WASI tests). The interpreter is slower than native code (a short sticker clip decodes in tens of milliseconds; a large photo's preview takes longer), the price of the sandbox on a platform without processes. The NSE is `crates/enclave-nse` with `apps/ios/nse` (§5.1 of 10-push).
 
 ### 1.4 Rules
 

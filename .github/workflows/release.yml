@@ -402,7 +402,7 @@ jobs:
       ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim wasm32-wasip1
       - name: Distribution certificate, provisioning profile, App Store Connect key
         if: needs.prepare.outputs.dry != 'true'
         env:

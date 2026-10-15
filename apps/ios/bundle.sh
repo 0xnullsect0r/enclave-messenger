@@ -31,6 +31,11 @@ export IPHONEOS_DEPLOYMENT_TARGET=16.0
 epoch=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}
 export SOURCE_DATE_EPOCH=$epoch
 export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$ROOT=/src"
+# The media process as WebAssembly, run in the app's interpreter sandbox
+# (crates/enclave-wasmbox; docs/15-client.md §1.3).
+(cd "$ROOT" && cargo build --release --locked --target wasm32-wasip1 -p enclave-mediad --bin enclave-mediad)
+export ENCLAVE_MEDIAD_WASM=$ROOT/target/wasm32-wasip1/release/enclave-mediad.wasm
+
 # Snowflake and WebTunnel on devices: lyrebird's clients linked into the
 # program (ci/tor/lyrebird.sh archive); the simulator build goes without.
 if [ "$SIM" != --simulator ]; then

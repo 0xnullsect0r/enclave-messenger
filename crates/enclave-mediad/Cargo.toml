@@ -22,6 +22,11 @@ path = "src/main.rs"
 [dependencies]
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-media = { path = "../enclave-media", features = ["av1"] }
+
+# Built for WebAssembly too (wasm32-wasip1), to run in the iOS app's
+# interpreter sandbox (`enclave-wasmbox`): there it is only the loop over
+# standard input and output, and the sandbox is the interpreter.
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
 enclave-sandbox = { path = "../enclave-sandbox" }
 enclave-platform = { path = "../enclave-platform" }
 
