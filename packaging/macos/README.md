@@ -6,7 +6,7 @@ runtime (`codesign --options runtime`) and the entitlements here:
 | Binary | Entitlements | Why |
 |---|---|---|
 | `enclave` (the window) | `enclave.entitlements` | The camera, for scanning codes. |
-| `enclave-vault` | `enclave-vault.entitlements` | Its Keychain access group, so keystore secrets are also sealed to Secure Enclave keys. `TEAMID` becomes the signing team. |
+| `enclave-vault` | `helper.entitlements` (`enclave-vault.entitlements` with `ENCLAVE_MAC_KEYCHAIN_GROUP=1`) | The Keychain access group would seal keystore secrets to Secure Enclave keys, but on macOS it is a restricted entitlement that only a provisioning profile allows, and a profile can only be embedded in a bundle. Until the vault moves into its own helper bundle (`Contents/Helpers`) with the Developer ID profile (`MACOS_PROVISIONING_PROFILE_BASE64`), it is signed without the group and keeps its secret in the login Keychain unwrapped. `TEAMID` becomes the signing team. |
 | `enclave-netd`, `enclave-nymd`, `enclave-tord`, `enclave-mediad` | `helper.entitlements` | None beyond the hardened runtime. |
 
 The App Sandbox isn't used: helpers started by a sandboxed app must

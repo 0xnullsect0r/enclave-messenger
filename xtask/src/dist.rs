@@ -793,13 +793,18 @@ pub fn bundle_macos(args: &[String]) -> ExitCode {
 /// Sign every program, then the bundle, with the hardened runtime and each
 /// one's entitlements (`packaging/macos/README.md`). Without
 /// `APPLE_SIGN_IDENTITY` the signature is ad hoc, which runs on this Mac
-/// only, and the vault's Keychain group (which needs a team) is left out.
+/// only. The vault's Keychain group (`enclave-vault.entitlements`) is a
+/// restricted entitlement that only a provisioning profile can allow, and a
+/// profile can only be embedded in a bundle, so it is used only with
+/// `ENCLAVE_MAC_KEYCHAIN_GROUP=1`, once the vault is its own helper bundle;
+/// until then the vault keeps its secret in the login Keychain unwrapped.
 fn sign_app(app: &Path, work: &Path) -> Result<(), String> {
     let mac = root().join("packaging/macos");
     let id = std::env::var("APPLE_SIGN_IDENTITY").unwrap_or_default();
     let real = !id.is_empty();
     let identity = if real { id.as_str() } else { "-" };
     let team = std::env::var("APPLE_TEAM_ID").unwrap_or_default();
+    let group = std::env::var("ENCLAVE_MAC_KEYCHAIN_GROUP").is_ok_and(|v| v == "1");
     let vault_ent = work.join("enclave-vault.entitlements");
     let text =
         fs::read_to_string(mac.join("enclave-vault.entitlements")).map_err(|e| e.to_string())?;
@@ -822,8 +827,7 @@ fn sign_app(app: &Path, work: &Path) -> Result<(), String> {
     for p in PROGRAMS {
         let ent = match p {
             "enclave" => continue,
-            "enclave-vault" if real => Some(vault_ent.clone()),
-            "enclave-vault" => None,
+            "enclave-vault" if real && group => Some(vault_ent.clone()),
             _ => Some(mac.join("helper.entitlements")),
         };
         sign(&macos.join(p), ent.as_deref())?;
