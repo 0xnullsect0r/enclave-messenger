@@ -47,7 +47,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.94"
 license = "GPL-3.0-only"
-repository = "https://github.com/EnclaveChat/Enclave"
+repository = "https://github.com/0xnullsect0r/enclave-messenger"
 authors = ["The Enclave contributors"]
 publish = false
 

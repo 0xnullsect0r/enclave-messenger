@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/cargo/registry \
 FROM ${RUNTIME_IMAGE}
 LABEL org.opencontainers.image.title="enclave-nym-localnet" \
       org.opencontainers.image.description="A local Nym mixnet for Enclave's CI (not for production)" \
-      org.opencontainers.image.source="https://github.com/EnclaveChat/Enclave" \
+      org.opencontainers.image.source="https://github.com/0xnullsect0r/enclave-messenger" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 COPY --from=build /usr/local/bin/nym-node /usr/local/bin/nym-node
 COPY topology.py /usr/local/bin/enclave-localnet-topology

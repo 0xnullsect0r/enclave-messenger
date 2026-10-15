@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The compose stack a release publishes (release.yml), as
-# oci://ghcr.io/enclavechat/enclave-stack:VERSION and in the operator kit:
+# oci://ghcr.io/0xnullsect0r/enclave-stack:VERSION and in the operator kit:
 # ops/compose's production files. Its images follow ENCLAVE_VERSION
 # (`latest`: the updater moves the stack to each new signed release; a
 # version stays on it).
@@ -13,7 +13,7 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 cp -r "$ROOT/ops/compose/compose.yml" "$ROOT/ops/compose/compose.postgres.yml" \
   "$ROOT/ops/compose/.env.example" "$ROOT/ops/compose/config" "$ROOT/ops/compose/foundation" "$OUT/"
 # Every image is one of the release's.
-images=$(grep -h 'image:' "$OUT/compose.yml" | grep -v 'ghcr.io/enclavechat/enclave-' || true)
+images=$(grep -h 'image:' "$OUT/compose.yml" | grep -v 'ghcr.io/0xnullsect0r/enclave-' || true)
 if [ -n "$images" ]; then
   echo "stack: an image isn't a release image: $images" >&2
   exit 1

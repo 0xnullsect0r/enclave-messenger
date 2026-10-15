@@ -3,11 +3,11 @@
 One operator runs one stack: the server (keys, inboxes, key-transparency
 log), a witness (cosigns other operators' logs), the front (the stack's
 only HTTPS surface), a call relay and, optionally, a push relay. They come
-as images on GHCR, `ghcr.io/enclavechat/enclave-server` (every service but
-the Nym client), `ghcr.io/enclavechat/enclave-nym` (the Nym ingress, the
-only way devices reach the server) and `ghcr.io/enclavechat/enclave-updater`,
+as images on GHCR, `ghcr.io/0xnullsect0r/enclave-server` (every service but
+the Nym client), `ghcr.io/0xnullsect0r/enclave-nym` (the Nym ingress, the
+only way devices reach the server) and `ghcr.io/0xnullsect0r/enclave-updater`,
 and one compose file, `ops/compose/compose.yml`, also published with each
-release as `oci://ghcr.io/enclavechat/enclave-stack:<version>`. See
+release as `oci://ghcr.io/0xnullsect0r/enclave-stack:<version>`. See
 `docs/12-servers.md` for what each part does.
 
 ## What you need
@@ -103,9 +103,9 @@ the first release, images and their provenance are signed (cosign, keyless,
 from the release workflow):
 
 ```sh
-cosign verify ghcr.io/enclavechat/enclave-server:<version> \
+cosign verify ghcr.io/0xnullsect0r/enclave-server:<version> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/EnclaveChat/Enclave/'
+  --certificate-identity-regexp '^https://github.com/0xnullsect0r/enclave-messenger/'
 ```
 
 ## Backups
@@ -254,7 +254,7 @@ chmod 0444 secrets/push/*
 team_id = "TEAMID1234"
 key_id = "KEYID12345"
 key_file = "/run/secrets/push/apns.p8"
-topic = "io.github.enclavechat.enclave"
+topic = "com.aricummings.enclave"
 # endpoint = "https://api.sandbox.push.apple.com"   # development builds
 
 [fcm]

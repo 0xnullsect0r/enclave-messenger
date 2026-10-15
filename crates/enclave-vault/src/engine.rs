@@ -69,10 +69,10 @@ pub enum Mode {
 
 /// Where profiles live when `--profile` isn't given: the platform's local
 /// (not roaming) data directory (`~/.local/share/enclave` on Linux,
-/// `~/Library/Application Support/io.github.EnclaveChat.Enclave` on macOS,
-/// `%LOCALAPPDATA%\EnclaveChat\Enclave\data` on Windows; a Flatpak's own).
+/// `~/Library/Application Support/com.aricummings.Enclave` on macOS,
+/// `%LOCALAPPDATA%\aricummings\Enclave\data` on Windows; a Flatpak's own).
 pub fn default_profile() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io.github", "EnclaveChat", "Enclave")
+    directories::ProjectDirs::from("com", "aricummings", "Enclave")
         .map(|d| d.data_local_dir().to_path_buf())
 }
 

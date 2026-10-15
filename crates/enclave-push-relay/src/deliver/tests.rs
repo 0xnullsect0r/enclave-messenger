@@ -171,7 +171,7 @@ async fn apns_over_http2_with_a_provider_token() {
             team_id: "TEAM123456".into(),
             key_id: "KEY1234567".into(),
             key: pem.into_bytes(),
-            topic: "io.github.enclavechat.enclave".into(),
+            topic: "com.aricummings.enclave".into(),
             endpoint: format!("https://localhost:{port}"),
         }),
         None,
@@ -195,7 +195,7 @@ async fn apns_over_http2_with_a_provider_token() {
         ("POST", "/3/device/ab01")
     );
     assert_eq!(s.version, hyper::Version::HTTP_2);
-    assert_eq!(header(s, "apns-topic"), "io.github.enclavechat.enclave");
+    assert_eq!(header(s, "apns-topic"), "com.aricummings.enclave");
     assert_eq!(header(s, "apns-push-type"), "alert");
     let body: serde_json::Value = serde_json::from_slice(&s.body).unwrap();
     assert_eq!(body["aps"]["mutable-content"], 1);

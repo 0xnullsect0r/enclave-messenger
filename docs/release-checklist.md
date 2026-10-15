@@ -12,7 +12,7 @@ red-team "Manual" rows (`redteam-matrix.md`) join it with milestone Q1.
   first release, set `enclave-server`, `enclave-nym`, `enclave-updater` and
   `enclave-stack` to public (the organization's Packages, each package's
   settings, "Change visibility"), and check that an anonymous
-  `docker pull ghcr.io/enclavechat/enclave-server:latest` works.
+  `docker pull ghcr.io/0xnullsect0r/enclave-server:latest` works.
 - [ ] **TestFlight.** Make the public TestFlight link and put it in
   `ci/release/notes.md`.
 

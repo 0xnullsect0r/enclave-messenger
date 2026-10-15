@@ -2,12 +2,12 @@
 <!-- AppStream metadata (Flathub, GNOME Software, KDE Discover). The first
      release must be the workspace version: `cargo xtask version` checks. -->
 <component type="desktop-application">
-  <id>io.github.EnclaveChat.Enclave</id>
+  <id>com.aricummings.Enclave</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <name>Enclave</name>
   <summary>Private messages without a phone number</summary>
-  <developer id="io.github.enclavechat">
+  <developer id="com.aricummings">
     <name>The Enclave contributors</name>
   </developer>
   <description>
@@ -23,12 +23,12 @@
       <li>Your messages stay on your devices, encrypted, with an optional app lock and an emergency PIN.</li>
     </ul>
   </description>
-  <launchable type="desktop-id">io.github.EnclaveChat.Enclave.desktop</launchable>
-  <icon type="stock">io.github.EnclaveChat.Enclave</icon>
-  <url type="homepage">https://github.com/EnclaveChat/Enclave</url>
-  <url type="bugtracker">https://github.com/EnclaveChat/Enclave/issues</url>
-  <url type="vcs-browser">https://github.com/EnclaveChat/Enclave</url>
-  <url type="contribute">https://github.com/EnclaveChat/Enclave/blob/main/CONTRIBUTING.md</url>
+  <launchable type="desktop-id">com.aricummings.Enclave.desktop</launchable>
+  <icon type="stock">com.aricummings.Enclave</icon>
+  <url type="homepage">https://github.com/0xnullsect0r/enclave-messenger</url>
+  <url type="bugtracker">https://github.com/0xnullsect0r/enclave-messenger/issues</url>
+  <url type="vcs-browser">https://github.com/0xnullsect0r/enclave-messenger</url>
+  <url type="contribute">https://github.com/0xnullsect0r/enclave-messenger/blob/main/CONTRIBUTING.md</url>
   <categories>
     <category>Network</category>
     <category>InstantMessaging</category>
@@ -54,23 +54,23 @@
   <screenshots>
     <screenshot type="default">
       <caption>A conversation</caption>
-      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/05-conversation-light.png</image>
+      <image>https://raw.githubusercontent.com/0xnullsect0r/enclave-messenger/main/docs/screenshots/05-conversation-light.png</image>
     </screenshot>
     <screenshot>
       <caption>A group</caption>
-      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/14-group-light.png</image>
+      <image>https://raw.githubusercontent.com/0xnullsect0r/enclave-messenger/main/docs/screenshots/14-group-light.png</image>
     </screenshot>
     <screenshot>
       <caption>Checking a contact's security code</caption>
-      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/08-check-code-light.png</image>
+      <image>https://raw.githubusercontent.com/0xnullsect0r/enclave-messenger/main/docs/screenshots/08-check-code-light.png</image>
     </screenshot>
     <screenshot>
       <caption>Privacy settings</caption>
-      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/11-privacy-light.png</image>
+      <image>https://raw.githubusercontent.com/0xnullsect0r/enclave-messenger/main/docs/screenshots/11-privacy-light.png</image>
     </screenshot>
     <screenshot>
       <caption>Dark appearance</caption>
-      <image>https://raw.githubusercontent.com/EnclaveChat/Enclave/main/docs/screenshots/05-conversation-dark.png</image>
+      <image>https://raw.githubusercontent.com/0xnullsect0r/enclave-messenger/main/docs/screenshots/05-conversation-dark.png</image>
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1">

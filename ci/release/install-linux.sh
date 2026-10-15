@@ -44,7 +44,7 @@ case "$KIND" in
     apt-get install -y "$DIST/enclave-messenger_${P}_amd64.deb"
     smoke enclave
     test -x /usr/lib/enclave-messenger/lyrebird
-    test -f /usr/share/applications/io.github.EnclaveChat.Enclave.desktop
+    test -f /usr/share/applications/com.aricummings.Enclave.desktop
     apt-get remove -y enclave-messenger
     gone /usr/lib/enclave-messenger/enclave
     ;;

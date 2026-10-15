@@ -11,12 +11,12 @@ val enclaveVersionCode = (System.getenv("ENCLAVE_VERSION_CODE") ?: "1").toInt()
 val keystore = System.getenv("ANDROID_KEYSTORE_FILE")
 
 android {
-    namespace = "io.github.enclavechat.enclave"
+    namespace = "com.aricummings.enclave"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "io.github.enclavechat.enclave"
+        applicationId = "com.aricummings.enclave"
         minSdk = 28
         targetSdk = 36
         versionCode = enclaveVersionCode

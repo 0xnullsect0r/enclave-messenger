@@ -53,7 +53,7 @@ const PACKAGES: [&str; 5] = [
     "enclave-tord",
 ];
 
-const APP_ID: &str = "io.github.EnclaveChat.Enclave";
+const APP_ID: &str = "com.aricummings.Enclave";
 const UNIVERSAL: &str = "universal2-apple-darwin";
 
 fn opt(args: &[String], name: &str) -> Option<String> {
@@ -502,7 +502,7 @@ fn packager_config(target: &str, formats: &[&str]) -> Result<serde_json::Value, 
         "version": numeric(&v),
         "identifier": APP_ID,
         "description": "Private messages without a phone number",
-        "homepage": "https://github.com/EnclaveChat/Enclave",
+        "homepage": "https://github.com/0xnullsect0r/enclave-messenger",
         "authors": ["The Enclave contributors"],
         "publisher": "The Enclave contributors",
         "copyright": "GPL-3.0-only. The Enclave contributors.",

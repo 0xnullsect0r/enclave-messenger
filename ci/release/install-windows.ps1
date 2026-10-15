@@ -45,7 +45,7 @@ $version = Run-App $exe @('--version')
 if (-not ($version -match '^enclave ')) { throw "--version printed '$version'" }
 $env:SLINT_BACKEND = 'winit-software'
 Run-App $exe @('--smoke-exit') | Out-Null
-if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'EnclaveChat\Enclave'))) {
+if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'aricummings\Enclave'))) {
     Get-ChildItem $env:LOCALAPPDATA | Write-Host
     throw 'no profile in the app data folder'
 }

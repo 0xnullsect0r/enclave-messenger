@@ -38,14 +38,14 @@ jobs:
           git tag -f nightly-flathub HEAD
           packaging/flatpak/flathub.sh nightly-flathub flathub
           # The local clone stands in for GitHub (the tag exists only here).
-          sed -i "s|url: https://github.com/EnclaveChat/Enclave.git|url: file://$PWD|" flathub/io.github.EnclaveChat.Enclave.yml
+          sed -i "s|url: https://github.com/0xnullsect0r/enclave-messenger.git|url: file://$PWD|" flathub/com.aricummings.Enclave.yml
       - name: Build without network, install, start
         run: |
           set -euo pipefail
-          flatpak-builder --user --force-clean --sandbox --install build flathub/io.github.EnclaveChat.Enclave.yml
-          flatpak run io.github.EnclaveChat.Enclave --version | grep '^enclave '
+          flatpak-builder --user --force-clean --sandbox --install build flathub/com.aricummings.Enclave.yml
+          flatpak run com.aricummings.Enclave --version | grep '^enclave '
           for p in enclave-vault enclave-netd enclave-mediad enclave-tord enclave-nymd lyrebird; do
-            flatpak run --command=test io.github.EnclaveChat.Enclave -x "/app/lib/enclave-messenger/$p"
+            flatpak run --command=test com.aricummings.Enclave -x "/app/lib/enclave-messenger/$p"
           done
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

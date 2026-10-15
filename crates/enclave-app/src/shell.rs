@@ -98,7 +98,7 @@ fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
             #[cfg(windows)]
             note.app_id(NOTIFY_APP_ID);
             #[cfg(all(unix, not(target_os = "macos")))]
-            note.icon("io.github.EnclaveChat.Enclave");
+            note.icon("com.aricummings.Enclave");
             let _ = note.show();
         });
 }
@@ -106,7 +106,7 @@ fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
 /// The app's id for notifications (Windows toasts need the installer's
 /// Start menu shortcut to carry it, `packaging/windows`).
 #[cfg(all(desktop, windows))]
-const NOTIFY_APP_ID: &str = "io.github.EnclaveChat.Enclave";
+const NOTIFY_APP_ID: &str = "com.aricummings.Enclave";
 
 #[cfg(desktop)]
 thread_local! {
@@ -266,7 +266,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // Install checks: quit once the vault's first state is shown.
     let smoke = args.iter().any(|a| a == "--smoke-exit");
     // Wayland matches the window to its .desktop file by this id.
-    let _ = slint::set_xdg_app_id("io.github.EnclaveChat.Enclave");
+    let _ = slint::set_xdg_app_id("com.aricummings.Enclave");
     let ui = AppWindow::new()?;
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
     // Outputs from the vault, applied on the UI thread.
@@ -474,7 +474,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // Notifications come from the app's bundle (an unbundled build keeps
     // the system's default sender).
     #[cfg(all(desktop, target_os = "macos"))]
-    let _ = notify_rust::set_application("io.github.EnclaveChat.Enclave");
+    let _ = notify_rust::set_application("com.aricummings.Enclave");
     ui.set_can_hide_capture(enclave_platform::window::CAN_EXCLUDE_FROM_CAPTURE);
     // Kept out of screen capture from the first frame (the profile's
     // setting follows with its first snapshot).

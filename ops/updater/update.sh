@@ -19,10 +19,10 @@ set -eu
 
 INTERVAL=${ENCLAVE_UPDATE_INTERVAL:-3600}
 TAG=${ENCLAVE_VERSION:-latest}
-SERVER=${ENCLAVE_IMAGE:-ghcr.io/enclavechat/enclave-server}
-NYM=${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}
-SELF=${ENCLAVE_UPDATER_IMAGE:-ghcr.io/enclavechat/enclave-updater}
-IDENTITY=${ENCLAVE_UPDATE_IDENTITY:-'^https://github\.com/EnclaveChat/Enclave/\.github/workflows/release\.yml@refs/tags/v'}
+SERVER=${ENCLAVE_IMAGE:-ghcr.io/0xnullsect0r/enclave-server}
+NYM=${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}
+SELF=${ENCLAVE_UPDATER_IMAGE:-ghcr.io/0xnullsect0r/enclave-updater}
+IDENTITY=${ENCLAVE_UPDATE_IDENTITY:-'^https://github\.com/0xnullsect0r/enclave-messenger/\.github/workflows/release\.yml@refs/tags/v'}
 ISSUER=${ENCLAVE_UPDATE_ISSUER:-https://token.actions.githubusercontent.com}
 
 log() { echo "enclave-updater: $*"; }
@@ -75,7 +75,7 @@ round() {
   services=$(compose config --services | grep -vx updater || true)
   # shellcheck disable=SC2086
   compose up -d --pull never --no-deps --remove-orphans $services
-  docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/EnclaveChat/Enclave" > /dev/null || true
+  docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/0xnullsect0r/enclave-messenger" > /dev/null || true
   running=$(docker inspect "$me" --format '{{.Image}}')
   if [ "$running" != "$(docker image inspect "$SELF:$TAG" --format '{{.Id}}')" ]; then
     log "replacing the updater itself"

@@ -60,7 +60,7 @@ impl Proc {
         // installed build); otherwise as an ordinary process.
         #[cfg(windows)]
         if let Ok(c) =
-            enclave_platform::appcontainer::spawn(bin, &[], "io.github.EnclaveChat.Enclave.mediad")
+            enclave_platform::appcontainer::spawn(bin, &[], "com.aricummings.Enclave.mediad")
         {
             let stdin = tokio::fs::File::from_std(c.stdin.try_clone()?);
             let stdout = tokio::fs::File::from_std(c.stdout.try_clone()?);

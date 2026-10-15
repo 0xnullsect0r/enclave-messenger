@@ -59,8 +59,8 @@ assets = [
   ["target/release/dist/enclave-nymd", "usr/lib/enclave-messenger/", "755"],
   ["target/release/dist/lyrebird", "usr/lib/enclave-messenger/", "755"],
   ["../../packaging/linux/enclave", "usr/bin/enclave", "755"],
-  ["target/release/dist/share/applications/io.github.EnclaveChat.Enclave.desktop", "usr/share/applications/", "644"],
-  ["target/release/dist/share/metainfo/io.github.EnclaveChat.Enclave.metainfo.xml", "usr/share/metainfo/", "644"],
+  ["target/release/dist/share/applications/com.aricummings.Enclave.desktop", "usr/share/applications/", "644"],
+  ["target/release/dist/share/metainfo/com.aricummings.Enclave.metainfo.xml", "usr/share/metainfo/", "644"],
   ["target/release/dist/share/icons/hicolor/**/*", "usr/share/icons/hicolor/", "644"],
   ["target/release/dist/THIRD-PARTY-NOTICES.txt", "usr/share/doc/enclave-messenger/", "644"],
 ]
@@ -69,7 +69,7 @@ assets = [
 name = "enclave-messenger"
 summary = "Private messages without a phone number"
 license = "GPL-3.0-only"
-url = "https://github.com/EnclaveChat/Enclave"
+url = "https://github.com/0xnullsect0r/enclave-messenger"
 # As for the deb: what the window loads at run time, beyond what the
 # programs link (found by `auto-req`).
 requires = { libxkbcommon = "*", libxkbcommon-x11 = "*", libwayland-client = "*", libwayland-egl = "*", libglvnd-egl = "*", libglvnd-glx = "*", libX11 = "*", libX11-xcb = "*", libXcursor = "*", libXi = "*", libXrandr = "*" }
@@ -82,18 +82,18 @@ assets = [
   { source = "target/release/dist/enclave-nymd", dest = "/usr/lib/enclave-messenger/enclave-nymd", mode = "755" },
   { source = "target/release/dist/lyrebird", dest = "/usr/lib/enclave-messenger/lyrebird", mode = "755" },
   { source = "../../packaging/linux/enclave", dest = "/usr/bin/enclave", mode = "755" },
-  { source = "target/release/dist/share/applications/io.github.EnclaveChat.Enclave.desktop", dest = "/usr/share/applications/io.github.EnclaveChat.Enclave.desktop", mode = "644" },
-  { source = "target/release/dist/share/metainfo/io.github.EnclaveChat.Enclave.metainfo.xml", dest = "/usr/share/metainfo/io.github.EnclaveChat.Enclave.metainfo.xml", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/16x16/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/16x16/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/24x24/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/24x24/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/32x32/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/32x32/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/48x48/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/48x48/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/64x64/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/64x64/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/128x128/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/256x256/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/512x512/apps/io.github.EnclaveChat.Enclave.png", dest = "/usr/share/icons/hicolor/512x512/apps/io.github.EnclaveChat.Enclave.png", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/scalable/apps/io.github.EnclaveChat.Enclave.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.EnclaveChat.Enclave.svg", mode = "644" },
-  { source = "target/release/dist/share/icons/hicolor/symbolic/apps/io.github.EnclaveChat.Enclave-symbolic.svg", dest = "/usr/share/icons/hicolor/symbolic/apps/io.github.EnclaveChat.Enclave-symbolic.svg", mode = "644" },
+  { source = "target/release/dist/share/applications/com.aricummings.Enclave.desktop", dest = "/usr/share/applications/com.aricummings.Enclave.desktop", mode = "644" },
+  { source = "target/release/dist/share/metainfo/com.aricummings.Enclave.metainfo.xml", dest = "/usr/share/metainfo/com.aricummings.Enclave.metainfo.xml", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/16x16/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/16x16/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/24x24/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/24x24/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/32x32/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/32x32/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/48x48/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/48x48/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/64x64/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/64x64/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/128x128/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/128x128/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/256x256/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/256x256/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/512x512/apps/com.aricummings.Enclave.png", dest = "/usr/share/icons/hicolor/512x512/apps/com.aricummings.Enclave.png", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/scalable/apps/com.aricummings.Enclave.svg", dest = "/usr/share/icons/hicolor/scalable/apps/com.aricummings.Enclave.svg", mode = "644" },
+  { source = "target/release/dist/share/icons/hicolor/symbolic/apps/com.aricummings.Enclave-symbolic.svg", dest = "/usr/share/icons/hicolor/symbolic/apps/com.aricummings.Enclave-symbolic.svg", mode = "644" },
   { source = "target/release/dist/THIRD-PARTY-NOTICES.txt", dest = "/usr/share/doc/enclave-messenger/THIRD-PARTY-NOTICES.txt", mode = "644", doc = true },
   { source = "../../LICENSE", dest = "/usr/share/licenses/enclave-messenger/LICENSE", mode = "644", doc = true },
 ]

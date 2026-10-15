@@ -4,9 +4,9 @@
 # manifest is made by `flathub.sh` (External Gate G4).
 #
 #   cp target/dist/enclave-V-x86_64-unknown-linux-gnu.tar.gz packaging/flatpak/enclave-dist.tar.gz
-#   flatpak-builder --repo=repo build packaging/flatpak/io.github.EnclaveChat.Enclave.yml
-#   flatpak build-bundle repo Enclave.flatpak io.github.EnclaveChat.Enclave
-app-id: io.github.EnclaveChat.Enclave
+#   flatpak-builder --repo=repo build packaging/flatpak/com.aricummings.Enclave.yml
+#   flatpak build-bundle repo Enclave.flatpak com.aricummings.Enclave
+app-id: com.aricummings.Enclave
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
@@ -38,7 +38,7 @@ modules:
       - ln -s ../lib/enclave-messenger/enclave /app/bin/enclave
       - cp -r share/applications share/metainfo share/icons /app/share/
       - install -Dm644 THIRD-PARTY-NOTICES.txt /app/share/doc/enclave/THIRD-PARTY-NOTICES.txt
-      - install -Dm644 LICENSE /app/share/licenses/io.github.EnclaveChat.Enclave/LICENSE
+      - install -Dm644 LICENSE /app/share/licenses/com.aricummings.Enclave/LICENSE
     sources:
       - type: archive
         path: enclave-dist.tar.gz

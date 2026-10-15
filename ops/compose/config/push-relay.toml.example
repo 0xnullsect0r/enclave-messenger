@@ -14,7 +14,7 @@ public_dir = "/var/lib/enclave/public"
 # team_id = "TEAMID1234"
 # key_id = "KEYID12345"
 # key_file = "/run/secrets/push/apns.p8"
-# topic = "io.github.enclavechat.enclave"
+# topic = "com.aricummings.enclave"
 # endpoint = "https://api.push.apple.com"
 #
 # [fcm]

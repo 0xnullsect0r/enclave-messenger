@@ -81,13 +81,13 @@ Enclave's protocol, client engine, desktop app and dev server work and are teste
 | X12 | **New crate `enclave-front`** (axum + enclave-tls + instant-acme) serves `.well-known`, the witness API and the credgate. The key-holding process has no HTTP surface. |
 | X13 | **New crate `enclave-witness`** (HTTPS cosign API, redb state). `enclave-kt` gains `trait WitnessClient` with `LocalWitness` and `HttpWitness`. |
 | X14 | **KT on redb:** an akd `Database` implemented over redb, with persisted heads and cosignatures, epochs every 600 s and an hourly heartbeat. |
-| X15 | **Images:** two, `ghcr.io/enclavechat/enclave-server` (all non-Nym binaries) and `ghcr.io/enclavechat/enclave-nym` (ingress). Both are multi-arch amd64/arm64, distroless nonroot, digest-pinned, reproducible, with SBOM, provenance and cosign. The compose file itself is published as an OCI artifact, so operators run `docker compose -f oci://ghcr.io/enclavechat/enclave-stack:<v> up -d`. |
+| X15 | **Images:** two, `ghcr.io/0xnullsect0r/enclave-server` (all non-Nym binaries) and `ghcr.io/0xnullsect0r/enclave-nym` (ingress). Both are multi-arch amd64/arm64, distroless nonroot, digest-pinned, reproducible, with SBOM, provenance and cosign. The compose file itself is published as an OCI artifact, so operators run `docker compose -f oci://ghcr.io/0xnullsect0r/enclave-stack:<v> up -d`. |
 
 ### Nym, network and credentials
 
 | # | Decision |
 |---|---|
-| X16 | **Nym tests in three tiers:** (1) `FakeMixnet` + `enclave-sim`, deterministic, on every PR; (2) a local `nym-node` mixnet in Docker (`ghcr.io/enclavechat/nym-localnet`), blocking on `main` and nightly; (3) the Nym sandbox nightly and a mainnet benchmark weekly, both non-blocking. |
+| X16 | **Nym tests in three tiers:** (1) `FakeMixnet` + `enclave-sim`, deterministic, on every PR; (2) a local `nym-node` mixnet in Docker (`ghcr.io/0xnullsect0r/nym-localnet`), blocking on `main` and nightly; (3) the Nym sandbox nightly and a mainnet benchmark weekly, both non-blocking. |
 | X17 | **Dev features:** `dev-transport` (TCP) and `dev-networks` (custom topology) are cargo features that are off in every release build. CI checks this with `strings`. Done in S4 (markers `ENCLAVE-DEV-*`, job `release-features`). |
 | X18 | **New service `enclave-credgate`** (Equi-X + Privacy Pass RFC 9578 type 0x0001, VOPRF over P-384: RFC 0001, chosen over 0x0002 for the RSA timing advisory) in front of a pinned upstream `nym-credential-proxy`. Clients reach it over Tor. Ticketbooks are stored in the vault and imported into netd. Operator ingresses buy their own tickets from a mnemonic held as a Docker secret. |
 
@@ -97,7 +97,7 @@ Enclave's protocol, client engine, desktop app and dev server work and are teste
 |---|---|
 | X19 | **Mobile process model:** phase 1 is a single process. Phase 2 adds Android `isolatedProcess` decoders and an iOS WASM decoder sandbox; both are in this plan (milestone A2/I2), not deferred. |
 | X20 | **Demo mode** becomes the `enclave-vault/demo` feature, so mobile and release clients don't link `enclave-server` or `enclave-sim`. |
-| X21 | **IDs:** `io.github.EnclaveChat.Enclave` (Flatpak/AppStream), `io.github.enclavechat.enclave` (+`.nse`) for Android and iOS, and Linux package name `enclave-messenger` (AUR `enclave-messenger` and `-bin`, `conflicts=('enclave-git')` because `enclave` is taken). **Store IDs are irreversible; confirm before the first upload.** |
+| X21 | **IDs:** `com.aricummings.Enclave` (Flatpak/AppStream), `com.aricummings.enclave` (+`.nse`) for Android and iOS, and Linux package name `enclave-messenger` (AUR `enclave-messenger` and `-bin`, `conflicts=('enclave-git')` because `enclave` is taken). **Store IDs are irreversible; confirm before the first upload.** |
 | X22 | **Linux builds** run in a digest-pinned `almalinux:9` container (glibc 2.34 baseline). |
 | X23 | **Packaging tools:** cargo-deb; cargo-generate-rpm; cargo-packager (WiX `.msi`, NSIS `.exe`, AppImage); `xtask bundle-macos` (codesign inside-out, notarytool, stapler, hdiutil); Gradle + cargo-ndk; xcodegen + xcodebuild; flatpak-builder + flatpak-cargo-generator; a plain `git push` from an `archlinux` container for the AUR. |
 | X24 | **Release signing is not deferred:** TUF + 2-of-3 SLH-DSA+Ed448 + Sigsum + `enclave-update` are built in this plan (R2). The maintainer HSM ceremony is an External Gate. |
@@ -377,7 +377,7 @@ Sandboxing:
 
 - `packaging/linux/` (`.desktop` and AppStream metainfo with the screenshots).
 - `[package.metadata.deb]` and `[package.metadata.generate-rpm]`, installing to `/usr/lib/enclave-messenger/` with a `/usr/bin/enclave` symlink.
-- `packaging/flatpak/io.github.EnclaveChat.Enclave.yml` (Freedesktop 25.08, rust-stable extension, committed `cargo-sources.json`, Secret Service and portals).
+- `packaging/flatpak/com.aricummings.Enclave.yml` (Freedesktop 25.08, rust-stable extension, committed `cargo-sources.json`, Secret Service and portals).
 - `packaging/aur/{enclave-messenger,enclave-messenger-bin}/PKGBUILD`.
 - `packaging/macos/Info.plist`, entitlements.
 - `packaging/windows/Packager.toml` (WiX per-machine `.msi`, NSIS per-user `-setup.exe`, fixed upgrade code, `ENCLAVE_WIN_SIGN_CMD` hook).
@@ -559,8 +559,8 @@ All `16-features.md` rows must reach "Done".
 | windows ×{x64, arm64} | windows-2025, windows-11-arm | `.msi`, `-setup.exe`, portable `.zip` (unsigned; hook ready) | (later `AZURE_*`) |
 | android | ubuntu-24.04 | `.apk` ×3, `.aab`; optional Play internal track | `ANDROID_KEYSTORE_BASE64/_PASSWORD`, `ANDROID_KEY_ALIAS/_PASSWORD`, optional `PLAY_SERVICE_ACCOUNT_JSON` |
 | ios | macos-15 | `.ipa` (attached) and TestFlight upload | `ASC_API_KEY_*`, `APPLE_TEAM_ID` |
-| images ×{amd64, arm64} → merge | ubuntu-24.04(-arm) | `ghcr.io/enclavechat/enclave-server:<v>` and `enclave-nym:<v>` (multi-arch), cosign keyless, provenance | `GITHUB_TOKEN` (OIDC) |
-| compose-publish | ubuntu-24.04 | `oci://ghcr.io/enclavechat/enclave-stack:<v>` (digest-pinned) and the operator-kit tarball | `GITHUB_TOKEN` |
+| images ×{amd64, arm64} → merge | ubuntu-24.04(-arm) | `ghcr.io/0xnullsect0r/enclave-server:<v>` and `enclave-nym:<v>` (multi-arch), cosign keyless, provenance | `GITHUB_TOKEN` (OIDC) |
+| compose-publish | ubuntu-24.04 | `oci://ghcr.io/0xnullsect0r/enclave-stack:<v>` (digest-pinned) and the operator-kit tarball | `GITHUB_TOKEN` |
 | sbom | ubuntu-24.04 | CycloneDX per binary set | — |
 | repro-check | ubuntu-24.04 | An independent rebuild of the Linux tarball and server image; fails stable releases on mismatch | — |
 | tuf-sign (R2) | ubuntu-24.04 | Unsigned TUF targets metadata for the offline co-signing step; Sigsum submission once signed | — |
@@ -575,7 +575,7 @@ Other workflows:
 
 ---
 
-## Compose stack (`ops/compose/compose.yml`, published as `oci://ghcr.io/enclavechat/enclave-stack`)
+## Compose stack (`ops/compose/compose.yml`, published as `oci://ghcr.io/0xnullsect0r/enclave-stack`)
 
 | Service | Image | Host ports | Networks | State | Profile |
 |---|---|---|---|---|---|
@@ -587,8 +587,8 @@ Other workflows:
 | front | enclave-server | 80, 443/tcp | backend, edge | front-data (ACME), public:ro | default |
 | relay (+ rosenpass sidecar) | enclave-server | 51820/udp | edge | relay-data | default |
 | push-relay, push-ingress | enclave-server, enclave-nym | none | backend, egress | push-data, secrets `apns_key`, `fcm_sa` | `push` |
-| credgate, nym-credential-proxy | enclave-server, `ghcr.io/enclavechat/nym-credential-proxy` | none | backend, egress | credgate-data, secrets | `foundation` |
-| nym-localnet | `ghcr.io/enclavechat/nym-localnet` | none | nymnet | — | `compose.localnet.yml` |
+| credgate, nym-credential-proxy | enclave-server, `ghcr.io/0xnullsect0r/nym-credential-proxy` | none | backend, egress | credgate-data, secrets | `foundation` |
+| nym-localnet | `ghcr.io/0xnullsect0r/nym-localnet` | none | nymnet | — | `compose.localnet.yml` |
 
 **Operations**
 - Health checks use each binary's `healthcheck` subcommand.

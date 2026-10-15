@@ -419,7 +419,7 @@ Not implemented yet (C2–C5): GotaTun WireGuard endpoints, a Rosenpass daemon f
 
 ## 6. Deployment
 
-An operator runs one stack (`ops/compose/compose.yml`) from one image (`ops/docker/Dockerfile`, published as `ghcr.io/enclavechat/enclave-server`), following `ops/operator-kit/deployment.md`.
+An operator runs one stack (`ops/compose/compose.yml`) from one image (`ops/docker/Dockerfile`, published as `ghcr.io/0xnullsect0r/enclave-server`), following `ops/operator-kit/deployment.md`.
 
 **The image** has these properties:
 - Built from digest-pinned base images, the pinned toolchain and `Cargo.lock` (`--locked`), with fixed paths and `SOURCE_DATE_EPOCH`, as `cargo xtask repro` checks.

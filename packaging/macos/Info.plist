@@ -13,7 +13,7 @@
 	<key>CFBundleIconFile</key>
 	<string>enclave</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.EnclaveChat.Enclave</string>
+	<string>com.aricummings.Enclave</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

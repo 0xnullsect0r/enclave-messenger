@@ -16,7 +16,7 @@
 //! Each call blocks; the vault makes few of them (at open, at a shred).
 
 /// The service name the secrets are kept under.
-pub const SERVICE: &str = "io.github.EnclaveChat.Enclave";
+pub const SERVICE: &str = "com.aricummings.Enclave";
 
 /// Why a keystore call failed.
 #[derive(Debug)]

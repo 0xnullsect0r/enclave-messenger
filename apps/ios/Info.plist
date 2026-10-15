@@ -11,7 +11,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Enclave</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.enclavechat.enclave</string>
+	<string>com.aricummings.enclave</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

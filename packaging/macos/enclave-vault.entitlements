@@ -7,7 +7,7 @@
 <dict>
     <key>keychain-access-groups</key>
     <array>
-        <string>TEAMID.io.github.EnclaveChat.Enclave</string>
+        <string>TEAMID.com.aricummings.Enclave</string>
     </array>
 </dict>
 </plist>

@@ -49,7 +49,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   ALMALINUX: almalinux:9@sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16
-  REGISTRY: ghcr.io/enclavechat
+  REGISTRY: ghcr.io/0xnullsect0r
 
 jobs:
   prepare:
@@ -168,16 +168,16 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
           cp "dist/enclave-$V-${{ matrix.arch }}-unknown-linux-gnu.tar.gz" packaging/flatpak/enclave-dist.tar.gz
-          flatpak-builder --user --force-clean --repo=repo build packaging/flatpak/io.github.EnclaveChat.Enclave.yml
+          flatpak-builder --user --force-clean --repo=repo build packaging/flatpak/com.aricummings.Enclave.yml
           mkdir -p out
-          flatpak build-bundle repo "out/Enclave-$V-${{ matrix.arch }}.flatpak" io.github.EnclaveChat.Enclave
+          flatpak build-bundle repo "out/Enclave-$V-${{ matrix.arch }}.flatpak" com.aricummings.Enclave
       - name: Install it and run it
         env:
           V: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
           flatpak install --user -y --noninteractive "out/Enclave-$V-${{ matrix.arch }}.flatpak"
-          flatpak run io.github.EnclaveChat.Enclave --version | grep '^enclave ' 
+          flatpak run com.aricummings.Enclave --version | grep '^enclave ' 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-flatpak-${{ matrix.arch }}
@@ -375,11 +375,11 @@ jobs:
           target: google_apis
           script: |
             adb install -r dist/Enclave-${{ needs.prepare.outputs.version }}-android.apk
-            adb shell am start -W -n io.github.enclavechat.enclave/android.app.NativeActivity
+            adb shell am start -W -n com.aricummings.enclave/android.app.NativeActivity
             sleep 20
-            adb shell pidof io.github.enclavechat.enclave
-            adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | grep -q io.github.enclavechat.enclave
-            adb uninstall io.github.enclavechat.enclave
+            adb shell pidof com.aricummings.enclave
+            adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | grep -q com.aricummings.enclave
+            adb uninstall com.aricummings.enclave
 
   ios:
     name: iOS (.ipa; TestFlight on a release)
@@ -432,7 +432,7 @@ jobs:
           xcrun simctl boot "$device"
           rm -rf sim/x && mkdir sim/x && (cd sim/x && unzip -q ../*.ipa)
           xcrun simctl install "$device" sim/x/Payload/Enclave.app
-          timeout 180 xcrun simctl launch --console-pty "$device" io.github.enclavechat.enclave --smoke-exit | tee sim/launch.log
+          timeout 180 xcrun simctl launch --console-pty "$device" com.aricummings.enclave --smoke-exit | tee sim/launch.log
           grep -q 'enclave: started' sim/launch.log
       - name: The app for devices (signed and sent to TestFlight on a release)
         env:

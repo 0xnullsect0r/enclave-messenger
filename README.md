@@ -28,7 +28,7 @@ been audited yet: don't rely on it to protect anyone until it has.
 
 ## Install
 
-Every release is on the [releases page](https://github.com/EnclaveChat/Enclave/releases/latest).
+Every release is on the [releases page](https://github.com/0xnullsect0r/enclave-messenger/releases/latest).
 `VERSION` below is its version (for example `1.2.0`).
 
 ### Linux
@@ -38,7 +38,7 @@ Every release is on the [releases page](https://github.com/EnclaveChat/Enclave/r
 | Debian, Ubuntu and derivatives | `sudo apt install ./enclave-messenger_VERSION_amd64.deb` (`arm64` on ARM) |
 | Fedora, RHEL, Rocky, Alma, openSUSE | `sudo dnf install ./enclave-messenger-VERSION-1.x86_64.rpm` (`aarch64` on ARM) |
 | Arch, Manjaro | `yay -S enclave-messenger-bin` (the release's programs) or `yay -S enclave-messenger` (built from source), from the AUR |
-| Any distribution, Flatpak | `flatpak install --user ./Enclave-VERSION-x86_64.flatpak` (`aarch64` on ARM), then `flatpak run io.github.EnclaveChat.Enclave` |
+| Any distribution, Flatpak | `flatpak install --user ./Enclave-VERSION-x86_64.flatpak` (`aarch64` on ARM), then `flatpak run com.aricummings.Enclave` |
 | Any distribution, AppImage | `chmod +x Enclave-VERSION-x86_64.AppImage && ./Enclave-VERSION-x86_64.AppImage` |
 | Any distribution, tarball | unpack `enclave-VERSION-x86_64-unknown-linux-gnu.tar.gz` and run `enclave` from that folder (its programs start each other from there) |
 
@@ -86,10 +86,10 @@ workflow:
 
 ```sh
 cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/EnclaveChat/Enclave/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github.com/0xnullsect0r/enclave-messenger/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 sha256sum --ignore-missing -c SHA256SUMS
-gh attestation verify FILE --repo EnclaveChat/Enclave   # build provenance
+gh attestation verify FILE --repo 0xnullsect0r/enclave-messenger   # build provenance
 ```
 
 ## Run a server
@@ -102,9 +102,9 @@ GHCR, built and signed by the release workflow:
 
 | Image | What |
 |---|---|
-| `ghcr.io/enclavechat/enclave-server` | server, witness, front, relay, push relay, credential gate, onion service, `enclave-admin` |
-| `ghcr.io/enclavechat/enclave-nym` | the Nym ingress and push egress |
-| `ghcr.io/enclavechat/enclave-updater` | keeps the stack on the newest signed release |
+| `ghcr.io/0xnullsect0r/enclave-server` | server, witness, front, relay, push relay, credential gate, onion service, `enclave-admin` |
+| `ghcr.io/0xnullsect0r/enclave-nym` | the Nym ingress and push egress |
+| `ghcr.io/0xnullsect0r/enclave-updater` | keeps the stack on the newest signed release |
 
 You need a Linux host with Docker Engine 24 or later and the compose
 plugin, a domain whose A/AAAA records point at it, ports 80 and 443/tcp and
@@ -113,7 +113,7 @@ plugin, a domain whose A/AAAA records point at it, ports 80 and 443/tcp and
 ```sh
 # The stack: compose.yml (below), .env.example, config examples and the
 # operator guide, from the latest release.
-curl -fsSL https://github.com/EnclaveChat/Enclave/releases/latest/download/enclave-operator-kit.tar.gz | tar xz
+curl -fsSL https://github.com/0xnullsect0r/enclave-messenger/releases/latest/download/enclave-operator-kit.tar.gz | tar xz
 cd enclave-stack
 cp .env.example .env && $EDITOR .env           # DOMAIN, OPERATOR, FAMILY, ACME_EMAIL, RELAY_PUBLIC_ADDR
 for f in config/*.toml.example; do cp "$f" "${f%.example}"; done
@@ -127,7 +127,7 @@ docker compose ps                              # every service healthy
 ```
 
 The same stack is published as an OCI artifact with each release
-(`docker compose -f oci://ghcr.io/enclavechat/enclave-stack:VERSION up -d`).
+(`docker compose -f oci://ghcr.io/0xnullsect0r/enclave-stack:VERSION up -d`).
 
 **Updates are automatic.** With `ENCLAVE_VERSION=latest` (the default) the
 `updater` service checks every hour for a new release, takes it only if
@@ -173,7 +173,7 @@ route and push are in
 name: enclave
 
 x-service: &service
-  image: ${ENCLAVE_IMAGE:-ghcr.io/enclavechat/enclave-server}:${ENCLAVE_VERSION:-latest}
+  image: ${ENCLAVE_IMAGE:-ghcr.io/0xnullsect0r/enclave-server}:${ENCLAVE_VERSION:-latest}
   restart: unless-stopped
   read_only: true
   cap_drop: [ALL]
@@ -299,7 +299,7 @@ services:
   # into the server's descriptor (through the shared public volume).
   ingress:
     <<: *service
-    image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}:${ENCLAVE_VERSION:-latest}
+    image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
     # On Nym's networks it buys its own zk-nym tickets from the operator's
     # Nyx account: the mnemonic in secrets/nym/mnemonic (mode 0444; empty or
@@ -324,7 +324,7 @@ services:
   # whom. A fresh mixnet identity each start.
   push-egress:
     <<: *service
-    image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}:${ENCLAVE_VERSION:-latest}
+    image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
     command: ["forward", "--listen", "0.0.0.0:7446", "--to", "${PUSH_RELAY_NYM:-}", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
     volumes:
@@ -362,7 +362,7 @@ services:
   push-ingress:
     <<: *service
     profiles: [push]
-    image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}:${ENCLAVE_VERSION:-latest}
+    image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
     command: ["oneway", "--relay", "push-relay:7445", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
     volumes:
@@ -412,7 +412,7 @@ services:
   # out. Run compose from the stack's folder: the folder is mounted at the
   # same path inside, so the stack's relative paths still hold.
   updater:
-    image: ${ENCLAVE_UPDATER_IMAGE:-ghcr.io/enclavechat/enclave-updater}:${ENCLAVE_VERSION:-latest}
+    image: ${ENCLAVE_UPDATER_IMAGE:-ghcr.io/0xnullsect0r/enclave-updater}:${ENCLAVE_VERSION:-latest}
     restart: unless-stopped
     read_only: true
     tmpfs: [/root, /tmp]
@@ -421,9 +421,9 @@ services:
       replicas: ${ENCLAVE_AUTO_UPDATE:-1}
     environment:
       ENCLAVE_VERSION: ${ENCLAVE_VERSION:-latest}
-      ENCLAVE_IMAGE: ${ENCLAVE_IMAGE:-ghcr.io/enclavechat/enclave-server}
-      ENCLAVE_NYM_IMAGE: ${ENCLAVE_NYM_IMAGE:-ghcr.io/enclavechat/enclave-nym}
-      ENCLAVE_UPDATER_IMAGE: ${ENCLAVE_UPDATER_IMAGE:-ghcr.io/enclavechat/enclave-updater}
+      ENCLAVE_IMAGE: ${ENCLAVE_IMAGE:-ghcr.io/0xnullsect0r/enclave-server}
+      ENCLAVE_NYM_IMAGE: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}
+      ENCLAVE_UPDATER_IMAGE: ${ENCLAVE_UPDATER_IMAGE:-ghcr.io/0xnullsect0r/enclave-updater}
       ENCLAVE_UPDATE_INTERVAL: ${ENCLAVE_UPDATE_INTERVAL:-3600}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -534,8 +534,8 @@ binary (or with `--single-process`) the same engine runs inside the app.
 
 Without `--profile` the profile lives in the platform's data directory
 (`~/.local/share/enclave` on Linux, `~/Library/Application
-Support/io.github.EnclaveChat.Enclave` on macOS,
-`%LOCALAPPDATA%\EnclaveChat\Enclave\data` on Windows). Without `--server`
+Support/com.aricummings.Enclave` on macOS,
+`%LOCALAPPDATA%\aricummings\Enclave\data` on Windows). Without `--server`
 the home server is the profile's or, when setting up, one picked from the
 server list (built into release builds; `--foundation FILE --server-list
 FILE` otherwise), which can be changed on the name screen.

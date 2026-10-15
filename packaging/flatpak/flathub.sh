@@ -4,11 +4,11 @@
 #
 #   packaging/flatpak/flathub.sh TAG OUT
 #
-# writes OUT/io.github.EnclaveChat.Enclave.yml (the release tag's commit,
+# writes OUT/com.aricummings.Enclave.yml (the release tag's commit,
 # both Rust workspaces and lyrebird built with the Rust and Go SDK
 # extensions), OUT/cargo-sources.json (the crates of Cargo.lock and
 # nym/Cargo.lock), OUT/go-sources.json and OUT/modules.txt (lyrebird's
-# Go modules), ready to copy into the flathub/io.github.EnclaveChat.Enclave
+# Go modules), ready to copy into the flathub/com.aricummings.Enclave
 # repository. nightly.yml builds the result with flatpak-builder.
 set -euo pipefail
 TAG=$1 OUT=$(realpath -m "$2")
@@ -64,8 +64,8 @@ json.dump(srcs, open(sys.argv[2], "w"), indent=2)
 PY
 cp "$work/lyrebird/modules.txt" "$OUT/modules.txt"
 
-cat > "$OUT/io.github.EnclaveChat.Enclave.yml" <<YAML
-app-id: io.github.EnclaveChat.Enclave
+cat > "$OUT/com.aricummings.Enclave.yml" <<YAML
+app-id: com.aricummings.Enclave
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
@@ -99,15 +99,15 @@ modules:
       - install -d /app/lib/enclave-messenger /app/bin
       - install -m755 target/release/enclave target/release/enclave-vault target/release/enclave-netd target/release/enclave-mediad target/release/enclave-tord nym/target/release/enclave-nymd target/release/lyrebird /app/lib/enclave-messenger/
       - ln -s ../lib/enclave-messenger/enclave /app/bin/enclave
-      - install -Dm644 packaging/linux/io.github.EnclaveChat.Enclave.desktop -t /app/share/applications
-      - install -Dm644 packaging/linux/io.github.EnclaveChat.Enclave.metainfo.xml -t /app/share/metainfo
-      - install -Dm644 packaging/icons/enclave.svg /app/share/icons/hicolor/scalable/apps/io.github.EnclaveChat.Enclave.svg
-      - install -Dm644 packaging/icons/enclave-symbolic.svg /app/share/icons/hicolor/symbolic/apps/io.github.EnclaveChat.Enclave-symbolic.svg
-      - for s in 16 24 32 48 64 128 256 512; do install -Dm644 packaging/icons/png/enclave-\$s.png /app/share/icons/hicolor/\${s}x\${s}/apps/io.github.EnclaveChat.Enclave.png; done
+      - install -Dm644 packaging/linux/com.aricummings.Enclave.desktop -t /app/share/applications
+      - install -Dm644 packaging/linux/com.aricummings.Enclave.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 packaging/icons/enclave.svg /app/share/icons/hicolor/scalable/apps/com.aricummings.Enclave.svg
+      - install -Dm644 packaging/icons/enclave-symbolic.svg /app/share/icons/hicolor/symbolic/apps/com.aricummings.Enclave-symbolic.svg
+      - for s in 16 24 32 48 64 128 256 512; do install -Dm644 packaging/icons/png/enclave-\$s.png /app/share/icons/hicolor/\${s}x\${s}/apps/com.aricummings.Enclave.png; done
       - install -Dm644 crates/enclave-app/licenses.txt /app/share/doc/enclave/THIRD-PARTY-NOTICES.txt
     sources:
       - type: git
-        url: https://github.com/EnclaveChat/Enclave.git
+        url: https://github.com/0xnullsect0r/enclave-messenger.git
         tag: $TAG
         commit: $commit
       - type: git

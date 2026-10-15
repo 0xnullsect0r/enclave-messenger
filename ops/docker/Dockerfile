@@ -59,7 +59,7 @@ RUN cd /var/lib && mkdir -p enclave \
 FROM ${RUNTIME_IMAGE} AS server
 LABEL org.opencontainers.image.title="enclave-server" \
       org.opencontainers.image.description="Enclave server, witness, front, call relay and push relay" \
-      org.opencontainers.image.source="https://github.com/EnclaveChat/Enclave" \
+      org.opencontainers.image.source="https://github.com/0xnullsect0r/enclave-messenger" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 COPY --from=build /out/ /usr/local/bin/
 COPY --from=build --chown=65532:65532 /var/lib/enclave/ /var/lib/enclave/
@@ -97,7 +97,7 @@ RUN mkdir -p /var/lib/enclave/ingress /var/lib/enclave/public \
 FROM ${RUNTIME_IMAGE} AS nym
 LABEL org.opencontainers.image.title="enclave-nym" \
       org.opencontainers.image.description="Enclave's Nym ingress: a stack's mixnet client in front of its server" \
-      org.opencontainers.image.source="https://github.com/EnclaveChat/Enclave" \
+      org.opencontainers.image.source="https://github.com/0xnullsect0r/enclave-messenger" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 COPY --from=build-nym /out/ /usr/local/bin/
 COPY --from=build-nym --chown=65532:65532 /var/lib/enclave/ /var/lib/enclave/
@@ -114,7 +114,7 @@ FROM ${COSIGN_IMAGE} AS cosign
 FROM ${DOCKER_CLI_IMAGE} AS updater
 LABEL org.opencontainers.image.title="enclave-updater" \
       org.opencontainers.image.description="Keeps an Enclave stack on the newest signed release" \
-      org.opencontainers.image.source="https://github.com/EnclaveChat/Enclave" \
+      org.opencontainers.image.source="https://github.com/0xnullsect0r/enclave-messenger" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 COPY ops/updater/update.sh /usr/local/bin/enclave-updater

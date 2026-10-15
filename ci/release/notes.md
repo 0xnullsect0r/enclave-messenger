@@ -7,14 +7,14 @@ repository's release workflow:
 
 ```
 cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/EnclaveChat/Enclave/.github/workflows/release.yml@' \
+  --certificate-identity-regexp '^https://github.com/0xnullsect0r/enclave-messenger/.github/workflows/release.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 sha256sum --ignore-missing -c SHA256SUMS
-gh attestation verify FILE --repo EnclaveChat/Enclave
+gh attestation verify FILE --repo 0xnullsect0r/enclave-messenger
 ```
 
-Images: `cosign verify ghcr.io/enclavechat/enclave-server:VERSION` with the
-same identity. Operators: `docker compose -f oci://ghcr.io/enclavechat/enclave-stack:VERSION up -d`
+Images: `cosign verify ghcr.io/0xnullsect0r/enclave-server:VERSION` with the
+same identity. Operators: `docker compose -f oci://ghcr.io/0xnullsect0r/enclave-stack:VERSION up -d`
 (see the operator kit).
 
 **Windows** installers are not signed yet: Windows warns before running them.
