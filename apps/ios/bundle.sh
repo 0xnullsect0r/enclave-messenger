@@ -31,6 +31,16 @@ export IPHONEOS_DEPLOYMENT_TARGET=16.0
 epoch=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}
 export SOURCE_DATE_EPOCH=$epoch
 export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$ROOT=/src"
+# Snowflake and WebTunnel on devices: lyrebird's clients linked into the
+# program (ci/tor/lyrebird.sh archive); the simulator build goes without.
+if [ "$SIM" != --simulator ]; then
+  ios_sdk=$(xcrun --sdk iphoneos --show-sdk-path)
+  export ENCLAVE_LYREBIRD_LIB=$ROOT/nym/target/$TARGET/lyrebird
+  CC=$(xcrun --sdk iphoneos -f clang) \
+    CGO_CFLAGS="-isysroot $ios_sdk -arch arm64 -miphoneos-version-min=16.0" \
+    CGO_LDFLAGS="-isysroot $ios_sdk -arch arm64 -miphoneos-version-min=16.0" \
+    "$ROOT/ci/tor/lyrebird.sh" archive "$ENCLAVE_LYREBIRD_LIB" "$TARGET"
+fi
 (cd "$ROOT/nym" && cargo build --release --locked --target "$TARGET" -p enclave-mobile --bin enclave-ios)
 (cd "$ROOT" && cargo build --release --locked --target "$TARGET" -p enclave-nse)
 

@@ -3844,6 +3844,7 @@ dependencies = [
  "enclave-tord",
  "enclave-vault",
  "jni 0.21.1",
+ "libloading",
  "slint",
 ]
 

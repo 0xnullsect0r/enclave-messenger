@@ -42,6 +42,13 @@ export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap
 (cd "$ROOT/nym" && cargo ndk --platform 28 -t arm64-v8a -t x86_64 \
   -o "$APP/app/src/main/jniLibs" build --release --locked -p enclave-mobile)
 
+# Snowflake and WebTunnel: lyrebird's clients as liblyrebird.so next to
+# the app's library, which loads it (ci/tor/lyrebird.sh archive).
+ndk_bin=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64/bin
+for abi in arm64-v8a:aarch64-linux-android x86_64:x86_64-linux-android; do
+  CC=$ndk_bin/${abi#*:}28-clang "$ROOT/ci/tor/lyrebird.sh" archive "$APP/app/src/main/jniLibs/${abi%%:*}" "${abi#*:}"
+done
+
 if [ -z "${ANDROID_KEYSTORE_FILE:-}" ]; then
   mkdir -p "$APP/app/build"
   rm -f "$APP/app/build/run.keystore"

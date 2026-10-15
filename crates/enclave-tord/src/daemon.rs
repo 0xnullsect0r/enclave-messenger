@@ -83,12 +83,13 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     let managed = if needed.is_empty() || direct {
         None
     } else {
-        let bin = flag("--pt")
-            .map(std::path::PathBuf::from)
-            .or_else(crate::managed::binary);
-        let started = bin
-            .ok_or_else(|| std::io::Error::other("no lyrebird"))
-            .and_then(|b| crate::managed::launch(&b, &state, &needed, PT_START, report));
+        let started = crate::managed::in_process(&state, &needed).unwrap_or_else(|| {
+            let bin = flag("--pt")
+                .map(std::path::PathBuf::from)
+                .or_else(crate::managed::binary);
+            bin.ok_or_else(|| std::io::Error::other("no lyrebird"))
+                .and_then(|b| crate::managed::launch(&b, &state, &needed, PT_START, report))
+        });
         match started {
             Ok(m) => Some(m),
             Err(e) => {

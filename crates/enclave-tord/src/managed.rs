@@ -58,17 +58,53 @@ pub fn needed(bridges: &[String]) -> Vec<String> {
     out
 }
 
+/// A phone starts no programs: its app runs lyrebird's clients in its own
+/// process (`enclave-mobile`, lyrebird built as a library) and gives this
+/// the way to start one: the transport's name and its state folder in,
+/// its SOCKS5 port on loopback out.
+pub type InProcess = fn(&Path, &str) -> Option<u16>;
+
+static IN_PROCESS: std::sync::OnceLock<InProcess> = std::sync::OnceLock::new();
+
+/// Start transports with `f` rather than the program (once, at start).
+pub fn set_in_process(f: InProcess) {
+    let _ = IN_PROCESS.set(f);
+}
+
+/// The transports started in this process, if the app gave a way
+/// ([`set_in_process`]).
+pub fn in_process(state: &Path, protocols: &[String]) -> Option<io::Result<Managed>> {
+    let start = IN_PROCESS.get()?;
+    let dir = state.join("pt");
+    Some((|| {
+        std::fs::create_dir_all(&dir)?;
+        let mut methods = Vec::new();
+        for p in protocols {
+            let port =
+                start(&dir, p).ok_or_else(|| io::Error::other(format!("lyrebird has no {p}")))?;
+            methods.push((p.clone(), SocketAddr::from(([127, 0, 0, 1], port))));
+        }
+        Ok(Managed {
+            child: None,
+            methods,
+        })
+    })())
+}
+
 /// A running lyrebird and the SOCKS5 address of each transport it runs.
 pub struct Managed {
-    child: Child,
+    /// The program (none when the transports run in this process).
+    child: Option<Child>,
     /// `(transport, address)`, one per transport asked for.
     pub methods: Vec<(String, SocketAddr)>,
 }
 
 impl Drop for Managed {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Some(c) = self.child.as_mut() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
     }
 }
 
@@ -150,7 +186,7 @@ pub fn launch(
             }
         })?;
     let mut managed = Managed {
-        child,
+        child: Some(child),
         methods: Vec::new(),
     };
     let deadline = std::time::Instant::now() + within;
@@ -229,6 +265,22 @@ mod tests {
                 .iter()
                 .all(|l| l.starts_with("snowflake "))
         );
+    }
+
+    #[test]
+    fn transports_in_process() {
+        fn start(_: &Path, name: &str) -> Option<u16> {
+            (name == "snowflake").then_some(4711)
+        }
+        let state = std::env::temp_dir().join(format!("enclave-pt-in-{}", std::process::id()));
+        set_in_process(start);
+        let m = in_process(&state, &["snowflake".into()]).unwrap().unwrap();
+        assert_eq!(
+            m.methods,
+            [("snowflake".to_string(), "127.0.0.1:4711".parse().unwrap())]
+        );
+        assert!(in_process(&state, &["webtunnel".into()]).unwrap().is_err());
+        let _ = std::fs::remove_dir_all(&state);
     }
 
     /// A stand-in program speaking the protocol, as lyrebird does.

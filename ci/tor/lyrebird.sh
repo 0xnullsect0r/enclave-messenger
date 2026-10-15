@@ -4,6 +4,11 @@
 # shipped next to enclave-tord).
 #
 #   ci/tor/lyrebird.sh build OUT [GOOS GOARCH]   build it at the pinned commit
+#   ci/tor/lyrebird.sh archive OUT TARGET        its clients as a library for the
+#                                                phone app (ci/tor/lyrebird-lib;
+#                                                TARGET a Rust phone target, CC set):
+#                                                liblyrebird.so on Android (Go makes
+#                                                no static archive there), .a on iOS
 #   ci/tor/lyrebird.sh licenses                  write LICENSES/lyrebird.txt
 #
 # The source is the pinned commit (checked after cloning); Go modules are
@@ -37,6 +42,31 @@ case "${1:-}" in
       go build -trimpath -buildvcs=false -ldflags="-s -w -buildid= -X main.lyrebirdVersion=$VERSION" \
         -o "$out" ./cmd/lyrebird)
     echo "lyrebird $VERSION ($COMMIT) → $out"
+    ;;
+  archive)
+    # A phone starts no programs: Snowflake and WebTunnel run in the app's
+    # process (enclave_pt_start): on iOS linked into the program
+    # (liblyrebird.a), on Android loaded by enclave-mobile from the APK
+    # (liblyrebird.so). cgo, so the platform's C compiler comes from CC.
+    # -checklinkname=0: Snowflake's WebRTC reads Android's interfaces
+    # through github.com/wlynxg/anet, which links to a Go internal (as
+    # Tor's own Android builds do).
+    mkdir -p "$2"
+    out=$(cd "$2" && pwd)
+    case "$3" in
+      aarch64-linux-android) goos=android goarch=arm64 mode=c-shared lib=liblyrebird.so ;;
+      x86_64-linux-android) goos=android goarch=amd64 mode=c-shared lib=liblyrebird.so ;;
+      aarch64-apple-ios) goos=ios goarch=arm64 mode=c-archive lib=liblyrebird.a ;;
+      *) echo "lyrebird.sh: no phone target $3" >&2; exit 2 ;;
+    esac
+    fetch
+    rm -rf "$SRC/cmd/enclave-pt" && mkdir -p "$SRC/cmd/enclave-pt"
+    cp "$ROOT/ci/tor/lyrebird-lib/enclave_pt.go" "$SRC/cmd/enclave-pt/"
+    (cd "$SRC" && CGO_ENABLED=1 GOOS=$goos GOARCH=$goarch \
+      go build -buildmode=$mode -trimpath -buildvcs=false -ldflags="-s -w -buildid= -checklinkname=0" \
+        -o "$out/$lib" ./cmd/enclave-pt)
+    rm -rf "$SRC/cmd/enclave-pt" "$out/liblyrebird.h"
+    echo "lyrebird $VERSION ($COMMIT) clients for $3 → $out/$lib"
     ;;
   licenses)
     fetch

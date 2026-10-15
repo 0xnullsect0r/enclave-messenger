@@ -23,6 +23,7 @@ pub fn start(profile: PathBuf, extra: Vec<String>) -> Result<(), slint::Platform
 /// Start the vault on `profile` with no window (Android's background
 /// service, for a push or to stay connected). A window opened later
 /// attaches to the same vault.
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn start_headless(profile: PathBuf) {
     prepare();
     match enclave_vault::Mode::from_args(&args(&profile)) {
@@ -49,8 +50,63 @@ fn prepare() {
         enclave_platform::process::register("enclave-tord", enclave_tord::daemon::main_with);
         enclave_platform::process::register("enclave-nymd", enclave_nymd::main_with);
         enclave_platform::process::register("enclave-mediad", enclave_mediad::main_with);
+        enclave_tord::managed::set_in_process(lyrebird::start);
         tor_variables();
     });
+}
+
+/// Snowflake and WebTunnel (`docs/09-transport.md` §7): lyrebird's clients
+/// in this process, as a library built by `ci/tor/lyrebird.sh archive`. On
+/// iOS it is linked in (`liblyrebird.a`, when the build had it); on Android
+/// loaded from the APK (`liblyrebird.so`). Without it those bridges can't
+/// be used; obfs4 runs in enclave-tord itself either way.
+mod lyrebird {
+    use std::ffi::{CString, c_char, c_int};
+    use std::path::Path;
+
+    type Start = unsafe extern "C" fn(*const c_char, *const c_char) -> c_int;
+
+    #[cfg(enclave_lyrebird)]
+    #[allow(unsafe_code)]
+    unsafe extern "C" {
+        fn enclave_pt_start(state: *const c_char, name: *const c_char) -> c_int;
+    }
+
+    #[cfg(enclave_lyrebird)]
+    fn entry() -> Option<Start> {
+        Some(enclave_pt_start)
+    }
+
+    #[cfg(all(target_os = "android", not(enclave_lyrebird)))]
+    #[allow(unsafe_code)]
+    fn entry() -> Option<Start> {
+        static LIB: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
+        // SAFETY: liblyrebird.so is ours (ci/tor/lyrebird-lib); loading
+        // it starts the Go runtime and runs no other initialisers.
+        let lib = LIB
+            .get_or_init(|| unsafe { libloading::Library::new("liblyrebird.so").ok() })
+            .as_ref()?;
+        // SAFETY: the symbol has this signature (enclave_pt.go), and the
+        // library stays loaded for the life of the process.
+        unsafe { lib.get::<Start>(b"enclave_pt_start\0").ok().map(|s| *s) }
+    }
+
+    #[cfg(all(not(target_os = "android"), not(enclave_lyrebird)))]
+    fn entry() -> Option<Start> {
+        None
+    }
+
+    /// Start transport `name` with its state in `state`: its SOCKS5 port.
+    pub fn start(state: &Path, name: &str) -> Option<u16> {
+        let f = entry()?;
+        let state = CString::new(state.to_string_lossy().as_bytes()).ok()?;
+        let name = CString::new(name).ok()?;
+        // SAFETY: both are NUL-terminated strings that outlive the call;
+        // the function copies what it keeps.
+        #[allow(unsafe_code)]
+        let port = unsafe { f(state.as_ptr(), name.as_ptr()) };
+        u16::try_from(port).ok().filter(|p| *p != 0)
+    }
 }
 
 /// Tor's loopback port and secret for this run, and the proxy variables

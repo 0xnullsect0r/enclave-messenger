@@ -37,3 +37,5 @@ slint = { version = "1.18", default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
+# liblyrebird.so (Snowflake and WebTunnel), loaded from the APK.
+libloading = "0.8"
