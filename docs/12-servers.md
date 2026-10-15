@@ -33,11 +33,11 @@ Operators write `server.toml` (`config.rs`, `FileConfig`). Every key can be over
 | Field (`Config`) | Default | Meaning |
 |---|---|---|
 | `id` | — | 16 B server identifier |
-| `effort_request` | 64 | Equi-X effort for `WriteRequest` |
-| `effort_claim` | 8 | Equi-X effort for a bundle claim |
+| `effort_request` | 64 | Proof-of-work effort for `WriteRequest` |
+| `effort_claim` | 8 | Proof-of-work effort for a bundle claim |
 | `blob_tokens_per_day` | 64 | Blob-upload tokens one inbox may be issued a day (`BlobAlloc`, §1.2) |
-| `effort_username` | 64 | Equi-X effort for a username claim (§3.5) |
-| `effort_inbox` | 16 | Equi-X effort for creating an inbox; 0 turns the check off (tests) |
+| `effort_username` | 64 | Proof-of-work effort for a username claim (§3.5) |
+| `effort_inbox` | 16 | Proof-of-work effort for creating an inbox; 0 turns the check off (tests) |
 | `inbox_quota` | 5,000 | Stored envelopes per account inbox |
 | `request_quota` | 100 | Pending envelopes per request inbox |
 | `token_quota` | 4,096 | Registered unspent token hashes per inbox |
@@ -281,7 +281,7 @@ Trusted time (§3.4) checks the device clock (`client/clock.rs`). Every head a c
 
 **Pins.** A client pins `KtPolicy { servers: [KtInfo], witnesses: WitnessPolicy }`, shipped with the app's server list; nothing about a log is learned from the log at lookup time. `KtInfo` is `server (16) ‖ domain ‖ operator ‖ head key ‖ VRF public key` (each variable field `u32 length ‖ bytes`).
 
-**Claim** (`Username`/`Put`, `key` = `name_key(name)`, `proof` = Equi-X over `"claim-username" ‖ key ‖ u64(day)` at `effort_username`, default 64):
+**Claim** (`Username`/`Put`, `key` = `name_key(name)`, `proof` = proof of work over `"claim-username" ‖ key ‖ u64(day)` at `effort_username`, default 64):
 
 ```
 UsernameClaim = u32 len ‖ name ‖ u32 len ‖ value ‖ u32 len ‖ signature ‖ device (16) ‖ u64(time)
@@ -511,7 +511,7 @@ Where a request's time goes (`--example open_cost`): opening it is 0.42 ms, of w
 1. **Resolved:** proofs of work are single-use and day-bound (§1.1, table `pow-spent`), so one solution can't drain a device's one-time prekeys or rewrite the same request.
 2. **Directory uploads are unauthenticated until complete.** Anyone can send chunks for any `(kind, key)`: a chunk with a different `total` discards an upload in progress, and partial uploads are kept in memory without expiry.
 3. **Bundle publication is authorized by device ID alone.** The server accepts a publication signed by the key of any stored manifest that lists the device ID. A second account whose manifest reuses another account's device ID could replace that device's publication; initiators then reject the bundle (they verify it against the right manifest), so the effect is denial of first contact. Binding the bundle key to the root (as for manifests) would close this.
-4. **Resolved:** inbox creation costs an Equi-X proof for the address and the day at `effort_inbox` (§1.1; `09-transport.md` §3.1).
+4. **Resolved:** inbox creation costs a proof of work for the address and the day at `effort_inbox` (§1.1; `09-transport.md` §3.1).
 5. PLAN §12.1 says "hourly epochs" and §12.2 "10-minute to 1-hour epochs". The implementation makes one epoch per publish; a batching interval is open.
 6. **Resolved:** PLAN §12.2's "C2SP format with an added ML-DSA cosignature": witnesses publish C2SP checkpoints with an Ed25519 `cosignature/v1` and an ML-DSA-44 cosignature (§3.3a), checked against the Go reference implementation in CI, beside the composite cosignature clients rely on.
 7. Whether the KT value should carry the vault-key locator, given that the KT operator is usually the same server as the directory and could then link vault-key fetches to usernames.

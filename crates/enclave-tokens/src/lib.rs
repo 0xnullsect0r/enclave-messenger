@@ -7,16 +7,18 @@
 //!   without learning which contact wrote, and it cannot link two writes by the
 //!   same contact. Hashes are the only cryptography involved, so nothing here
 //!   weakens under a quantum computer.
-//! * **Equi-X proof of work** (the puzzle Tor uses for onion services) gates
-//!   anonymous actions: first contact through a request inbox, claiming a
-//!   one-time prekey, registering a username. The proof is 32 bytes: a 16-byte
-//!   nonce and a 16-byte Equi-X solution, bound to a context string.
+//! * **Proof of work** ([`equihash`]: Equihash⟨60,3⟩ over BLAKE2b, the
+//!   structure of Tor's Equi-X) gates anonymous actions: first contact
+//!   through a request inbox, claiming a one-time prekey, registering a
+//!   username. The proof is 32 bytes: a 16-byte nonce and a 16-byte
+//!   solution, bound to a context string.
 //! * **Privacy Pass** ([`privpass`]): RFC 9578 tokens of type `0x0001`
 //!   (VOPRF over P-384), for credentials an issuer hands out after a proof
 //!   of work and later recognises without linking.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod equihash;
 pub mod gate;
 pub mod privpass;
 
@@ -125,7 +127,7 @@ pub fn registration_batch(
     Ok(v)
 }
 
-/// A proof of work: `nonce ‖ Equi-X solution`.
+/// A proof of work: `nonce ‖ Equihash solution` (`equihash`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PowProof(pub [u8; 32]);
 
@@ -148,20 +150,18 @@ fn accepted(chal: &[u8], sol: &[u8; 16], effort: u32) -> bool {
 }
 
 /// Solve a proof of work for `context` at `effort` (expected work grows
-/// linearly with effort; effort 1 is a single Equi-X solve).
+/// linearly with effort; effort 1 is about one Equihash solve).
 pub fn solve(context: &[u8], effort: u32, rng: &mut HedgedRng) -> enclave_crypto::Result<PowProof> {
     let mut nonce: [u8; 16] = rng.array("tokens/pow-nonce")?;
     loop {
         let chal = challenge(context, &nonce);
-        if let Ok(solutions) = equix::solve(&chal) {
-            for s in solutions.iter() {
-                let bytes = s.to_bytes();
-                if accepted(&chal, &bytes, effort) {
-                    let mut out = [0u8; 32];
-                    out[..16].copy_from_slice(&nonce);
-                    out[16..].copy_from_slice(&bytes);
-                    return Ok(PowProof(out));
-                }
+        for s in equihash::solve(&chal) {
+            let bytes = s.to_bytes();
+            if accepted(&chal, &bytes, effort) {
+                let mut out = [0u8; 32];
+                out[..16].copy_from_slice(&nonce);
+                out[16..].copy_from_slice(&bytes);
+                return Ok(PowProof(out));
             }
         }
         // Next nonce (little-endian increment).
@@ -181,7 +181,7 @@ pub fn verify(context: &[u8], effort: u32, proof: &PowProof) -> bool {
     let mut sol = [0u8; 16];
     sol.copy_from_slice(&proof.0[16..]);
     let chal = challenge(context, &nonce);
-    equix::verify_bytes(&chal, &sol).is_ok() && accepted(&chal, &sol, effort)
+    equihash::verify(&chal, &equihash::Solution::from_bytes(&sol)) && accepted(&chal, &sol, effort)
 }
 
 #[cfg(test)]

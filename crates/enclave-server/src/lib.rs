@@ -8,7 +8,7 @@
 //! * writes to an inbox need a single-use token whose hash the owner
 //!   registered; the server burns it and learns nothing else;
 //! * reading needs a credential only the owner has;
-//! * first contact goes to a separate request inbox and costs an Equi-X proof
+//! * first contact goes to a separate request inbox and costs a proof of work
 //!   of work;
 //! * every request and reply is sealed end to end to the server's daily
 //!   X448 + ML-KEM-1024 key ([`enclave_rpc`]).

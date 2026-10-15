@@ -56,7 +56,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-06 Draining one-time prekeys
 - **Adversary:** A-INF, A-SOC.
 - **Attack:** Claim all one-time prekeys to force weaker first messages.
-- **Fix:** Equi-X proof-of-work to claim one. A last-resort PQ prekey rotates every 7 days.
+- **Fix:** proof-of-work to claim one. A last-resort PQ prekey rotates every 7 days.
 - **Residual:** An attacker can force use of the last-resort key.
 - **Spec:** `04-eqxdh.md` §2.3; `02-cryptography.md` §10.
 - **Tests:** `rt06_opk_claim_requires_pow` (Unit, M3); `rt06_last_resort_used_when_drained` (Sim, M3).
@@ -227,7 +227,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-25 Spam and Sybil accounts with no identity
 - **Adversary:** A-SOC.
 - **Attack:** Mass requests from free accounts.
-- **Fix:** Invite capability or Equi-X PoW. Text-only requests. Quotas. Local blocking.
+- **Fix:** Invite capability or proof of work. Text-only requests. Quotas. Local blocking.
 - **Residual:** Well-funded PoW spam can still reach the requests folder.
 - **Spec:** `09-transport.md` §4; `13-operators.md` §1.
 - **Tests:** `rt25_request_requires_pow_or_capability` (Unit, M3); `rt25_request_inbox_caps_at_100` (Unit, M3); `rt25_request_media_stripped` (Unit, M6).
@@ -269,7 +269,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 | RT-03 | Sphinx tagging | Seal check drops; Tor | Circuit-to-server link | 02 §4.4, 09 §2 | `rt03_bitflip_in_any_unit_byte_rejected` |
 | RT-04 | KT split view | ≥3 witnesses, gossip, self-audit | Colluding quorum | 12 §3 | `rt04_split_view_detected_by_gossip` |
 | RT-05 | Prekey withhold/replay | 14-day SPK, replay cache, bundle epoch | First-message FS on SPK only | 04 §2 §10 | `rt05_replayed_initial_message_rejected` |
-| RT-06 | OPK drain | Equi-X; last-resort PQ prekey | Forced last-resort | 04 §2.3 | `rt06_opk_claim_requires_pow` |
+| RT-06 | OPK drain | Proof of work; last-resort PQ prekey | Forced last-resort | 04 §2.3 | `rt06_opk_claim_requires_pow` |
 | RT-07 | Downgrade | No negotiation; binding | Braid delayed | 02 §5, 04 §7 | `rt07_stripped_mceliece_rejected` |
 | RT-08 | Rollback | Hedged nonces; no ratchet in backups | Replays; slot-header XOR | 02 §4 §6 | `rt08_rollback_no_keystream_reuse` |
 | RT-09 | Link phishing | Settings-only, URI type, 1-of-4, 24 h, banner | Fully deceived user | 03 §4 | `rt09_link_qr_refused_by_general_scanner` |

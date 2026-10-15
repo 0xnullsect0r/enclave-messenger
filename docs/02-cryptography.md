@@ -22,7 +22,7 @@ Sizes are from the FIPS and RFC documents (PLAN Appendix A) and are asserted by 
 | Transcript and binding hash | SHA3-512 | 64 | Transcripts, manifest hash chain, body hashes, the McEliece key commitment |
 | Short hash | SHAKE256 | 4, 32 or 64 | Merkle nodes, directory keys, KT hashes, gossip digests, PoW check |
 | Password KDF | Argon2id (RFC 9106) | — | Optional app passphrase |
-| Anti-spam | Equi-X (arti `equix` crate) (§10) | proof 32 | Request-inbox writes, OPK claims, blob uploads |
+| Anti-spam | Equihash⟨60,3⟩ over BLAKE2b (§10) | proof 32 | Request-inbox writes, OPK claims, blob uploads |
 | KT privacy VRF | akd's ECVRF over Ed25519 | — | Username enumeration resistance only (classical) |
 | Reserved (not yet implemented) | Privacy Pass (RFC 9578), TLS SecP384r1MLKEM1024, HQC-256 suite | — | See §11 and `09-transport.md` §8 |
 | Not used | AEGIS-256, HKDF, HMAC, AES-GCM (outside TLS), compression before encryption | — | — |
@@ -396,18 +396,18 @@ Argon2id (RFC 9106), version 0x13, 32 B output, 32 B salt (`pwhash.rs`).
 
 `derive` rejects parameters below the floor in memory or iterations, with zero parallelism, or above 4 GiB, with `Error::Params`. `calibrate(candidates, t, p, target)` returns the largest candidate memory whose derivation finishes within `target` on this device, never below the floor; the caller applies the platform RAM ceiling. The chosen parameters are stored with the salt (`14-storage.md` §1).
 
-## 10. Equi-X proof of work
+## 10. Proof of work (Equihash⟨60,3⟩ over BLAKE2b)
 
-Implemented in `enclave-tokens` with arti's `equix` crate (`09-transport.md` §3.3):
+Implemented in `enclave-tokens` (`equihash`, ADR 0004; `09-transport.md` §3.3). The puzzle has Equi-X's structure (Equihash⟨60,3⟩, Wagner's tree over 2^16 indices, a 16-byte solution of eight `u16`) with BLAKE2b in place of HashX: `H(i)` = the low 60 bits of BLAKE2b-64(BLAKE2b-256(challenge) ‖ u16le(i)); rounds zero bits 0–14, 15–29 and 30–59 of the pair, quad and full XOR; the tree's order is fixed (each pair ascending, the smaller first index on the left at every level) and indices are distinct. A solve takes about 16 ms on a desktop core (2^16 hashes and three sorts, about 1 MiB) and yields about two solutions; a verification is eight hashes.
 
 ```
 challenge(ctx, nonce) = "ENCLAVE-POW1" ‖ u32(len(ctx)) ‖ ctx ‖ nonce          # nonce 16 B
 accepted(chal, sol, effort) = u32_be(SHAKE256("enclave/v1/tokens/pow" ‖ chal ‖ sol, 4)) · max(effort, 1) ≤ 2^32 − 1
-proof = nonce (16 B) ‖ Equi-X solution (16 B)                                  # 32 B
-verify(ctx, effort, proof) = equix::verify(challenge(ctx, nonce), sol) AND accepted(challenge(ctx, nonce), sol, effort)
+proof = nonce (16 B) ‖ Equihash solution (16 B)                                # 32 B
+verify(ctx, effort, proof) = equihash::verify(challenge(ctx, nonce), sol) AND accepted(challenge(ctx, nonce), sol, effort)
 ```
 
-The solver starts from a random 16 B nonce, tries every Equi-X solution of the challenge, and increments the nonce (little-endian) until one is accepted. Expected work grows linearly with `effort`; effort 1 accepts every valid solution. Verification costs one Equi-X verification and one SHAKE256 call. Contexts and default efforts are in `12-servers.md` §1.
+The solver starts from a random 16 B nonce, tries every solution of the challenge, and increments the nonce (little-endian) until one is accepted. Expected work grows linearly with `effort`; effort 1 accepts every valid solution. Verification costs eight BLAKE2b calls and one SHAKE256 call. Contexts and default efforts are in `12-servers.md` §1.
 
 The M0 draft's Tor onion-service challenge format (40 B with a seed head and an effort field) is not used. The effort is not carried in the proof; the server applies its configured effort. Solutions are not tracked as single-use (see `12-servers.md` Open questions).
 
@@ -444,7 +444,7 @@ Required but not yet implemented: ctgrind constant-time testing (`20-assurance.m
 | XChaCha20, AES-256, CTR, SHA3, cSHAKE | RustCrypto `chacha20`, `aes`, `ctr`, `sha3`, `cshake` | — |
 | KMAC256 | In-house on `cshake` | `libcrux-kmac`, NIST SP 800-185 samples |
 | Argon2id | RustCrypto `argon2` | RFC 9106 §5.3 vector |
-| Equi-X | arti `equix` 0.7 | — |
+| Equihash⟨60,3⟩ | In-house (`enclave-tokens::equihash`) on RustCrypto `blake2` | Known answers; order and distinctness tests |
 | Key hygiene | `zeroize`, `subtle` | — |
 
 Rules:

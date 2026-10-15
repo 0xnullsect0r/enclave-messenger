@@ -126,7 +126,7 @@ read_cred(a, d) = KMAC256(read_key, a ‖ u32(d), 256, "enclave/v1/net/read-cred
 
 Tests: `crates/enclave-server/tests/inboxes.rs` (`read_credential_is_daily`, `token_hash_bound_to_address`, `session_hint_returns_burned_token`, `rotating_inbox_expires`) and `crates/enclave-core/tests/inboxes.rs` (`inbox_rotates_weekly`: an address made ahead, then an owner away for two weeks reached through the fallback re-send).
 
-**Proof of work.** Creating an inbox costs an Equi-X proof over `"inbox-create" ‖ mailbox ‖ u64(day)` (`api::pow_context_inbox`) at the server's `effort_inbox` (default 16, published in the descriptor policy). The 32-byte proof is the framed payload of the creating `RegisterTokens`. The server takes today's or yesterday's day (a client near midnight) and checks it before anything else, so a missing or wrong proof is `Pow` whether or not the address exists. The client climbs the effort ladder until the server accepts (`Rpc::create_inbox`, used at account creation and when moving server). Test: `a_request_is_processed_once` (no proof, another address's proof and one from two days ago are refused; yesterday's is accepted).
+**Proof of work.** Creating an inbox costs a proof of work over `"inbox-create" ‖ mailbox ‖ u64(day)` (`api::pow_context_inbox`) at the server's `effort_inbox` (default 16, published in the descriptor policy). The 32-byte proof is the framed payload of the creating `RegisterTokens`. The server takes today's or yesterday's day (a client near midnight) and checks it before anything else, so a missing or wrong proof is `Pow` whether or not the address exists. The client climbs the effort ladder until the server accepts (`Rpc::create_inbox`, used at account creation and when moving server). Test: `a_request_is_processed_once` (no proof, another address's proof and one from two days ago are refused; yesterday's is accepted).
 
 ### 3.2 Reading
 
@@ -162,7 +162,7 @@ Test `token_batches_mix_contacts` plays a server that logs every batch and every
 ## 4. Request inbox
 
 - Created like an account inbox with `CREATE | REQUEST_INBOX`. Its address is in the account manifest (`request_inbox`, `03-identity.md` §3).
-- `WriteRequest` needs an Equi-X proof of work in the header's token field over `"request-inbox" ‖ mailbox ‖ u64(day) ‖ SHA3-512(envelope region)` at the server's request effort (default 64; `12-servers.md` §1), for today or yesterday; each proof is accepted once. Account inboxes refuse `WriteRequest` and request inboxes refuse `Write` (`Denied`).
+- `WriteRequest` needs a proof of work in the header's token field over `"request-inbox" ‖ mailbox ‖ u64(day) ‖ SHA3-512(envelope region)` at the server's request effort (default 64; `12-servers.md` §1), for today or yesterday; each proof is accepted once. Account inboxes refuse `WriteRequest` and request inboxes refuse `Write` (`Denied`).
 - It holds at most `request_quota` pending envelopes (default 100). When full, the oldest is dropped to make room (FIFO).
 - The owner reads it with `Poll`/`Ack` and its own read credential.
 
@@ -274,9 +274,9 @@ Residuals: the sequence of real requests in a bulk window is visible as a burst 
 
 ## 7. Nym access, fallback, censorship
 
-- zk-nym credentials through a credential proxy gated by Equi-X plus Privacy Pass.
+- zk-nym credentials through a credential proxy gated by proof of work plus Privacy Pass.
   **As implemented, the gate side** (`crates/enclave-credgate`, RFC 0001):
-  - **Getting tokens.** A device fetches a single-use challenge (`POST /credgate/v1/challenge`, 32 B nonce and Equi-X effort), solves it with context `credgate ‖ nonce`, and gets up to 8 Privacy Pass tokens (VOPRF over P-384, RFC 9578 type `0x0001`) issued blind (`POST /credgate/v1/tokens`).
+  - **Getting tokens.** A device fetches a single-use challenge (`POST /credgate/v1/challenge`, 32 B nonce and Proof-of-work effort), solves it with context `credgate ‖ nonce`, and gets up to 8 Privacy Pass tokens (VOPRF over P-384, RFC 9578 type `0x0001`) issued blind (`POST /credgate/v1/tokens`).
   - **Spending a token.** One token buys one ticketbook (`POST /credgate/v1/ticketbook`, `Token ‖ request`). The gate checks the token against this 30-day epoch's key or the previous one (`IssuerKey::derive(seed, epoch)`), records it as spent (redb, two epochs), and passes the request to the foundation's `nym-credential-proxy` (`/api/v1/ticketbook/obtain`, with every global signature included).
   - **What the gate sees.** The request is the device's own withdrawal request, so its ecash keys never leave it, and the answer is the wallet shares it aggregates itself. Reached over Tor, the gate learns neither the device's address nor which tokens came from which proof of work, and it logs nothing about requests.
   - **Where it runs.** The front proxies `/credgate/v1/*` to it when `credgate` is set. Compose runs it in the foundation's stack (profile `foundation`).

@@ -1,6 +1,6 @@
 [package]
 name = "enclave-tokens"
-description = "Enclave anti-abuse primitives: single-use write tokens and Equi-X proof of work."
+description = "Enclave anti-abuse primitives: single-use write tokens and an Equihash proof of work."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 enclave-crypto = { path = "../enclave-crypto" }
-equix = "0.7.1"
+blake2 = "0.10.6"
 subtle = "2.6.1"
 p384 = { version = "0.13", default-features = false, features = ["hash2curve", "voprf"] }
 sha2 = "0.10"

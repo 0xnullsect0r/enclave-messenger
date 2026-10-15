@@ -8,7 +8,7 @@
 listen = "0.0.0.0:7448"
 keys_dir = "/var/lib/enclave/credgate-keys"
 data_dir = "/var/lib/enclave/credgate"
-# Equi-X effort per challenge, and tokens one solved challenge buys.
+# Proof-of-work effort per challenge, and tokens one solved challenge buys.
 effort = 2000
 tokens_per_proof = 8
 # The nym-credential-proxy's API bearer token (a file, not the value).

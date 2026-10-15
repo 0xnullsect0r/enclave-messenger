@@ -13,7 +13,7 @@
 //! GET  /credgate/v1/partial-keys                                       the signers' partial keys
 //! ```
 //!
-//! 1. **Work for tokens.** A challenge is solved with Equi-X
+//! 1. **Work for tokens.** A challenge is solved with the proof of work
 //!    (`enclave_tokens::solve`, context `credgate ‖ nonce`); each solution
 //!    buys up to [`Config::tokens_per_proof`] Privacy Pass tokens
 //!    (`enclave_tokens::privpass`, VOPRF over P-384, RFC 0001), issued
@@ -198,7 +198,7 @@ impl TicketSource for DevTickets {
 /// Settings.
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// Equi-X effort a challenge asks for.
+    /// Proof-of-work effort a challenge asks for.
     pub effort: u32,
     /// Tokens one solved challenge buys (at most [`MAX_TOKENS_PER_PROOF`]).
     pub tokens_per_proof: usize,

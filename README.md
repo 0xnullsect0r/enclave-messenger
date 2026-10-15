@@ -377,7 +377,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # The foundation's credential gate (docs/09-transport.md §7): Equi-X
+  # The foundation's credential gate (docs/09-transport.md §7): proof of work
   # work for Privacy Pass tokens, a token for a Nym ticketbook from the
   # foundation's nym-credential-proxy (CREDGATE_PROXY_URL, its bearer token
   # in secrets/credgate-proxy-token). The front serves it at

@@ -46,15 +46,15 @@ pub const MAX_VALIDITY_SECS: u64 = 3 * 86_400;
 /// A server's abuse-control policy, as clients need to know it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Policy {
-    /// Equi-X effort for request-inbox writes.
+    /// Proof-of-work effort for request-inbox writes.
     pub effort_request: u32,
-    /// Equi-X effort for a bundle claim.
+    /// Proof-of-work effort for a bundle claim.
     pub effort_claim: u32,
     /// Blob-upload tokens one inbox may be issued a day (`BlobAlloc`).
     pub blob_tokens_per_day: u32,
-    /// Equi-X effort for a username claim.
+    /// Proof-of-work effort for a username claim.
     pub effort_username: u32,
-    /// Equi-X effort for creating an inbox.
+    /// Proof-of-work effort for creating an inbox.
     pub effort_inbox: u32,
     /// Stored envelopes per inbox.
     pub inbox_quota: u32,

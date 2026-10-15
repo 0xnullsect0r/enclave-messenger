@@ -43,7 +43,7 @@
 //!
 //! When the list names a credential gate (`--nymd` only), nymd starts
 //! waiting for zk-nym tickets, as netd starts it on a device: before any
-//! client connects, the run buys a ticketbook through the gate (Equi-X
+//! client connects, the run buys a ticketbook through the gate (proof of work
 //! work, Privacy Pass tokens blinded to the listed key, the book from the
 //! gate's proxy, all through nymd's Tor) and connects the mixnet client
 //! with it. The wallet is kept in `--state`, so later runs connect with what

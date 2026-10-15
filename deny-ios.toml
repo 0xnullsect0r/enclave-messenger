@@ -44,10 +44,9 @@ allow = [
     "CDLA-Permissive-2.0",
     # Public-domain dedication (async_executors, via arti).
     "Unlicense",
-    # equix and hashx (Equi-X proof of work, from the Tor Project). GPLv3
-    # compatible, but LGPL-3.0's installation-information terms are a risk
-    # for App Store builds that our section 7 permission cannot waive for
-    # third-party code. Tracked in legal/ADDITIONAL-PERMISSIONS.md.
+    # No LGPL: LGPL-3.0's installation-information terms can't be met in an
+    # App Store build, and our section 7 permission can't waive them for
+    # third-party code (why the proof of work is our own Equihash, ADR 0004).
 ]
 # Per-crate exceptions: allowed for that crate only.
 exceptions = [

@@ -60,7 +60,7 @@ Source: PLAN.md §10, §13, §14, §17, §18, §22, Appendix A. This register li
 
 | ID | Constraint | Status | Consequence | Spec | Check |
 |---|---|---|---|---|---|
-| PC-60 | Nym entry gateways require zk-nym credentials | V | Credential proxy with Equi-X plus Privacy Pass | `09-transport.md` §7.1 | M4 |
+| PC-60 | Nym entry gateways require zk-nym credentials | V | Credential proxy with proof of work plus Privacy Pass | `09-transport.md` §7.1 | M4 |
 | PC-61 | Disabling Nym's Poisson stream must be a supported production configuration | U | M4 gate; otherwise the scheduler design is revisited | `09-transport.md` §6 | M1.5, M4 |
 | PC-62 | nym-sdk memory on mobile | U | Gate ≤150 MB | `09-transport.md` §7.2 | M1.5, M4 |
 | PC-63 | Nym Sphinx is classical; PQ links not yet in the SDK | V / U | Sealed requests keep mailbox IDs PQ; adopt PQ Sphinx when available | `09-transport.md` §2, §7.5 | M12+ |

@@ -1,6 +1,6 @@
 [package]
 name = "enclave-credgate"
-description = "The credential gate: Equi-X proof of work for Privacy Pass tokens, tokens for Nym ticketbooks."
+description = "The credential gate: proof of work for Privacy Pass tokens, tokens for Nym ticketbooks."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -30,7 +30,7 @@ pub fn ticketbook_challenge(issuer_name: &str) -> TokenChallenge {
     }
 }
 
-/// The Equi-X context of a challenge.
+/// The proof-of-work context of a challenge.
 pub fn pow_context(nonce: &[u8; 32]) -> Vec<u8> {
     [b"credgate".as_slice(), nonce].concat()
 }

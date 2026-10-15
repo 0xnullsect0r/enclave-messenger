@@ -2,7 +2,7 @@
 //!
 //! Nym's gateways take a device's traffic only against zk-nym tickets. A
 //! device buys them from a credential gate listed in the server list: it
-//! does some work (Equi-X) for a few Privacy Pass tokens blinded to the
+//! does some work (proof of work) for a few Privacy Pass tokens blinded to the
 //! gate's listed issuer key, then spends one token per ticketbook. The
 //! ticketbook comes back through netd's mixnet process, which made the
 //! ecash keys and withdrawal request and aggregated the signers' shares

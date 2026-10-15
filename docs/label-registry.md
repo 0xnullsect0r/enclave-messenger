@@ -118,7 +118,7 @@ Every label in this section appears in the code. "Where" names the crate, file a
 |---|---|---|---|---|
 | `enclave/v1/tokens/write` | KMAC | 256 | `lib.rs` `write_token` | Single-use write token `t_i` |
 | `enclave/v1/tokens/hash` | KMAC | 256 | `lib.rs` `token_hash` | Server-stored token hash, bound to the inbox address: `KMAC256(t, address, label)` (09 §3.3) |
-| `enclave/v1/tokens/pow` | HASH | 32 | `lib.rs` `accepted` | Equi-X effort check: `SHAKE256(label ‖ challenge ‖ solution)`, first 4 B |
+| `enclave/v1/tokens/pow` | HASH | 32 | `lib.rs` `accepted` | Proof-of-work effort check: `SHAKE256(label ‖ challenge ‖ solution)`, first 4 B |
 | `enclave/v1/tokens/pp-issuer` | INFO | — | `privpass.rs` `IssuerKey::derive` | Privacy Pass issuer key for an epoch: RFC 9497 `DeriveKeyPair(seed, label ‖ u32 epoch)` (RFC 0001) |
 
 ### 2.5 Server (`enclave-server`)
