@@ -42,7 +42,7 @@ proptest = "1.11.0"
 ml-kem = "0.3.2"
 ml-dsa = "0.1.1"
 fips205 = "0.4.1"
-libcrux-kmac = "0.0.1"
+libcrux-kmac = "0.0.2"
 ed448-goldilocks = "0.14.0-pre.15"
 libcrux-ml-dsa = "0.0.10"
 
