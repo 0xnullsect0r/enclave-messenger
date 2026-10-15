@@ -398,7 +398,8 @@ impl Root {
         w.0
     }
 
-    fn decode(b: &[u8]) -> Result<Self> {
+    /// Decode the body (its [`Signed`] document checks the signatures).
+    pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = R(b);
         let version = r.u32()?;
         let expires = r.u64()?;
@@ -456,7 +457,8 @@ impl Targets {
         w.0
     }
 
-    fn decode(b: &[u8]) -> Result<Self> {
+    /// Decode the body (its [`Signed`] document checks the signatures).
+    pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = R(b);
         let version = r.u32()?;
         let expires = r.u64()?;
@@ -500,7 +502,8 @@ impl Snapshot {
         w.0
     }
 
-    fn decode(b: &[u8]) -> Result<Self> {
+    /// Decode the body (its [`Signed`] document checks the signatures).
+    pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = R(b);
         let s = Snapshot {
             version: r.u32()?,
@@ -523,7 +526,8 @@ impl Timestamp {
         w.0
     }
 
-    fn decode(b: &[u8]) -> Result<Self> {
+    /// Decode the body (its [`Signed`] document checks the signatures).
+    pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = R(b);
         let t = Timestamp {
             version: r.u32()?,

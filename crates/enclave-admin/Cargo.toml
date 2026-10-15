@@ -22,6 +22,8 @@ enclave-federation = { path = "../enclave-federation" }
 enclave-kt = { path = "../enclave-kt" }
 enclave-service = { path = "../enclave-service" }
 enclave-tls = { path = "../enclave-tls" }
+enclave-update = { path = "../enclave-update" }
+sha2 = "0.10"
 bytes = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1"] }

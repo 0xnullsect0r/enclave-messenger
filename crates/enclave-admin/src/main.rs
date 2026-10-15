@@ -11,6 +11,7 @@
 //! enclave-admin descriptor fetch DOMAIN --out FILE [--id HEX] [--ca PEM] [--now UNIX]
 //! enclave-admin reports [show N | dismiss N | close-request-inbox HEX] [--socket PATH]
 //! enclave-admin console COMMAND… [--socket PATH]
+//! enclave-admin release keygen | root | targets | sign | online | verify   (`release.rs`)
 //! ```
 //!
 //! `reports` and `console` talk to a running server through its console
@@ -59,6 +60,8 @@
 //! epochs the list will be valid for (and the one after, for clients that
 //! keep a list until a newer one arrives).
 #![forbid(unsafe_code)]
+
+mod release;
 
 use enclave_crypto::rng::HedgedRng;
 use enclave_federation::{
@@ -174,7 +177,8 @@ fn main() -> ExitCode {
         ["descriptor", "fetch", ..] => fetch_descriptor(&args),
         ["reports", ..] => reports(&args),
         ["console", ..] => console(&args),
-        _ => Err("usage: enclave-admin foundation-keygen | server-list build|sign|verify | kt-pins | descriptor verify|fetch | reports | console (see the module docs)".into()),
+        ["release", ..] => release::run(&args),
+        _ => Err("usage: enclave-admin foundation-keygen | server-list build|sign|verify | kt-pins | descriptor verify|fetch | reports | console | release (see the module docs)".into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
