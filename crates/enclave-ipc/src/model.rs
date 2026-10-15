@@ -602,6 +602,19 @@ pub enum Cmd {
     LanChunks(String, Vec<Vec<u8>>, bool),
     /// The history for this token couldn't be fetched.
     LanFailed(String),
+    /// The window is in front (true) or not: Foreground or Background
+    /// traffic profile (`docs/09-transport.md` §6), unless Maximum.
+    Visible(bool),
+    /// The phone's push token for this app (platform: 1 UnifiedPush
+    /// endpoint, 2 APNs device token in hex, 3 FCM token), to register
+    /// with the home server sealed to the push relay; an empty token
+    /// removes it (`docs/10-push.md` §2).
+    PushToken(u8, String),
+    /// A push woke the app: sync now rather than at the next tick.
+    Wake,
+    /// A new window joined a vault that kept running (a phone's activity
+    /// made again): send it everything, pictures included.
+    Reattach,
 }
 
 /// One-off UI resets after a request succeeded.
@@ -1298,6 +1311,10 @@ impl Cmd {
                 w.bool(*last)
             }
             Cmd::LanFailed(t) => w.u8(91).str(t),
+            Cmd::Visible(on) => w.u8(92).bool(*on),
+            Cmd::PushToken(p, t) => w.u8(93).u8(*p).str(t),
+            Cmd::Wake => w.u8(94),
+            Cmd::Reattach => w.u8(95),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1409,6 +1426,10 @@ impl Cmd {
                 Cmd::LanChunks(t, chunks, r.bool()?)
             }
             91 => Cmd::LanFailed(r.str()?),
+            92 => Cmd::Visible(r.bool()?),
+            93 => Cmd::PushToken(r.u8()?, r.str()?),
+            94 => Cmd::Wake,
+            95 => Cmd::Reattach,
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };

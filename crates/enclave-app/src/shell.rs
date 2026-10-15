@@ -987,7 +987,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // The phone's services (Android: its native methods; iOS: screen
     // security and the keyboard rule, which need the running app).
     #[cfg(not(desktop))]
-    slint::Timer::single_shot(Duration::ZERO, enclave_platform::phone::init);
+    {
+        slint::Timer::single_shot(Duration::ZERO, enclave_platform::phone::init);
+        phone::delivery(&ui);
+    }
     if smoke {
         slint::Timer::single_shot(Duration::from_secs(60), || {
             eprintln!("enclave: the vault didn't start within 60 s");
@@ -1111,6 +1114,25 @@ mod phone {
     /// Copy, marked sensitive, cleared after 60 s if still there.
     pub fn copy_with_timeout(text: String) -> bool {
         p::copy(&text)
+    }
+
+    /// Settings → With the app closed: how messages reach the phone.
+    pub fn delivery(ui: &AppWindow) {
+        let w = ui.as_weak();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            let Some(ui) = w.upgrade() else {
+                return;
+            };
+            let (way, ways) = p::delivery();
+            ui.set_delivery(i32::from(way));
+            ui.set_can_unifiedpush(ways & (1 << p::delivery::UNIFIEDPUSH) != 0);
+            ui.set_can_firebase(ways & (1 << p::delivery::FIREBASE) != 0);
+        });
+        let w = ui.as_weak();
+        p::on_delivery(move |way| {
+            let _ = w.upgrade_in_event_loop(move |ui| ui.set_delivery(i32::from(way)));
+        });
+        ui.on_set_delivery(|way| p::set_delivery(u8::try_from(way).unwrap_or(0)));
     }
 }
 #[cfg(not(desktop))]

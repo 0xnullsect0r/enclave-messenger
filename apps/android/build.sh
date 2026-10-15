@@ -49,10 +49,12 @@ if [ -z "${ANDROID_KEYSTORE_FILE:-}" ]; then
     -alias enclave-run -keyalg EC -groupname secp384r1 -validity 30 -dname "CN=Enclave dry run" > /dev/null
 fi
 
-(cd "$APP" && "$GRADLE_DIR/bin/gradle" --no-daemon --console=plain assembleRelease bundleRelease)
-apks=$APP/app/build/outputs/apk/release
-cp "$apks/app-universal-release.apk" "$OUT/Enclave-$V-android.apk"
-cp "$apks/app-arm64-v8a-release.apk" "$OUT/Enclave-$V-android-arm64-v8a.apk"
-cp "$apks/app-x86_64-release.apk" "$OUT/Enclave-$V-android-x86_64.apk"
-cp "$APP/app/build/outputs/bundle/release/app-release.aab" "$OUT/Enclave-$V.aab"
+# The APKs are the build with no Google code (fdroid); the app bundle for
+# Google Play adds Google's push as a choice (play).
+(cd "$APP" && "$GRADLE_DIR/bin/gradle" --no-daemon --console=plain assembleFdroidRelease bundlePlayRelease)
+apks=$APP/app/build/outputs/apk/fdroid/release
+cp "$apks/app-fdroid-universal-release.apk" "$OUT/Enclave-$V-android.apk"
+cp "$apks/app-fdroid-arm64-v8a-release.apk" "$OUT/Enclave-$V-android-arm64-v8a.apk"
+cp "$apks/app-fdroid-x86_64-release.apk" "$OUT/Enclave-$V-android-x86_64.apk"
+cp "$APP/app/build/outputs/bundle/playRelease/app-play-release.aab" "$OUT/Enclave-$V.aab"
 ls -la "$OUT"

@@ -398,7 +398,7 @@ pub mod secret_service {
 #[cfg(target_os = "android")]
 pub mod android {
     use super::Error;
-    use crate::jvm::{strings, with};
+    use crate::jvm::{strings, with_any as with};
     use jni::objects::{JByteArray, JObjectArray, JValue};
     use zeroize::Zeroizing;
 

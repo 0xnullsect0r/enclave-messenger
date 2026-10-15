@@ -21,7 +21,7 @@ use objc2_core_video::{
     CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
 };
 use objc2_foundation::{
-    NSArray, NSDate, NSDictionary, NSNotification, NSNotificationCenter, NSNumber,
+    NSArray, NSData, NSDate, NSDictionary, NSNotification, NSNotificationCenter, NSNumber,
     NSOperationQueue, NSString, NSURL,
 };
 use objc2_ui_kit::{
@@ -127,6 +127,43 @@ extern "C-unwind" fn should_allow(_: &AnyObject, _: Sel, _: &AnyObject, point: &
     Bool::new(!point.isEqualToString(keyboard))
 }
 
+/// Add `imp` to `class` as `sel`, unless it answers it already.
+///
+/// # Safety
+/// `imp` must have the signature `types` describes.
+unsafe fn add_method(class: &AnyClass, sel: Sel, imp: objc2::runtime::Imp, types: &std::ffi::CStr) {
+    if class.instance_method(sel).is_none() {
+        // SAFETY: the caller's promise; the class is a live class.
+        unsafe {
+            objc2::ffi::class_addMethod(
+                (class as *const AnyClass).cast_mut(),
+                sel,
+                imp,
+                types.as_ptr(),
+            );
+        }
+    }
+}
+
+/// APNs gave this device a token: hand it on in hex.
+extern "C-unwind" fn registered(_: &AnyObject, _: Sel, _: &AnyObject, token: &NSData) {
+    let hex: String = token.to_vec().iter().map(|b| format!("{b:02x}")).collect();
+    super::emit(super::Event::PushToken(2, hex));
+}
+
+/// A push arrived while the app runs: fetch now.
+extern "C-unwind" fn received(
+    _: &AnyObject,
+    _: Sel,
+    _: &AnyObject,
+    _: &AnyObject,
+    done: &block2::DynBlock<dyn Fn(usize)>,
+) {
+    super::emit(super::Event::Wake);
+    // UIBackgroundFetchResultNoData: the fetch runs on the vault's own time.
+    done.call((1,));
+}
+
 /// Screen security and the keyboard rule. On the main thread, once the app
 /// runs (its delegate exists).
 pub fn init() {
@@ -143,8 +180,14 @@ pub fn init() {
             UIScreenCapturedDidChangeNotification,
         )
     };
-    observe(resign, move || cover(mtm, secure()));
-    observe(active, move || cover(mtm, secure() && captured(mtm)));
+    observe(resign, move || {
+        cover(mtm, secure());
+        super::emit(super::Event::Visible(false));
+    });
+    observe(active, move || {
+        cover(mtm, secure() && captured(mtm));
+        super::emit(super::Event::Visible(true));
+    });
     observe(capture, move || cover(mtm, secure() && captured(mtm)));
     cover(mtm, secure() && captured(mtm));
 
@@ -153,25 +196,47 @@ pub fn init() {
     if let Some(d) = delegate {
         let obj: &AnyObject = d.as_ref();
         let class: &AnyClass = obj.class();
-        let sel = sel!(application:shouldAllowExtensionPointIdentifier:);
-        if class.instance_method(sel).is_none() {
-            // SAFETY: the function matches the selector's signature
-            // (BOOL from self, _cmd, UIApplication *, NSString *), and the
-            // type encoding says so.
-            unsafe {
-                let imp = std::mem::transmute::<
+        // SAFETY: each function matches its selector's signature, and the
+        // type encoding says so.
+        unsafe {
+            add_method(
+                class,
+                sel!(application:shouldAllowExtensionPointIdentifier:),
+                std::mem::transmute::<
                     extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &NSString) -> Bool,
                     objc2::runtime::Imp,
-                >(should_allow);
-                objc2::ffi::class_addMethod(
-                    (class as *const AnyClass).cast_mut(),
-                    sel,
-                    imp,
-                    c"B@:@@".as_ptr(),
-                );
-            }
+                >(should_allow),
+                c"B@:@@",
+            );
+            add_method(
+                class,
+                sel!(application:didRegisterForRemoteNotificationsWithDeviceToken:),
+                std::mem::transmute::<
+                    extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &NSData),
+                    objc2::runtime::Imp,
+                >(registered),
+                c"v@:@@",
+            );
+            add_method(
+                class,
+                sel!(application:didReceiveRemoteNotification:fetchCompletionHandler:),
+                std::mem::transmute::<
+                    extern "C-unwind" fn(
+                        &AnyObject,
+                        Sel,
+                        &AnyObject,
+                        &AnyObject,
+                        &block2::DynBlock<dyn Fn(usize)>,
+                    ),
+                    objc2::runtime::Imp,
+                >(received),
+                c"v@:@@@?",
+            );
         }
     }
+    // APNs: the token comes back to `registered` (Maximum privacy never
+    // registers it with a server; the vault refuses there).
+    UIApplication::sharedApplication(mtm).registerForRemoteNotifications();
 
     let center = UNUserNotificationCenter::currentNotificationCenter();
     let done = RcBlock::new(|_: Bool, _: *mut objc2_foundation::NSError| {});
@@ -532,3 +597,9 @@ pub(super) fn set_screen_security(on: bool) {
         cover(mtm, on && captured(mtm));
     }
 }
+
+pub(super) fn delivery() -> (u8, u8) {
+    (super::delivery::APPLE, 1 << super::delivery::APPLE)
+}
+
+pub(super) fn set_delivery(_: u8) {}

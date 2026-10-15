@@ -23,6 +23,28 @@ android {
         versionName = enclaveVersion
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // fdroid: no Google code (UnifiedPush, or staying connected); the
+    // release APKs. play: adds Google's push, off until chosen; the app
+    // bundle for Google Play. Its Firebase project comes from the build's
+    // environment (FCM_*, docs/10-push.md §5); without it the choice
+    // isn't offered.
+    flavorDimensions += "store"
+    productFlavors {
+        create("fdroid") {
+            dimension = "store"
+        }
+        create("play") {
+            dimension = "store"
+            for (k in listOf("FCM_PROJECT_ID", "FCM_APP_ID", "FCM_API_KEY", "FCM_SENDER_ID")) {
+                buildConfigField("String", k, "\"" + (System.getenv(k) ?: "") + "\"")
+            }
+        }
+    }
+
     signingConfigs {
         create("release") {
             storeFile = file(keystore ?: "${layout.buildDirectory.get()}/run.keystore")
@@ -64,4 +86,8 @@ android {
             useLegacyPackaging = false
         }
     }
+}
+
+dependencies {
+    "playImplementation"("com.google.firebase:firebase-messaging:25.1.3")
 }

@@ -29,8 +29,16 @@ pub fn vault_binary() -> Option<std::path::PathBuf> {
     p.exists().then_some(p)
 }
 
+/// On a phone the vault runs on a thread and outlives the window
+/// ([`phone::attach`]); returns its channels (never a separate process).
+#[cfg(not(desktop))]
+pub fn start(mode: Mode, _single_process: bool) -> (Channels, bool) {
+    (phone::attach(mode), false)
+}
+
 /// Start the engine: as a separate process when possible, otherwise on a
 /// thread. Returns the channels and whether the vault is a separate process.
+#[cfg(desktop)]
 pub fn start(mode: Mode, single_process: bool) -> (Channels, bool) {
     if !single_process && let Some(bin) = vault_binary() {
         match spawn_process(&bin, &mode) {
@@ -243,4 +251,98 @@ pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Chan
 #[cfg(not(any(unix, windows)))]
 pub fn spawn_process(_: &std::path::Path, _: &Mode) -> std::io::Result<Channels> {
     Err(std::io::Error::other("not supported on this platform yet"))
+}
+
+/// On a phone the vault runs as long as the process, not the window: the
+/// system can destroy and remake the activity, and with the app in the
+/// background (Android's foreground service keeping it alive) messages
+/// still arrive and are announced. One vault per process; each window
+/// attaches to it, and while none is, what it would have shown as a
+/// notification goes to the phone's notifications.
+#[cfg(not(desktop))]
+pub mod phone {
+    use super::{Channels, Cmd, Out};
+    use enclave_vault::Mode;
+    use std::sync::{Arc, Mutex, OnceLock};
+    use tokio::sync::mpsc;
+
+    struct Shared {
+        tx: mpsc::UnboundedSender<Cmd>,
+        window: Arc<Mutex<Option<mpsc::UnboundedSender<Out>>>>,
+    }
+
+    static ENGINE: OnceLock<Shared> = OnceLock::new();
+
+    /// The process's vault, started with `mode` if there is none yet;
+    /// whether it was started now.
+    fn engine(mode: Mode) -> (&'static Shared, bool) {
+        let mut fresh = false;
+        let shared = ENGINE.get_or_init(|| {
+            fresh = true;
+            let (tx, mut out_rx) = enclave_vault::spawn(mode);
+            let window: Arc<Mutex<Option<mpsc::UnboundedSender<Out>>>> = Arc::new(Mutex::new(None));
+            let to = Arc::clone(&window);
+            let _ = std::thread::Builder::new()
+                .name("enclave-outputs".into())
+                .spawn(move || {
+                    while let Some(out) = out_rx.blocking_recv() {
+                        let Ok(mut w) = to.lock() else {
+                            return;
+                        };
+                        let out = match w.as_ref() {
+                            Some(win) => match win.send(out) {
+                                Ok(()) => continue,
+                                Err(e) => {
+                                    // The window is gone.
+                                    *w = None;
+                                    e.0
+                                }
+                            },
+                            None => out,
+                        };
+                        if let Out::Notify(n) = out {
+                            enclave_platform::phone::notify(&n.title, &n.body);
+                        }
+                    }
+                });
+            // What the phone says on its own becomes commands.
+            let events = tx.clone();
+            enclave_platform::phone::on_event(move |e| {
+                use enclave_platform::phone::Event;
+                let _ = events.send(match e {
+                    Event::Visible(v) => Cmd::Visible(v),
+                    Event::PushToken(p, t) => Cmd::PushToken(p, t),
+                    Event::Wake => Cmd::Wake,
+                });
+            });
+            Shared { tx, window }
+        });
+        (shared, fresh)
+    }
+
+    /// The process's vault (started with `mode` the first time), with a
+    /// fresh output channel for this window.
+    pub fn attach(mode: Mode) -> Channels {
+        let (shared, fresh) = engine(mode);
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        if let Ok(mut w) = shared.window.lock() {
+            *w = Some(out_tx);
+        }
+        if !fresh {
+            let _ = shared.tx.send(Cmd::Reattach);
+        }
+        (shared.tx.clone(), out_rx)
+    }
+
+    /// Start the process's vault with no window (Android's background
+    /// service), if it isn't running.
+    pub fn run(mode: Mode) {
+        let _ = engine(mode);
+    }
+
+    /// A command to the running vault (a push token, a wake), if there is
+    /// one.
+    pub fn send(cmd: Cmd) -> bool {
+        ENGINE.get().is_some_and(|s| s.tx.send(cmd).is_ok())
+    }
 }

@@ -375,6 +375,9 @@ struct Engine {
     net_failures: u32,
     /// On the backup route (the user chose it).
     backup_route: bool,
+    /// The window is in front (the Foreground profile; Background when
+    /// not, unless Maximum).
+    visible: bool,
     /// The user said "Keep waiting": not offered again until the mixnet
     /// has worked once more.
     backup_declined: bool,
@@ -996,6 +999,7 @@ pub async fn run_with(
         prewallet: None,
         net_failures: 0,
         backup_route: false,
+        visible: true,
         backup_declined: false,
         tor_blocked: false,
         bridges_at_start: String::new(),
@@ -1313,9 +1317,20 @@ impl Engine {
     }
 
     async fn handle(&mut self, cmd: Cmd) {
-        self.last_use = std::time::Instant::now();
         // Locked by the app PIN, the profile is open but the window gets
-        // nothing until the PIN (or the emergency PIN) comes.
+        // nothing until the PIN (or the emergency PIN) comes. What the
+        // phone says on its own (in front or not, push, a new window,
+        // which gets the locked state) still counts.
+        let phone = matches!(
+            cmd,
+            Cmd::Visible(_) | Cmd::PushToken(..) | Cmd::Wake | Cmd::Reattach
+        );
+        if phone {
+            self.handle_cmd(cmd).await;
+            self.apply_privacy();
+            return;
+        }
+        self.last_use = std::time::Instant::now();
         if self.pin_locked && !matches!(cmd, Cmd::Unlock(_) | Cmd::UnlockBiometric(_)) {
             return;
         }
@@ -1613,6 +1628,43 @@ impl Engine {
                         }
                         Err(_) => "That PIN isn't right.".into(),
                     };
+                }
+            }
+            Cmd::Visible(on) => {
+                self.visible = on;
+                self.apply_privacy();
+            }
+            Cmd::PushToken(platform, token) => {
+                if let Some(c) = self.client.as_mut() {
+                    let result = if token.is_empty() {
+                        c.unregister_push().await
+                    } else {
+                        let platform = match platform {
+                            1 => enclave_core::PushPlatform::UnifiedPush,
+                            2 => enclave_core::PushPlatform::Apns,
+                            _ => enclave_core::PushPlatform::Fcm,
+                        };
+                        // FCM wakes carry nothing, so Poisson dummy wakes
+                        // hide when real ones come (`docs/10-push.md` §5).
+                        let dummies = platform == enclave_core::PushPlatform::Fcm;
+                        c.register_push_listed(platform, token.as_bytes(), dummies)
+                            .await
+                    };
+                    if let Err(e) = result {
+                        eprintln!("enclave-vault: push registration: {e}");
+                    }
+                }
+            }
+            Cmd::Reattach => {
+                // A new window has none of the pictures and starts from
+                // the whole state.
+                self.previews.clear();
+                self.push();
+            }
+            Cmd::Wake => {
+                if self.client.is_some() {
+                    self.ensure_mixnet().await;
+                    self.sync().await;
                 }
             }
             Cmd::SetPreviews(on) => {
@@ -3047,8 +3099,10 @@ impl Engine {
         if let Some(s) = &self.shaper {
             s.set_shaping(Shaping::On(if maximum {
                 Profile::Maximum
-            } else {
+            } else if self.visible {
                 Profile::Foreground
+            } else {
+                Profile::Background
             }));
         }
     }

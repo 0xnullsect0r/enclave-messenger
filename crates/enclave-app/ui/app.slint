@@ -836,6 +836,12 @@ export component AppWindow inherits Window {
     callback secure-account();
     callback set-previews(bool);
     in property <bool> previews;
+    // How messages reach the phone with the app closed (Android): 0 stay
+    // connected, 1 UnifiedPush, 3 Google's push.
+    callback set-delivery(int);
+    in property <int> delivery;
+    in property <bool> can-unifiedpush;
+    in property <bool> can-firebase;
     in property <bool> securing;
     callback unlock-root(string);
     in property <bool> has-root-pin;
@@ -2833,6 +2839,21 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             alignment: start;
             QuietButton { text: root.previews ? "Turn previews off" : "Show previews"; outlined: true; clicked => { root.set-previews(!root.previews); } }
+        }
+        if root.can-unifiedpush || root.can-firebase: Body { text: "With the app closed"; font-weight: 600; }
+        if root.can-unifiedpush || root.can-firebase: Secondary {
+            text: root.delivery == 1
+                ? "Your push service (UnifiedPush) wakes Enclave when something arrives. It learns only that something arrived, not what or from whom."
+                : root.delivery == 3
+                ? "Google's push service wakes Enclave when something arrives. Google learns only that something arrived, not what or from whom."
+                : "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery.";
+        }
+        if root.can-unifiedpush || root.can-firebase: HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            if root.delivery != 0: QuietButton { text: "Stay connected"; outlined: true; clicked => { root.set-delivery(0); } }
+            if root.delivery != 1 && root.can-unifiedpush: QuietButton { text: "Use UnifiedPush"; outlined: true; clicked => { root.set-delivery(1); } }
+            if root.delivery != 3 && root.can-firebase: QuietButton { text: "Use Google's push"; outlined: true; clicked => { root.set-delivery(3); } }
         }
         Body { text: "Secure my account"; font-weight: 600; }
         Secondary { text: root.securing ? "Securing your account. This finishes on its own." : "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."; }

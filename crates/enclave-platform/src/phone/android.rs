@@ -3,8 +3,10 @@
 //! Calls go to its public methods; answers come back through its native
 //! methods, which [`init`] registers.
 
+use super::Event;
 use super::{Camera, Pick};
-use crate::jvm::{strings, with};
+pub use crate::jvm::{attach_activity, attach_service};
+use crate::jvm::{strings, with, with_any};
 use jni::objects::{JByteArray, JClass, JObjectArray, JString, JValue};
 use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, NativeMethod};
@@ -175,7 +177,7 @@ pub(super) fn save(name: &str, bytes: Vec<u8>, done: Saved) {
 }
 
 pub(super) fn notify(title: &str, body: &str) {
-    let _ = with(|env, a| {
+    let _ = with_any(|env, a| {
         let t = env.new_string(title)?;
         let b = env.new_string(body)?;
         env.call_method(
@@ -216,4 +218,44 @@ pub(super) fn set_screen_security(on: bool) {
         env.call_method(a, "setSecure", "(Z)V", &[JValue::Bool(u8::from(on))])
             .map(|_| ())
     });
+}
+
+pub(super) fn delivery() -> (u8, u8) {
+    let way = with(|env, a| env.call_method(a, "delivery", "()I", &[])?.i()).unwrap_or(0);
+    let ways = with(|env, a| env.call_method(a, "deliveryChoices", "()I", &[])?.i()).unwrap_or(1);
+    (
+        u8::try_from(way).unwrap_or(0),
+        u8::try_from(ways).unwrap_or(1),
+    )
+}
+
+pub(super) fn set_delivery(way: u8) {
+    let _ = with(|env, a| {
+        env.call_method(a, "setDelivery", "(I)V", &[JValue::Int(i32::from(way))])
+            .map(|_| ())
+    });
+}
+
+/// An event from the Java side (`Native.event`): 1 in front ("1") or not,
+/// 2 a push token ("platform:token"), 3 a wake, 4 the activity is gone,
+/// 5 the way messages arrive changed (its number).
+pub fn event(kind: i32, data: &str) {
+    let e = match kind {
+        4 => {
+            crate::jvm::detach_activity();
+            return;
+        }
+        5 => {
+            super::delivery_changed(data.parse().unwrap_or(0));
+            return;
+        }
+        1 => Event::Visible(data == "1"),
+        2 => {
+            let (p, t) = data.split_once(':').unwrap_or(("0", ""));
+            Event::PushToken(p.parse().unwrap_or(0), t.to_string())
+        }
+        3 => Event::Wake,
+        _ => return,
+    };
+    super::emit(e);
 }

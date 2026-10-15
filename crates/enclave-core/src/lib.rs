@@ -42,6 +42,7 @@ pub use client::{
     TicketWallet, fetch_due,
 };
 pub use enclave_kt::KtPolicy;
+pub use enclave_push_relay::Platform as PushPlatform;
 
 use enclave_rpc::api::Status;
 

@@ -15,7 +15,9 @@ name: Release
 # APPLE_TEAM_ID, ASC_API_KEY_P8_BASE64, ASC_API_KEY_ID, ASC_API_KEY_ISSUER_ID,
 # and for iOS IOS_DISTRIBUTION_P12_BASE64, IOS_DISTRIBUTION_P12_PASSWORD,
 # IOS_PROVISIONING_PROFILE_BASE64), release-android (ANDROID_KEYSTORE_BASE64,
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) and aur
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD; optionally
+# FCM_PROJECT_ID, FCM_APP_ID, FCM_API_KEY, FCM_SENDER_ID for Google's push
+# in the Play bundle) and aur
 # (AUR_SSH_PRIVATE_KEY, AUR_KNOWN_HOSTS). Windows ships unsigned
 # until a certificate exists: the repository variable ENCLAVE_WIN_SIGN_CMD
 # (a command with %1 for the file) signs every program and installer.
@@ -336,6 +338,12 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Google's push in the Play bundle (G6; optional: without them
+          # the Play build offers UnifiedPush and staying connected).
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_APP_ID: ${{ secrets.FCM_APP_ID }}
+          FCM_API_KEY: ${{ secrets.FCM_API_KEY }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
         run: apps/android/build.sh out
       - name: Signed, 16 KB aligned
         run: |
@@ -377,7 +385,7 @@ jobs:
           target: google_apis
           script: |
             adb install -r dist/Enclave-${{ needs.prepare.outputs.version }}-android.apk
-            adb shell am start -W -n com.aricummings.enclave/android.app.NativeActivity
+            adb shell am start -W -n com.aricummings.enclave/.EnclaveActivity
             sleep 20
             adb shell pidof com.aricummings.enclave
             adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | grep -q com.aricummings.enclave

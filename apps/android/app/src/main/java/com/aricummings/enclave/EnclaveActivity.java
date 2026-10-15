@@ -73,6 +73,80 @@ public class EnclaveActivity extends android.app.NativeActivity {
                         != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_NOTIFY);
         }
+        EnclaveService.windowOpen = true;
+        // Staying connected (the default) keeps the vault running once the
+        // window closes; with a push service, wakes start it.
+        if (EnclaveService.delivery(this) == 0) {
+            EnclaveService.start(this);
+        }
+        if (EnclaveService.delivery(this) == Native.FCM) {
+            Fcm.start(this);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Native.event(Native.VISIBLE, "1");
+    }
+
+    @Override
+    protected void onPause() {
+        Native.event(Native.VISIBLE, "0");
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        Native.event(Native.ACTIVITY_GONE, "");
+        EnclaveService.windowOpen = false;
+        super.onDestroy();
+    }
+
+    // How messages arrive with the app closed ---------------------------------
+
+    /** 0 stay connected, 1 UnifiedPush, 3 Google's push. */
+    public int delivery() {
+        return EnclaveService.delivery(this);
+    }
+
+    /** The ways this phone offers, as bits (1 << way). */
+    public int deliveryChoices() {
+        int ways = 1;
+        if (!UnifiedPush.distributors(this).isEmpty()) {
+            ways |= 1 << Native.UNIFIEDPUSH;
+        }
+        if (Fcm.available()) {
+            ways |= 1 << Native.FCM;
+        }
+        return ways;
+    }
+
+    /** Use `way` from now on; reported back through Native.event. */
+    public void setDelivery(int way) {
+        runOnUiThread(() -> {
+            int was = EnclaveService.delivery(this);
+            if (way == was) {
+                return;
+            }
+            if (was == Native.UNIFIEDPUSH) {
+                UnifiedPush.stop(this);
+            } else if (was == Native.FCM) {
+                Fcm.stop(this);
+            }
+            if (way == Native.UNIFIEDPUSH) {
+                // Its link screen answers in onActivityResult.
+                UnifiedPush.link(this);
+                return;
+            }
+            EnclaveService.prefs(this).edit().putInt(EnclaveService.DELIVERY, way).apply();
+            if (way == Native.FCM) {
+                Fcm.start(this);
+            } else {
+                EnclaveService.start(this);
+            }
+            Native.event(Native.DELIVERY, Integer.toString(way));
+        });
     }
 
     /** Screen security on or off (Settings → Hide from screenshots). */
@@ -123,6 +197,11 @@ public class EnclaveActivity extends android.app.NativeActivity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == UnifiedPush.LINK_REQUEST) {
+            UnifiedPush.linked(this, result, data);
+            Native.event(Native.DELIVERY, Integer.toString(EnclaveService.delivery(this)));
+            return;
+        }
         if (request >= SAVE_BASE) {
             int id = request - SAVE_BASE;
             byte[] bytes = pendingSave;

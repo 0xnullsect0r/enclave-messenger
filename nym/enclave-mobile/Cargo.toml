@@ -9,9 +9,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
-# The workspace forbids `unsafe`; this crate needs it twice, each marked:
-# the entry point Android looks up by name, and setting the proxy
-# variables once at start.
+# The workspace forbids `unsafe`; this crate needs it for a few marked
+# places: the entry points Android looks up by name (android_main and the
+# `Native` class's methods), and setting the proxy variables once at start.
 [lints.rust]
 unsafe_code = "deny"
 missing_docs = "deny"
@@ -31,5 +31,9 @@ enclave-mediad = { path = "../../crates/enclave-mediad" }
 enclave-netd = { path = "../../crates/enclave-netd" }
 enclave-platform = { path = "../../crates/enclave-platform" }
 enclave-tord = { path = "../../crates/enclave-tord" }
+enclave-vault = { path = "../../crates/enclave-vault" }
 enclave-nymd = { path = "../enclave-nymd" }
 slint = { version = "1.18", default-features = false }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

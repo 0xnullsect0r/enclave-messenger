@@ -10,7 +10,9 @@
 //!   content-free, high-priority data message, authorised by an OAuth access
 //!   token from the service account (an RS256 JWT assertion, exchanged at
 //!   its token URI and cached until a minute before it expires).
-//! * **UnifiedPush**: a content-free `POST` to the distributor's endpoint,
+//! * **UnifiedPush**: a `POST` of one fixed byte (`1`, the same for every
+//!   wake, so it says nothing; distributors deliver 1 to 4,096 bytes) to
+//!   the distributor's endpoint,
 //!   over TLS for `https://` (the WebPKI roots), or plain `http://` (a
 //!   distributor on the device's own network).
 //!
@@ -355,9 +357,10 @@ impl Deliverer {
     async fn unified_push(&self, d: &Delivery) -> Result<()> {
         let url = std::str::from_utf8(&d.token)
             .map_err(|_| DeliverError::Config("endpoint isn't text".into()))?;
-        // Content-free: the wake itself is the message.
+        // The wake itself is the message: one fixed byte, as distributors
+        // expect a body (UnifiedPush AND_3: 1 to 4,096 bytes).
         let headers = [("ttl", "60".to_string()), ("urgency", "high".to_string())];
-        ok(self.request(url, "POST", &headers, Vec::new()).await?)
+        ok(self.request(url, "POST", &headers, b"1".to_vec()).await?)
     }
 
     fn apns_token(&self, now: u64) -> Result<String> {

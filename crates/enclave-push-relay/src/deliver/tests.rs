@@ -317,7 +317,7 @@ async fn unified_push_over_tls_and_plain() {
     let s = seen.lock().unwrap()[0].clone();
     assert_eq!((s.method.as_str(), s.path.as_str()), ("POST", "/up/AbC123"));
     assert_eq!(s.version, hyper::Version::HTTP_11);
-    assert!(s.body.is_empty(), "content-free");
+    assert_eq!(s.body, b"1", "one fixed byte, no content");
     assert_eq!(header(&s, "ttl"), "60");
     let gone = format!("https://localhost:{port}/gone");
     assert!(matches!(
@@ -368,4 +368,8 @@ async fn unified_push_over_tls_and_plain() {
     let req = h.await.unwrap().to_lowercase();
     assert!(req.starts_with("post /up/x http/1.1\r\n"), "{req}");
     assert!(req.contains(&format!("host: {addr}")), "{req}");
+    assert!(
+        req.contains("content-length: 1\r\n"),
+        "one fixed byte: {req}"
+    );
 }

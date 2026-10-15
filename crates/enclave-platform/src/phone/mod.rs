@@ -39,6 +39,38 @@ pub enum Camera {
     Failed(String),
 }
 
+/// What the phone tells the app on its own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Event {
+    /// The app came to the front (true) or left it.
+    Visible(bool),
+    /// A push token for this app: platform (1 UnifiedPush endpoint, 2 APNs
+    /// device token in hex, 3 FCM token) and the token; empty when the
+    /// push service dropped the app.
+    PushToken(u8, String),
+    /// A push arrived: time to fetch.
+    Wake,
+}
+
+type Listener = Box<dyn Fn(Event) + Send + Sync>;
+static LISTENER: std::sync::RwLock<Option<Listener>> = std::sync::RwLock::new(None);
+
+/// Where [`Event`]s go (one listener; a later call replaces it).
+pub fn on_event(f: impl Fn(Event) + Send + Sync + 'static) {
+    if let Ok(mut l) = LISTENER.write() {
+        *l = Some(Box::new(f));
+    }
+}
+
+/// Hand an event to the listener.
+pub(crate) fn emit(e: Event) {
+    if let Ok(l) = LISTENER.read()
+        && let Some(f) = l.as_ref()
+    {
+        f(e);
+    }
+}
+
 /// Set up what the app needs from the platform (Android: the native
 /// methods; iOS: screen security and the keyboard rule). Once, at start.
 pub fn init() {
@@ -89,6 +121,51 @@ pub fn stop_camera() {
 /// screen while it is recorded or mirrored.
 pub fn set_screen_security(on: bool) {
     imp::set_screen_security(on);
+}
+
+/// How messages reach this phone while the app is closed (its numbers are
+/// the push platforms' in [`Event::PushToken`]).
+pub mod delivery {
+    /// Stay connected: Android keeps Enclave running in the background (a
+    /// foreground service), which works with no push service at all.
+    pub const CONNECTED: u8 = 0;
+    /// A UnifiedPush distributor the person chose wakes Enclave.
+    pub const UNIFIEDPUSH: u8 = 1;
+    /// Apple's push service (iOS, always).
+    pub const APPLE: u8 = 2;
+    /// Google's push service (Android, the Play build).
+    pub const FIREBASE: u8 = 3;
+}
+
+/// The way messages reach this phone with the app closed ([`delivery`]),
+/// and the ways it offers (bit `1 << way` set for each).
+pub fn delivery() -> (u8, u8) {
+    imp::delivery()
+}
+
+/// Use `way` from now on ([`delivery`]). UnifiedPush first asks the person
+/// to pick their distributor; [`on_delivery`] hears the outcome.
+pub fn set_delivery(way: u8) {
+    imp::set_delivery(way);
+}
+
+type DeliveryListener = Box<dyn Fn(u8) + Send + Sync>;
+static DELIVERY: std::sync::RwLock<Option<DeliveryListener>> = std::sync::RwLock::new(None);
+
+/// Where a change of [`delivery`] is reported (one listener).
+pub fn on_delivery(f: impl Fn(u8) + Send + Sync + 'static) {
+    if let Ok(mut l) = DELIVERY.write() {
+        *l = Some(Box::new(f));
+    }
+}
+
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+pub(crate) fn delivery_changed(way: u8) {
+    if let Ok(l) = DELIVERY.read()
+        && let Some(f) = l.as_ref()
+    {
+        f(way);
+    }
 }
 
 /// Whether a camera frame needs mirroring to look right (the back camera
