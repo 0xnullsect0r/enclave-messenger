@@ -21,6 +21,7 @@ pub type Target = (&'static str, fn(&[u8]));
 thread_local! {
     static SERVER: RefCell<Option<enclave_server::Server>> = const { RefCell::new(None) };
     static RELAY: RefCell<Option<enclave_relay::Relay>> = const { RefCell::new(None) };
+    static PUSH: RefCell<Option<enclave_push_relay::Relay>> = const { RefCell::new(None) };
 }
 
 fn wire(d: &[u8]) {
@@ -182,8 +183,48 @@ fn media(d: &[u8]) {
     let _ = enclave_media::video::decode_units(d);
 }
 
+/// What crosses the mixnet and the push and credential paths: the
+/// mixnet's frames and pacing (from nymd, the ingress, the pipe), held
+/// ticketbooks, Privacy Pass tokens, proof-of-work solutions, push relay
+/// keys and sealed push tokens, the notification extension's key table and
+/// capsules, and backup archives (a restored file is the user's, but may
+/// come from anywhere).
+fn net(d: &[u8]) {
+    use enclave_nym::frame::{Reply, Request, Wake};
+    let _ = Request::decode(d);
+    let _ = Wake::decode(d);
+    let _ = Reply::decode(d);
+    let _ = enclave_nym::Pacing::decode(d);
+    let _ = enclave_nym::Held::decode(d);
+    let _ = enclave_tokens::privpass::Token::decode(d);
+    use enclave_tokens::equihash::{SOLUTION_LEN, Solution, verify};
+    if let Some((head, rest)) = d.split_first_chunk::<SOLUTION_LEN>() {
+        let _ = verify(rest, &Solution::from_bytes(head));
+    }
+    let _ = enclave_push_relay::RelayPublic::decode(d);
+    PUSH.with(|p| {
+        let mut p = p.borrow_mut();
+        let relay = p.get_or_insert_with(|| {
+            enclave_push_relay::Relay::new(vec![enclave_push_relay::RelaySecret::from_seed(
+                1, &[7; 32],
+            )])
+        });
+        let _ = relay.open(d);
+    });
+    if let Ok(t) = enclave_proto::notify::KeyTable::decode(d) {
+        let _ = t.open(d);
+    }
+    let _ = enclave_proto::notify::KeyTable {
+        day: 20_000,
+        entries: vec![("a".into(), [1; 32], Some([2; 32]))],
+    }
+    .open(d);
+    let _ = enclave_store::backup::read(d, &enclave_crypto::seal::SealKey::from_bytes([3; 32]));
+}
+
 /// Every target.
 pub const TARGETS: &[Target] = &[
+    ("net", net),
     ("wire", wire),
     ("proto", proto),
     ("rpc", rpc),

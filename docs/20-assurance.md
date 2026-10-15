@@ -71,7 +71,7 @@ Findings and limits:
 
 ### 1.8 Fuzzing
 
-Wire unit, envelope (all layouts), poll object, manifest, bundle, KT proof, Protobuf content, IPC messages, SFrame, the chunk container, and every media decoder inside the sandbox. Continuous fuzzing via OSS-Fuzz is applied for at M10. M1 exit: zero differential mismatches in 10⁷ fuzz iterations.
+Wire unit, envelope (all layouts), poll object, manifest, bundle, KT proof, Protobuf content, IPC messages, SFrame, the chunk container, and every media decoder inside the sandbox. Continuous fuzzing via OSS-Fuzz is applied for at M10. As implemented: the targets are in `crates/enclave-fuzz` (`wire`, `proto`, `rpc`, `content`, `calls`, `server`, `relay`, `group_open`, `ipc`, `media`, and `net`: mixnet frames and pacing, held ticketbooks, Privacy Pass tokens, Equihash solutions, push relay keys and sealed tokens, the notification key table and capsules, backup archives); `cargo test -p enclave-fuzz` mutates seeded samples on every CI run, and `nightly.yml` runs each under cargo-fuzz for ten minutes a night, keeping any crashing input. M1 exit: zero differential mismatches in 10⁷ fuzz iterations.
 
 ### 1.9 End to end
 

@@ -76,3 +76,9 @@ name = "media"
 path = "fuzz_targets/media.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "net"
+path = "fuzz_targets/net.rs"
+test = false
+doc = false

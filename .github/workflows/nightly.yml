@@ -56,3 +56,29 @@ jobs:
         with:
           name: flathub-manifest
           path: flathub/
+
+  fuzz:
+    # Coverage-guided fuzzing of every parser (fuzz/, docs/20-assurance.md):
+    # ten minutes a target each night; a crash fails the job and its input
+    # is kept as an artifact (`enclave_fuzz::run(name, bytes)` replays it).
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [wire, proto, rpc, content, calls, server, relay, group_open, ipc, media, net]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Nightly toolchain and cargo-fuzz
+        run: |
+          rustup toolchain install nightly --profile minimal
+          cargo +nightly install cargo-fuzz --locked --version 0.13.2
+      - name: Fuzz
+        working-directory: fuzz
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=600 -rss_limit_mb=4096
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/

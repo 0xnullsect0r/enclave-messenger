@@ -25,6 +25,10 @@ enclave-server = { path = "../enclave-server" }
 enclave-core = { path = "../enclave-core" }
 enclave-calls = { path = "../enclave-calls" }
 enclave-relay = { path = "../enclave-relay" }
+enclave-nym = { path = "../enclave-nym" }
+enclave-tokens = { path = "../enclave-tokens" }
+enclave-push-relay = { path = "../enclave-push-relay" }
+enclave-store = { path = "../enclave-store" }
 
 [dev-dependencies]
 png = "0.18"
