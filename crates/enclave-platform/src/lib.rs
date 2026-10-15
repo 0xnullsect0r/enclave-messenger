@@ -14,6 +14,8 @@
 //!   capture.
 //! - [`biometric`] (feature `biometric`): Touch ID and Windows Hello for
 //!   the app lock.
+//! - `phone` (feature `phone`, Android and iOS): file pickers, the camera,
+//!   notifications, the clipboard, screen security.
 //! - `seatbelt` (macOS): each helper process confines itself.
 //! - `appcontainer` (Windows): mediad starts in an AppContainer.
 //!
@@ -27,9 +29,13 @@ pub mod backup;
 #[cfg(feature = "biometric")]
 pub mod biometric;
 pub mod dit;
+#[cfg(all(target_os = "android", any(feature = "keystores", feature = "phone")))]
+mod jvm;
 #[cfg(feature = "keystores")]
 pub mod keystore;
 pub mod mem;
+#[cfg(all(feature = "phone", any(target_os = "android", target_os = "ios")))]
+pub mod phone;
 pub mod process;
 #[cfg(target_os = "macos")]
 pub mod seatbelt;

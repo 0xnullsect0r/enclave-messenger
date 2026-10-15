@@ -59,7 +59,13 @@ pub fn native_id(window: &impl HasWindowHandle) -> u64 {
 }
 
 /// Whether [`exclude_from_capture`] does anything on this platform.
-pub const CAN_EXCLUDE_FROM_CAPTURE: bool = cfg!(any(windows, target_os = "macos"));
+/// (On Android and iOS the app's `phone` services do it instead.)
+pub const CAN_EXCLUDE_FROM_CAPTURE: bool = cfg!(any(
+    windows,
+    target_os = "macos",
+    target_os = "android",
+    target_os = "ios"
+));
 
 /// The person asked the system for less motion (macOS "Reduce motion",
 /// Windows "Show animations" off, GNOME's animations off, read through

@@ -89,3 +89,4 @@ opt-level = 2
 # Upstream crates built with a small change (third_party/PATCHES.md).
 [patch.crates-io]
 ptrs = { path = "third_party/ptrs" }
+i-slint-backend-android-activity = { path = "third_party/i-slint-backend-android-activity" }

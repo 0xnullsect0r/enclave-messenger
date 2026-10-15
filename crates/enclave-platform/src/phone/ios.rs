@@ -1,0 +1,534 @@
+//! iOS: UIKit and friends through objc2. Everything here runs on the main
+//! thread (the app's UI thread on iOS) except the camera's frames, which
+//! arrive on a queue of their own.
+
+use super::{Camera, Pick};
+use block2::RcBlock;
+use objc2::rc::Retained;
+use objc2::runtime::{AnyClass, AnyObject, Bool, NSObject, NSObjectProtocol, ProtocolObject, Sel};
+use objc2::{
+    AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel,
+};
+use objc2_av_foundation::{
+    AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput,
+    AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeVideo,
+};
+use objc2_core_media::CMSampleBuffer;
+use objc2_core_video::{
+    CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane,
+    CVPixelBufferGetHeightOfPlane, CVPixelBufferGetWidthOfPlane, CVPixelBufferLockBaseAddress,
+    CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
+};
+use objc2_foundation::{
+    NSArray, NSDate, NSDictionary, NSNotification, NSNotificationCenter, NSNumber,
+    NSOperationQueue, NSString, NSURL,
+};
+use objc2_ui_kit::{
+    UIApplication, UIApplicationDidBecomeActiveNotification,
+    UIApplicationKeyboardExtensionPointIdentifier, UIApplicationState,
+    UIApplicationWillResignActiveNotification, UIBlurEffect, UIBlurEffectStyle,
+    UIDocumentPickerDelegate, UIDocumentPickerViewController, UIPasteboard,
+    UIPasteboardOptionExpirationDate, UIPasteboardOptionLocalOnly, UIScreen,
+    UIScreenCapturedDidChangeNotification, UIView, UIViewAutoresizing, UIVisualEffectView,
+    UIWindow,
+};
+use objc2_uniform_type_identifiers::{UTType, UTTypeData, UTTypeImage, UTTypeItem};
+use objc2_user_notifications::{
+    UNAuthorizationOptions, UNMutableNotificationContent, UNNotificationRequest,
+    UNUserNotificationCenter,
+};
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::ptr::NonNull;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+type Picked = Box<dyn FnOnce(Vec<PathBuf>) + Send>;
+type Saved = Box<dyn FnOnce(Result<String, String>) + Send>;
+type Frames = Box<dyn FnMut(Camera) + Send>;
+
+/// The tag of the cover laid over the window (screen security).
+const COVER: isize = 0x0E1C_1A7E;
+/// How long a copied text stays on the clipboard.
+const CLIPBOARD: f64 = 60.0;
+
+thread_local! {
+    /// Observers and delegates kept alive (UIKit holds them weakly).
+    static KEEP: RefCell<Vec<Retained<AnyObject>>> = const { RefCell::new(Vec::new()) };
+    static SESSION: RefCell<Option<Retained<AVCaptureSession>>> = const { RefCell::new(None) };
+}
+
+static CAMERA: Mutex<Option<Frames>> = Mutex::new(None);
+/// Screen security, on until the profile's setting says otherwise.
+static SECURE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+fn secure() -> bool {
+    SECURE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn mtm() -> Option<MainThreadMarker> {
+    MainThreadMarker::new()
+}
+
+#[allow(deprecated)]
+fn key_window(mtm: MainThreadMarker) -> Option<Retained<UIWindow>> {
+    UIApplication::sharedApplication(mtm).keyWindow()
+}
+
+/// Lay a blur over the window, or take it away.
+fn cover(mtm: MainThreadMarker, on: bool) {
+    let Some(window) = key_window(mtm) else {
+        return;
+    };
+    let view: &UIView = &window;
+    if let Some(old) = view.viewWithTag(COVER) {
+        old.removeFromSuperview();
+    }
+    if !on {
+        return;
+    }
+    let effect = UIBlurEffect::effectWithStyle(UIBlurEffectStyle::SystemMaterial, mtm);
+    let blur = UIVisualEffectView::initWithEffect(UIVisualEffectView::alloc(mtm), Some(&effect));
+    blur.setFrame(view.bounds());
+    blur.setAutoresizingMask(
+        UIViewAutoresizing::FlexibleWidth | UIViewAutoresizing::FlexibleHeight,
+    );
+    blur.setTag(COVER);
+    view.addSubview(&blur);
+}
+
+fn captured(mtm: MainThreadMarker) -> bool {
+    #[allow(deprecated)]
+    UIScreen::mainScreen(mtm).isCaptured()
+}
+
+fn observe(name: &'static NSString, f: impl Fn() + 'static) {
+    let block = RcBlock::new(move |_: NonNull<NSNotification>| f());
+    let center = NSNotificationCenter::defaultCenter();
+    // SAFETY: the block only touches UIKit on the main queue it is
+    // delivered on, and the observer token is kept for the app's life.
+    let token = unsafe {
+        center.addObserverForName_object_queue_usingBlock(
+            Some(name),
+            None,
+            Some(&NSOperationQueue::mainQueue()),
+            &block,
+        )
+    };
+    KEEP.with(|k| k.borrow_mut().push(Retained::<AnyObject>::from(token)));
+}
+
+/// The app delegate's answer to `application:shouldAllowExtensionPointIdentifier:`:
+/// no third-party keyboards, which could log what is typed.
+extern "C-unwind" fn should_allow(_: &AnyObject, _: Sel, _: &AnyObject, point: &NSString) -> Bool {
+    // SAFETY: a constant UIKit defines.
+    let keyboard = unsafe { UIApplicationKeyboardExtensionPointIdentifier };
+    Bool::new(!point.isEqualToString(keyboard))
+}
+
+/// Screen security and the keyboard rule. On the main thread, once the app
+/// runs (its delegate exists).
+pub fn init() {
+    let Some(mtm) = mtm() else {
+        return;
+    };
+    // The app switcher's snapshot and the screen while recorded or
+    // mirrored show a blur, not the conversation (docs/14-storage.md §5).
+    // SAFETY: constants UIKit defines.
+    let (resign, active, capture) = unsafe {
+        (
+            UIApplicationWillResignActiveNotification,
+            UIApplicationDidBecomeActiveNotification,
+            UIScreenCapturedDidChangeNotification,
+        )
+    };
+    observe(resign, move || cover(mtm, secure()));
+    observe(active, move || cover(mtm, secure() && captured(mtm)));
+    observe(capture, move || cover(mtm, secure() && captured(mtm)));
+    cover(mtm, secure() && captured(mtm));
+
+    // SAFETY: reading the delegate object to find its class.
+    let delegate = unsafe { UIApplication::sharedApplication(mtm).delegate() };
+    if let Some(d) = delegate {
+        let obj: &AnyObject = d.as_ref();
+        let class: &AnyClass = obj.class();
+        let sel = sel!(application:shouldAllowExtensionPointIdentifier:);
+        if class.instance_method(sel).is_none() {
+            // SAFETY: the function matches the selector's signature
+            // (BOOL from self, _cmd, UIApplication *, NSString *), and the
+            // type encoding says so.
+            unsafe {
+                let imp = std::mem::transmute::<
+                    extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &NSString) -> Bool,
+                    objc2::runtime::Imp,
+                >(should_allow);
+                objc2::ffi::class_addMethod(
+                    (class as *const AnyClass).cast_mut(),
+                    sel,
+                    imp,
+                    c"B@:@@".as_ptr(),
+                );
+            }
+        }
+    }
+
+    let center = UNUserNotificationCenter::currentNotificationCenter();
+    let done = RcBlock::new(|_: Bool, _: *mut objc2_foundation::NSError| {});
+    center.requestAuthorizationWithOptions_completionHandler(
+        UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound,
+        &done,
+    );
+}
+
+/// What a document picker answers.
+enum Answer {
+    Pick(Picked),
+    Save(Saved),
+}
+
+struct PickerIvars {
+    answer: RefCell<Option<Answer>>,
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "EnclavePickerDelegate"]
+    #[ivars = PickerIvars]
+    struct PickerDelegate;
+
+    unsafe impl NSObjectProtocol for PickerDelegate {}
+
+    unsafe impl UIDocumentPickerDelegate for PickerDelegate {
+        #[unsafe(method(documentPicker:didPickDocumentsAtURLs:))]
+        fn did_pick(&self, _: &UIDocumentPickerViewController, urls: &NSArray<NSURL>) {
+            let paths: Vec<PathBuf> = urls
+                .iter()
+                .filter_map(|u| u.path().map(|p| PathBuf::from(p.to_string())))
+                .collect();
+            self.answer(paths);
+        }
+
+        #[unsafe(method(documentPickerWasCancelled:))]
+        fn cancelled(&self, _: &UIDocumentPickerViewController) {
+            self.answer(Vec::new());
+        }
+    }
+);
+
+impl PickerDelegate {
+    fn new(mtm: MainThreadMarker, answer: Answer) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(PickerIvars {
+            answer: RefCell::new(Some(answer)),
+        });
+        // SAFETY: NSObject's init on a freshly allocated object.
+        unsafe { msg_send![super(this), init] }
+    }
+
+    fn answer(&self, paths: Vec<PathBuf>) {
+        let taken = self.ivars().answer.borrow_mut().take();
+        match taken {
+            Some(Answer::Pick(done)) => done(paths),
+            Some(Answer::Save(done)) => match paths.first() {
+                Some(p) => done(Ok(p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default())),
+                None => done(Err(String::new())),
+            },
+            None => {}
+        }
+        let me: *const Self = self;
+        KEEP.with(|k| {
+            k.borrow_mut()
+                .retain(|o| !std::ptr::eq(Retained::as_ptr(o).cast(), me))
+        });
+    }
+}
+
+fn present(
+    mtm: MainThreadMarker,
+    picker: &UIDocumentPickerViewController,
+    answer: Answer,
+) -> Result<(), Answer> {
+    let Some(root) = key_window(mtm).and_then(|w| w.rootViewController()) else {
+        return Err(answer);
+    };
+    let delegate = PickerDelegate::new(mtm, answer);
+    picker.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+    KEEP.with(|k| {
+        k.borrow_mut()
+            .push(Retained::into_super(Retained::into_super(delegate)))
+    });
+    root.presentViewController_animated_completion(picker, true, None);
+    Ok(())
+}
+
+pub(super) fn pick(kind: Pick, done: Picked) {
+    let Some(mtm) = mtm() else {
+        return done(Vec::new());
+    };
+    // SAFETY: constants the framework defines.
+    let ty: &UTType = unsafe {
+        match kind {
+            Pick::Backup => UTTypeData,
+            Pick::Pictures => UTTypeImage,
+            Pick::File => UTTypeItem,
+        }
+    };
+    let types = NSArray::from_slice(&[ty]);
+    let picker = UIDocumentPickerViewController::initForOpeningContentTypes_asCopy(
+        UIDocumentPickerViewController::alloc(mtm),
+        &types,
+        true,
+    );
+    picker.setAllowsMultipleSelection(kind == Pick::Pictures);
+    if let Err(Answer::Pick(done)) = present(mtm, &picker, Answer::Pick(done)) {
+        done(Vec::new());
+    }
+}
+
+pub(super) fn save(name: &str, bytes: Vec<u8>, done: Saved) {
+    let Some(mtm) = mtm() else {
+        return done(Err("the file can't be saved here".into()));
+    };
+    let safe: String = name
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+        .collect();
+    let safe = if safe.is_empty() || safe.starts_with('.') {
+        "file".into()
+    } else {
+        safe
+    };
+    let dir = std::env::temp_dir().join("export");
+    let path = dir.join(&safe);
+    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &bytes)) {
+        return done(Err(e.to_string()));
+    }
+    let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+    let urls = NSArray::from_retained_slice(&[url]);
+    let picker = UIDocumentPickerViewController::initForExportingURLs_asCopy(
+        UIDocumentPickerViewController::alloc(mtm),
+        &urls,
+        true,
+    );
+    if let Err(Answer::Save(done)) = present(mtm, &picker, Answer::Save(done)) {
+        done(Err("the file can't be saved here".into()));
+    }
+}
+
+pub(super) fn notify(title: &str, body: &str) {
+    let Some(mtm) = mtm() else {
+        return;
+    };
+    if UIApplication::sharedApplication(mtm).applicationState() == UIApplicationState::Active {
+        return;
+    }
+    let content = UNMutableNotificationContent::new();
+    content.setTitle(&NSString::from_str(title));
+    content.setBody(&NSString::from_str(body));
+    let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
+        &NSString::from_str("enclave-message"),
+        &content,
+        None,
+    );
+    UNUserNotificationCenter::currentNotificationCenter()
+        .addNotificationRequest_withCompletionHandler(&request, None);
+}
+
+pub(super) fn copy(text: &str) -> bool {
+    let board = UIPasteboard::generalPasteboard();
+    let key = NSString::from_str("public.utf8-plain-text");
+    let value = NSString::from_str(text);
+    let item: Retained<NSDictionary<NSString, AnyObject>> =
+        NSDictionary::from_slices(&[&*key], &[value.as_ref()]);
+    let items = NSArray::from_retained_slice(&[item]);
+    let local = NSNumber::new_bool(true);
+    let until = NSDate::dateWithTimeIntervalSinceNow(CLIPBOARD);
+    // SAFETY: constants UIKit defines.
+    let (k_local, k_until) = unsafe {
+        (
+            UIPasteboardOptionLocalOnly,
+            UIPasteboardOptionExpirationDate,
+        )
+    };
+    let options: Retained<NSDictionary<NSString, AnyObject>> =
+        NSDictionary::from_slices(&[k_local, k_until], &[local.as_ref(), until.as_ref()]);
+    // SAFETY: the items are plain-text dictionaries, the options the two
+    // documented keys with their documented value types.
+    unsafe { board.setItems_options(&items, &options) };
+    true
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "EnclaveCameraDelegate"]
+    #[ivars = Mutex<Instant>]
+    struct CameraDelegate;
+
+    unsafe impl NSObjectProtocol for CameraDelegate {}
+
+    unsafe impl AVCaptureVideoDataOutputSampleBufferDelegate for CameraDelegate {
+        #[unsafe(method(captureOutput:didOutputSampleBuffer:fromConnection:))]
+        unsafe fn frame(&self, _: &AVCaptureOutput, buffer: &CMSampleBuffer, _: &AVCaptureConnection) {
+            {
+                let Ok(mut last) = self.ivars().lock() else {
+                    return;
+                };
+                if last.elapsed() < Duration::from_millis(120) {
+                    return;
+                }
+                *last = Instant::now();
+            }
+            // SAFETY: the buffer is valid for this call.
+            let Some(image) = (unsafe { buffer.image_buffer() }) else {
+                return;
+            };
+            // SAFETY: locked read-only around the plane reads; the plane
+            // is `height` rows of `stride` bytes.
+            let grey = unsafe {
+                if CVPixelBufferLockBaseAddress(&image, CVPixelBufferLockFlags::ReadOnly) != 0 {
+                    return;
+                }
+                let w = CVPixelBufferGetWidthOfPlane(&image, 0);
+                let h = CVPixelBufferGetHeightOfPlane(&image, 0);
+                let stride = CVPixelBufferGetBytesPerRowOfPlane(&image, 0);
+                let base = CVPixelBufferGetBaseAddressOfPlane(&image, 0).cast::<u8>();
+                let out = if base.is_null() || stride < w {
+                    None
+                } else {
+                    let mut out = Vec::with_capacity(w * h);
+                    for row in 0..h {
+                        out.extend_from_slice(std::slice::from_raw_parts(base.add(row * stride), w));
+                    }
+                    Some((w, h, out))
+                };
+                CVPixelBufferUnlockBaseAddress(&image, CVPixelBufferLockFlags::ReadOnly);
+                out
+            };
+            if let Some((w, h, grey)) = grey
+                && let (Ok(w), Ok(h)) = (u32::try_from(w), u32::try_from(h))
+                && let Ok(mut c) = CAMERA.lock()
+                && let Some(report) = c.as_mut()
+            {
+                report(Camera::Frame(w, h, grey));
+            }
+        }
+    }
+);
+
+/// A session to start on the camera's queue (AVFoundation's documented
+/// way: `startRunning` blocks, so not on the main thread).
+struct Running(Retained<AVCaptureSession>);
+
+// SAFETY: AVCaptureSession may be started from any thread; this one is
+// moved to the camera queue and used only there.
+unsafe impl Send for Running {}
+
+fn camera_failed(why: &str) {
+    if let Ok(mut c) = CAMERA.lock()
+        && let Some(report) = c.as_mut()
+    {
+        report(Camera::Failed(why.into()));
+    }
+}
+
+fn open_camera() {
+    // SAFETY: a constant AVFoundation defines.
+    let Some(video) = (unsafe { AVMediaTypeVideo }) else {
+        return camera_failed("No camera was found.");
+    };
+    // SAFETY: plain AVFoundation calls with valid arguments.
+    unsafe {
+        let Some(device) = AVCaptureDevice::defaultDeviceWithMediaType(video) else {
+            return camera_failed("No camera was found.");
+        };
+        let Ok(input) = AVCaptureDeviceInput::deviceInputWithDevice_error(&device) else {
+            return camera_failed("The camera is busy or can't be opened.");
+        };
+        let session = AVCaptureSession::new();
+        let output = AVCaptureVideoDataOutput::new();
+        let format =
+            NSNumber::new_u32(objc2_core_video::kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
+        // CFString and NSString are the same object (toll-free bridged).
+        let key: &NSString =
+            &*std::ptr::from_ref(objc2_core_video::kCVPixelBufferPixelFormatTypeKey)
+                .cast::<NSString>();
+        let settings: Retained<NSDictionary<NSString, AnyObject>> =
+            NSDictionary::from_slices(&[key], &[format.as_ref()]);
+        output.setVideoSettings(Some(&settings));
+        output.setAlwaysDiscardsLateVideoFrames(true);
+        let delegate = CameraDelegate::alloc().set_ivars(Mutex::new(Instant::now()));
+        let delegate: Retained<CameraDelegate> = msg_send![super(delegate), init];
+        let queue = dispatch2::DispatchQueue::new("enclave.camera", None);
+        output.setSampleBufferDelegate_queue(
+            Some(ProtocolObject::from_ref(&*delegate)),
+            Some(&queue),
+        );
+        KEEP.with(|k| {
+            k.borrow_mut()
+                .push(Retained::into_super(Retained::into_super(delegate)))
+        });
+        if !session.canAddInput(&input) || !session.canAddOutput(&output) {
+            return camera_failed("The camera can't be started.");
+        }
+        session.addInput(&input);
+        session.addOutput(&output);
+        let running = Running(session.clone());
+        queue.exec_async(move || {
+            let r = running;
+            r.0.startRunning();
+        });
+        SESSION.with(|s| *s.borrow_mut() = Some(session));
+    }
+}
+
+pub(super) fn start_camera(report: Frames) {
+    if let Ok(mut c) = CAMERA.lock() {
+        *c = Some(report);
+    }
+    // SAFETY: a constant AVFoundation defines.
+    let Some(video) = (unsafe { AVMediaTypeVideo }) else {
+        return camera_failed("No camera was found.");
+    };
+    // SAFETY: a plain class method.
+    match unsafe { AVCaptureDevice::authorizationStatusForMediaType(video) } {
+        AVAuthorizationStatus::Authorized => open_camera(),
+        AVAuthorizationStatus::NotDetermined => {
+            let answer = RcBlock::new(|granted: Bool| {
+                if granted.as_bool() {
+                    dispatch2::DispatchQueue::main().exec_async(open_camera);
+                } else {
+                    camera_failed(
+                        "Enclave may not use the camera. Allow it in Settings → Enclave.",
+                    );
+                }
+            });
+            // SAFETY: a plain class method; the block lives as long as
+            // AVFoundation needs it.
+            unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(video, &answer) };
+        }
+        _ => camera_failed("Enclave may not use the camera. Allow it in Settings → Enclave."),
+    }
+}
+
+pub(super) fn stop_camera() {
+    SESSION.with(|s| {
+        if let Some(session) = s.borrow_mut().take() {
+            // SAFETY: stopping a session we started.
+            unsafe { session.stopRunning() };
+        }
+    });
+    if let Ok(mut c) = CAMERA.lock() {
+        *c = None;
+    }
+}
+
+pub(super) fn set_screen_security(on: bool) {
+    SECURE.store(on, std::sync::atomic::Ordering::Relaxed);
+    if let Some(mtm) = mtm() {
+        cover(mtm, on && captured(mtm));
+    }
+}

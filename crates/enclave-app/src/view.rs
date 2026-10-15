@@ -572,10 +572,13 @@ pub fn apply_effect(ui: &AppWindow, e: Effect) {
 /// Keep the window out of screen capture, or not, as the profile says
 /// (`docs/14-storage.md` §5; nothing to do on Linux).
 pub fn apply_screen_security(ui: &AppWindow) {
+    #[cfg(desktop)]
     enclave_platform::window::exclude_from_capture(
         &slint::ComponentHandle::window(ui).window_handle(),
         ui.get_screen_security(),
     );
+    #[cfg(not(desktop))]
+    enclave_platform::phone::set_screen_security(ui.get_screen_security());
 }
 
 /// The open-source notices (`cargo xtask licenses`), one entry per licence

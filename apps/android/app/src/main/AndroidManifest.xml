@@ -1,22 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- No Java or Kotlin: the activity is Android's NativeActivity, running
-     libenclave_mobile.so (nym/enclave-mobile). Nothing is backed up by the
-     system (the profile is backed up by Enclave, sealed). -->
+<!-- The activity is Android's NativeActivity running libenclave_mobile.so
+     (nym/enclave-mobile), with a small Java subclass for what only Java
+     reaches (pickers, camera, notifications, clipboard, keystore). Nothing
+     is backed up by the system (the profile is backed up by Enclave,
+     sealed). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Scanning codes; asked for when a scan starts. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- "New message" notifications (Android 13 and later ask). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="Enclave"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
-        android:hasCode="false"
+        android:hasCode="true"
         android:supportsRtl="true"
         android:theme="@style/Enclave">
 
         <activity
-            android:name="android.app.NativeActivity"
+            android:name=".EnclaveActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density|fontScale"

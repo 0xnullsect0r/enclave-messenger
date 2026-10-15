@@ -6,19 +6,27 @@
 //! frames directly, MJPEG decoded in Rust) for the QR reader (`rqrr`) and,
 //! mirrored and made small, for the preview. The first code read ends it.
 //! Frames never leave this process and are never stored.
+//!
+//! On phones the platform captures (`enclave_platform::phone`) and only
+//! [`read_qr`] and [`preview`] are used from here.
 
+#[cfg(desktop)]
 use nokhwa::utils::{CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
+#[cfg(desktop)]
 use std::sync::Arc;
+#[cfg(desktop)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Widest preview handed to the window.
 const PREVIEW_WIDTH: u32 = 480;
 
+#[cfg(desktop)]
 /// A running scan; dropping it (or [`Scan::stop`]) turns the camera off.
 pub struct Scan {
     stop: Arc<AtomicBool>,
 }
 
+#[cfg(desktop)]
 impl Scan {
     /// Stop scanning.
     pub fn stop(&self) {
@@ -26,12 +34,14 @@ impl Scan {
     }
 }
 
+#[cfg(desktop)]
 impl Drop for Scan {
     fn drop(&mut self) {
         self.stop();
     }
 }
 
+#[cfg(desktop)]
 /// What the scan thread reports.
 pub enum Event {
     /// A preview frame: width, height, grey pixels.
@@ -42,6 +52,7 @@ pub enum Event {
     Failed(String),
 }
 
+#[cfg(desktop)]
 /// Start scanning; `report` is called from the scan thread.
 pub fn start(report: impl Fn(Event) + Send + 'static) -> Scan {
     let stop = Arc::new(AtomicBool::new(false));
@@ -56,6 +67,7 @@ pub fn start(report: impl Fn(Event) + Send + 'static) -> Scan {
     Scan { stop }
 }
 
+#[cfg(desktop)]
 fn run(stop: &AtomicBool, report: &impl Fn(Event)) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -104,13 +116,14 @@ fn run(stop: &AtomicBool, report: &impl Fn(Event)) -> Result<(), String> {
             report(Event::Code(code));
             break;
         }
-        let (pw, ph, preview) = preview(w, h, &grey);
+        let (pw, ph, preview) = preview(w, h, &grey, true);
         report(Event::Frame(pw, ph, preview));
     }
     let _ = camera.stop_stream();
     Ok(())
 }
 
+#[cfg(desktop)]
 /// One byte of brightness per pixel.
 fn brightness(format: FrameFormat, w: u32, h: u32, data: &[u8]) -> Option<Vec<u8>> {
     let n = (w as usize).checked_mul(h as usize)?;
@@ -135,7 +148,7 @@ fn brightness(format: FrameFormat, w: u32, h: u32, data: &[u8]) -> Option<Vec<u8
 }
 
 /// The first QR code in the frame, as text.
-fn read_qr(w: u32, h: u32, grey: &[u8]) -> Option<String> {
+pub fn read_qr(w: u32, h: u32, grey: &[u8]) -> Option<String> {
     let (w, h) = (w as usize, h as usize);
     let mut img = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| grey[y * w + x]);
     img.detect_grids()
@@ -143,22 +156,22 @@ fn read_qr(w: u32, h: u32, grey: &[u8]) -> Option<String> {
         .find_map(|g| g.decode().ok().map(|(_, text)| text))
 }
 
-/// A small, mirrored grey preview (like looking in a mirror, which makes
-/// holding a code up to the camera easier).
-fn preview(w: u32, h: u32, grey: &[u8]) -> (u32, u32, Vec<u8>) {
+/// A small grey preview; `mirror`ed for a camera facing the person (like
+/// looking in a mirror, which makes holding a code up to it easier).
+pub fn preview(w: u32, h: u32, grey: &[u8], mirror: bool) -> (u32, u32, Vec<u8>) {
     let scale = w.div_ceil(PREVIEW_WIDTH).max(1);
     let (pw, ph) = (w / scale, h / scale);
     let mut out = Vec::with_capacity((pw * ph) as usize);
     for y in 0..ph {
         for x in 0..pw {
-            let sx = w - 1 - x * scale;
+            let sx = if mirror { w - 1 - x * scale } else { x * scale };
             out.push(grey[(y * scale * w + sx) as usize]);
         }
     }
     (pw, ph, out)
 }
 
-#[cfg(test)]
+#[cfg(all(test, desktop))]
 mod tests {
     use super::*;
 
@@ -186,7 +199,7 @@ mod tests {
         let yuyv: Vec<u8> = grey.iter().flat_map(|&g| [g, 128]).collect();
         let back = brightness(FrameFormat::YUYV, w, w, &yuyv).unwrap();
         assert_eq!(read_qr(w, w, &back).as_deref(), Some(text));
-        let (pw, ph, p) = preview(w, w, &grey);
+        let (pw, ph, p) = preview(w, w, &grey, true);
         assert_eq!(p.len(), (pw * ph) as usize);
         assert!(pw <= PREVIEW_WIDTH);
     }

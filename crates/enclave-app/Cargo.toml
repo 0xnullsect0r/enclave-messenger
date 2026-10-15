@@ -114,6 +114,8 @@ enclave-crypto = { path = "../enclave-crypto" }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "accessibility", "raw-window-handle-06"] }
 qrcodegen = "1.8"
 png = "0.17"
+# Reading QR codes from the camera's frames (every platform).
+rqrr = "0.11"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }
 
 # Desktop: winit with OpenGL (femtovg, the software renderer as fallback),
@@ -132,17 +134,19 @@ notify-rust = "4"
 # V4L2; no JPEG decoder of its own, which would be C), QR reading, and
 # MJPEG frames decoded in Rust.
 nokhwa = { version = "0.10", default-features = false, features = ["input-native"] }
-rqrr = "0.11"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 # Android: Slint's own backend on the activity (OpenGL ES through femtovg).
 [target.'cfg(target_os = "android")'.dependencies]
 slint = { version = "1.18", default-features = false, features = ["backend-android-activity-06", "renderer-femtovg"] }
+# The phone's pickers, camera, notifications, clipboard (enclave_platform::phone).
+enclave-platform = { path = "../enclave-platform", features = ["window", "phone"] }
 
 # iOS: winit with the software renderer (no OpenGL on iOS, and no Skia
 # binaries to download).
 [target.'cfg(target_os = "ios")'.dependencies]
 slint = { version = "1.18", default-features = false, features = ["backend-winit", "unstable-winit-030"] }
+enclave-platform = { path = "../enclave-platform", features = ["window", "phone"] }
 
 [dev-dependencies]
 # The tests run the demo.

@@ -3,7 +3,6 @@
 //! and receives plain display data back. On Unix desktops the vault is a
 //! separate process ([`vault`]); elsewhere it is a thread.
 
-#[cfg(desktop)]
 pub mod camera;
 pub mod lan;
 pub mod shell;

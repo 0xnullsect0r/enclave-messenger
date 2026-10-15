@@ -108,6 +108,45 @@ fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
 #[cfg(all(desktop, windows))]
 const NOTIFY_APP_ID: &str = "com.aricummings.Enclave";
 
+/// Put a scanned code into the field `target` names (see `scan` in the UI).
+fn put_code(ui: &AppWindow, target: i32, code: &str) {
+    let code: slint::SharedString = code.trim().into();
+    match target {
+        1 => ui.set_add_link(code),
+        2 => ui.set_meet_input(code),
+        3 => ui.set_share_request_input(code),
+        4 => ui.set_link_code(code),
+        _ => {
+            // The next empty share field.
+            if ui.get_restore_s1().is_empty() {
+                ui.set_restore_s1(code);
+            } else if ui.get_restore_s2().is_empty() {
+                ui.set_restore_s2(code);
+            } else if ui.get_restore_s3().is_empty() {
+                ui.set_restore_s3(code);
+            } else if ui.get_restore_s4().is_empty() {
+                ui.set_restore_s4(code);
+            } else {
+                ui.set_restore_s5(code);
+            }
+        }
+    }
+}
+
+/// Put chosen files into the path field `what` names (see `browse`).
+fn put_paths(ui: &AppWindow, what: i32, paths: &[String]) {
+    if paths.is_empty() {
+        return;
+    }
+    let joined: slint::SharedString = paths.join("; ").into();
+    match what {
+        0 => ui.set_restore_file(joined),
+        1 => ui.set_check_file(joined),
+        3 => ui.set_pack_paths(joined),
+        _ => ui.set_attach_path(joined),
+    }
+}
+
 #[cfg(desktop)]
 thread_local! {
     /// The scan in progress, owned by the UI thread.
@@ -138,27 +177,7 @@ fn scan(ui: &AppWindow, target: i32) {
                     ui.set_scan_frame(slint::Image::from_rgb8(buf));
                 }
                 Event::Code(code) => {
-                    let code: slint::SharedString = code.trim().into();
-                    match target {
-                        1 => ui.set_add_link(code),
-                        2 => ui.set_meet_input(code),
-                        3 => ui.set_share_request_input(code),
-                        4 => ui.set_link_code(code),
-                        _ => {
-                            // The next empty share field.
-                            if ui.get_restore_s1().is_empty() {
-                                ui.set_restore_s1(code);
-                            } else if ui.get_restore_s2().is_empty() {
-                                ui.set_restore_s2(code);
-                            } else if ui.get_restore_s3().is_empty() {
-                                ui.set_restore_s3(code);
-                            } else if ui.get_restore_s4().is_empty() {
-                                ui.set_restore_s4(code);
-                            } else {
-                                ui.set_restore_s5(code);
-                            }
-                        }
-                    }
+                    put_code(&ui, target, &code);
                     stop_scan(&ui);
                 }
                 Event::Failed(why) => ui.set_scan_error(why.into()),
@@ -207,15 +226,8 @@ fn browse(ui: &AppWindow, what: i32) {
         .iter()
         .map(|f| f.path().display().to_string())
         .collect();
-        let (Some(ui), false) = (w.upgrade(), paths.is_empty()) else {
-            return;
-        };
-        let joined = paths.join("; ");
-        match what {
-            0 => ui.set_restore_file(joined.into()),
-            1 => ui.set_check_file(joined.into()),
-            3 => ui.set_pack_paths(joined.into()),
-            _ => ui.set_attach_path(joined.into()),
+        if let Some(ui) = w.upgrade() {
+            put_paths(&ui, what, &paths);
         }
     });
 }
@@ -972,6 +984,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         }
     });
     let _ = Sheet::None;
+    // The phone's services (Android: its native methods; iOS: screen
+    // security and the keyboard rule, which need the running app).
+    #[cfg(not(desktop))]
+    slint::Timer::single_shot(Duration::ZERO, enclave_platform::phone::init);
     if smoke {
         slint::Timer::single_shot(Duration::from_secs(60), || {
             eprintln!("enclave: the vault didn't start within 60 s");
@@ -1011,37 +1027,90 @@ fn copy_with_timeout(text: String) -> bool {
     true
 }
 
-/// Android and iOS: the platform's file pickers, notifications, camera and
-/// clipboard come with milestones A1 and I1 (`docs/completion.md`); until
-/// then the app says what it can't do here.
+/// Android and iOS: the phone's pickers, camera, notifications and
+/// clipboard (`enclave_platform::phone`).
 #[cfg(not(desktop))]
 mod phone {
     use crate::AppWindow;
+    use enclave_platform::phone::{self as p, Camera, Pick};
+    use slint::ComponentHandle as _;
 
-    pub fn save_with_dialog(ui: &AppWindow, name: String, _bytes: Vec<u8>) {
-        ui.set_file_note(format!("{name} can't be saved on this device yet.").into());
+    /// Ask where to save a file the vault handed over, and write it there.
+    pub fn save_with_dialog(ui: &AppWindow, name: String, bytes: Vec<u8>) {
+        let w = ui.as_weak();
+        let shown = name.clone();
+        p::save(&name, bytes, move |r| {
+            let note = match r {
+                Ok(place) => format!("Saved as {place}"),
+                Err(e) if e.is_empty() => format!("{shown} wasn't saved."),
+                Err(e) => format!("Couldn't save {shown}: {e}"),
+            };
+            let _ = w.upgrade_in_event_loop(move |ui| ui.set_file_note(note.into()));
+        });
     }
 
-    pub fn notify(_ui: &AppWindow, _n: enclave_ipc::Notice) {}
-
-    pub fn scan(ui: &AppWindow, _target: i32) {
-        ui.set_scanning(false);
-        ui.set_status_line(
-            "Scanning with the camera isn't available on this device yet: paste the code instead."
-                .into(),
-        );
+    /// A notification (the platform skips it while the app is in front).
+    pub fn notify(_ui: &AppWindow, n: enclave_ipc::Notice) {
+        p::notify(&n.title, &n.body);
     }
 
+    /// Scan a code with the back camera into the field `target` names.
+    pub fn scan(ui: &AppWindow, target: i32) {
+        ui.set_scan_error("".into());
+        ui.set_scan_frame(slint::Image::default());
+        ui.set_scanning(true);
+        let w = ui.as_weak();
+        p::start_camera(move |e| match e {
+            Camera::Frame(fw, fh, grey) => {
+                let code = crate::camera::read_qr(fw, fh, &grey);
+                let (pw, ph, preview) = crate::camera::preview(fw, fh, &grey, p::MIRROR);
+                let _ = w.upgrade_in_event_loop(move |ui| {
+                    if !ui.get_scanning() {
+                        return;
+                    }
+                    if let Some(code) = code {
+                        super::put_code(&ui, target, &code);
+                        stop_scan(&ui);
+                        return;
+                    }
+                    let mut buf = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(pw, ph);
+                    for (px, g) in buf.make_mut_slice().iter_mut().zip(preview) {
+                        *px = slint::Rgb8Pixel { r: g, g, b: g };
+                    }
+                    ui.set_scan_frame(slint::Image::from_rgb8(buf));
+                });
+            }
+            Camera::Failed(why) => {
+                let _ = w.upgrade_in_event_loop(move |ui| ui.set_scan_error(why.into()));
+            }
+        });
+    }
+
+    /// Turn the camera off and close the scan view.
     pub fn stop_scan(ui: &AppWindow) {
+        p::stop_camera();
         ui.set_scanning(false);
+        ui.set_scan_frame(slint::Image::default());
     }
 
-    pub fn browse(ui: &AppWindow, _what: i32) {
-        ui.set_file_note("Choosing a file isn't available on this device yet.".into());
+    /// The phone's file picker for one of the path fields; picked files are
+    /// copied where the app can read them.
+    pub fn browse(ui: &AppWindow, what: i32) {
+        let kind = match what {
+            0 | 1 => Pick::Backup,
+            3 => Pick::Pictures,
+            _ => Pick::File,
+        };
+        let w = ui.as_weak();
+        p::pick(kind, move |paths| {
+            let paths: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+            let _ = w.upgrade_in_event_loop(move |ui| super::put_paths(&ui, what, &paths));
+        });
     }
 
-    pub fn copy_with_timeout(_text: String) -> bool {
-        false
+    /// Copy, marked sensitive, cleared after 60 s if still there.
+    pub fn copy_with_timeout(text: String) -> bool {
+        p::copy(&text)
     }
 }
 #[cfg(not(desktop))]

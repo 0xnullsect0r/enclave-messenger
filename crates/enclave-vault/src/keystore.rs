@@ -1,11 +1,12 @@
 //! Where a profile's keystore secrets live (`docs/14-storage.md` §1.1):
 //! the platform keystore when there is one (`enclave_platform::keystore`:
-//! the login Keychain on macOS, DPAPI on Windows, the Secret Service or the
-//! Flatpak secret portal on Linux), else files in the profile
-//! (`FileKeystore`).
+//! the Keychain on macOS and iOS, DPAPI on Windows, the Secret Service or
+//! the Flatpak secret portal on Linux, the Android Keystore), else files in
+//! the profile (`FileKeystore`).
 //!
 //! A profile keeps its choice in a `keystore` file next to the database:
-//! `file`, `dpapi`, `keychain ID` or `secret-service ID`, where `ID` (16
+//! `file`, `dpapi`, `keychain ID`, `secret-service ID` or
+//! `android-keystore ID`, where `ID` (16
 //! random bytes, hex) keeps one profile's secrets apart from another's.
 //! A new profile takes the platform keystore if it answers; a profile made
 //! with files moves its secrets into the platform keystore when it opens
@@ -56,7 +57,7 @@ fn ks_err(e: enclave_platform::keystore::Error) -> StoreError {
 
 /// A platform keystore for one profile.
 enum Platform {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     Keychain { prefix: String },
     #[cfg(windows)]
     Dpapi { dir: PathBuf },
@@ -68,10 +69,8 @@ enum Platform {
         ring: &'static enclave_platform::keystore::secret_service::Keyring,
         prefix: String,
     },
-    /// Android and iOS: their keystores come with A1 and I1 (the file
-    /// keystore until then); no value of this exists.
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    None(std::convert::Infallible),
+    #[cfg(target_os = "android")]
+    Android { prefix: String },
 }
 
 impl Platform {
@@ -80,7 +79,7 @@ impl Platform {
     #[allow(unused_variables)]
     fn open(kind: &str, id: &str, profile: &Path) -> Option<Self> {
         match kind {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             "keychain" => Some(Platform::Keychain {
                 prefix: format!("{id}/"),
             }),
@@ -98,14 +97,20 @@ impl Platform {
                     prefix: format!("{id}/"),
                 }
             }),
+            #[cfg(target_os = "android")]
+            "android-keystore" => Some(Platform::Android {
+                prefix: format!("{id}/"),
+            }),
             _ => None,
         }
     }
 
     /// This platform's keystore kind, if it answers a probe.
     fn best() -> Option<&'static str> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         return enclave_platform::keystore::keychain::available().then_some("keychain");
+        #[cfg(target_os = "android")]
+        return enclave_platform::keystore::android::available().then_some("android-keystore");
         #[cfg(windows)]
         return enclave_platform::keystore::dpapi::protect(b"probe", b"probe")
             .is_ok()
@@ -124,7 +129,7 @@ impl Platform {
     /// Every name it holds for the profile (spelled).
     fn names(&self) -> Result<Vec<String>> {
         match self {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             Platform::Keychain { prefix } => {
                 Ok(enclave_platform::keystore::keychain::accounts(prefix)
                     .map_err(ks_err)?
@@ -154,19 +159,23 @@ impl Platform {
                 .into_iter()
                 .filter_map(|a| a.strip_prefix(prefix.as_str()).map(String::from))
                 .collect()),
-            #[cfg(any(target_os = "ios", target_os = "android"))]
-            Platform::None(never) => match *never {},
+            #[cfg(target_os = "android")]
+            Platform::Android { prefix } => {
+                Ok(enclave_platform::keystore::android::accounts(prefix)
+                    .map_err(ks_err)?
+                    .into_iter()
+                    .filter_map(|a| a.strip_prefix(prefix.as_str()).map(String::from))
+                    .collect())
+            }
         }
     }
 }
 
-// On Android and iOS no platform keystore exists yet, so nothing here runs.
-#[cfg_attr(any(target_os = "ios", target_os = "android"), allow(unused_variables))]
 impl Keystore for Platform {
     fn create(&self, name: &str, secret: &[u8; 32]) -> Result<()> {
         let name = spelled(name);
         match self {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             Platform::Keychain { prefix } => {
                 enclave_platform::keystore::keychain::set(&format!("{prefix}{name}"), secret)
                     .map_err(ks_err)
@@ -186,15 +195,18 @@ impl Keystore for Platform {
             Platform::SecretService { ring, prefix } => {
                 ring.set(&format!("{prefix}{name}"), secret).map_err(ks_err)
             }
-            #[cfg(any(target_os = "ios", target_os = "android"))]
-            Platform::None(never) => match *never {},
+            #[cfg(target_os = "android")]
+            Platform::Android { prefix } => {
+                enclave_platform::keystore::android::set(&format!("{prefix}{name}"), secret)
+                    .map_err(ks_err)
+            }
         }
     }
 
     fn load(&self, name: &str) -> Result<Zeroizing<[u8; 32]>> {
         let name = spelled(name);
         let bytes: Zeroizing<Vec<u8>> = match self {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             Platform::Keychain { prefix } => {
                 enclave_platform::keystore::keychain::get(&format!("{prefix}{name}"))
                     .map_err(ks_err)?
@@ -213,8 +225,11 @@ impl Keystore for Platform {
             Platform::SecretService { ring, prefix } => {
                 ring.get(&format!("{prefix}{name}")).map_err(ks_err)?
             }
-            #[cfg(any(target_os = "ios", target_os = "android"))]
-            Platform::None(never) => match *never {},
+            #[cfg(target_os = "android")]
+            Platform::Android { prefix } => {
+                enclave_platform::keystore::android::get(&format!("{prefix}{name}"))
+                    .map_err(ks_err)?
+            }
         };
         secret32(&bytes)
     }
@@ -222,7 +237,7 @@ impl Keystore for Platform {
     fn destroy(&self, name: &str) -> Result<()> {
         let name = spelled(name);
         match self {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             Platform::Keychain { prefix } => {
                 enclave_platform::keystore::keychain::delete(&format!("{prefix}{name}"))
                     .map_err(ks_err)
@@ -243,8 +258,11 @@ impl Keystore for Platform {
             Platform::SecretService { ring, prefix } => {
                 ring.delete(&format!("{prefix}{name}")).map_err(ks_err)
             }
-            #[cfg(any(target_os = "ios", target_os = "android"))]
-            Platform::None(never) => match *never {},
+            #[cfg(target_os = "android")]
+            Platform::Android { prefix } => {
+                enclave_platform::keystore::android::delete(&format!("{prefix}{name}"))
+                    .map_err(ks_err)
+            }
         }
     }
 }

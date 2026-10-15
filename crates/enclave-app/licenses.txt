@@ -29837,7 +29837,7 @@ Under MIT/Apache-2.0. These packages carry no licence file of their own; the ful
 === dynasm 5.1.0, dynasmrt 5.1.0
 Under MPL-2.0. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
-=== dispatch2 0.3.1, objc2-app-kit 0.3.2, objc2-core-foundation 0.3.2, objc2-core-graphics 0.3.2, objc2-core-text 0.3.2, objc2-io-kit 0.3.2, objc2-io-surface 0.3.2, objc2-local-authentication 0.3.2, objc2-metal 0.3.2, objc2-quartz-core 0.3.2, objc2-system-configuration 0.3.2, objc2-ui-kit 0.3.2
+=== dispatch2 0.3.1, objc2-app-kit 0.3.2, objc2-av-foundation 0.3.2, objc2-core-audio 0.3.2, objc2-core-audio-types 0.3.2, objc2-core-foundation 0.3.2, objc2-core-graphics 0.3.2, objc2-core-media 0.3.2, objc2-core-text 0.3.2, objc2-core-video 0.3.2, objc2-io-kit 0.3.2, objc2-io-surface 0.3.2, objc2-local-authentication 0.3.2, objc2-metal 0.3.2, objc2-quartz-core 0.3.2, objc2-system-configuration 0.3.2, objc2-ui-kit 0.3.2, objc2-uniform-type-identifiers 0.3.2, objc2-user-notifications 0.3.2
 Under Zlib OR Apache-2.0 OR MIT. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
 === IJG-jpeg-encoder

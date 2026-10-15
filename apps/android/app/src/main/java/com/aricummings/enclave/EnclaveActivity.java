@@ -1,0 +1,415 @@
+package com.aricummings.enclave;
+
+import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.graphics.ImageFormat;
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.OutputConfiguration;
+import android.hardware.camera2.params.SessionConfiguration;
+import android.media.Image;
+import android.media.ImageReader;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.PersistableBundle;
+import android.provider.OpenableColumns;
+import android.view.WindowManager;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+
+/**
+ * The app's activity: Android's NativeActivity running libenclave_mobile.so
+ * (nym/enclave-mobile), plus what only Java can reach. The Rust side
+ * (enclave_platform::phone::android) calls the public methods here through
+ * JNI and gets answers through the native methods, which it registers when
+ * the library starts. Each method is small and does no app logic.
+ */
+public class EnclaveActivity extends android.app.NativeActivity {
+    private static final int SAVE_BASE = 1 << 20;
+    private static final int PERMISSION_CAMERA = 1;
+    private static final int PERMISSION_NOTIFY = 2;
+    private static final String CHANNEL = "messages";
+    /** How long a copied text stays on the clipboard. */
+    private static final long CLIPBOARD_MS = 60_000;
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private byte[] pendingSave;
+
+    static native void nativePicked(int request, String[] paths);
+    static native void nativeSaved(int request, boolean ok, String where);
+    static native void nativeFrame(byte[] grey, int width, int height);
+    static native void nativeScanFailed(String why);
+
+    @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        // Screen security: no screenshots, no recording, a blank thumbnail
+        // in the app switcher (docs/14-storage.md §5); on until the
+        // profile's setting says otherwise (setSecure).
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_NOTIFY);
+        }
+    }
+
+    /** Screen security on or off (Settings → Hide from screenshots). */
+    public void setSecure(boolean on) {
+        runOnUiThread(() -> {
+            if (on) {
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            } else {
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            }
+        });
+    }
+
+    // File pickers ----------------------------------------------------------
+
+    /** Ask for files of `mime` (one, or several); answers nativePicked. */
+    public void pick(int request, String mime, boolean several) {
+        runOnUiThread(() -> {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType(mime);
+            i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, several);
+            try {
+                startActivityForResult(i, request);
+            } catch (Exception e) {
+                nativePicked(request, new String[0]);
+            }
+        });
+    }
+
+    /** Ask where to save `bytes` as `name`; answers nativeSaved. */
+    public void save(int request, String name, byte[] bytes) {
+        runOnUiThread(() -> {
+            pendingSave = bytes;
+            Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("application/octet-stream");
+            i.putExtra(Intent.EXTRA_TITLE, name);
+            try {
+                startActivityForResult(i, SAVE_BASE + request);
+            } catch (Exception e) {
+                pendingSave = null;
+                nativeSaved(request, false, e.toString());
+            }
+        });
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request >= SAVE_BASE) {
+            int id = request - SAVE_BASE;
+            byte[] bytes = pendingSave;
+            pendingSave = null;
+            Uri uri = (result == RESULT_OK && data != null) ? data.getData() : null;
+            if (uri == null || bytes == null) {
+                nativeSaved(id, false, "");
+                return;
+            }
+            new Thread(() -> {
+                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    out.write(bytes);
+                    nativeSaved(id, true, displayName(uri));
+                } catch (Exception e) {
+                    nativeSaved(id, false, e.toString());
+                }
+            }).start();
+            return;
+        }
+        ArrayList<Uri> uris = new ArrayList<>();
+        if (result == RESULT_OK && data != null) {
+            if (data.getClipData() != null) {
+                for (int k = 0; k < data.getClipData().getItemCount(); k++) {
+                    uris.add(data.getClipData().getItemAt(k).getUri());
+                }
+            } else if (data.getData() != null) {
+                uris.add(data.getData());
+            }
+        }
+        // Copied into the app's cache, where the app reads them by path.
+        new Thread(() -> {
+            File dir = new File(getCacheDir(), "picked");
+            dir.mkdirs();
+            ArrayList<String> paths = new ArrayList<>();
+            for (Uri uri : uris) {
+                File f = new File(dir, System.nanoTime() + "-" + safe(displayName(uri)));
+                try (InputStream in = getContentResolver().openInputStream(uri);
+                        OutputStream out = new FileOutputStream(f)) {
+                    byte[] buf = new byte[65536];
+                    for (int n; (n = in.read(buf)) > 0; ) {
+                        out.write(buf, 0, n);
+                    }
+                    paths.add(f.getAbsolutePath());
+                } catch (Exception e) {
+                    f.delete();
+                }
+            }
+            nativePicked(request, paths.toArray(new String[0]));
+        }).start();
+    }
+
+    private String displayName(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                return c.getString(0);
+            }
+        } catch (Exception e) {
+            // Fall through to the URI's last part.
+        }
+        String last = uri.getLastPathSegment();
+        return last == null ? "file" : last;
+    }
+
+    private static String safe(String name) {
+        String n = name.replaceAll("[^A-Za-z0-9._ -]", "_");
+        return n.startsWith(".") || n.isEmpty() ? "file" : n;
+    }
+
+    // Notifications ---------------------------------------------------------
+
+    /** Show a notification unless the app is in front. */
+    public void notify(String title, String body) {
+        if (hasWindowFocus()) {
+            return;
+        }
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm.getNotificationChannel(CHANNEL) == null) {
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Messages", NotificationManager.IMPORTANCE_HIGH));
+        }
+        Intent open = new Intent(this, EnclaveActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent tap = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE);
+        Notification n = new Notification.Builder(this, CHANNEL)
+                .setSmallIcon(getApplicationInfo().icon)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setContentIntent(tap)
+                .setAutoCancel(true)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .build();
+        nm.notify(1, n);
+    }
+
+    // Clipboard -------------------------------------------------------------
+
+    /** Copy `text`, marked sensitive, and clear it after a minute if it is still there. */
+    public boolean copy(String text) {
+        ClipboardManager cb = getSystemService(ClipboardManager.class);
+        if (cb == null) {
+            return false;
+        }
+        ClipData clip = ClipData.newPlainText("Enclave", text);
+        PersistableBundle extras = new PersistableBundle();
+        extras.putBoolean(Build.VERSION.SDK_INT >= 33 ? ClipDescription.EXTRA_IS_SENSITIVE : "android.content.extra.IS_SENSITIVE", true);
+        clip.getDescription().setExtras(extras);
+        main.post(() -> cb.setPrimaryClip(clip));
+        main.postDelayed(() -> {
+            ClipData now = cb.getPrimaryClip();
+            if (now != null && now.getItemCount() > 0 && text.contentEquals(String.valueOf(now.getItemAt(0).getText()))) {
+                cb.clearPrimaryClip();
+            }
+        }, CLIPBOARD_MS);
+        return true;
+    }
+
+    // Camera (scanning codes) -----------------------------------------------
+
+    private HandlerThread cameraThread;
+    private CameraDevice camera;
+    private CameraCaptureSession session;
+    private ImageReader reader;
+    private long lastFrame;
+
+    /** Start the back camera; frames go to nativeFrame as brightness only. */
+    public void startScan() {
+        runOnUiThread(() -> {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] {Manifest.permission.CAMERA}, PERMISSION_CAMERA);
+                return;
+            }
+            openCamera();
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(request, permissions, results);
+        if (request == PERMISSION_CAMERA) {
+            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+                openCamera();
+            } else {
+                nativeScanFailed("Enclave may not use the camera. Allow it in Settings → Apps → Enclave → Permissions.");
+            }
+        }
+    }
+
+    private void openCamera() {
+        try {
+            CameraManager cm = getSystemService(CameraManager.class);
+            String id = null;
+            for (String c : cm.getCameraIdList()) {
+                Integer facing = cm.getCameraCharacteristics(c).get(CameraCharacteristics.LENS_FACING);
+                if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    id = c;
+                    break;
+                }
+            }
+            if (id == null && cm.getCameraIdList().length > 0) {
+                id = cm.getCameraIdList()[0];
+            }
+            if (id == null) {
+                nativeScanFailed("No camera was found.");
+                return;
+            }
+            cameraThread = new HandlerThread("enclave-camera");
+            cameraThread.start();
+            Handler h = new Handler(cameraThread.getLooper());
+            reader = ImageReader.newInstance(640, 480, ImageFormat.YUV_420_888, 2);
+            reader.setOnImageAvailableListener(r -> {
+                Image img = r.acquireLatestImage();
+                if (img == null) {
+                    return;
+                }
+                try {
+                    long now = System.currentTimeMillis();
+                    if (now - lastFrame < 120) {
+                        return;
+                    }
+                    lastFrame = now;
+                    Image.Plane y = img.getPlanes()[0];
+                    int w = img.getWidth(), ht = img.getHeight();
+                    ByteBuffer buf = y.getBuffer();
+                    int stride = y.getRowStride();
+                    byte[] grey = new byte[w * ht];
+                    for (int row = 0; row < ht; row++) {
+                        buf.position(row * stride);
+                        buf.get(grey, row * w, Math.min(w, buf.remaining()));
+                    }
+                    nativeFrame(grey, w, ht);
+                } finally {
+                    img.close();
+                }
+            }, h);
+            cm.openCamera(id, new CameraDevice.StateCallback() {
+                @Override
+                public void onOpened(CameraDevice d) {
+                    camera = d;
+                    try {
+                        CaptureRequest.Builder b = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                        b.addTarget(reader.getSurface());
+                        b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                        d.createCaptureSession(new SessionConfiguration(SessionConfiguration.SESSION_REGULAR,
+                                Collections.singletonList(new OutputConfiguration(reader.getSurface())), h::post,
+                                new CameraCaptureSession.StateCallback() {
+                            @Override
+                            public void onConfigured(CameraCaptureSession s) {
+                                session = s;
+                                try {
+                                    s.setRepeatingRequest(b.build(), null, h);
+                                } catch (Exception e) {
+                                    nativeScanFailed("The camera can't be started.");
+                                }
+                            }
+
+                            @Override
+                            public void onConfigureFailed(CameraCaptureSession s) {
+                                nativeScanFailed("The camera can't be started.");
+                            }
+                        }));
+                    } catch (Exception e) {
+                        nativeScanFailed("The camera can't be started.");
+                    }
+                }
+
+                @Override
+                public void onDisconnected(CameraDevice d) {
+                    d.close();
+                }
+
+                @Override
+                public void onError(CameraDevice d, int error) {
+                    d.close();
+                    nativeScanFailed("The camera is busy or can't be opened.");
+                }
+            }, h);
+        } catch (SecurityException e) {
+            nativeScanFailed("Enclave may not use the camera.");
+        } catch (Exception e) {
+            nativeScanFailed("The camera is busy or can't be opened.");
+        }
+    }
+
+    /** Turn the camera off. */
+    public void stopScan() {
+        runOnUiThread(() -> {
+            if (session != null) {
+                session.close();
+                session = null;
+            }
+            if (camera != null) {
+                camera.close();
+                camera = null;
+            }
+            if (reader != null) {
+                reader.close();
+                reader = null;
+            }
+            if (cameraThread != null) {
+                cameraThread.quitSafely();
+                cameraThread = null;
+            }
+        });
+    }
+
+    // Keystore --------------------------------------------------------------
+
+    /** Keep `secret` under `account`, sealed to a key in the Android Keystore. */
+    public boolean keySet(String account, byte[] secret) {
+        return Keys.set(this, account, secret);
+    }
+
+    /** The secret under `account`, or null. */
+    public byte[] keyGet(String account) {
+        return Keys.get(this, account);
+    }
+
+    /** Delete the secret under `account` and its key. */
+    public boolean keyDelete(String account) {
+        return Keys.delete(this, account);
+    }
+
+    /** Every account kept whose name starts with `prefix`. */
+    public String[] keyList(String prefix) {
+        return Keys.list(this, prefix);
+    }
+
+    /** Whether the Android Keystore answers. */
+    public boolean keyAvailable() {
+        return Keys.available();
+    }
+}

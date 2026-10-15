@@ -9,6 +9,9 @@
 //!   (`CryptProtectData`, with the secret's name as extra entropy) and the
 //!   sealed blob is kept in the profile; another user, or the same files
 //!   on another machine, can't open it.
+//! - iOS: the same Keychain code (each item sealed to a Secure Enclave
+//!   key; the app's profile gives it its access group).
+//! - Android: the Android Keystore, through the app's activity.
 //! - Linux and the BSDs: the Secret Service (GNOME Keyring, KWallet), or in
 //!   a Flatpak the secret portal, through `oo7`; items carry the attributes
 //!   `application` = [`SERVICE`] and `account`.
@@ -41,7 +44,7 @@ impl std::error::Error for Error {}
 
 /// macOS: the login Keychain, and where the build is signed with a
 /// keychain access group, a Secure Enclave key around each secret.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod keychain {
     use super::{Error, SERVICE};
     use security_framework::key::{Algorithm, GenerateKeyOptions, KeyType, SecKey, Token};
@@ -385,5 +388,106 @@ pub mod secret_service {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str("Keyring")
         }
+    }
+}
+
+/// Android: the Android Keystore, through the app's activity (`Keys.java`
+/// in `apps/android`): each secret sealed with AES-256-GCM under its own
+/// key held by the secure hardware (StrongBox where the phone has one),
+/// the sealed bytes in the app's no-backup files.
+#[cfg(target_os = "android")]
+pub mod android {
+    use super::Error;
+    use crate::jvm::{strings, with};
+    use jni::objects::{JByteArray, JObjectArray, JValue};
+    use zeroize::Zeroizing;
+
+    fn refused() -> Error {
+        Error::Unavailable("the Android Keystore refused".into())
+    }
+
+    /// Whether the keystore answers.
+    pub fn available() -> bool {
+        with(|env, a| env.call_method(a, "keyAvailable", "()Z", &[])?.z()).unwrap_or(false)
+    }
+
+    /// Keep `secret` under `account` (replacing what was there).
+    pub fn set(account: &str, secret: &[u8]) -> Result<(), Error> {
+        let ok = with(|env, a| {
+            let acc = env.new_string(account)?;
+            let data = env.byte_array_from_slice(secret)?;
+            env.call_method(
+                a,
+                "keySet",
+                "(Ljava/lang/String;[B)Z",
+                &[JValue::Object(&acc), JValue::Object(&data)],
+            )?
+            .z()
+        });
+        if ok == Some(true) {
+            Ok(())
+        } else {
+            Err(refused())
+        }
+    }
+
+    /// The secret under `account`.
+    pub fn get(account: &str) -> Result<Zeroizing<Vec<u8>>, Error> {
+        let got = with(|env, a| {
+            let acc = env.new_string(account)?;
+            let out = env
+                .call_method(
+                    a,
+                    "keyGet",
+                    "(Ljava/lang/String;)[B",
+                    &[JValue::Object(&acc)],
+                )?
+                .l()?;
+            if out.is_null() {
+                return Ok(None);
+            }
+            Ok(Some(env.convert_byte_array(JByteArray::from(out))?))
+        });
+        match got {
+            Some(Some(bytes)) => Ok(Zeroizing::new(bytes)),
+            Some(None) => Err(Error::NotFound),
+            None => Err(refused()),
+        }
+    }
+
+    /// Delete the secret under `account` and its key.
+    pub fn delete(account: &str) -> Result<(), Error> {
+        let ok = with(|env, a| {
+            let acc = env.new_string(account)?;
+            env.call_method(
+                a,
+                "keyDelete",
+                "(Ljava/lang/String;)Z",
+                &[JValue::Object(&acc)],
+            )?
+            .z()
+        });
+        if ok == Some(true) {
+            Ok(())
+        } else {
+            Err(refused())
+        }
+    }
+
+    /// Every account kept whose name starts with `prefix`.
+    pub fn accounts(prefix: &str) -> Result<Vec<String>, Error> {
+        with(|env, a| {
+            let p = env.new_string(prefix)?;
+            let arr = env
+                .call_method(
+                    a,
+                    "keyList",
+                    "(Ljava/lang/String;)[Ljava/lang/String;",
+                    &[JValue::Object(&p)],
+                )?
+                .l()?;
+            Ok(strings(env, &JObjectArray::from(arr)))
+        })
+        .ok_or_else(refused)
     }
 }
