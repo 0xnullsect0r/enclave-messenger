@@ -70,7 +70,9 @@ jobs:
         run: |
           set -euo pipefail
           workspace=$(cargo xtask version)
-          if [ "${{ github.event_name }}" = push ]; then
+          # A tag push (CI's dry run is a workflow_call from a branch push,
+          # where the event is also "push": only a tag ref is a release).
+          if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref_type }}" = tag ]; then
             tag=${GITHUB_REF_NAME}; dry=false
           elif [ -n "${INPUT_TAG:-}" ]; then
             tag=$INPUT_TAG; dry=${INPUT_DRY:-true}
