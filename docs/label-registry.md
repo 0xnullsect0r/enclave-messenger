@@ -119,6 +119,7 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | `enclave/v1/tokens/write` | KMAC | 256 | `lib.rs` `write_token` | Single-use write token `t_i` |
 | `enclave/v1/tokens/hash` | KMAC | 256 | `lib.rs` `token_hash` | Server-stored token hash, bound to the inbox address: `KMAC256(t, address, label)` (09 §3.3) |
 | `enclave/v1/tokens/pow` | HASH | 32 | `lib.rs` `accepted` | Proof-of-work effort check: `SHAKE256(label ‖ challenge ‖ solution)`, first 4 B |
+| `enclave/v1/tokens/equihash-kat` | INFO | — | `equihash.rs` tests | Challenge of the Equihash known-answer test (test only; ADR 0004) |
 | `enclave/v1/tokens/pp-issuer` | INFO | — | `privpass.rs` `IssuerKey::derive` | Privacy Pass issuer key for an epoch: RFC 9497 `DeriveKeyPair(seed, label ‖ u32 epoch)` (RFC 0001) |
 
 ### 2.5 Server (`enclave-server`)
@@ -140,6 +141,8 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | `enclave/v1/calls/relay-id` | HASH | 256 (first 128 bits used) | `relay.rs` `relay_id` | 16 B relay id from its identity key |
 | `enclave/v1/update/server-list` | CTX-R + CTX-C | — | `list.rs` | Foundation's server list: both an SLH-DSA and a composite signature, each required (12 §4.1) |
 | `enclave/v1/update/foundation-keygen` | KMAC | 768 | `list.rs` `FoundationKey` | SLH-DSA seeds of the foundation's list key from its 32-byte secret |
+| `enclave/v1/update/release` | CTX-R + CTX-C | — | `enclave-update` `metadata.rs` | Maintainer signature on a release document (root, targets, snapshot, timestamp): an SLH-DSA and a composite signature over `role ‖ body`, each required (19 §1) |
+| `enclave/v1/update/maintainer-keygen` | KMAC | 768 | `enclave-update` `MaintainerKey` | SLH-DSA seeds of a maintainer's release key from its 32-byte secret |
 
 ### 2.6 Key transparency (`enclave-kt`)
 
@@ -265,7 +268,6 @@ These labels belong to features that are specified but not in code. They are res
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
 | `enclave/v1/kt/leaf` | HASH | 512 | KT leaf value commitment | 12 §3 |
-| `enclave/v1/update/release` | CTX-R | — | Maintainer co-signature on a release | 19 §1 |
 | `enclave/v1/calls/link-cap` | KMAC | 256 | Call-link capability | 11 §8 |
 
 ## 4. Retired draft labels
@@ -318,9 +320,9 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 | `enclave/v1/net/cred-hash` | `enclave/v1/rpc/credential-hash` |
 | `enclave/v1/net/write-token` | `enclave/v1/tokens/write` |
 | `enclave/v1/net/token-hash` | `enclave/v1/tokens/hash` (not bound to the inbox address) |
-| `enclave/v1/wire/ad-request` | AD = `u32(key_id)` (`09-transport.md` §2) |
+| `enclave/v1/wire/ad-request` | AD = `u32(key_id) ‖ padding` (the unit's last 284 B; `09-transport.md` §2) |
 | `enclave/v1/wire/ad-reply` | AD = ASCII `"reply"` |
-| `enclave/v1/wire/ad-poll` | AD = `u32(key_id)` |
+| `enclave/v1/wire/ad-poll` | AD = `u32(key_id) ‖ padding` (the poll's last 284 B) |
 | `enclave/v1/wire/ad-device-slot` | AD = the 16 B envelope header |
 | `enclave/v1/wire/ad-pq-slot` | AD = the 16 B envelope header |
 | `enclave/v1/wire/ad-body` | AD = the 16 B envelope header (request envelopes: header ‖ initial block) |
@@ -359,10 +361,10 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 
 Purpose strings are framed inputs to `enclave/v1/rng/hedge`, not labels. They are listed so that reviewers can check that no purpose is reused for a different kind of value. Purposes used by the code today:
 
-`api/padding`, `app/lock-fill`, `app/lock-salt`, `app/vault-dir`, `app/vault-token`, `blob/padding`, `blob/secret`, `calls/id`, `core/blob-redeem`, `core/decoy`, `core/group-msg-id`, `core/held-id`, `core/inbox`, `core/inbox-owner`, `core/inbox-seed`, `core/invite`, `core/meet`, `core/migration-in`, `core/msg-id`, `core/part-id`, `core/poll-id`, `core/request-inbox`, `core/request-owner`, `core/slip39`, `core/vault-key`, `core/vault-locator`, `core/vault-owner`, `core/write-token`, `device/id`, `envelope/body-key`, `envelope/capsule`, `envelope/dummy-pq`, `envelope/dummy-slot`, `envelope/padding`, `envelope/shuffle`, `group/capsule`, `group/chain-seed`, `group/epoch-secret`, `group/id`, `group/mac-fill`, `group/mac-key`, `group/nonce`, `group/padding`, `group/rekey-fill`, `group/rekey-kb`, `group/rekey-padding`, `group/shuffle`, `kt/dev-twin-seed`, `kt/dev-vrf`, `link/choice`, `link/decoy`, `link/mailbox`, `link/owner`, `link/secret`, `mlkem/encaps`, `mlkem/keygen`, `net/loop-probe-delay`, `net/loop-probe-secret`, `net/nym-request-id`, `push/relay-chain`, `rand_core`, `recovery/secret`, `relay/id`, `relay/link-key`, `relay/session`, `relay/ticket-chain`, `rpc/poll-padding`, `rpc/reply-padding`, `rpc/status-token`, `rpc/unit-padding`, `schedule/delay`, `seal/key`, `seal/nonce`, `server/blob-alloc`, `server/blob-seed`, `server/claim-id`, `server/garbage-reply`, `server/kt-reply-id`, `server/kt-vrf`, `server/push-jitter`, `server/request-chain`, `sig/composite/keygen`, `sig/composite/sign`, `sig/mldsa44/sign`, `sig/root/sign`, `store/device-secret`, `store/hedge`, `store/root-secret`, `store/pw-salt`, `store/salt`, `store/shred-key`, `store/shred-wrap`, `tokens/contact-key`, `tokens/dummy`, `tokens/pow-nonce`, `tokens/pp-nonce`, `tokens/shuffle`, `update/foundation-key`, `x448/keygen`. (`rand_core` is McEliece key generation and encapsulation through the `rand_core` adapter.) The simulator (`enclave-sim`) uses `sim` for test-only values.
+`api/padding`, `app/lock-fill`, `app/lock-salt`, `app/vault-dir`, `app/vault-token`, `blob/padding`, `blob/secret`, `calls/id`, `core/blob-redeem`, `core/decoy`, `core/group-msg-id`, `core/held-id`, `core/inbox`, `core/inbox-owner`, `core/inbox-seed`, `core/invite`, `core/meet`, `core/migration-in`, `core/msg-id`, `core/part-id`, `core/poll-id`, `core/request-inbox`, `core/request-owner`, `core/slip39`, `core/vault-key`, `core/vault-locator`, `core/vault-owner`, `core/write-token`, `device/id`, `envelope/body-key`, `envelope/capsule`, `envelope/dummy-pq`, `envelope/dummy-slot`, `envelope/padding`, `envelope/shuffle`, `group/capsule`, `group/chain-seed`, `group/epoch-secret`, `group/id`, `group/mac-fill`, `group/mac-key`, `group/nonce`, `group/padding`, `group/rekey-fill`, `group/rekey-kb`, `group/rekey-padding`, `group/shuffle`, `kt/dev-twin-seed`, `kt/dev-vrf`, `link/choice`, `link/decoy`, `link/mailbox`, `link/owner`, `link/secret`, `mlkem/encaps`, `mlkem/keygen`, `net/loop-probe-delay`, `net/loop-probe-secret`, `net/nym-request-id`, `push/relay-chain`, `rand_core`, `recovery/secret`, `relay/id`, `relay/link-key`, `relay/session`, `relay/ticket-chain`, `rpc/poll-padding`, `rpc/reply-padding`, `rpc/status-token`, `rpc/unit-padding`, `schedule/delay`, `seal/key`, `seal/nonce`, `server/blob-alloc`, `server/blob-seed`, `server/claim-id`, `server/garbage-reply`, `server/kt-reply-id`, `server/kt-vrf`, `server/push-jitter`, `server/request-chain`, `sig/composite/keygen`, `sig/composite/sign`, `sig/mldsa44/sign`, `sig/root/sign`, `store/device-secret`, `store/hedge`, `store/root-secret`, `store/pw-salt`, `store/salt`, `store/shred-key`, `store/shred-wrap`, `tokens/contact-key`, `tokens/dummy`, `tokens/pow-nonce`, `tokens/pp-nonce`, `tokens/shuffle`, `update/foundation-key`, `update/maintainer-key`, `x448/keygen`. (`rand_core` is McEliece key generation and encapsulation through the `rand_core` adapter.) The simulator (`enclave-sim`) uses `sim` for test-only values.
 
 ## Open questions
 
-1. Whether the Ed448 half of a maintainer release co-signature (`enclave/v1/update/release`) should use the Ed448 context parameter instead of a message prefix.
+1. **Resolved.** Whether the Ed448 half of a maintainer release co-signature (`enclave/v1/update/release`) should use the Ed448 context parameter instead of a message prefix: neither; a maintainer signature is an SLH-DSA signature and a composite (Ed448 + ML-DSA-87) signature, as the foundation's server list has, and the composite carries the context in its message representative (`sig.rs`), so both halves are bound to it (ADR 0005).
 2. Whether `cargo xtask labels` should also check the "Kind" column, for example by requiring each `const` to carry a kind attribute.
 3. Several implemented AD strings (`"reply"`, `"keyring"`, `"enclave-backup-v1"`, `"verifier"`) and transcript prefixes (`"EQXDH-v1"`, `"EQXDH-v1/stage1"`, `"ENCLAVE-POW1"`, `"request-inbox"`, `"report"`, `"claim-bundle"`, `"blob-put"`, `"compact"`) are short ASCII strings outside the `enclave/v1/` namespace, so CI does not check them. Each is unique within its call site today. Whether to move them into the registry namespace is open; doing so changes wire and storage formats.

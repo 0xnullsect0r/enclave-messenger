@@ -8,10 +8,10 @@ Source: PLAN.md §17, §18 (license, export, regulation), §22, RT-13, RT-14. Cr
 
 ### 1.1 Signing
 
-- **TUF** via the `tough` crate for update metadata (root, targets, snapshot, timestamp roles).
-- Every release target is co-signed by **2 of 3 maintainers**, each signature being **SLH-DSA-SHAKE-256s + Ed448**:
-  - SLH-DSA with ctx `enclave/v1/update/release` over the TUF targets metadata hash;
-  - Ed448 over `E("enclave/v1/update/release") ‖ targets_hash`.
+- **TUF's roles** (root, targets, snapshot, timestamp) and checks, in Enclave's encoding with Enclave's signatures (`enclave-update`, ADR 0005; `tough` has no post-quantum keys).
+- Every release target is co-signed by **2 of 3 maintainers**, each signature being **SLH-DSA-SHAKE-256s + composite**:
+  - SLH-DSA with ctx `enclave/v1/update/release` over `role ‖ body` of the targets document;
+  - composite Ed448 + ML-DSA-87 with the same context (the foundation's server-list key has the same two halves).
   - A maintainer signature is valid only if both halves verify.
 - Maintainer keys live on offline HSMs held by 3 maintainers in 2 jurisdictions.
 
@@ -45,6 +45,8 @@ VerifyUpdate(target):
     require H(downloaded file) == target hash
     install only if all hold; otherwise keep the current version and log the failure
 ```
+
+**As implemented** (`enclave-update`, R2): `Client::new` takes the root built into the app and the versions last seen; `update_root` moves one root version at a time; `refresh(timestamp, snapshot, targets, now)` checks the chain in TUF's order and returns the release; `check(release, name, file, proof)` checks the file's length and both hashes and its Sigsum proof (`sigsum::Proof`, sigsum-go's proof format version 2). Tests: `rt13_update_rejected_without_2_of_3`, `rt13_update_rejected_without_sigsum_inclusion`, rollback, freeze and mismatch, root rotation, and agreement with sigsum-go's proofs (`tests/sigsum`).
 
 ### 1.6 The release workflow (as implemented, R1)
 

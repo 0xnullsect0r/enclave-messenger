@@ -19,6 +19,7 @@ members = [
     "crates/enclave-platform",
     "crates/enclave-nse",
     "crates/enclave-wasmbox",
+    "crates/enclave-update",
     "crates/enclave-netd",
     "crates/enclave-av1",
     "crates/enclave-media",
