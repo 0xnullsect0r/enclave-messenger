@@ -37,5 +37,5 @@ webpki-roots = "1"
 enclave-front = { path = "../enclave-front" }
 enclave-server = { path = "../enclave-server" }
 enclave-rpc = { path = "../enclave-rpc" }
-rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
