@@ -35,7 +35,10 @@ label() { docker inspect "$me" --format "{{index .Config.Labels \"$1\"}}"; }
 PROJECT=$(label com.docker.compose.project)
 DIR=$(label com.docker.compose.project.working_dir)
 FILES=$(label com.docker.compose.project.config_files)
-[ -n "$PROJECT" ] && [ -n "$DIR" ] || { log "not started by docker compose"; exit 1; }
+if [ -z "$PROJECT" ] || [ -z "$DIR" ]; then
+  log "not started by docker compose"
+  exit 1
+fi
 
 # The compose files, in order (compose takes them from COMPOSE_FILE).
 COMPOSE_FILE=$(echo "$FILES" | tr ',' ':')

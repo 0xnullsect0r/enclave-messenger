@@ -122,6 +122,7 @@ allow-build-scripts = [
     "hax-lib",
     "heapless",  # target cfg; obfs4 bridges (enclave-tord)
     "httparse",
+    "i-slint-backend-android-activity",
     "i-slint-backend-linuxkms",
     "i-slint-backend-selector",
     "i-slint-backend-testing",

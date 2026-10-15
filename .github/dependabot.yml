@@ -11,4 +11,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    # One pull request a week for every crate update (each runs all of CI).
+    groups:
+      cargo:
+        patterns: ["*"]
+    open-pull-requests-limit: 2

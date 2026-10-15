@@ -4,7 +4,8 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    # Dependabot's branches run once, as pull requests.
+    branches: ['**', '!dependabot/**']
   pull_request:
   merge_group:
 
@@ -154,6 +155,9 @@ jobs:
       - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           workspaces: nym
+      # The phone app (enclave-mobile) builds the app crate, which links
+      # fontconfig and xkbcommon on a Linux host.
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev libxkbcommon-dev
       - name: fmt, clippy, test
         working-directory: nym
         run: |

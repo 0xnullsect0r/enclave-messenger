@@ -29,6 +29,12 @@ ignore = [
     { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.101 only in nym's Nyx RPC client; see above" },
     { id = "RUSTSEC-2026-0104", reason = "CRL parsing; no CRLs are used" },
     { id = "RUSTSEC-2026-0258", reason = "h2 0.3 only in nym's Nyx RPC client; denial of service only" },
+    # rustls 0.21 comes through the same reqwest 0.11 (fixed only in 0.23.46,
+    # which the rest of the tree uses). No ClientSessionStore of ours formats
+    # session values with Debug, and rustls 0.21 offers no post-quantum
+    # group to downgrade from.
+    { id = "RUSTSEC-2026-0346", reason = "rustls 0.21 only in nym's Nyx RPC client; session values are never Debug-formatted" },
+    { id = "RUSTSEC-2026-0349", reason = "rustls 0.21 only in nym's Nyx RPC client; it has no post-quantum group to lose" },
     # libcrux-kem 0.0.9 panics on short hybrid-KEM seeds and short hybrid
     # keys. It arrives only through libcrux-psq 0.0.10 (which pins =0.0.9)
     # in nym-crypto, which uses nothing of libcrux-psq but its X25519 key
@@ -103,6 +109,11 @@ bypass = [
     ] },
 ]
 allow-build-scripts = [
+    # Our own crates from the main workspace, which the phone app
+    # (enclave-mobile) builds here: their build scripts set cfgs and write
+    # the Windows resource; checked in the main workspace.
+    "enclave-app",
+    "enclave-vault",
     # nym-sdk 1.21.5 (nym/ workspace only): nym crates' build scripts set up
     # sqlx's offline query checks and version info (vergen); aws-lc-sys is
     # rustls's default C crypto there; blake3 and snow pick SIMD paths;
@@ -175,6 +186,7 @@ allow-build-scripts = [
     "glutin_wgl_sys",
     "hax-lib",
     "httparse",
+    "i-slint-backend-android-activity",
     "i-slint-backend-linuxkms",
     "i-slint-backend-selector",
     "i-slint-backend-testing",
