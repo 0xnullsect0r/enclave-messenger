@@ -271,8 +271,19 @@ struct Upload {
     chunks: BTreeMap<u32, Vec<u8>>,
 }
 
+impl Upload {
+    fn bytes(&self) -> usize {
+        self.chunks.values().map(Vec::len).sum()
+    }
+}
+
 /// How long a directory upload may take before its chunks are dropped.
 const UPLOAD_TTL_SECS: u64 = 600;
+/// Directory uploads in progress at once, and the bytes they may hold
+/// (`12-servers.md` open question 2): past these, new ones are refused
+/// until older ones complete or expire.
+const MAX_UPLOADS: usize = 2048;
+const MAX_UPLOAD_BYTES: usize = 256 << 20;
 
 /// Aggregate counters (no per-user data), for operators and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -308,6 +319,8 @@ pub struct Server {
     claims: HashMap<[u8; 32], (Vec<u8>, u64)>,
     /// Directory uploads in progress, with when they started.
     uploads: HashMap<(u8, [u8; 32]), Upload>,
+    /// The bytes held by `uploads`.
+    upload_bytes: usize,
     kt: Option<KtService>,
     /// Accounts whose record the log hasn't taken yet (manifest keys),
     /// and whether the accounts stored before the log was enabled still
@@ -445,6 +458,7 @@ impl Server {
             db,
             claims: HashMap::new(),
             uploads: HashMap::new(),
+            upload_bytes: 0,
             kt: None,
             kt_accounts: (BTreeSet::new(), false),
             wakes: HashMap::new(),
@@ -801,6 +815,7 @@ impl Server {
         self.expire_deferred(now);
         self.uploads
             .retain(|_, u| now <= u.started + UPLOAD_TTL_SECS);
+        self.upload_bytes = self.uploads.values().map(Upload::bytes).sum();
     }
 
     /// Set the seed of the blob-token issuer keys (derived from the
@@ -2319,22 +2334,43 @@ impl Server {
             return (Status::Malformed, Reply::Empty);
         }
         let slot = (req.kind as u8, req.key);
+        // Expired uploads go first, so they don't count against the caps.
+        if self
+            .uploads
+            .get(&slot)
+            .is_some_and(|u| now > u.started + UPLOAD_TTL_SECS)
+            && let Some(u) = self.uploads.remove(&slot)
+        {
+            self.upload_bytes = self.upload_bytes.saturating_sub(u.bytes());
+        }
+        let fresh = !self.uploads.contains_key(&slot);
+        if (fresh && self.uploads.len() >= MAX_UPLOADS)
+            || self.upload_bytes + req.data.len() > MAX_UPLOAD_BYTES
+        {
+            return (Status::Unavailable, Reply::Empty);
+        }
         let up = self.uploads.entry(slot).or_default();
+        // A chunk of another size of upload is refused; the upload already
+        // under way keeps going (someone else's chunks can't end it).
         if up.total != 0 && up.total != req.total {
-            self.uploads.remove(&slot);
             return (Status::Malformed, Reply::Empty);
         }
         if up.total == 0 {
             up.started = now;
         }
         up.total = req.total;
-        up.chunks.insert(req.index, req.data);
+        let len = req.data.len();
+        if let Some(old) = up.chunks.insert(req.index, req.data) {
+            self.upload_bytes = self.upload_bytes.saturating_sub(old.len());
+        }
+        self.upload_bytes += len;
         if up.chunks.len() < up.total as usize {
             return (Status::Ok, Reply::Empty);
         }
         let Some(up) = self.uploads.remove(&slot) else {
             return (Status::Malformed, Reply::Empty);
         };
+        self.upload_bytes = self.upload_bytes.saturating_sub(up.bytes());
         let object: Vec<u8> = up.chunks.into_values().flatten().collect();
         let status = match req.kind {
             DirKind::Manifest => self.accept_manifest(&req.key, object, now),
@@ -2762,6 +2798,37 @@ impl Server {
                 && m.version <= head_u64(&v)
             {
                 return Ok(Status::Invalid);
+            }
+            // A device another account still lists (and hasn't moved away
+            // from) stays that account's: no other signing key may be put
+            // under its ID, or that key could replace its bundle
+            // publications (12 open question 3).
+            for d in &m.devices {
+                let Some(owner) = t.get(db::DEVICE_OWNER, &d.id)? else {
+                    continue;
+                };
+                let owner: [u8; 32] = match owner.as_slice().try_into() {
+                    Ok(o) => o,
+                    Err(_) => continue,
+                };
+                if owner == key
+                    || t.has(db::MIGRATIONS, &owner)?
+                    || t.has(db::TOMBSTONES, &owner)?
+                {
+                    continue;
+                }
+                // The same device (its own signing key) may move to a new
+                // root ("root lost, devices kept"); someone else's key
+                // under its ID may not: publications are checked against
+                // the key the owner's manifest gives.
+                let other_key = t
+                    .get(db::MANIFESTS, &owner)?
+                    .and_then(|v| SignedManifest::from_bytes(tail(&v)).ok())
+                    .and_then(|sm| Manifest::decode(&sm.body).ok())
+                    .is_some_and(|om| om.device(&d.id).is_some_and(|od| od.signing != d.signing));
+                if other_key {
+                    return Ok(Status::Denied);
+                }
             }
             let mut seen = decode_seen(&t.get(db::DEVICES_SEEN, &key)?.unwrap_or_default());
             for d in &m.devices {

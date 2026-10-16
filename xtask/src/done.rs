@@ -363,7 +363,7 @@ fn code_todos(root: &Path, f: &mut Vec<Finding>) {
         };
         for (i, line) in text.lines().enumerate() {
             for m in ["TODO", "FIXME", "XXX", "todo!(", "unimplemented!("] {
-                if line.contains(m) {
+                if marked(line, m) {
                     f.push(Finding {
                         check: "D7 code markers",
                         place: format!("{}:{}", rel(root, p), i + 1),
@@ -374,4 +374,16 @@ fn code_todos(root: &Path, f: &mut Vec<Finding>) {
             }
         }
     }
+}
+
+/// Whether `line` carries the marker `m` as a word of its own (so
+/// "XXXL" in a constant's name and "XXXX" in a pattern aren't markers).
+fn marked(line: &str, m: &str) -> bool {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    line.match_indices(m).any(|(i, _)| {
+        let before = line[..i].chars().next_back();
+        let after = line[i + m.len()..].chars().next();
+        let ends_open = m.ends_with('(');
+        !before.is_some_and(word) && (ends_open || !after.is_some_and(word))
+    })
 }

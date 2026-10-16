@@ -61,6 +61,7 @@ fn snapshot() -> Snapshot {
             voice_ms: 4200,
             waveform: vec![10; 64],
             clip_ms: 2400,
+            transcript: "see you at noon".into(),
         }],
         code_groups: vec!["12345".into(); 12],
         code_words: vec!["abandon".into(), "zoo".into()],
@@ -146,6 +147,11 @@ fn snapshot() -> Snapshot {
                 ..Default::default()
             }],
         },
+        typing_who: "Ana".into(),
+        sandbox_weak: true,
+        transcription: 1,
+        transcription_percent: 42,
+        transcription_error: "no route".into(),
         new_device: "a new device, 30 Sep 14:02".into(),
         joining: vec!["Book club".into()],
         restore_error: "wrong words".into(),
@@ -308,6 +314,9 @@ fn cmds() -> Vec<Cmd> {
         Cmd::AdmitToCall(3),
         Cmd::RefuseFromCall(4),
         Cmd::CallScreen(true),
+        Cmd::PlayVoice("ab".into(), 3),
+        Cmd::TranscriptionModel(true),
+        Cmd::Transcribe("ab".into(), 3),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
@@ -377,6 +386,7 @@ fn round_trips() {
         Out::CallAudio(vec![7; 960]),
         Out::CallVideo(2, 1, vec![3; 8]),
         Out::CallTile(9, 1, 2, vec![4; 8]),
+        Out::VoiceAudio("ab:3".into(), true, vec![5; 960]),
         Out::Notify(enclave_ipc::Notice {
             conversation: "ab".into(),
             title: "Priya".into(),
@@ -611,6 +621,16 @@ fn media_messages_round_trip_and_check_sizes() {
             id: 20,
             op: MediaOp::VideoScreen(4, 0, true),
             bytes: Vec::new(),
+        },
+        MediaRequest {
+            id: 21,
+            op: MediaOp::VoicePiece(500),
+            bytes: vec![1; 10],
+        },
+        MediaRequest {
+            id: 22,
+            op: MediaOp::VoiceOgg,
+            bytes: vec![1; 10],
         },
     ] {
         assert_eq!(MediaRequest::decode(&r.encode()).unwrap(), r);

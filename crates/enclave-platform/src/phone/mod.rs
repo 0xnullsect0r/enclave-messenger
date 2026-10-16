@@ -237,6 +237,19 @@ pub(crate) fn delivery_changed(way: u8) {
     }
 }
 
+/// Whether the system may stop Enclave in the background to save battery
+/// (Android's battery optimisation, PC-22): staying connected with the
+/// app closed then breaks off on some phones.
+pub fn battery_restricted() -> bool {
+    imp::battery_restricted()
+}
+
+/// Open the system's battery-optimisation setting, where Enclave can be
+/// allowed to run.
+pub fn open_battery_settings() {
+    imp::open_battery_settings();
+}
+
 /// The system's text size (1.0 = default): Android's font scale, iOS's
 /// Dynamic Type size.
 pub fn text_scale() -> f32 {

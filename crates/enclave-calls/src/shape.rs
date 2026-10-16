@@ -142,14 +142,25 @@ impl Shaper {
     }
 
     /// The plaintext for the next tick: always exactly `plaintext_len` bytes.
+    ///
+    /// Records follow one another while they fit (`kind ‖ u16 len ‖ body`,
+    /// then the next; zeros after the last read as padding), so a short
+    /// control rides beside an audio frame instead of taking its slot: on a
+    /// constant-rate stream a slot taken is latency that never comes back.
     pub fn next_plaintext(&mut self) -> Vec<u8> {
         let mut pt = vec![0u8; self.stream.plaintext_len()];
-        if let Some((kind, payload)) = self.queue.pop_front() {
-            pt[0] = kind;
-            pt[1..3].copy_from_slice(&(payload.len() as u16).to_be_bytes());
-            pt[INNER_HEADER..INNER_HEADER + payload.len()].copy_from_slice(&payload);
-        } else {
-            pt[0] = KIND_PADDING;
+        let mut at = 0;
+        while let Some((_, payload)) = self.queue.front() {
+            if at + INNER_HEADER + payload.len() > pt.len() {
+                break;
+            }
+            let Some((kind, payload)) = self.queue.pop_front() else {
+                break;
+            };
+            pt[at] = kind;
+            pt[at + 1..at + 3].copy_from_slice(&(payload.len() as u16).to_be_bytes());
+            pt[at + INNER_HEADER..at + INNER_HEADER + payload.len()].copy_from_slice(&payload);
+            at += INNER_HEADER + payload.len();
         }
         pt
     }
@@ -192,6 +203,32 @@ pub fn decode_plaintext(pt: &[u8]) -> Result<Inner> {
         KIND_CONTROL => Inner::Control(body.to_vec()),
         _ => return Err(CallError::Malformed),
     })
+}
+
+/// Every record of a received plaintext ([`Shaper::next_plaintext`]), up to
+/// the padding: a control and an audio frame may share one.
+pub fn decode_plaintexts(pt: &[u8]) -> Result<Vec<Inner>> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at + INNER_HEADER <= pt.len() {
+        if pt[at] == KIND_PADDING {
+            break;
+        }
+        let len = usize::from(u16::from_be_bytes([pt[at + 1], pt[at + 2]]));
+        let body = pt
+            .get(at + INNER_HEADER..at + INNER_HEADER + len)
+            .ok_or(CallError::Malformed)?;
+        out.push(match pt[at] {
+            KIND_MEDIA => Inner::Media(body.to_vec()),
+            KIND_CONTROL => Inner::Control(body.to_vec()),
+            _ => return Err(CallError::Malformed),
+        });
+        at += INNER_HEADER + len;
+    }
+    if out.is_empty() {
+        out.push(Inner::Padding);
+    }
+    Ok(out)
 }
 
 /// A frame being reassembled: id, fragment count, fragments so far.

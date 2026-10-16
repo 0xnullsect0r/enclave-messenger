@@ -270,6 +270,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
             } else {
                 SharedString::new()
             },
+            transcript: m.transcript.clone().into(),
             voice_time: if m.voice_ms > 0 {
                 let s = m.voice_ms.div_ceil(1000);
                 format!("{}:{:02}", s / 60, s % 60).into()
@@ -425,11 +426,16 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_invites(s.invites as i32);
     ui.set_typing_setting(s.typing_setting);
     ui.set_typing(s.typing);
+    ui.set_typing_who(s.typing_who.clone().into());
+    ui.set_sandbox_weak(s.sandbox_weak);
     ui.set_can_change_words(s.can_change_words);
     ui.set_removed(s.removed);
     ui.set_has_root_pin(s.has_root_pin);
     ui.set_securing(s.securing);
     ui.set_previews(s.previews);
+    ui.set_transcription(i32::from(s.transcription));
+    ui.set_transcription_percent(i32::from(s.transcription_percent));
+    ui.set_transcription_error(crate::i18n::tr(&s.transcription_error).into());
     ui.set_pin_error(crate::i18n::tr(&s.pin_error).into());
     ui.set_held_moves(s.held_moves.join(", ").into());
     ui.set_words_pending(s.words_pending);
@@ -581,10 +587,16 @@ pub fn apply_effect(ui: &AppWindow, e: Effect) {
 /// (`docs/14-storage.md` §5; nothing to do on Linux).
 pub fn apply_screen_security(ui: &AppWindow) {
     #[cfg(desktop)]
-    enclave_platform::window::exclude_from_capture(
-        &slint::ComponentHandle::window(ui).window_handle(),
-        ui.get_screen_security(),
-    );
+    {
+        let on = ui.get_screen_security();
+        let done = enclave_platform::window::exclude_from_capture(
+            &slint::ComponentHandle::window(ui).window_handle(),
+            on,
+        );
+        // Windows before 10 version 2004 has no WDA_EXCLUDEFROMCAPTURE:
+        // say so rather than promise it (PC-44).
+        ui.set_capture_failed(cfg!(windows) && on && !done);
+    }
     #[cfg(not(desktop))]
     enclave_platform::phone::set_screen_security(ui.get_screen_security());
 }

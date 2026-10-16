@@ -106,5 +106,5 @@ overflow-checks = false
 [patch.crates-io]
 ptrs = { path = "third_party/ptrs" }
 i-slint-backend-android-activity = { path = "third_party/i-slint-backend-android-activity" }
-opus-decoder = { path = "third_party/opus-decoder" }
 rav1d = { path = "third_party/rav1d" }
+candle-core = { path = "third_party/candle-core" }

@@ -52,5 +52,5 @@ M4 is a hard gate: if its go/no-go fails, the fallback transport and the schedul
 
 ## Open questions
 
-1. The M4 bulk-throughput gate (≥200 KB/s) is interpreted as nym-sdk raw throughput, because the Bulk profile's 40 packets/s cap allows at most ≈82 KB/s of payload (`00-overview.md` §9, I-12).
-2. Owners for open questions are not yet assigned; the M0 review assigns them.
+1. **Resolved:** the M4 bulk-throughput gate (≥200 KB/s) measures nym-sdk raw throughput, because the Bulk profile's 40 packets/s cap allows at most ≈82 KB/s of payload (`00-overview.md` §9, I-12). Measured locally: 726 KiB/s raw and 55 KiB/s in the paced Bulk window (`docs/spikes/m4-network.md`, `live_bench`); the live-network run waits for G7.
+2. **Resolved:** no separate owners. The maintainers own the open questions left in the specs, and new ones are raised and decided through an RFC (`rfcs/0000-template.md`), whose author owns it until it is accepted or rejected.

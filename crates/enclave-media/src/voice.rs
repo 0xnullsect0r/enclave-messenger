@@ -12,8 +12,8 @@
 //! waveform is 64 peak levels (0–255) for the bubble. The sender's audio
 //! comes in as a WAV file (any common rate, mono or stereo, 8 or 16 bit),
 //! which is resampled and re-encoded: nothing of the original file but its
-//! sound leaves the device. Decoding uses `opus-decoder`, which has no
-//! unsafe code; the encoder (`opus-rs`) only ever sees our own audio.
+//! sound leaves the device. The codec is [`crate::opus`] (`opus-pure`, which
+//! encodes and decodes).
 
 use crate::{MediaError, Result};
 
@@ -137,22 +137,12 @@ pub fn voice_note_from_wav(wav: &[u8]) -> Result<Vec<u8>> {
     if frames > MAX_FRAMES as usize {
         return Err(MediaError::TooLarge);
     }
-    let mut enc = opus_rs::OpusEncoder::new(RATE as i32, 1, opus_rs::Application::Voip)
-        .map_err(|_| MediaError::Encode)?;
-    enc.bitrate_bps = BITRATE;
-    enc.use_cbr = true;
+    // Nothing is lost from a file: no FEC.
+    let mut enc = crate::opus::Encoder::new(BITRATE, false)?;
     let mut packets = Vec::with_capacity(frames);
-    let mut buf = vec![0i16; FRAME];
     for i in 0..frames {
         let part = &pcm[i * FRAME..((i + 1) * FRAME).min(pcm.len())];
-        buf.fill(0);
-        buf[..part.len()].copy_from_slice(part);
-        let mut out = vec![0u8; 400];
-        let n = enc
-            .encode_i16(&buf, FRAME, &mut out)
-            .map_err(|_| MediaError::Encode)?;
-        out.truncate(n);
-        packets.push(out);
+        packets.push(enc.encode(part)?);
     }
     // Constant bit rate: every packet the same size. If the encoder ever
     // differs, pad to the largest (Opus decoders ignore trailing zeros
@@ -201,16 +191,113 @@ fn parse(b: &[u8]) -> Result<(u32, usize, &[u8], &[u8])> {
 /// Decode a voice note to 48 kHz mono PCM.
 pub fn decode_voice(b: &[u8]) -> Result<Vec<i16>> {
     let (frames, len, _, body) = parse(b)?;
-    let mut dec = opus_decoder::OpusDecoder::new(RATE, 1).map_err(|_| MediaError::Damaged)?;
+    let mut dec = crate::opus::Decoder::new()?;
     let mut pcm = Vec::with_capacity(frames as usize * FRAME);
-    let mut out = vec![0i16; FRAME * 6];
     for p in body.chunks_exact(len) {
-        let n = dec
-            .decode(p, &mut out, false)
-            .map_err(|_| MediaError::Damaged)?;
-        pcm.extend_from_slice(&out[..n.min(out.len())]);
+        pcm.extend(dec.decode(p)?);
     }
     Ok(pcm)
+}
+
+/// Frames decoded (and thrown away) before a range, so the decoder's
+/// state matches the note's at the range's start.
+const PREROLL: u32 = 4;
+/// Frames in one piece of playback (10 s).
+pub const CHUNK_FRAMES: u32 = 500;
+
+/// Decode `count` frames of a voice note from frame `start` (48 kHz mono
+/// PCM; empty past the end): playback in pieces.
+pub fn decode_voice_range(b: &[u8], start: u32, count: u32) -> Result<Vec<i16>> {
+    let (frames, len, _, body) = parse(b)?;
+    if start >= frames {
+        return Ok(Vec::new());
+    }
+    let from = start.saturating_sub(PREROLL);
+    let end = start.saturating_add(count).min(frames);
+    let mut dec = crate::opus::Decoder::new()?;
+    let mut pcm = Vec::with_capacity((end - start) as usize * FRAME);
+    for (i, p) in body
+        .chunks_exact(len)
+        .enumerate()
+        .skip(from as usize)
+        .take((end - from) as usize)
+    {
+        let out = dec.decode(p)?;
+        if i as u32 >= start {
+            pcm.extend(out);
+        }
+    }
+    Ok(pcm)
+}
+
+/// Ogg's CRC-32 (polynomial 0x04C11DB7, not reflected, no final xor).
+fn ogg_crc(data: &[u8]) -> u32 {
+    let mut crc = 0u32;
+    for &b in data {
+        crc ^= u32::from(b) << 24;
+        for _ in 0..8 {
+            crc = if crc & 0x8000_0000 != 0 {
+                (crc << 1) ^ 0x04C1_1DB7
+            } else {
+                crc << 1
+            };
+        }
+    }
+    crc
+}
+
+/// One Ogg page holding whole `packets`.
+fn ogg_page(out: &mut Vec<u8>, seq: u32, granule: u64, flags: u8, packets: &[&[u8]]) {
+    /// "ENCL": the only stream.
+    const SERIAL: u32 = 0x454e_434c;
+    let mut lacing = Vec::new();
+    for p in packets {
+        lacing.extend(std::iter::repeat_n(255u8, p.len() / 255));
+        lacing.push((p.len() % 255) as u8);
+    }
+    let start = out.len();
+    out.extend_from_slice(b"OggS");
+    out.push(0);
+    out.push(flags);
+    out.extend_from_slice(&granule.to_le_bytes());
+    out.extend_from_slice(&SERIAL.to_le_bytes());
+    out.extend_from_slice(&seq.to_le_bytes());
+    out.extend_from_slice(&[0; 4]);
+    out.push(lacing.len() as u8);
+    out.extend_from_slice(&lacing);
+    for p in packets {
+        out.extend_from_slice(p);
+    }
+    let crc = ogg_crc(&out[start..]);
+    out[start + 22..start + 26].copy_from_slice(&crc.to_le_bytes());
+}
+
+/// A voice note as an Ogg Opus file (RFC 7845), to listen to elsewhere:
+/// the note's own Opus packets, so a 15-minute note stays under 3 MB.
+pub fn voice_to_ogg(b: &[u8]) -> Result<Vec<u8>> {
+    let (_, len, _, body) = parse(b)?;
+    let mut out = Vec::with_capacity(body.len() + body.len() / 8 + 256);
+    let mut head = b"OpusHead".to_vec();
+    head.extend_from_slice(&[1, 1]); // version, mono
+    head.extend_from_slice(&0u16.to_le_bytes()); // pre-skip
+    head.extend_from_slice(&RATE.to_le_bytes());
+    head.extend_from_slice(&0i16.to_le_bytes()); // gain
+    head.push(0); // mapping family 0
+    ogg_page(&mut out, 0, 0, 0x02, &[&head]);
+    let mut tags = b"OpusTags".to_vec();
+    tags.extend_from_slice(&7u32.to_le_bytes());
+    tags.extend_from_slice(b"Enclave");
+    tags.extend_from_slice(&0u32.to_le_bytes());
+    ogg_page(&mut out, 1, 0, 0, &[&tags]);
+    let packets: Vec<&[u8]> = body.chunks_exact(len).collect();
+    let pages = packets.chunks(50).count();
+    let mut samples = 0u64;
+    for (i, page) in packets.chunks(50).enumerate() {
+        samples += (page.len() * FRAME) as u64;
+        let flags = if i + 1 == pages { 0x04 } else { 0 };
+        ogg_page(&mut out, i as u32 + 2, samples, flags, page);
+    }
+    Ok(out)
 }
 
 /// A voice note as a 16-bit mono WAV file, to listen to elsewhere.
@@ -297,6 +384,55 @@ mod tests {
         let back = voice_to_wav(&note).unwrap();
         assert!(is_wav(&back));
         assert_eq!(read_wav(&back).unwrap().0.len(), pcm.len());
+    }
+
+    #[test]
+    fn played_in_pieces_and_exported_as_ogg_opus() {
+        let note = voice_note_from_wav(&wav(48_000, 1, 12.5)).unwrap();
+        let whole = decode_voice(&note).unwrap();
+        // Pieces: the right lengths, and past the first one's pre-roll the
+        // same sound as decoding the whole note.
+        let a = decode_voice_range(&note, 0, CHUNK_FRAMES).unwrap();
+        let b = decode_voice_range(&note, CHUNK_FRAMES, CHUNK_FRAMES).unwrap();
+        assert_eq!(a.len(), CHUNK_FRAMES as usize * FRAME);
+        assert_eq!(b.len(), (625 - CHUNK_FRAMES) as usize * FRAME);
+        assert!(decode_voice_range(&note, 625, 10).unwrap().is_empty());
+        assert_eq!(&a[..], &whole[..a.len()]);
+        let diff: f64 = b
+            .iter()
+            .zip(&whole[a.len()..])
+            .map(|(x, y)| (f64::from(*x) - f64::from(*y)).abs())
+            .sum::<f64>()
+            / b.len() as f64;
+        assert!(diff < 50.0, "a piece sounds like the whole ({diff})");
+        // Ogg Opus: pages that check out, every packet once, the end marked.
+        let ogg = voice_to_ogg(&note).unwrap();
+        let (mut at, mut packets, mut last_flags, mut seq) = (0, 0usize, 0u8, 0u32);
+        while at < ogg.len() {
+            assert_eq!(&ogg[at..at + 4], b"OggS");
+            let flags = ogg[at + 5];
+            assert_eq!(
+                u32::from_le_bytes(ogg[at + 18..at + 22].try_into().unwrap()),
+                seq
+            );
+            let segs = usize::from(ogg[at + 26]);
+            let lacing = &ogg[at + 27..at + 27 + segs];
+            let body: usize = lacing.iter().map(|l| usize::from(*l)).sum();
+            let end = at + 27 + segs + body;
+            let mut page = ogg[at..end].to_vec();
+            let crc = u32::from_le_bytes(page[22..26].try_into().unwrap());
+            page[22..26].fill(0);
+            assert_eq!(ogg_crc(&page), crc, "page {seq}'s CRC");
+            if seq >= 2 {
+                packets += lacing.iter().filter(|l| **l < 255).count();
+            }
+            last_flags = flags;
+            at = end;
+            seq += 1;
+        }
+        assert_eq!(packets, 625);
+        assert_eq!(last_flags & 0x04, 0x04, "end of stream");
+        assert!(ogg.len() < note.len() + 2_000);
     }
 
     #[test]

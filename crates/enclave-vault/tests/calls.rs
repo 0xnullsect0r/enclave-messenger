@@ -883,3 +883,469 @@ async fn a_shared_screen_goes_in_place_of_the_camera() {
     assert!((s - c).abs() / c < 0.05, "packets: camera {c}, screen {s}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// What an observer on the client's link sees: every datagram the
+/// client's leg sends (what goes out of its socket), when and how big.
+type Seen = Arc<std::sync::Mutex<Vec<(std::time::Instant, usize)>>>;
+
+fn watch(leg: &mut calls::Leg) -> Seen {
+    let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let out = std::mem::replace(&mut leg.dg.send, tx);
+    let seen: Seen = Arc::default();
+    let s = Arc::clone(&seen);
+    tokio::spawn(async move {
+        while let Some(d) = rx.recv().await {
+            s.lock().unwrap().push((std::time::Instant::now(), d.len()));
+            if out.send(d).is_err() {
+                return;
+            }
+        }
+    });
+    seen
+}
+
+/// Per size, how many datagrams a second went in `[from, to)`.
+fn per_second(
+    seen: &Seen,
+    from: std::time::Instant,
+    to: std::time::Instant,
+) -> std::collections::BTreeMap<usize, f64> {
+    let secs = (to - from).as_secs_f64();
+    let mut m = std::collections::BTreeMap::new();
+    for (at, n) in seen.lock().unwrap().iter() {
+        if *at >= from && *at < to {
+            *m.entry(*n).or_insert(0.0) += 1.0 / secs;
+        }
+    }
+    m
+}
+
+/// The same sizes at the same rates, within `tol` (a fraction), for every
+/// size seen more than once a second.
+fn same_shape(
+    a: &std::collections::BTreeMap<usize, f64>,
+    b: &std::collections::BTreeMap<usize, f64>,
+    tol: f64,
+) {
+    let sizes: std::collections::BTreeSet<usize> = a
+        .iter()
+        .chain(b.iter())
+        .filter(|(_, r)| **r > 1.5)
+        .map(|(n, _)| *n)
+        .collect();
+    assert!(!sizes.is_empty(), "nothing went");
+    for n in sizes {
+        let (x, y) = (
+            a.get(&n).copied().unwrap_or(0.0),
+            b.get(&n).copied().unwrap_or(0.0),
+        );
+        assert!(
+            (x - y).abs() <= tol * x.max(y),
+            "{n}-byte datagrams: {x:.1}/s against {y:.1}/s\n{a:?}\n{b:?}"
+        );
+    }
+}
+
+/// A call whose caller's link is watched, through four 2-second phases:
+/// talking, silence, muted, talking again. Returns what was seen and when
+/// each phase began (and the end).
+async fn watched_call(name: &str) -> (Seen, Vec<std::time::Instant>) {
+    let dir = std::env::temp_dir().join(format!("enclave-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, ab) = relay(&dir.join("b"), "beta").await;
+    {
+        let d = rb.lock().await.descriptor().clone();
+        ra.lock().await.add_peer(&d).unwrap();
+        let d = ra.lock().await.descriptor().clone();
+        rb.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let mut leg_a = calls::open_leg(&t, &la).await.unwrap();
+    let seen = watch(&mut leg_a);
+    let leg_b = calls::open_leg(&t, &lb).await.unwrap();
+    let mut rng = HedgedRng::new().unwrap();
+    let pending = signal::offer(Media::Audio, Route::Relay, vec![], now(), &mut rng).unwrap();
+    let id = pending.offer().call_id;
+    let (ans, kb) = signal::answer(pending.offer(), vec![], b"conv", now(), &mut rng).unwrap();
+    let ka = pending.finish(&ans, b"conv", now()).unwrap();
+    let helpers = Helpers::in_process();
+    let (ev_tx, _ev_rx) = mpsc::unbounded_channel();
+    let mut txs = Vec::new();
+    for (leg, keys, caller, peer) in [(leg_a, ka, true, ab), (leg_b, kb, false, aa)] {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        std::mem::forget(out_rx);
+        let plan = Plan {
+            id,
+            keys,
+            caller,
+            peer_relay: peer,
+            codec: helpers.open_call().await.unwrap(),
+            video: None,
+        };
+        tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
+        txs.push(tx);
+    }
+    let b_tx = txs.pop().unwrap();
+    let a_tx = txs.pop().unwrap();
+    // Settle (the link's handshake, the join), then the phases.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let mut marks = Vec::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    for phase in 0..4 {
+        marks.push(std::time::Instant::now());
+        if phase == 2 {
+            a_tx.send(ToCall::Mute(true)).unwrap();
+        }
+        if phase == 3 {
+            a_tx.send(ToCall::Mute(false)).unwrap();
+        }
+        for f in 0..100 {
+            tick.tick().await;
+            let pcm = if phase == 1 { vec![0; 960] } else { tone(f) };
+            a_tx.send(ToCall::Mic(pcm)).unwrap();
+            b_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+        }
+    }
+    marks.push(std::time::Instant::now());
+    drop((a_tx, b_tx));
+    let _ = std::fs::remove_dir_all(&dir);
+    (seen, marks)
+}
+
+/// RT-19: what the caller sends doesn't depend on what is said — talking,
+/// silence and talking again look the same on the wire: the same datagram
+/// sizes, each at the same rate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rt19_call_packets_constant_size_and_rate() {
+    let (seen, m) = watched_call("rt19-shape").await;
+    let talking = per_second(&seen, m[0], m[1]);
+    let silent = per_second(&seen, m[1], m[2]);
+    let again = per_second(&seen, m[3], m[4]);
+    same_shape(&talking, &silent, 0.05);
+    same_shape(&talking, &again, 0.05);
+    // One media size, 50 a second (one Opus frame each 20 ms).
+    let media: Vec<_> = talking.iter().filter(|(_, r)| **r > 40.0).collect();
+    assert_eq!(media.len(), 1, "{talking:?}");
+    assert!((45.0..=55.0).contains(media[0].1), "{talking:?}");
+}
+
+/// RT-19: muting keeps the rate: the muted phase looks like talking.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rt19_mute_keeps_rate() {
+    let (seen, m) = watched_call("rt19-mute").await;
+    same_shape(
+        &per_second(&seen, m[0], m[1]),
+        &per_second(&seen, m[2], m[3]),
+        0.05,
+    );
+}
+
+/// RT-18: Maximum privacy's standby tunnel looks like a call, so a call
+/// starting on it (and its end) shows nothing on the link.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rt18_max_mode_tunnel_constant() {
+    let dir = std::env::temp_dir().join(format!("enclave-rt18-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, ab) = relay(&dir.join("b"), "beta").await;
+    {
+        let d = rb.lock().await.descriptor().clone();
+        ra.lock().await.add_peer(&d).unwrap();
+        let d = ra.lock().await.descriptor().clone();
+        rb.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let (ev_tx, _ev_rx) = mpsc::unbounded_channel();
+    let mut leg = calls::open_leg(&t, &la).await.unwrap();
+    let seen = watch(&mut leg);
+    let standby = calls::Standby::start(leg, ev_tx.clone());
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let s0 = std::time::Instant::now();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let s1 = std::time::Instant::now();
+    let leg_a = standby.take().await.expect("the standby's leg");
+    let leg_b = calls::open_leg(&t, &lb).await.unwrap();
+    let mut rng = HedgedRng::new().unwrap();
+    let pending = signal::offer(Media::Audio, Route::Relay, vec![], now(), &mut rng).unwrap();
+    let id = pending.offer().call_id;
+    let (ans, kb) = signal::answer(pending.offer(), vec![], b"conv", now(), &mut rng).unwrap();
+    let ka = pending.finish(&ans, b"conv", now()).unwrap();
+    let helpers = Helpers::in_process();
+    let mut txs = Vec::new();
+    for (leg, keys, caller, peer) in [(leg_a, ka, true, ab), (leg_b, kb, false, aa)] {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        std::mem::forget(out_rx);
+        let plan = Plan {
+            id,
+            keys,
+            caller,
+            peer_relay: peer,
+            codec: helpers.open_call().await.unwrap(),
+            video: None,
+        };
+        tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
+        txs.push(tx);
+    }
+    let b_tx = txs.pop().unwrap();
+    let a_tx = txs.pop().unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let c0 = std::time::Instant::now();
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    for f in 0..150 {
+        tick.tick().await;
+        a_tx.send(ToCall::Mic(tone(f))).unwrap();
+        b_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+    }
+    let c1 = std::time::Instant::now();
+    same_shape(&per_second(&seen, s0, s1), &per_second(&seen, c0, c1), 0.05);
+    drop((a_tx, b_tx));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// From when `on` is set, drop each datagram the leg sends with chance
+/// `rate` (a seeded generator, so a run repeats): loss on the client's own
+/// link, after the link is up.
+fn lossy(leg: &mut calls::Leg, rate: f64, seed: u64, on: Arc<std::sync::atomic::AtomicBool>) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let out = std::mem::replace(&mut leg.dg.send, tx);
+    tokio::spawn(async move {
+        let mut x = seed | 1;
+        while let Some(d) = rx.recv().await {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            let drop = on.load(std::sync::atomic::Ordering::Relaxed)
+                && (x % 1_000_000) as f64 / 1_000_000.0 < rate;
+            if !drop && out.send(d).is_err() {
+                return;
+            }
+        }
+    });
+}
+
+/// Speech for the loss matrix, at 48 kHz: a recording when one is given
+/// (`ENCLAVE_CALL_SPEECH`, a 16 kHz mono 16-bit WAV, as the nightly job
+/// does), else a voice-like signal (a 140 Hz voice with its harmonics, in
+/// syllables of about 4 a second).
+fn speech(frames: usize) -> Vec<i16> {
+    if let Ok(path) = std::env::var("ENCLAVE_CALL_SPEECH") {
+        let wav = std::fs::read(path).unwrap();
+        let mut at = 12;
+        let data = loop {
+            let len = u32::from_le_bytes(wav[at + 4..at + 8].try_into().unwrap()) as usize;
+            if &wav[at..at + 4] == b"data" {
+                break &wav[at + 8..(at + 8 + len).min(wav.len())];
+            }
+            at += 8 + len + (len & 1);
+        };
+        let s16: Vec<f32> = data
+            .chunks_exact(2)
+            .map(|c| f32::from(i16::from_le_bytes([c[0], c[1]])))
+            .collect();
+        // 16 → 48 kHz, linearly.
+        let mut out: Vec<i16> = (0..s16.len().saturating_sub(1) * 3)
+            .map(|i| {
+                let (j, f) = (i / 3, (i % 3) as f32 / 3.0);
+                (s16[j] * (1.0 - f) + s16[j + 1] * f) as i16
+            })
+            .collect();
+        out.resize(frames * 960, 0);
+        return out;
+    }
+    (0..frames * 960)
+        .map(|i| {
+            let t = i as f32 / 48_000.0;
+            let syllable = (2.0 * std::f32::consts::PI * 4.0 * t).sin().max(0.0);
+            let voice: f32 = (1..=8)
+                .map(|h| (2.0 * std::f32::consts::PI * 140.0 * h as f32 * t).sin() / h as f32)
+                .sum();
+            (5_000.0 * syllable * voice) as i16
+        })
+        .collect()
+}
+
+/// Each 20 ms frame's energy, in dB.
+fn envelope(pcm: &[i16]) -> Vec<f64> {
+    pcm.chunks(960)
+        .map(|c| {
+            let e = c.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / c.len().max(1) as f64;
+            // Below 40 dB (an amplitude of about 100 of 32,768) counts as
+            // silence: the codec's and the canceller's quiet floors differ.
+            (10.0 * (e + 1.0).log10()).max(40.0)
+        })
+        .collect()
+}
+
+/// The best correlation of `b`'s envelope with `a`'s over lags up to 1 s.
+fn best_correlation(a: &[f64], b: &[f64]) -> f64 {
+    let corr = |x: &[f64], y: &[f64]| {
+        let n = x.len().min(y.len());
+        if n < 25 {
+            return 0.0;
+        }
+        let (x, y) = (&x[..n], &y[..n]);
+        let (mx, my) = (
+            x.iter().sum::<f64>() / n as f64,
+            y.iter().sum::<f64>() / n as f64,
+        );
+        let (mut sxy, mut sxx, mut syy) = (0.0, 0.0, 0.0);
+        for (p, q) in x.iter().zip(y) {
+            sxy += (p - mx) * (q - my);
+            sxx += (p - mx).powi(2);
+            syy += (q - my).powi(2);
+        }
+        sxy / (sxx * syy).sqrt().max(1e-9)
+    };
+    (0..50.min(b.len()))
+        .map(|lag| corr(a, &b[lag..]))
+        .fold(f64::MIN, f64::max)
+}
+
+fn write_wav(path: &std::path::Path, pcm: &[i16]) {
+    let mut w = Vec::with_capacity(44 + pcm.len() * 2);
+    let data = (pcm.len() * 2) as u32;
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + data).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes());
+    w.extend_from_slice(&48_000u32.to_le_bytes());
+    w.extend_from_slice(&96_000u32.to_le_bytes());
+    w.extend_from_slice(&2u16.to_le_bytes());
+    w.extend_from_slice(&16u16.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&data.to_le_bytes());
+    for s in pcm {
+        w.extend_from_slice(&s.to_le_bytes());
+    }
+    std::fs::write(path, w).unwrap();
+}
+
+/// The call matrix (`docs/11-calls.md` §10): a relayed call with 1 %, 5 %
+/// and 10 % of the caller's packets lost. What the callee plays keeps the
+/// speech's shape (its loudness, frame by frame, follows what was said:
+/// Opus's in-band FEC and loss concealment fill the gaps). With
+/// `ENCLAVE_CALL_QUALITY_DIR` set, each run's reference and what was heard
+/// are written there as WAVs, for the nightly job's PESQ score.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn call_quality_under_loss() {
+    const FRAMES: usize = 400; // 8 s
+    let talk = speech(FRAMES);
+    let reference = envelope(&talk);
+    let out_dir = std::env::var_os("ENCLAVE_CALL_QUALITY_DIR").map(std::path::PathBuf::from);
+    if let Some(d) = &out_dir {
+        std::fs::create_dir_all(d).unwrap();
+        write_wav(&d.join("reference.wav"), &talk);
+    }
+    // What the same call plays with no loss is the yardstick: the sender's
+    // echo canceller, noise suppression and gain control shape the sound
+    // either way, so only what loss changes is measured.
+    let mut baseline: Option<f64> = None;
+    // How far below the no-loss run each loss rate may fall.
+    for (rate, margin) in [(0.0, 0.0), (0.01, 0.05), (0.05, 0.08), (0.10, 0.12)] {
+        let dir = std::env::temp_dir().join(format!("enclave-loss-{rate}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+        let (lb, rb, ab) = relay(&dir.join("b"), "beta").await;
+        {
+            let d = rb.lock().await.descriptor().clone();
+            ra.lock().await.add_peer(&d).unwrap();
+            let d = ra.lock().await.descriptor().clone();
+            rb.lock().await.add_peer(&d).unwrap();
+        }
+        let t = enclave_net::transport::TcpTransport::new(Default::default());
+        let mut leg_a = calls::open_leg(&t, &la).await.unwrap();
+        let losing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        lossy(
+            &mut leg_a,
+            rate,
+            0x5eed_0000 + (rate * 100.0) as u64,
+            Arc::clone(&losing),
+        );
+        let leg_b = calls::open_leg(&t, &lb).await.unwrap();
+        let mut rng = HedgedRng::new().unwrap();
+        let pending = signal::offer(Media::Audio, Route::Relay, vec![], now(), &mut rng).unwrap();
+        let id = pending.offer().call_id;
+        let (ans, kb) = signal::answer(pending.offer(), vec![], b"conv", now(), &mut rng).unwrap();
+        let ka = pending.finish(&ans, b"conv", now()).unwrap();
+        let helpers = Helpers::in_process();
+        let (ev_tx, _ev_rx) = mpsc::unbounded_channel();
+        let mut sides = Vec::new();
+        for (leg, keys, caller, peer) in [(leg_a, ka, true, ab), (leg_b, kb, false, aa)] {
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (out_tx, out_rx) = mpsc::unbounded_channel();
+            let plan = Plan {
+                id,
+                keys,
+                caller,
+                peer_relay: peer,
+                codec: helpers.open_call().await.unwrap(),
+                video: None,
+            };
+            tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
+            sides.push((tx, out_rx));
+        }
+        let (b_tx, mut b_out) = sides.pop().unwrap();
+        let (a_tx, _a_out) = sides.pop().unwrap();
+        // The link up and the call joined, in silence; then the loss
+        // starts and Ada talks.
+        let mut tick = tokio::time::interval(Duration::from_millis(20));
+        for _ in 0..75 {
+            tick.tick().await;
+            a_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+            b_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+        }
+        while b_out.try_recv().is_ok() {}
+        losing.store(true, std::sync::atomic::Ordering::Relaxed);
+        for f in 0..FRAMES {
+            tick.tick().await;
+            a_tx.send(ToCall::Mic(talk[f * 960..(f + 1) * 960].to_vec()))
+                .unwrap();
+            b_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+        }
+        // The jitter buffer's tail.
+        for _ in 0..25 {
+            tick.tick().await;
+            a_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+            b_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+        }
+        let mut heard = Vec::new();
+        while let Ok(o) = b_out.try_recv() {
+            if let Out::CallAudio(pcm) = o {
+                heard.extend(pcm);
+            }
+        }
+        drop((a_tx, b_tx));
+        if let Some(d) = &out_dir {
+            write_wav(
+                &d.join(format!("loss-{:02}.wav", (rate * 100.0) as u32)),
+                &heard,
+            );
+        }
+        let played = heard.len() / 960;
+        assert!(
+            played >= FRAMES * 9 / 10,
+            "{rate}: played {played} of {FRAMES} frames"
+        );
+        let c = best_correlation(&reference, &envelope(&heard));
+        eprintln!(
+            "loss {:.0}%: {played} frames, envelope correlation {c:.3}",
+            rate * 100.0
+        );
+        match baseline {
+            None => {
+                assert!(c >= 0.85, "the speech's shape comes through: {c:.3}");
+                baseline = Some(c);
+            }
+            Some(b) => assert!(
+                c >= b - margin,
+                "{rate}: {c:.3}, against {b:.3} with no loss"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

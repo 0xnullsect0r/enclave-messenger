@@ -185,6 +185,11 @@ fn call_op(op: MediaOp, bytes: &[u8], calls: &mut Calls) -> enclave_media::Resul
             };
             c.decode(what).map(|pcm| MediaOut::Raw(pcm_bytes(&pcm)))
         }
+        MediaOp::CallLoss(n, pct) => {
+            let c = calls.audio.get_mut(&n).ok_or(missing)?;
+            c.set_loss(pct);
+            Ok(MediaOut::Raw(Vec::new()))
+        }
         MediaOp::CallClose(n) => {
             calls.audio.remove(&n);
             Ok(MediaOut::Raw(Vec::new()))
@@ -204,6 +209,7 @@ fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
         | MediaOp::VideoDecode(_)
         | MediaOp::VideoClose(_)
         | MediaOp::CallMix(_)
+        | MediaOp::CallLoss(..)
         | MediaOp::VideoDecodeFrom(..)
         | MediaOp::VideoScreen(..) => call_op(req.op, &req.bytes, calls),
         MediaOp::Sanitize => enclave_media::sanitize(&req.bytes).map(|s| MediaOut::Sanitized {
@@ -229,6 +235,13 @@ fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
                 bytes: Vec::new(),
             })
         }
+        MediaOp::VoicePiece(start) => enclave_media::voice::decode_voice_range(
+            &req.bytes,
+            start,
+            enclave_media::voice::CHUNK_FRAMES,
+        )
+        .map(|pcm| MediaOut::Raw(pcm.iter().flat_map(|s| s.to_le_bytes()).collect())),
+        MediaOp::VoiceOgg => enclave_media::voice::voice_to_ogg(&req.bytes).map(MediaOut::Raw),
         MediaOp::VoiceWav => enclave_media::voice::voice_info(&req.bytes).and_then(|i| {
             Ok(MediaOut::Audio {
                 duration_ms: i.duration_ms,

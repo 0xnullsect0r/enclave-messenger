@@ -21,6 +21,9 @@ use crate::{AppWindow, Screen, Sheet, vault, view};
 use enclave_ipc::{Cmd, Out};
 use enclave_vault::Mode;
 use slint::{ComponentHandle, Model as _};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Largest file sent from here (it crosses to the vault in one message).
@@ -178,6 +181,67 @@ fn crash_reports(
         enclave_crash::remove_all(&dir);
         if let Some(ui) = w.upgrade() {
             show(&ui, &dir);
+        }
+    });
+}
+
+/// The voice note playing: which (`conversation:seq`) and its sound.
+type Playing = Arc<std::sync::Mutex<Option<(String, crate::audio::Playback)>>>;
+
+/// Voice notes: recording from the microphone (sent as a WAV recording,
+/// which the vault re-encodes), and playing.
+fn voice_notes(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>, playing: Playing) {
+    let recording: Rc<RefCell<Option<crate::audio::Recorder>>> = Rc::default();
+    let (r, w) = (Rc::clone(&recording), ui.as_weak());
+    ui.on_record_voice(move || {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        enclave_platform::phone::ask_microphone();
+        match crate::audio::Recorder::start() {
+            Ok(rec) => *r.borrow_mut() = Some(rec),
+            Err(e) => {
+                if let Some(ui) = w.upgrade() {
+                    ui.set_voice_recording(false);
+                    ui.set_status_line(
+                        format!("{}: {e}", crate::i18n::tr("Couldn't record")).into(),
+                    );
+                }
+            }
+        }
+    });
+    let (r, w, t) = (Rc::clone(&recording), ui.as_weak(), tx.clone());
+    ui.on_stop_voice(move |send| {
+        let Some(rec) = r.borrow_mut().take() else {
+            return;
+        };
+        if !send {
+            return;
+        }
+        let wav = rec.finish();
+        // Under a fifth of a second is a slip of the finger.
+        if wav.len() < 44 + 2 * crate::audio::RATE as usize / 5 {
+            return;
+        }
+        if let Some(ui) = w.upgrade() {
+            let id = ui.get_current_id().to_string();
+            let _ = t.send(Cmd::SendFile(id, "voice.wav".into(), wav, String::new()));
+        }
+    });
+    let (p, t) = (Arc::clone(&playing), tx);
+    ui.on_play_voice(move |id, seq| {
+        if let Ok(mut p) = p.lock() {
+            *p = None;
+        }
+        if let Ok(seq) = seq.parse() {
+            let _ = t.send(Cmd::PlayVoice(id.to_string(), seq));
+        }
+    });
+    let w = ui.as_weak();
+    ui.on_stop_playing(move || {
+        if let Ok(mut p) = playing.lock() {
+            *p = None;
+        }
+        if let Some(ui) = w.upgrade() {
+            ui.set_voice_playing("".into());
         }
     });
 }
@@ -530,6 +594,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // Outputs from the vault, applied on the UI thread.
     let w = ui.as_weak();
     let lan_tx = tx.clone();
+    // The voice note playing, shared with its Stop button.
+    let playing: Playing = Arc::default();
+    voice_notes(&ui, tx.clone(), Arc::clone(&playing));
     std::thread::Builder::new()
         .name("enclave-ui-feed".into())
         .spawn(move || {
@@ -564,6 +631,39 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                             ui.set_call_has_remote(true);
                             ui.set_call_remote_screen(width >= enclave_ipc::SCREEN_WIDTH);
                         });
+                        continue;
+                    }
+                    Out::VoiceAudio(key, first, pcm) => {
+                        let mut p = playing.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                        match p.as_mut() {
+                            Some((k, back)) if *k == key && !first => back.extend(&pcm),
+                            _ if first => {
+                                let (w2, k2) = (w.clone(), key.clone());
+                                let done = move || {
+                                    let _ = w2.upgrade_in_event_loop(move |ui| {
+                                        if ui.get_voice_playing() == k2.as_str() {
+                                            ui.set_voice_playing("".into());
+                                        }
+                                    });
+                                };
+                                *p = match crate::audio::Playback::start(pcm, done) {
+                                    Ok(back) => {
+                                        let k = key.clone();
+                                        let _ = w.upgrade_in_event_loop(move |ui| {
+                                            ui.set_voice_playing(k.into());
+                                        });
+                                        Some((key, back))
+                                    }
+                                    Err(e) => {
+                                        eprintln!("enclave: voice note: {e}");
+                                        let _ = w.upgrade_in_event_loop(|ui| ui.set_voice_playing("".into()));
+                                        None
+                                    }
+                                };
+                            }
+                            // A piece of a note that was stopped.
+                            _ => {}
+                        }
                         continue;
                     }
                     Out::CallTile(who, width, height, rgba) => {
@@ -745,7 +845,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     | Out::UpdateBundle(_)
                     | Out::CallAudio(_)
                     | Out::CallVideo(..)
-                    | Out::CallTile(..) => {}
+                    | Out::CallTile(..)
+                    | Out::VoiceAudio(..) => {}
                 });
             }
         })
@@ -868,6 +969,17 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     #[cfg(all(desktop, target_os = "macos"))]
     let _ = notify_rust::set_application("com.aricummings.Enclave");
     ui.set_can_hide_capture(enclave_platform::window::CAN_EXCLUDE_FROM_CAPTURE);
+    ui.set_capture_platform(if cfg!(windows) {
+        1
+    } else if cfg!(target_os = "macos") {
+        2
+    } else if cfg!(target_os = "android") {
+        3
+    } else if cfg!(target_os = "ios") {
+        4
+    } else {
+        0
+    });
     // Kept out of screen capture from the first frame (the profile's
     // setting follows with its first snapshot).
     let w = ui.as_weak();
@@ -976,6 +1088,16 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     let t = tx.clone();
     ui.on_set_previews(move |on| {
         let _ = t.send(Cmd::SetPreviews(on));
+    });
+    let t = tx.clone();
+    ui.on_transcription_model(move |on| {
+        let _ = t.send(Cmd::TranscriptionModel(on));
+    });
+    let t = tx.clone();
+    ui.on_transcribe(move |id, seq| {
+        if let Ok(seq) = seq.parse() {
+            let _ = t.send(Cmd::Transcribe(id.to_string(), seq));
+        }
     });
     let t = tx.clone();
     ui.on_secure_account(move || {
@@ -1525,6 +1647,23 @@ mod phone {
             let _ = w.upgrade_in_event_loop(move |ui| ui.set_delivery(i32::from(way)));
         });
         ui.on_set_delivery(|way| p::set_delivery(u8::try_from(way).unwrap_or(0)));
+        // Battery optimisation (Android, PC-22): checked again every few
+        // seconds, so coming back from the system's setting shows the change.
+        ui.set_battery_restricted(p::battery_restricted());
+        ui.on_open_battery_settings(p::open_battery_settings);
+        let w = ui.as_weak();
+        let timer = slint::Timer::default();
+        timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_secs(5),
+            move || {
+                if let Some(ui) = w.upgrade() {
+                    ui.set_battery_restricted(p::battery_restricted());
+                }
+            },
+        );
+        // It runs as long as the app does.
+        std::mem::forget(timer);
     }
 }
 #[cfg(not(desktop))]

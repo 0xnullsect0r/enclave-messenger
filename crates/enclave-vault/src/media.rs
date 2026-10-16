@@ -371,6 +371,20 @@ impl CallCodec {
 }
 
 impl CallCodec {
+    /// The loss the other side reports hearing from us, in percent.
+    pub async fn set_loss(&self, percent: u8) {
+        match &self.at {
+            CallAt::Helper(p) => {
+                let _ = p.call(MediaOp::CallLoss(self.n, percent), Vec::new()).await;
+            }
+            CallAt::Here(a) => {
+                if let Ok(mut a) = a.lock() {
+                    a.set_loss(percent);
+                }
+            }
+        }
+    }
+
     /// A group call's next 20 ms: each other participant's frame decoded
     /// by its own decoder, mixed.
     pub async fn mix(&self, frames: &[(u32, CallDecode, Vec<u8>)]) -> Result<Vec<i16>, String> {
@@ -616,6 +630,26 @@ impl Media {
         }
     }
 
+    /// Ten seconds of a voice note from frame `start`, to play (empty past
+    /// the end).
+    pub async fn voice_piece(&self, note: Vec<u8>, start: u32) -> Result<Vec<i16>, String> {
+        match self.call(MediaOp::VoicePiece(start), note).await? {
+            MediaOut::Raw(b) if b.len() % 2 == 0 => Ok(b
+                .chunks_exact(2)
+                .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                .collect()),
+            _ => Err("unexpected reply".into()),
+        }
+    }
+
+    /// A voice note as an Ogg Opus file, to save.
+    pub async fn voice_ogg(&self, note: Vec<u8>) -> Result<Vec<u8>, String> {
+        match self.call(MediaOp::VoiceOgg, note).await? {
+            MediaOut::Raw(b) => Ok(b),
+            _ => Err("unexpected reply".into()),
+        }
+    }
+
     /// A voice note decoded to a WAV file.
     pub async fn voice_wav(&self, note: Vec<u8>) -> Result<Vec<u8>, String> {
         match self.call(MediaOp::VoiceWav, note).await? {
@@ -728,6 +762,13 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
                 bytes: enclave_media::voice::voice_to_wav(bytes)?,
             })
         }),
+        MediaOp::VoicePiece(start) => enclave_media::voice::decode_voice_range(
+            bytes,
+            start,
+            enclave_media::voice::CHUNK_FRAMES,
+        )
+        .map(|pcm| MediaOut::Raw(pcm.iter().flat_map(|s| s.to_le_bytes()).collect())),
+        MediaOp::VoiceOgg => enclave_media::voice::voice_to_ogg(bytes).map(MediaOut::Raw),
         MediaOp::Shrink(side) => {
             enclave_media::sanitize_max(bytes, u32::from(side)).map(|s| MediaOut::Sanitized {
                 png: s.format == Format::Png,
@@ -774,6 +815,7 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         | MediaOp::VideoDecode(_)
         | MediaOp::VideoClose(_)
         | MediaOp::CallMix(_)
+        | MediaOp::CallLoss(..)
         | MediaOp::VideoDecodeFrom(..)
         | MediaOp::VideoScreen(..) => {
             return Err("calls go through Media::open_call and open_video".into());

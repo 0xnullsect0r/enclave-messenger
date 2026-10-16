@@ -237,14 +237,21 @@ An optional 2-word code, as in ZRTP: the first two 11-bit groups of `KMAC256(cal
 
 | Function | Implementation | Isolation |
 |---|---|---|
-| Opus decode | Pure-Rust `opus-decoder` once it passes RFC 8251 vectors and fuzzing | mediad sandbox |
-| Opus encode | `opus-rs` (pure Rust), only on the user's own microphone | mediad sandbox |
+| Opus encode and decode | `opus-pure` (pure Rust, a port of libopus): 32 kbit/s CBR, complexity 10, in-band FEC sized by the loss the other side reports (`enclave-media/src/opus.rs`) | mediad sandbox |
 | Opus via Symphonia | Never (Symphonia cannot decode Opus) | — |
 | Echo cancellation | Pure-Rust `sonora` (WebRTC AEC3, noise suppression, AGC2) on every platform; its echo test is `echo_is_cancelled` | mediad sandbox |
 | Video encode | AV1 via rav1e at speed 10, or an OS hardware AV1 encoder | mediad sandbox / OS |
 | Video decode | rav1d, in software, in the sandbox. Incoming video never touches hardware decoders. | mediad sandbox |
-| M8 gate | 360p at 30 fps on the reference low-end phone; if it fails, OS hardware H.264 encode as a declared exception | — |
+| M8 gate | 360p at 30 fps on the reference low-end phone; if it fails, OS hardware H.264 encode as a declared exception (External Gate G8: the device) | — |
 | Capture | `cpal` for audio; CameraX via `jni`, AVFoundation via `objc2`, `nokhwa` on desktop | platform shims |
+
+### 10.1 As implemented: speech quality under loss
+
+PESQ (ITU-T P.862.2, wideband) is the test oracle, run only in CI; ViSQOL has no package to run there, and POLQA is licensed. On a recording of speech (the nightly job's, a pinned sample) the codec alone scores 4.0 or more at 32 kbit/s. The whole call, through two relays, the sender's echo canceller, noise suppression and gain control and the receiver's jitter buffer, scored 3.7 with no loss, 3.72 at 1 %, 3.28 at 5 % and 2.95 at 10 % of the caller's packets lost. PESQ marks down the level changes the gain control makes, so the end-to-end figure sits below the codec's. The nightly job `call-quality` (`ci/calls/pesq.py`) fails below 3.5, 3.5, 3.0 and 2.7. On every push `call_quality_under_loss` runs the same calls with a voice-like signal and checks that what is played follows what was said frame by frame (envelope correlation, at most a little below the lossless call's at each loss rate) and that no frames go missing.
+
+Loss is met in two ways. The receiver recovers a lost frame from the next packet's in-band FEC when that packet has arrived, and conceals it when it hasn't. Each side also measures the share of frames it lost and reports it once a second (`"L" ‖ u8 percent` on the audio stream). The other side's encoder then spends that much more of each packet, plus 2 points and at most 30 %, on the copy of the frame before, and none on a clean line, where the copy would only cost quality. A group call has many listeners, each losing differently, so its encoders keep a fixed 5 %. A control rides beside the audio frame in the same constant-size packet, so it never delays the audio (`Shaper::next_plaintext`; group calls' names, hands and reactions too).
+
+The first codec pair, `opus-rs`, failed this: its packets scored 1.0, unintelligible even decoded by libopus, and `opus-decoder` broke down after the first lost packet. They were replaced by `opus-pure`, whose output and loss handling score as libopus's do.
 
 ## 11. Errors
 
@@ -258,6 +265,6 @@ An optional 2-word code, as in ZRTP: the first two 11-bit groups of `KMAC256(cal
 
 ## Open questions
 
-1. The SFrame suite ID 0xF0E1 is a private-use value chosen here; RFC 9605 private-use allocation rules should be confirmed.
-2. Audio packets are padded to 160 B (§6); PLAN fixes the rate and CBR but not the exact size. 160 B fits a 20 ms, 32 kbps Opus frame (80 B), the SFrame header, the 32 B tag, and RTP headers.
-3. Whether the Maximum-mode tunnel (§7) should run on Android in the background, where the always-on profile already runs. PLAN says "while the app is in the foreground"; this spec follows PLAN.
+1. **Resolved:** the SFrame suite ID 0xF0E1 lies in the private-use range of RFC 9605's cipher suite registry (0xF000–0xFFFF, reserved for private use, needing no registration), so no allocation is asked for. Both ends are Enclave, which knows the suite.
+2. **Resolved:** audio packets are 160 B (§6). That holds a 20 ms Opus frame at 32 kbit/s (80 B), the SFrame header and its 32 B tag, and the RTP header with room to spare. Tests `rt19_call_packets_constant_size_and_rate` and `rt19_mute_keeps_rate` check that every packet of a call leg is this size at a constant rate, muted or not.
+3. **Resolved:** the Maximum-mode tunnel (§7) runs only while the app is in front, as PLAN says. In the background a Maximum device keeps the always-on mixnet traffic of its profile, and a call wakes the tunnel when it starts (test `rt18_max_mode_tunnel_constant`).

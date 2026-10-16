@@ -163,6 +163,8 @@ pub struct Msg {
     /// A clip (an animated picture): its length in milliseconds once its
     /// poster arrived, else 0.
     pub clip_ms: u32,
+    /// A voice note's transcript, made on this device, or empty.
+    pub transcript: String,
 }
 
 /// A call as the window shows it (`docs/11-calls.md`).
@@ -340,6 +342,13 @@ pub struct Snapshot {
     pub build_check: String,
     /// The call, if there is one.
     pub call: CallView,
+    /// Voice-note transcription's model: 0 not downloaded, 1 downloading,
+    /// 2 ready (`docs/18-a11y-i18n.md` §4).
+    pub transcription: u8,
+    /// How much of the model has come, in percent, while downloading.
+    pub transcription_percent: u8,
+    /// Why the last download failed, or empty.
+    pub transcription_error: String,
     /// A device linked to the account in the last 7 days ("Linked device,
     /// 30 Sep 14:02"), pointed out on every device, or empty.
     pub new_device: String,
@@ -388,6 +397,11 @@ pub struct Snapshot {
     pub typing_setting: bool,
     /// The open conversation's contact is typing.
     pub typing: bool,
+    /// In a group: who is typing ("Ana, Ben"), when someone is.
+    pub typing_who: String,
+    /// Linux without (full) Landlock: the vault couldn't confine its files
+    /// (PC-46).
+    pub sandbox_weak: bool,
     /// This device can change the recovery words (it holds them).
     pub can_change_words: bool,
     /// Our change of recovery words is still reaching contacts and groups.
@@ -732,7 +746,18 @@ pub enum Cmd {
     /// Share the screen instead of the camera in a video call (true), or
     /// stop.
     CallScreen(bool),
+    /// Play a voice note (conversation, message): its sound comes back in
+    /// pieces ([`Out::VoiceAudio`]).
+    PlayVoice(String, u64),
+    /// Turn voice-note transcription on (download its model through Tor)
+    /// or off (delete the model).
+    TranscriptionModel(bool),
+    /// Transcribe a voice note (conversation, message) on this device.
+    Transcribe(String, u64),
 }
+
+/// Most samples in one [`Out::VoiceAudio`] (10 s at 48 kHz).
+pub const VOICE_PIECE: usize = 480_000;
 
 /// The size a shared screen's frames go at ([`Cmd::CallFrame`]).
 pub const SCREEN_WIDTH: u32 = 960;
@@ -822,6 +847,10 @@ pub enum Out {
     /// A group call: one participant's newest picture (participant id,
     /// width, height, RGBA).
     CallTile(u32, u32, u32, Vec<u8>),
+    /// A voice note to play ([`Cmd::PlayVoice`]): which (`conversation:seq`),
+    /// whether this is its first piece, and up to [`VOICE_PIECE`] samples
+    /// of 48 kHz mono.
+    VoiceAudio(String, bool, Vec<i16>),
 }
 
 /// PCM as 16-bit little-endian bytes.
@@ -1000,7 +1029,8 @@ impl Snapshot {
                 .bool(m.voice)
                 .u32(m.voice_ms)
                 .bytes(&m.waveform[..m.waveform.len().min(64)])
-                .u32(m.clip_ms);
+                .u32(m.clip_ms)
+                .str(&m.transcript);
         }
         w.strs(&self.code_groups)
             .strs(&self.code_words)
@@ -1090,6 +1120,8 @@ impl Snapshot {
             .u32(self.invites)
             .bool(self.typing_setting)
             .bool(self.typing)
+            .str(&self.typing_who)
+            .bool(self.sandbox_weak)
             .bool(self.can_change_words)
             .bool(self.words_pending)
             .bool(self.removed)
@@ -1155,6 +1187,9 @@ impl Snapshot {
         for p in &self.call.knocks {
             w.u32(p.id).str(&p.name);
         }
+        w.u8(self.transcription)
+            .u8(self.transcription_percent)
+            .str(&self.transcription_error);
         w.0
     }
 
@@ -1210,6 +1245,7 @@ impl Snapshot {
                         w
                     },
                     clip_ms: r.u32()?,
+                    transcript: r.str()?,
                 })
             })
             .collect::<Result<_>>()?;
@@ -1357,6 +1393,8 @@ impl Snapshot {
             invites: r.u32()?,
             typing_setting: r.bool()?,
             typing: r.bool()?,
+            typing_who: r.str()?,
+            sandbox_weak: r.bool()?,
             can_change_words: r.bool()?,
             words_pending: r.bool()?,
             removed: r.bool()?,
@@ -1457,6 +1495,9 @@ impl Snapshot {
                         .collect::<Result<_>>()?
                 },
             },
+            transcription: r.u8()?,
+            transcription_percent: r.u8()?,
+            transcription_error: r.str()?,
         };
         r.end()?;
         Ok(s)
@@ -1602,6 +1643,9 @@ impl Cmd {
             Cmd::AdmitToCall(id) => w.u8(112).u32(*id),
             Cmd::RefuseFromCall(id) => w.u8(113).u32(*id),
             Cmd::CallScreen(on) => w.u8(114).bool(*on),
+            Cmd::PlayVoice(c, seq) => w.u8(115).str(c).u64(*seq),
+            Cmd::TranscriptionModel(on) => w.u8(116).bool(*on),
+            Cmd::Transcribe(c, seq) => w.u8(117).str(c).u64(*seq),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1759,6 +1803,9 @@ impl Cmd {
             112 => Cmd::AdmitToCall(r.u32()?),
             113 => Cmd::RefuseFromCall(r.u32()?),
             114 => Cmd::CallScreen(r.bool()?),
+            115 => Cmd::PlayVoice(r.str()?, r.u64()?),
+            116 => Cmd::TranscriptionModel(r.bool()?),
+            117 => Cmd::Transcribe(r.str()?, r.u64()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1846,6 +1893,16 @@ impl Out {
             Out::CallTile(who, width, height, rgba) => {
                 let mut w = Writer::default();
                 w.u8(14).u32(*who).u32(*width).u32(*height).bytes(rgba);
+                w.0
+            }
+            Out::VoiceAudio(key, first, pcm) => {
+                let mut w = Writer::default();
+                let bytes: Vec<u8> = pcm
+                    .iter()
+                    .take(VOICE_PIECE)
+                    .flat_map(|s| s.to_le_bytes())
+                    .collect();
+                w.u8(15).str(key).bool(*first).bytes(&bytes);
                 w.0
             }
             Out::Effect(e) => vec![
@@ -1942,6 +1999,19 @@ impl Out {
                 }
                 r.end()?;
                 Ok(Out::CallTile(who, width, height, rgba))
+            }
+            [15, ..] => {
+                let mut r = Reader(&b[1..]);
+                let (key, first, bytes) = (r.str()?, r.bool()?, r.bytes()?);
+                r.end()?;
+                if bytes.len() % 2 != 0 || bytes.len() > VOICE_PIECE * 2 {
+                    return Err(IpcError::Malformed);
+                }
+                let pcm = bytes
+                    .chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                    .collect();
+                Ok(Out::VoiceAudio(key, first, pcm))
             }
             [7, ..] => {
                 let mut r = Reader(&b[1..]);

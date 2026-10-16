@@ -43,6 +43,9 @@ pub struct Reaction {
     pub emoji: String,
 }
 
+/// Most bytes of a transcript kept with a voice note.
+pub const MAX_TRANSCRIPT: usize = 16_384;
+
 /// A stored message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
@@ -95,6 +98,9 @@ pub struct Message {
     /// A line this device wrote into the conversation (a call: "Missed
     /// call", "Call, 3:02"), not a message anyone sent.
     pub notice: bool,
+    /// A voice note's words, transcribed on this device (empty: not
+    /// transcribed). Kept in the record, so shredded with it.
+    pub transcript: String,
 }
 
 impl Message {
@@ -121,12 +127,13 @@ impl Message {
             location: None,
             sticker: None,
             notice: false,
+            transcript: String::new(),
         }
     }
 
     pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(6).u64(self.seq).fixed(&self.id);
+        w.u8(7).u64(self.seq).fixed(&self.id);
         w.u8(u8::from(self.outgoing))
             .u8(u8::from(self.delivered))
             .u8(u8::from(self.read))
@@ -171,13 +178,14 @@ impl Message {
                 .map(Evidence::encode)
                 .unwrap_or_default(),
         );
+        w.bytes(self.transcript.as_bytes());
         w.finish()
     }
 
     pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(2..=6).contains(&version) {
+        if !(2..=7).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let s = |r: &mut Reader<'_>, n| {
@@ -236,6 +244,11 @@ impl Message {
         } else {
             None
         };
+        let transcript = if version >= 7 {
+            s(&mut r, MAX_TRANSCRIPT)?
+        } else {
+            String::new()
+        };
         r.end()?;
         Ok(Self {
             seq,
@@ -259,6 +272,7 @@ impl Message {
             location,
             sticker,
             notice,
+            transcript,
         })
     }
 

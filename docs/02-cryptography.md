@@ -468,9 +468,9 @@ Rules:
 
 ## Open questions
 
-1. The composite signature uses `enclave/v1/sig/composite` as the ML-DSA-87 context, where the draft uses its algorithm label, and puts Ed448 first. Draft test vectors therefore cannot be run unmodified; `tests/differential.rs` checks each component separately instead. Whether to align the ML-DSA context with the draft before 1.0 is open.
-2. PLAN §2.1 gives EnclaveSeal an overhead of 72 B (32 nonce + 32 tag + 8 framing). The implementation has no framing header and an overhead of 64 B; the 8 B moved into the request header and the content length field (`08-envelope.md`). This intentionally differs from PLAN.md.
-3. PLAN §2.3 fixes the XChaCha20 nonce and the AES IV at zero. The implementation derives both from `(K, N)` with the subkeys (1,088-bit output). This intentionally differs from PLAN.md; the security argument is unchanged.
-4. Representing the McEliece public key by `SHA3-512(McE_pk)` in the EnclaveCombine binding instead of the full 1,357,824 B. The binding is equivalent under SHA3-512 collision resistance, and the hash is already committed in the manifest. Confirm with the crypto working group.
-5. ~~Whether the hedge secret should be kept by the hardware keystore.~~ Decided: it lives in the keystore, not the database, and is refreshed at every open (§6.1).
-6. Whether the compact seal (§4.5) should be replaced by a transmitted nonce where a future layout has room.
+1. **Resolved:** the context stays `enclave/v1/sig/composite`, with Ed448 first (`sig.rs`), for v1. The draft is not final and only Enclave verifies these signatures. `tests/differential.rs` checks each half against another implementation (`mldsa_keygen_and_cross_verify`, `composite_uses_standard_ed448_half`). Aligning with a final RFC would be a new signature suite (RFC 0008, item 1).
+2. **Resolved:** the overhead is 64 B (`seal::OVERHEAD` = 32 nonce + 32 tag), with no framing header. PLAN's 8 B of framing live in the request header and the content length field (`08-envelope.md`). This intentionally differs from PLAN.md (RFC 0008, item 2).
+3. **Resolved:** the XChaCha20 nonce and the AES IV are derived from `(K, N)` with the subkeys (1,088-bit output, `seal.rs` `subkeys`), not fixed at zero as in PLAN §2.3. The security argument is unchanged and the derivation costs nothing (RFC 0008, item 3).
+4. **Resolved:** EnclaveCombine binds `SHA3-512(McE_pk)`, the manifest's `vault_hash`, not the full 1,357,824 B key (`kem::combine`; test `combine_binds_everything`). The binding is equivalent under SHA3-512 collision resistance. The crypto working group's confirmation is part of audit A (G1; RFC 0008, item 4).
+5. **Resolved:** the hedge secret lives in the platform keystore, not the database, and is refreshed every time it is taken (§6.1; test `hedge_secret_is_kept_refreshed_and_erased`).
+6. **Resolved:** no. Existing layouts keep the compact seal (device slots, PQ slots, the EQXDH identity, SFrame, relay datagrams), because changing them changes wire version 1. A new layout that has room for a nonce uses the hedged `seal` (RFC 0008, item 5).

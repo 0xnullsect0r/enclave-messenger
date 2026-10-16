@@ -117,5 +117,5 @@ The accepted residual for each attack is in `redteam-matrix.md`. The five larges
 
 ## Open questions
 
-1. Whether to encrypt manifests and bundles at the directory under a key distributed with the QR code, link, or KT record (as the McEliece blob already is), so that the directory cannot count devices. This changes the "publishing requires a root-certified device" check, which the server could then no longer perform.
-2. The minimum anonymity-set size at which the beta should stop warning early users.
+1. **Resolved:** manifests and bundles stay in plaintext at the directory, so the server keeps its checks: the root signature and version order of a manifest (`Server::accept_manifest`) and a listed device's signature on a publication (`Server::accept_publication`). The directory can count an account's devices; the claim is the narrower one in note 1. RFC 0009 records this, together with the one request envelope per device that session establishment sends. Encrypted directory objects would need a new RFC.
+2. **Resolved:** no number is set. The client can't measure the anonymity set without telemetry, which Enclave doesn't collect (`19-ops.md` §3), so a threshold could never be checked. The small-set warning is disclosed for the whole public beta (residual 2 above, PLAN's "disclosed during beta") and is dropped at 1.0, which needs the operator program (G5) and the audits (G1). No warning text is in the app yet; it belongs in the beta release notes.

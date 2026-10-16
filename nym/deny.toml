@@ -242,6 +242,7 @@ allow-build-scripts = [
     "prometheus",
     "protobuf",
     "pulldown-cmark",
+    "pulp",  # generates its SIMD code (Rust) for the matrix kernels (speech model)
     "quote",
     "radium",
     "rav1d",  # AV1 decoder; asm feature off, so cc/nasm are not run (enclave-av1 exception)

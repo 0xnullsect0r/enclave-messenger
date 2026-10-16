@@ -22,7 +22,7 @@ use enclave_calls::relay::{
     P_KEEPALIVE, P_MEDIA, descriptor_part, descriptor_request, reflect_request, reflected,
     ticket_datagrams, ticket_reply,
 };
-use enclave_calls::shape::{Inner, Shaper, Stream, decode_plaintext};
+use enclave_calls::shape::{Inner, Shaper, Stream, decode_plaintext, decode_plaintexts};
 use enclave_calls::signal::{CALLEE, CALLER, CallKeys};
 use enclave_calls::ticket::{self, TicketKey};
 use enclave_calls::wg::{self, ClientLink, DirectLink};
@@ -528,6 +528,9 @@ struct Jitter {
     frames: BTreeMap<u32, Vec<u8>>,
     next: Option<u32>,
     lost_run: u32,
+    /// Frames played as they came, and lost, since the last loss report.
+    got: u32,
+    missed: u32,
 }
 
 impl Jitter {
@@ -558,13 +561,48 @@ impl Jitter {
         self.next = Some(next + 1);
         if let Some(f) = self.frames.remove(&next) {
             self.lost_run = 0;
+            self.got += 1;
             return Some((CallDecode::Packet, f));
         }
         self.lost_run += 1;
+        self.missed += 1;
         if let Some(f) = self.frames.get(&(next + 1)) {
             return Some((CallDecode::Recover, f.clone()));
         }
         (self.lost_run <= CONCEAL).then(|| (CallDecode::Lost, Vec::new()))
+    }
+}
+
+impl Jitter {
+    /// The share of frames lost since the last call, in percent, and start
+    /// counting again; None before enough frames to say.
+    fn loss(&mut self) -> Option<u8> {
+        let n = self.got + self.missed;
+        if n < 25 {
+            return None;
+        }
+        let pct = (self.missed * 100).div_ceil(n);
+        (self.got, self.missed) = (0, 0);
+        Some(pct.min(100) as u8)
+    }
+}
+
+/// Control message on the audio stream: the loss we hear from the other
+/// side, `"L" ‖ u8 percent`, every [`LOSS_EVERY`] ticks (1 s). Their encoder
+/// spends that much more of each packet on in-band FEC (none at 0).
+const LOSS: u8 = b'L';
+const LOSS_EVERY: u64 = 50;
+
+/// A group call's encoder loss estimate, in percent.
+const GROUP_FEC: u8 = 5;
+
+/// The encoder's loss estimate for a report: a little over what was
+/// heard (it varies), at most 30 %.
+fn fec_for(reported: u8) -> u8 {
+    if reported == 0 {
+        0
+    } else {
+        reported.saturating_add(2).min(30)
     }
 }
 
@@ -714,18 +752,20 @@ impl VideoSide {
     /// A video plaintext that arrived.
     fn arrived(&mut self, pt: &[u8]) {
         use std::sync::atomic::Ordering;
-        match decode_plaintext(pt) {
-            Ok(Inner::Media(frag)) => {
-                if let Some(unit) = self.reassembler.push(&frag) {
-                    // A full queue drops the unit; the decoder then asks
-                    // for a key frame.
-                    if self.units.try_send(unit).is_err() {
-                        self.lost.store(true, Ordering::SeqCst);
+        for inner in decode_plaintexts(pt).unwrap_or_default() {
+            match inner {
+                Inner::Media(frag) => {
+                    if let Some(unit) = self.reassembler.push(&frag) {
+                        // A full queue drops the unit; the decoder then asks
+                        // for a key frame.
+                        if self.units.try_send(unit).is_err() {
+                            self.lost.store(true, Ordering::SeqCst);
+                        }
                     }
                 }
+                Inner::Control(c) if c == KEY_PLEASE => self.key.store(true, Ordering::SeqCst),
+                _ => {}
             }
-            Ok(Inner::Control(c)) if c == KEY_PLEASE => self.key.store(true, Ordering::SeqCst),
-            _ => {}
         }
     }
 }
@@ -752,6 +792,7 @@ fn take_payload(
     video: &mut Option<VideoSide>,
     receiver: &mut enclave_calls::sframe::Receiver,
     jitter: &mut Jitter,
+    reported: &mut Option<u8>,
 ) -> bool {
     if p.first() != Some(&P_MEDIA) {
         return false;
@@ -767,11 +808,15 @@ fn take_payload(
     let Ok(pt) = receiver.unprotect(&p[1..], AUDIO_AD) else {
         return false;
     };
-    if let Ok(Inner::Media(f)) = decode_plaintext(&pt)
-        && f.len() > 4
-    {
-        let s = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
-        jitter.push(s, f[4..].to_vec());
+    for inner in decode_plaintexts(&pt).unwrap_or_default() {
+        match inner {
+            Inner::Media(f) if f.len() > 4 => {
+                let s = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
+                jitter.push(s, f[4..].to_vec());
+            }
+            Inner::Control(c) if c.len() == 2 && c[0] == LOSS => *reported = Some(c[1]),
+            _ => {}
+        }
     }
     true
 }
@@ -811,6 +856,10 @@ async fn media_loop(
     let keepalive = control(vec![P_KEEPALIVE]);
     let mut shaper = Shaper::new(Stream::Audio);
     let mut jitter = Jitter::default();
+    // The loss the other side last reported, and what our encoder was set
+    // to for it.
+    let mut reported: Option<u8> = None;
+    let mut fec = 0u8;
     let mut mic: VecDeque<Vec<i16>> = VecDeque::new();
     let mut muted = false;
     let mut seq: u32 = 0;
@@ -868,7 +917,7 @@ async fn media_loop(
                     return "The call's connection closed.".into();
                 }
                 let Some(p) = got.payload else { continue };
-                if !take_payload(&p, video_len, &mut video, &mut receiver, &mut jitter) {
+                if !take_payload(&p, video_len, &mut video, &mut receiver, &mut jitter, &mut reported) {
                     continue;
                 }
                 if heard.is_none() {
@@ -888,7 +937,7 @@ async fn media_loop(
                     continue;
                 };
                 let Some(p) = direct.as_mut().and_then(|p| p.arrived(&d)) else { continue };
-                if !take_payload(&p, video_len, &mut video, &mut receiver, &mut jitter) {
+                if !take_payload(&p, video_len, &mut video, &mut receiver, &mut jitter, &mut reported) {
                     continue;
                 }
                 if heard.is_none() {
@@ -946,6 +995,20 @@ async fn media_loop(
                         return "Couldn't connect the call.".into();
                     }
                     _ => {}
+                }
+                // The loss they hear sets our FEC; and every two seconds we
+                // tell them what we hear.
+                if let Some(r) = reported.take()
+                    && fec_for(r) != fec
+                {
+                    fec = fec_for(r);
+                    plan.codec.set_loss(fec).await;
+                }
+                if ticks.is_multiple_of(LOSS_EVERY)
+                    && heard.is_some()
+                    && let Some(pct) = jitter.loss()
+                {
+                    let _ = shaper.push_control(&[LOSS, pct]);
                 }
                 // One frame up: ours, or padding while muted.
                 let frame = mic.pop_front();
@@ -1158,18 +1221,20 @@ impl GroupVideo {
 
     fn arrived(&mut self, from: u32, pt: &[u8]) {
         use std::sync::atomic::Ordering;
-        match decode_plaintext(pt) {
-            Ok(Inner::Media(frag)) => {
-                self.filming.insert(from, tokio::time::Instant::now());
-                let r = self.reassemblers.entry(from).or_default();
-                if let Some(unit) = r.push(&frag)
-                    && self.units.try_send((from, unit)).is_err()
-                {
-                    self.lost.store(true, Ordering::SeqCst);
+        for inner in decode_plaintexts(pt).unwrap_or_default() {
+            match inner {
+                Inner::Media(frag) => {
+                    self.filming.insert(from, tokio::time::Instant::now());
+                    let r = self.reassemblers.entry(from).or_default();
+                    if let Some(unit) = r.push(&frag)
+                        && self.units.try_send((from, unit)).is_err()
+                    {
+                        self.lost.store(true, Ordering::SeqCst);
+                    }
                 }
+                Inner::Control(c) if c == KEY_PLEASE => self.key.store(true, Ordering::SeqCst),
+                _ => {}
             }
-            Ok(Inner::Control(c)) if c == KEY_PLEASE => self.key.store(true, Ordering::SeqCst),
-            _ => {}
         }
     }
 }
@@ -1206,6 +1271,9 @@ async fn group_loop(
     join[0] = enclave_calls::relay::P_JOIN_GROUP;
     let join = control(join);
     let keepalive = control(vec![P_KEEPALIVE]);
+    // Many listeners, each losing differently: a fixed, moderate FEC
+    // instead of one side's report.
+    plan.codec.set_loss(GROUP_FEC).await;
     let mut shaper = Shaper::new(Stream::Audio);
     let mut mic: VecDeque<Vec<i16>> = VecDeque::new();
     let mut muted = false;
@@ -1305,8 +1373,9 @@ async fn group_loop(
                     if fresh {
                         let _ = events.send(CallEvent::Media(id, FromCall::Heard(from)));
                     }
-                    match decode_plaintext(&pt) {
-                        Ok(Inner::Media(f)) if f.len() > 4 => {
+                    for inner in decode_plaintexts(&pt).unwrap_or_default() {
+                    match inner {
+                        Inner::Media(f) if f.len() > 4 => {
                             let s = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
                             let j = jitters
                                 .entry(from)
@@ -1314,7 +1383,7 @@ async fn group_loop(
                             j.0.push(s, f[4..].to_vec());
                             j.1 = tokio::time::Instant::now();
                         }
-                        Ok(Inner::Control(c)) => {
+                        Inner::Control(c) => {
                             let news = match c.as_slice() {
                                 HAND_UP => Some(FromCall::Hand(from, true)),
                                 HAND_DOWN => Some(FromCall::Hand(from, false)),
@@ -1331,6 +1400,7 @@ async fn group_loop(
                             }
                         }
                         _ => {}
+                    }
                     }
                 }
             }

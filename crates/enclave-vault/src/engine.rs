@@ -18,6 +18,7 @@ use std::sync::Arc;
 mod call_links;
 mod calling;
 mod group_calling;
+mod transcribing;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -277,6 +278,8 @@ struct Engine {
     /// Voice notes' duration and waveform, by (conversation, position),
     /// read by mediad.
     voice: HashMap<(String, u64), (u32, Vec<u8>)>,
+    /// Voice-note transcription: the model's download, the model.
+    transcription: transcribing::Transcription,
     transport: Arc<dyn Transport>,
     /// The traffic shaper, in server mode (`enclave_net::shaped`).
     shaper: Option<Arc<ShapedTransport>>,
@@ -361,6 +364,10 @@ struct Engine {
     typing_until: HashMap<[u8; 64], std::time::Instant>,
     /// When we last told each contact we were typing.
     typing_sent: HashMap<[u8; 64], std::time::Instant>,
+    /// Group members typing (group, member), with their name, until when.
+    group_typing_until: HashMap<([u8; 32], [u8; 64]), (String, std::time::Instant)>,
+    /// When we last told each group we were typing.
+    group_typing_sent: HashMap<[u8; 32], std::time::Instant>,
     /// Clips' lengths (ms), by (conversation, message position), read from
     /// their headers by mediad.
     clips: HashMap<(String, u64), u32>,
@@ -1000,6 +1007,7 @@ pub async fn run_with(
         #[cfg(target_os = "ios")]
         shared_table: None,
         voice: HashMap::new(),
+        transcription: Default::default(),
         shaper,
         round: 0,
         transport,
@@ -1053,6 +1061,8 @@ pub async fn run_with(
         restore_error: String::new(),
         typing_until: HashMap::new(),
         typing_sent: HashMap::new(),
+        group_typing_until: HashMap::new(),
+        group_typing_sent: HashMap::new(),
         renamed: HashMap::new(),
         clips: HashMap::new(),
         reveal_share: None,
@@ -1300,13 +1310,59 @@ impl Engine {
         }
     }
 
-    /// What saving a file writes: a voice note becomes a WAV file anyone
-    /// can play (decoded by mediad); anything else is saved as it is.
+    /// A conversation's attachment (1:1 or group), from the local copy or
+    /// the server.
+    async fn attachment_bytes(&mut self, id: &str, seq: u64) -> Option<Vec<u8>> {
+        if id.starts_with('g') {
+            let gid = self.group_of(id)?;
+            return self
+                .client
+                .as_mut()?
+                .fetch_group_attachment(&gid, seq)
+                .await
+                .ok();
+        }
+        let root = self.root_of(id)?;
+        self.client
+            .as_mut()?
+            .fetch_attachment(&root, seq)
+            .await
+            .ok()
+    }
+
+    /// Play a voice note: its sound to the window, ten seconds at a time.
+    async fn play_voice(&mut self, id: &str, seq: u64) {
+        let Some(note) = self.attachment_bytes(id, seq).await else {
+            self.status = "Couldn't download the voice note. Check your connection.".into();
+            return;
+        };
+        let key = format!("{id}:{seq}");
+        let mut start = 0u32;
+        loop {
+            match self.media.voice_piece(note.clone(), start).await {
+                Ok(pcm) if !pcm.is_empty() => {
+                    let _ = self.out.send(Out::VoiceAudio(key.clone(), start == 0, pcm));
+                }
+                Ok(_) => return,
+                Err(_) => {
+                    if start == 0 {
+                        self.status = "That voice note couldn't be played.".into();
+                    }
+                    return;
+                }
+            }
+            start += enclave_media::voice::CHUNK_FRAMES;
+        }
+    }
+
+    /// What saving a file writes: a voice note becomes an Ogg Opus file
+    /// anyone can play (its own Opus packets, put in pages by mediad);
+    /// anything else is saved as it is.
     async fn exportable(&self, name: String, bytes: Vec<u8>) -> (String, Vec<u8>) {
         if name.ends_with(".evn")
-            && let Ok(wav) = self.media.voice_wav(bytes.clone()).await
+            && let Ok(ogg) = self.media.voice_ogg(bytes.clone()).await
         {
-            return (with_extension(&name, "wav"), wav);
+            return (with_extension(&name, "opus"), ogg);
         }
         (name, bytes)
     }
@@ -2640,6 +2696,11 @@ impl Engine {
                 }
             }
             Cmd::SetEmergencyPin(pin) => self.set_emergency_pin(&pin),
+            // With the keys in files (no keyring here), the passphrase is
+            // what protects them: it can be changed, not removed (PC-45).
+            Cmd::SetPassphrase(p) if p.is_empty() && self.file_keys => {
+                self.status = "This computer keeps Enclave's keys in files, so the passphrase can't be removed.".into();
+            }
             Cmd::SetPassphrase(p) if matches!(self.mode, Mode::Server { .. }) => {
                 self.busy = true;
                 self.push();
@@ -2968,6 +3029,9 @@ impl Engine {
             Cmd::CallReact(emoji) => self.call_react(emoji),
             Cmd::CreateCallLink(lobby) => self.create_call_link(lobby),
             Cmd::CallScreen(on) => self.call_screen(on),
+            Cmd::PlayVoice(id, seq) => self.play_voice(&id, seq).await,
+            Cmd::TranscriptionModel(on) => self.transcription_model(on),
+            Cmd::Transcribe(id, seq) => self.transcribe(&id, seq).await,
             Cmd::AdmitToCall(who) => self.admit_to_call(who),
             Cmd::RefuseFromCall(who) => self.refuse_from_call(who),
             Cmd::CheckUpdates => {
@@ -2990,6 +3054,36 @@ impl Engine {
                 }
                 self.typing_until.clear();
                 self.typing_sent.clear();
+                self.group_typing_until.clear();
+                self.group_typing_sent.clear();
+            }
+            Cmd::Typing(id, on) if id.starts_with('g') => {
+                let Some(gid) = self.group_of(&id) else {
+                    return;
+                };
+                let now = std::time::Instant::now();
+                let send = if on {
+                    self.group_typing_sent.get(&gid).is_none_or(|t| {
+                        now.duration_since(*t).as_secs() >= enclave_core::TYPING_SHOW_SECS / 2
+                    })
+                } else {
+                    self.group_typing_sent.contains_key(&gid)
+                };
+                if !send {
+                    return;
+                }
+                if on {
+                    self.group_typing_sent.insert(gid, now);
+                } else {
+                    self.group_typing_sent.remove(&gid);
+                }
+                if let Some(c) = self.client.as_mut()
+                    && let Ok(Some(sending)) = c.send_group_typing(&gid, on).await
+                {
+                    tokio::spawn(async move {
+                        let _ = sending.await;
+                    });
+                }
             }
             Cmd::Typing(id, on) => {
                 let Some(root) = self.root_of(&id) else {
@@ -3577,6 +3671,34 @@ impl Engine {
                             Event::Typing { root, on: false } | Event::Message { root, .. } => {
                                 self.typing_until.remove(root);
                             }
+                            Event::GroupTyping {
+                                group_id,
+                                root,
+                                name,
+                                on: true,
+                            } => {
+                                self.group_typing_until.insert(
+                                    (*group_id, *root),
+                                    (
+                                        name.clone(),
+                                        now + Duration::from_secs(enclave_core::TYPING_SHOW_SECS),
+                                    ),
+                                );
+                            }
+                            Event::GroupTyping {
+                                group_id,
+                                root,
+                                on: false,
+                                ..
+                            } => {
+                                self.group_typing_until.remove(&(*group_id, *root));
+                            }
+                            // Their message ends their "typing…".
+                            Event::GroupMessage { group_id, message } => {
+                                if let Some(root) = message.from {
+                                    self.group_typing_until.remove(&(*group_id, root));
+                                }
+                            }
                             Event::ModeChanged {
                                 root,
                                 on_record,
@@ -4080,6 +4202,12 @@ impl Engine {
             },
             ..Default::default()
         };
+        (
+            s.transcription,
+            s.transcription_percent,
+            s.transcription_error,
+        ) = self.transcription_state();
+        s.sandbox_weak = crate::harden::filesystem_weak();
         if let Some(r) = &self.share_request {
             s.share_request = r.code();
             s.share_request_words = r.words().join(" ");
@@ -4159,6 +4287,17 @@ impl Engine {
                 .get(&r)
                 .is_some_and(|t| *t > std::time::Instant::now())
         });
+        if let Some(g) = self.selected_group {
+            let mut who: Vec<&str> = self
+                .group_typing_until
+                .iter()
+                .filter(|((gid, _), (_, t))| *gid == g && *t > std::time::Instant::now())
+                .map(|(_, (n, _))| n.as_str())
+                .collect();
+            who.sort_unstable();
+            s.typing = !who.is_empty();
+            s.typing_who = who.join(", ");
+        }
         s.my_username = c.username().map(|u| format!("@{u}")).unwrap_or_default();
         s.joining = c.joining().into_iter().map(|(_, n)| n).collect();
         s.friends = c
@@ -4337,6 +4476,7 @@ impl Engine {
                                 voice: true,
                                 voice_ms: ms,
                                 waveform: wave,
+                                transcript: m.transcript.clone(),
                                 pinned: pinned.contains(&m.id),
                                 ..display(m, now)
                             };
@@ -4558,6 +4698,7 @@ impl Engine {
                             msg.voice = true;
                             msg.voice_ms = ms;
                             msg.waveform = wave;
+                            msg.transcript = m.transcript.clone();
                         }
                         if let (Some(_), Some(att)) = (m.sticker, &m.attachment)
                             && !m.deleted

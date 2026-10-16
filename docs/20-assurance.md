@@ -142,5 +142,5 @@ M10 exit: all critical and high findings closed. The McEliece cryptanalysis lite
 
 ## Open questions
 
-1. The traffic-shape classifier threshold (within 1 percentage point of chance) is this spec's choice; PLAN says only "can't be told apart".
-2. Whether audit A should include the Tamarin and ProVerif models themselves or only their boundaries.
+1. **Resolved:** the threshold stays as this spec's reading of "can't be told apart", for when a trained classifier is added. No classifier is built yet. What runs today: a two-sample Kolmogorov-Smirnov test of tick timing with and without real traffic, and a check that real and cover requests are the same size and look random (`crates/enclave-net/tests/shape.rs`: `tick_timing_is_independent_of_real_traffic`, `real_and_cover_requests_are_the_same_size_and_look_random`), plus the wire capture check in CI (`ci/federation/pcap-check.py`).
+2. **Resolved:** audit A includes the models themselves. They are written by hand from the specification and can drift from the code (`formal/README.md`), so the auditors check that each model matches the code as well as what it leaves out. The models are the ProVerif files in `formal/proverif/`; there are no Tamarin models yet. Audit A is External Gate G1.

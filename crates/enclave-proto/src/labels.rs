@@ -123,6 +123,10 @@ pub const GRP_REKEY_CHECK: &str = "enclave/v1/proto/grp-rekey-check";
 /// Group: outer seal key of a rekey unit (from the announcing epoch's
 /// secret).
 pub const GRP_REKEY_OUTER: &str = "enclave/v1/proto/grp-rekey-outer";
+/// Group: the body key of an ephemeral message (a typing indicator), from
+/// the epoch's secret and the unit's nonce: it takes no step on the sender
+/// chain, so one that is dropped leaves no gap.
+pub const GRP_EPHEMERAL: &str = "enclave/v1/proto/grp-ephemeral";
 /// AD prefix of a rekey unit's outer seal.
 pub const WIRE_AD_REKEY: &str = "enclave/v1/wire/ad-rekey";
 /// AD prefix of a rekey unit's common blob.

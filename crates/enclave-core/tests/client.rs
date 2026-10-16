@@ -2511,6 +2511,97 @@ async fn typing_indicators() {
     assert!(mo.send_typing(&ada.root(), true).await.unwrap().is_none());
 }
 
+/// Typing in a group: an ephemeral group message, seen by members with
+/// typing indicators on; one that is dropped leaves no gap, and the next
+/// real message from the same member opens as usual.
+#[tokio::test]
+async fn group_typing_indicators() {
+    let net = network();
+    let (mut a, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut b, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Ben")
+        .await
+        .unwrap();
+    let (mut c, _) = Client::create(memory(), Arc::new(NoFreeSlots(net.clone())), S1, "Cy")
+        .await
+        .unwrap();
+    connect(&mut a, &mut b).await;
+    connect(&mut a, &mut c).await;
+    let gid = a.create_group("Trip", &[b.root(), c.root()]).await.unwrap();
+    settle(&mut [&mut b, &mut c], 1).await;
+    settle(&mut [&mut a, &mut b, &mut c], 3).await;
+    let typing = |ev: &[Event]| {
+        ev.iter()
+            .filter_map(|e| match e {
+                Event::GroupTyping {
+                    group_id, name, on, ..
+                } if *group_id == gid => Some((name.clone(), *on)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        b.send_group_typing(&gid, true).await.unwrap().is_none(),
+        "off by default"
+    );
+    for x in [&mut a, &mut b, &mut c] {
+        x.set_typing_enabled(true).unwrap();
+    }
+    // Before a member's first message they have no sender chain yet, and a
+    // typing indicator never starts one (that is a rekey).
+    assert!(b.send_group_typing(&gid, true).await.unwrap().is_none());
+    b.send_group_text(&gid, "hi").await.unwrap();
+    c.send_group_text(&gid, "hello").await.unwrap();
+    settle(&mut [&mut a, &mut b, &mut c], 3).await;
+    b.send_group_typing(&gid, true)
+        .await
+        .unwrap()
+        .expect("on")
+        .await
+        .unwrap();
+    b.send_group_typing(&gid, false)
+        .await
+        .unwrap()
+        .expect("on")
+        .await
+        .unwrap();
+    assert_eq!(
+        typing(&a.sync().await.unwrap()),
+        vec![("Ben".to_string(), true), ("Ben".to_string(), false)]
+    );
+    // Cy's transport has no free slot: all of his are dropped.
+    for _ in 0..3 {
+        let r = c
+            .send_group_typing(&gid, true)
+            .await
+            .unwrap()
+            .expect("on")
+            .await;
+        assert!(matches!(r, Err(CoreError::Net(_))), "dropped: {r:?}");
+    }
+    // Real messages carry on, with no gap noticed for either.
+    b.send_group_text(&gid, "after typing").await.unwrap();
+    c.send_group_text(&gid, "after dropped ones").await.unwrap();
+    let ev = settle(&mut [&mut a], 2).await;
+    assert!(typing(&ev[0]).is_empty());
+    let texts: Vec<String> = a
+        .group_messages(&gid)
+        .unwrap()
+        .iter()
+        .map(|m| m.text.clone())
+        .collect();
+    assert!(texts.iter().any(|t| t == "after typing"), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "after dropped ones"), "{texts:?}");
+    assert!(
+        ev[0]
+            .iter()
+            .all(|e| !matches!(e, Event::GroupDiverged { .. })),
+        "no gap from the ephemeral units: {:?}",
+        ev[0]
+    );
+}
+
 /// Changing the recovery words (03 §8.2): a new root, signed by both; the
 /// contacts rename the old root everywhere, the group takes Ada's own root
 /// update without an admin, history, settings and shares carry over, and
@@ -2976,4 +3067,55 @@ async fn history_over_the_lan() {
     let ev = a3.sync().await.unwrap();
     assert!(ev.contains(&Event::HistoryImported), "{ev:?}");
     assert!(a3.history_received());
+}
+
+/// A manifest is renewed by the device holding the words a month before it
+/// expires (`03-identity.md` open question 4): contacts take the new one, and
+/// past the old expiry the conversation goes on.
+#[tokio::test]
+async fn manifest_renewed_before_it_expires() {
+    let net = network();
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut mo, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Mo")
+        .await
+        .unwrap();
+    connect(&mut ada, &mut mo).await;
+    let day = 86_400;
+    let (expires, v1) = ada.own_manifest();
+    net.advance(enclave_proto::manifest::MAX_VALIDITY_SECS - 20 * day);
+    ada.sync().await.unwrap();
+    let (renewed, v2) = ada.own_manifest();
+    assert!(
+        v2 > v1 && renewed > expires + 300 * day,
+        "renewed: {v1} → {v2}"
+    );
+    mo.sync().await.unwrap();
+    net.advance(40 * day);
+    mo.sync().await.unwrap();
+    ada.sync().await.unwrap();
+    mo.send_text(&ada.root(), "still you?").await.unwrap();
+    ada.sync().await.unwrap();
+    assert!(
+        ada.messages(&mo.root())
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "still you?")
+    );
+    ada.send_text(&mo.root(), "still me").await.unwrap();
+    mo.sync().await.unwrap();
+    assert!(
+        mo.messages(&ada.root())
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "still me")
+    );
+    let seen = mo
+        .contacts()
+        .into_iter()
+        .find(|c| c.root == ada.root())
+        .unwrap()
+        .manifest_version();
+    assert!(seen >= 2, "Mo took the renewed manifest ({seen})");
 }

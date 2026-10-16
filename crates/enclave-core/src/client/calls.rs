@@ -82,3 +82,32 @@ impl Client {
         self.put_group_message(gid, &m)
     }
 }
+
+impl Client {
+    /// Keep a voice note's transcript with it (in its record: sealed, and
+    /// shredded with it). Empty clears it.
+    pub fn set_transcript(&mut self, root: &[u8; 64], seq: u64, text: &str) -> Result<()> {
+        let mut m = self
+            .messages(root)?
+            .into_iter()
+            .find(|m| m.seq == seq)
+            .ok_or(CoreError::NotFound)?;
+        m.transcript = text
+            .chars()
+            .take(super::messages::MAX_TRANSCRIPT / 4)
+            .collect();
+        self.put_message(root, &m)
+    }
+
+    /// As [`Self::set_transcript`], in a group.
+    pub fn set_group_transcript(&mut self, gid: &[u8; 32], seq: u64, text: &str) -> Result<()> {
+        let mut m = self
+            .find_group_message(gid, seq)?
+            .ok_or(CoreError::NotFound)?;
+        m.transcript = text
+            .chars()
+            .take(super::messages::MAX_TRANSCRIPT / 4)
+            .collect();
+        self.put_group_message(gid, &m)
+    }
+}

@@ -86,5 +86,4 @@ doc = false
 # The upstream fixes the main workspace builds with (third_party/PATCHES.md).
 [patch.crates-io]
 ptrs = { path = "../third_party/ptrs" }
-opus-decoder = { path = "../third_party/opus-decoder" }
 rav1d = { path = "../third_party/rav1d" }

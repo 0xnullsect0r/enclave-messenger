@@ -343,3 +343,177 @@ mod tests {
         assert_eq!(a.queue.lock().map(|q| q.len()).unwrap_or(0), MAX_QUEUED);
     }
 }
+
+/// Longest voice note (`enclave_media::voice`: 15 minutes).
+pub const MAX_NOTE_SAMPLES: usize = RATE as usize * 15 * 60;
+
+/// Recording a voice note from the microphone: 48 kHz mono, until
+/// [`Recorder::finish`] (or dropped, which throws it away).
+pub struct Recorder {
+    samples: Arc<Mutex<Vec<i16>>>,
+    stop: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl Recorder {
+    /// Open the default microphone and start.
+    pub fn start() -> Result<Self, String> {
+        let samples: Arc<Mutex<Vec<i16>>> = Arc::default();
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let (ready, started) = std::sync::mpsc::channel::<Result<(), String>>();
+        let s = Arc::clone(&samples);
+        std::thread::Builder::new()
+            .name("enclave-voice-note".into())
+            .spawn(move || {
+                let sink: Sink = Arc::new(Mutex::new(Box::new(move |f: Vec<i16>| {
+                    if let Ok(mut s) = s.lock()
+                        && s.len() < MAX_NOTE_SAMPLES
+                    {
+                        s.extend_from_slice(&f);
+                    }
+                })));
+                match microphone(sink) {
+                    Ok(input) => {
+                        let _ = ready.send(Ok(()));
+                        let _ = stopped.recv();
+                        drop(input);
+                    }
+                    Err(e) => {
+                        let _ = ready.send(Err(e));
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        started
+            .recv()
+            .map_err(|_| "the microphone stopped".to_string())??;
+        Ok(Self {
+            samples,
+            stop: Some(stop),
+        })
+    }
+
+    /// Stop: the recording, as a 16-bit 48 kHz mono WAV file.
+    pub fn finish(mut self) -> Vec<u8> {
+        if let Some(s) = self.stop.take() {
+            let _ = s.send(());
+        }
+        let pcm = self.samples.lock().map(|s| s.clone()).unwrap_or_default();
+        wav(&pcm)
+    }
+}
+
+impl Drop for Recorder {
+    fn drop(&mut self) {
+        if let Some(s) = self.stop.take() {
+            let _ = s.send(());
+        }
+    }
+}
+
+/// 16-bit 48 kHz mono PCM as a WAV file.
+pub fn wav(pcm: &[i16]) -> Vec<u8> {
+    let data = (pcm.len() * 2) as u32;
+    let mut w = Vec::with_capacity(44 + pcm.len() * 2);
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + data).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    w.extend_from_slice(&1u16.to_le_bytes()); // mono
+    w.extend_from_slice(&RATE.to_le_bytes());
+    w.extend_from_slice(&(RATE * 2).to_le_bytes());
+    w.extend_from_slice(&2u16.to_le_bytes());
+    w.extend_from_slice(&16u16.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&data.to_le_bytes());
+    for s in pcm {
+        w.extend_from_slice(&s.to_le_bytes());
+    }
+    w
+}
+
+/// Playing a voice note through the speaker: stops at its end, or when
+/// dropped.
+pub struct Playback {
+    queue: Arc<Mutex<VecDeque<i16>>>,
+    stop: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl Playback {
+    /// Play 48 kHz mono samples; `done` runs when they have all played.
+    pub fn start(pcm: Vec<i16>, done: impl FnOnce() + Send + 'static) -> Result<Self, String> {
+        let queue: Arc<Mutex<VecDeque<i16>>> = Arc::new(Mutex::new(pcm.into()));
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let (ready, started) = std::sync::mpsc::channel::<Result<(), String>>();
+        let q = Arc::clone(&queue);
+        std::thread::Builder::new()
+            .name("enclave-voice-play".into())
+            .spawn(move || {
+                let out = match speaker(Arc::clone(&q)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = ready.send(Err(e));
+                        return;
+                    }
+                };
+                let _ = ready.send(Ok(()));
+                loop {
+                    match stopped.recv_timeout(std::time::Duration::from_millis(100)) {
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            if q.lock().map(|q| q.is_empty()).unwrap_or(true) {
+                                // The device's own buffer plays out.
+                                std::thread::sleep(std::time::Duration::from_millis(150));
+                                drop(out);
+                                done();
+                                return;
+                            }
+                        }
+                        _ => return,
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        started
+            .recv()
+            .map_err(|_| "the speaker stopped".to_string())??;
+        Ok(Self {
+            queue,
+            stop: Some(stop),
+        })
+    }
+
+    /// More of the note (its next piece).
+    pub fn extend(&self, pcm: &[i16]) {
+        if let Ok(mut q) = self.queue.lock() {
+            q.extend(pcm.iter().copied());
+        }
+    }
+
+    /// Whether it still plays.
+    pub fn playing(&self) -> bool {
+        self.queue.lock().map(|q| !q.is_empty()).unwrap_or(false)
+    }
+}
+
+impl Drop for Playback {
+    fn drop(&mut self) {
+        if let Some(s) = self.stop.take() {
+            let _ = s.send(());
+        }
+    }
+}
+
+#[cfg(test)]
+mod note_tests {
+    use super::*;
+
+    #[test]
+    fn a_recording_is_a_wav_the_voice_note_reader_takes() {
+        let pcm: Vec<i16> = (0..4_800).map(|i| ((i % 100) * 300) as i16).collect();
+        let w = wav(&pcm);
+        assert_eq!(&w[..4], b"RIFF");
+        assert_eq!(&w[8..16], b"WAVEfmt ");
+        assert_eq!(u32::from_le_bytes([w[24], w[25], w[26], w[27]]), RATE);
+        assert_eq!(w.len(), 44 + pcm.len() * 2);
+    }
+}

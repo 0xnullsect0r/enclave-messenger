@@ -121,6 +121,8 @@ pub struct GroupMessage {
     /// for every member as it is applied, with no way to hide it. `from`
     /// is who made the change.
     pub notice: bool,
+    /// A voice note's words, transcribed on this device.
+    pub transcript: String,
 }
 
 fn put_who(w: &mut Writer, who: &Option<[u8; 64]>) {
@@ -154,7 +156,7 @@ impl GroupMessage {
 
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(8).u64(self.seq);
+        w.u8(9).u64(self.seq);
         put_who(&mut w, &self.from);
         w.bytes(self.from_name.as_bytes())
             .bytes(self.text.as_bytes())
@@ -188,13 +190,14 @@ impl GroupMessage {
             Some(true) => 2,
         });
         w.u8(u8::from(self.notice));
+        w.bytes(self.transcript.as_bytes());
         w.finish()
     }
 
     fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=8).contains(&version) {
+        if !(1..=9).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let seq = r.u64()?;
@@ -246,6 +249,12 @@ impl GroupMessage {
             _ => return Err(ProtoError::Decode),
         };
         let notice = version >= 8 && r.u8()? == 1;
+        let transcript = if version >= 9 {
+            String::from_utf8(r.bytes(super::messages::MAX_TRANSCRIPT)?.to_vec())
+                .map_err(|_| ProtoError::Decode)?
+        } else {
+            String::new()
+        };
         r.end()?;
         Ok(Self {
             seq,
@@ -263,6 +272,7 @@ impl GroupMessage {
             sticker,
             signed,
             notice,
+            transcript,
         })
     }
 }
@@ -358,7 +368,7 @@ pub(crate) fn load(store: &Store) -> Result<BTreeMap<[u8; 32], GroupEntry>> {
     Ok(out)
 }
 
-fn day(now: u64) -> u32 {
+pub(crate) fn day(now: u64) -> u32 {
     (now / 86_400) as u32
 }
 
@@ -1175,6 +1185,14 @@ impl Client {
         // From another device of ours: no MAC vouches for it (any member
         // holds our chain key), so it waits for own-device sync to confirm
         // its id (`07-groups.md` §3), then shows as our own.
+        if msg.flags & enclave_proto::group::FLAG_EPHEMERAL != 0 {
+            let root = self
+                .groups
+                .get(gid)
+                .and_then(|e| e.group.state.members.get(msg.member as usize))
+                .map(|m| self.current_root(&m.root));
+            return Ok(root.and_then(|r| self.on_group_ephemeral(gid, &r, &msg.content, now)));
+        }
         if msg.own_account && !self.own_group_confirmed(gid, &msg.id) {
             self.hold_own_group_message(gid, &msg)?;
             return Ok(None);
@@ -1471,6 +1489,7 @@ impl Client {
                 on_record.then_some(true)
             },
             notice: false,
+            transcript: String::new(),
         };
         self.put_group_message(gid, &m)?;
         self.save_group(gid)?;

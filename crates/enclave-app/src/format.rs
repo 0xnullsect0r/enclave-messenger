@@ -171,10 +171,34 @@ pub fn spoken(text: &str, reveal: bool) -> String {
 /// For a one-line preview or a notification: no markers, spoilers as
 /// blocks (a preview is never "selected", so it never reveals one).
 pub fn preview(text: &str) -> String {
-    parse(text)
+    let p: String = parse(text)
         .into_iter()
         .map(|r| if r.spoiler { blocks(&r.text) } else { r.text })
-        .collect()
+        .collect();
+    isolate(&p)
+}
+
+/// First-strong isolate (U+2068) and pop directional isolate (U+2069).
+const FSI: char = '\u{2068}';
+const PDI: char = '\u{2069}';
+
+/// Each line of `text` in its own bidi isolate (`docs/15-client.md` open
+/// question 3): its direction comes from its own first strong character,
+/// and no directional control inside it (an unmatched override, say) can
+/// reorder anything around it, such as the "You: " before a preview or the
+/// time after a message. Controls are kept, not removed, so text in mixed
+/// scripts still reads as its writer meant.
+pub fn isolate(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push(FSI);
+        out.push_str(line);
+        out.push(PDI);
+    }
+    out
 }
 
 fn blocks(text: &str) -> String {
@@ -270,8 +294,15 @@ fn split_space(s: &str) -> (&str, &str, &str) {
 /// `text` as Slint styled text (plain when the markdown can't be read,
 /// which escaping should make impossible).
 pub fn styled(text: &str, reveal: bool) -> slint::StyledText {
-    slint::StyledText::from_markdown(&markdown(text, reveal))
-        .unwrap_or_else(|_| slint::StyledText::from_plain_text(&plain(text)))
+    // Every paragraph isolated (as [`isolate`]); paragraphs end at the
+    // escaped line breaks.
+    let md = markdown(text, reveal);
+    let md = format!(
+        "{FSI}{}{PDI}",
+        md.replace("\\\n", &format!("{PDI}\\\n{FSI}"))
+    );
+    slint::StyledText::from_markdown(&md)
+        .unwrap_or_else(|_| slint::StyledText::from_plain_text(&isolate(&plain(text))))
 }
 
 #[cfg(test)]
@@ -283,6 +314,19 @@ mod tests {
             text: text.into(),
             ..Run::default()
         }
+    }
+
+    #[test]
+    fn every_line_is_its_own_bidi_isolate() {
+        // An override in one message can't run into what's around it.
+        let evil = "abc\u{202e}def\nשלום";
+        assert_eq!(
+            isolate(evil),
+            "\u{2068}abc\u{202e}def\u{2069}\n\u{2068}שלום\u{2069}"
+        );
+        assert!(preview("hi").starts_with(FSI) && preview("hi").ends_with(PDI));
+        // Styled text still reads, isolates and all.
+        let _ = styled("*bold*\nline two", true);
     }
 
     #[test]
@@ -342,7 +386,7 @@ mod tests {
         assert_eq!(plain("hi *there* ||you||"), "hi there you");
         assert_eq!(
             preview("Sam: hi *there* ||you two||"),
-            "Sam: hi there ███ ███"
+            "\u{2068}Sam: hi there ███ ███\u{2069}"
         );
     }
 

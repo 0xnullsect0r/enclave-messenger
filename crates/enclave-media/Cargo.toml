@@ -20,8 +20,7 @@ jpeg-encoder = "0.7"
 thiserror = "2"
 # Voice notes: pure-Rust Opus. The encoder only ever sees our own audio;
 # the decoder, which sees other people's, has no unsafe code.
-opus-rs = "0.1.34"
-opus-decoder = "0.1.1"
+opus-pure = "0.2.2"
 # Animated pictures: the sender reads its own GIF and encodes AV1 with
 # rav1e (pure Rust: no assembly, no threads); the receiver decodes in
 # mediad only (feature `av1`, the enclave-av1 exception).
@@ -30,9 +29,15 @@ rav1e = { version = "0.8", default-features = false }
 enclave-av1 = { path = "../enclave-av1", optional = true }
 sonora = "0.2"
 
+candle = { package = "candle-core", version = "0.11", default-features = false, optional = true }
+candle-transformers = { version = "0.11", default-features = false, optional = true }
+serde_json = { version = "1", optional = true }
+
 [features]
 # AV1 decoding: only mediad (and tests) turn this on.
 av1 = ["dep:enclave-av1"]
+# On-device voice transcription (src/transcribe.rs): the vault turns this on.
+transcribe = ["dep:candle", "dep:candle-transformers", "dep:serde_json"]
 
 [dev-dependencies]
 png = "0.18"

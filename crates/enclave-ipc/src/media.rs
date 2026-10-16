@@ -61,12 +61,21 @@ pub enum MediaOp {
     /// bytes are `count ‖ (u32 sender ‖ u8 how ‖ u16 len ‖ frame)…`, `how`
     /// as [`CallDecode`].
     CallMix(u32),
+    /// The loss the other side reports hearing from us, in percent: the
+    /// encoder's FEC follows it ([`MediaOut::Raw`], empty).
+    CallLoss(u32, u8),
     /// Decode one temporal unit from one participant of a group call (its
     /// own decoder), as [`MediaOp::VideoDecode`].
     VideoDecodeFrom(u32, u32),
     /// Switch a call's encoder, at its tier, to a shared screen (true;
     /// `enclave_media::callvideo::screen`) or back to the camera.
     VideoScreen(u32, u8, bool),
+    /// Ten seconds of a voice note from this 20 ms frame
+    /// (`enclave_media::voice::CHUNK_FRAMES`), to play: 48 kHz mono PCM,
+    /// 16-bit little-endian, in [`MediaOut::Raw`] (empty past the end).
+    VoicePiece(u32),
+    /// A voice note as an Ogg Opus file, to save ([`MediaOut::Raw`]).
+    VoiceOgg,
 }
 
 /// How [`MediaOp::CallDecode`] uses its bytes.
@@ -180,8 +189,11 @@ impl MediaRequest {
             MediaOp::VideoDecode(n) => w.u8(16).u32(n),
             MediaOp::VideoClose(n) => w.u8(17).u32(n),
             MediaOp::CallMix(n) => w.u8(18).u32(n),
+            MediaOp::CallLoss(n, pct) => w.u8(23).u32(n).u8(pct),
             MediaOp::VideoDecodeFrom(n, sender) => w.u8(19).u32(n).u32(sender),
             MediaOp::VideoScreen(n, tier, on) => w.u8(20).u32(n).u8(tier).bool(on),
+            MediaOp::VoicePiece(start) => w.u8(21).u32(start),
+            MediaOp::VoiceOgg => w.u8(22),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -236,6 +248,9 @@ impl MediaRequest {
                 let tier = r.u8()?;
                 MediaOp::VideoScreen(n, tier, r.bool()?)
             }
+            21 => MediaOp::VoicePiece(r.u32()?),
+            22 => MediaOp::VoiceOgg,
+            23 => MediaOp::CallLoss(r.u32()?, r.u8()?),
             _ => return Err(IpcError::Malformed),
         };
         let bytes = r.bytes()?;

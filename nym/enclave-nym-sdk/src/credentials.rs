@@ -82,14 +82,27 @@ impl Fetcher {
     /// `method` `url` with `body`: the status and the answer.
     pub async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
         let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(client_error)?;
-        let res = self
-            .http
-            .request(method, url)
-            .header("content-type", "application/octet-stream")
-            .body(body)
-            .send()
-            .await
-            .map_err(client_error)?;
+        // `…#bytes=A-B`: a range of the file (a fragment never goes on the
+        // wire; this one becomes the Range header), so a large download
+        // comes in pieces a pipe frame holds.
+        let (url, range) = match url.split_once("#bytes=") {
+            Some((u, r))
+                if r.split_once('-')
+                    .is_some_and(|(a, b)| a.parse::<u64>().is_ok() && b.parse::<u64>().is_ok()) =>
+            {
+                (u, Some(format!("bytes={r}")))
+            }
+            _ => (url, None),
+        };
+        let mut req = self.http.request(method, url);
+        if let Some(r) = range {
+            req = req.header("range", r);
+        } else {
+            req = req
+                .header("content-type", "application/octet-stream")
+                .body(body);
+        }
+        let res = req.send().await.map_err(client_error)?;
         let status = res.status().as_u16();
         let bytes = res.bytes().await.map_err(client_error)?;
         Ok((status, bytes.to_vec()))

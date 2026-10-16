@@ -338,6 +338,17 @@ pub(super) fn reduce_motion() -> bool {
     with_any(|env, a| env.call_method(a, "reduceMotion", "()Z", &[])?.z()).unwrap_or(false)
 }
 
+pub(super) fn battery_restricted() -> bool {
+    with(|env, a| env.call_method(a, "batteryRestricted", "()Z", &[])?.z()).unwrap_or(false)
+}
+
+pub(super) fn open_battery_settings() {
+    let _ = with(|env, a| {
+        env.call_method(a, "openBatterySettings", "()V", &[])
+            .map(|_| ())
+    });
+}
+
 pub(super) fn delivery() -> (u8, u8) {
     let way = with(|env, a| env.call_method(a, "delivery", "()I", &[])?.i()).unwrap_or(0);
     let ways = with(|env, a| env.call_method(a, "deliveryChoices", "()I", &[])?.i()).unwrap_or(1);

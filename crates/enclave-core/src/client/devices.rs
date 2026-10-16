@@ -20,7 +20,68 @@ use enclave_crypto::sig::RootPublic;
 use enclave_proto::manifest::{Manifest, SignedManifest};
 use enclave_rpc::api::{DirAction, DirKind, manifest_key};
 
+/// A manifest is signed again, unchanged but for its dates, this long
+/// before it expires (`03-identity.md` open question 4), so no contact ever
+/// holds an expired one of ours.
+pub const MANIFEST_RENEW_SECS: u64 = 30 * 86_400;
+
 impl Client {
+    /// When our manifest expires (Unix seconds), and its version.
+    pub fn own_manifest(&self) -> (u64, u64) {
+        (self.manifest.expires_at, self.manifest.version)
+    }
+
+    /// Once a day: contacts whose manifest (as we hold it) expires within
+    /// half of [`MANIFEST_RENEW_SECS`] are fetched again, in case their
+    /// renewal's notice never reached us (we were away, say).
+    pub(crate) fn check_expiring_manifests(&mut self, now: u64) -> Result<()> {
+        const SETTING: &str = "manifest-expiry-day";
+        let today = now / 86_400;
+        if matches!(self.setting(SETTING), Ok(Some(v)) if v == today.to_be_bytes()) {
+            return Ok(());
+        }
+        let due: Vec<([u8; 64], u64)> = self
+            .contacts
+            .values()
+            .filter(|c| c.state == ContactState::Accepted)
+            .filter(|c| c.manifest.expires_at <= now + MANIFEST_RENEW_SECS / 2)
+            .map(|c| (c.root, c.manifest.version + 1))
+            .collect();
+        for (root, next) in due {
+            self.stale_manifests.entry(root).or_insert(next);
+        }
+        self.set_setting(SETTING, &today.to_be_bytes())
+    }
+
+    /// Renew our manifest when it is within [`MANIFEST_RENEW_SECS`] of
+    /// expiring (on the device that holds the recovery words; with a PIN,
+    /// once it is entered).
+    pub(crate) async fn renew_manifest(&mut self, now: u64) -> Result<()> {
+        if !self.holds_recovery_words() || self.manifest.expires_at > now + MANIFEST_RENEW_SECS {
+            return Ok(());
+        }
+        match self.publish_manifest(|_| {}, now).await {
+            Ok(_) => {}
+            Err(CoreError::PinRequired) => return Ok(()),
+            Err(e) => return Err(e),
+        }
+        // Announced as a device change is, so everyone fetches it.
+        let notice = Content::Devices(self.manifest.version);
+        let _ = self.send_own(&notice.encode()?, now).await;
+        let roots: Vec<[u8; 64]> = self
+            .contacts
+            .values()
+            .filter(|c| c.state == ContactState::Accepted && c.inbox.is_some())
+            .map(|c| c.root)
+            .collect();
+        for root in roots {
+            if let Err(e @ CoreError::Net(_)) = self.send_content(&root, &notice, now).await {
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
     /// Remove one of our other devices (primary only). Returns once the new
     /// manifest is published; contacts that are offline catch up when they
     /// next sync.

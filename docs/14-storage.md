@@ -192,10 +192,10 @@ Opening a store with no shred generation starts at generation 0 with an empty ke
 
 ## Open questions
 
-1. PLAN §13 describes the Apple master key as a Keychain secret "combined with" a Secure Enclave P-256 unwrap. This spec reads "combined" as two nested wraps of the device secret (both must be removed). An alternative is to feed two independent secrets into the master-key KMAC.
-2. ~~The PIN attempt limit and wipe behavior for the wrapped root secret.~~ Decided (§1.3): no wipe on wrong PINs (that would hand anyone holding the phone a way to destroy the account); three free tries, then 30 s doubling to an hour between tries, kept in the profile. Wiping is the emergency PIN's job (§5).
-3. ~~A shred rewrap wrote the keyring and the generation in two transactions.~~ Fixed: they are one transaction (`Store::write_batch`), after the new keystore entry is made and before the old one is destroyed.
-4. ~~The backup format has no header or version.~~ Decided: archives have a header (§4), version 2.
+1. **Resolved:** nested wraps. Each secret is a Keychain item whose contents are sealed to its own Secure Enclave P-256 key (ECIES, `enclave_platform::keystore::keychain`), so both the Keychain item and the Secure Enclave key are needed (§1.1). Builds without the keychain access group keep the Keychain protection only, and a tag byte says which.
+2. **Resolved:** the PIN attempt limit and wipe behavior (§1.3): no wipe on wrong PINs (that would hand anyone holding the phone a way to destroy the account); three free tries, then 30 s doubling to an hour between tries, kept in the profile (`client/pin.rs`, `FREE_TRIES`). Wiping is the emergency PIN's job (§5).
+3. **Resolved:** a shred rewrap writes the keyring and the generation in one transaction (`Store::write_batch`, `shred.rs`), after the new keystore entry is made and before the old one is destroyed.
+4. **Resolved:** archives have a header (§4), version 2 (`enclave-store` `backup.rs`).
 
 
 ## Implementation status: backup and restore (M5 follow-up)

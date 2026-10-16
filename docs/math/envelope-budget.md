@@ -189,4 +189,4 @@ PLAN: manifest ≈52 KB + bundles ≈8 KB per device + McEliece 1.36 MB ≈ 1.42
 
 ## Open questions
 
-1. If blob sealing adds per-blob framing beyond the per-chunk length (for example a blob-level length or MIME class), the bucket capacities in §8.1 shrink accordingly.
+1. **Resolved:** blob sealing adds no per-blob framing, so the capacities in §8.1 stand. Each chunk holds only its length and data (`files::seal_file`, `pad_content`); the file's size, chunk count, hash, name and MIME type travel in the attachment reference inside the message (`Attachment`).

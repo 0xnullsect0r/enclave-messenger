@@ -254,6 +254,17 @@ pub enum Event {
         /// Typing (else stopped).
         on: bool,
     },
+    /// A member of a group started or stopped typing (as [`Event::Typing`]).
+    GroupTyping {
+        /// The group.
+        group_id: [u8; 32],
+        /// Who.
+        root: [u8; 64],
+        /// Their name, as this device knows them.
+        name: String,
+        /// Typing (else stopped).
+        on: bool,
+    },
     /// A device was linked to (or is now talking with) this account.
     DevicesChanged,
     /// Message history from our other device was added.
@@ -1646,9 +1657,13 @@ impl Client {
         {
             return Err(e);
         }
+        self.check_expiring_manifests(now)?;
         events.append(&mut self.refresh_manifests(now).await?);
         events.append(&mut self.resend_outbox(now).await?);
         events.append(&mut self.release_held(now).await?);
+        if let Err(e @ CoreError::Net(_)) = self.renew_manifest(now).await {
+            return Err(e);
+        }
         events.append(&mut self.check_own_manifest(now).await?);
         events.append(&mut self.check_recovering(now).await?);
         events.append(&mut self.notice_held_moves(now)?);

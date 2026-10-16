@@ -306,6 +306,6 @@ Reserved: `kt_leaf_value = SHA3-512("enclave/v1/kt/leaf" ‖ …)`; today the le
 
 ## Open questions
 
-1. The security code uses one KMAC256 step and 5,200 SHA3-512 iterations over `d ‖ root_pk` rather than 5,200 SHAKE256 calls. The work factor per guess is similar; whether to align the wording of PLAN §3.5 or the code is open.
-2. The notification key chain gives per-day forward secrecy only. Recorded for audit; not implemented.
-3. The group exporter (§8) must be re-specified against the implemented ratchet, which keeps no root-key snapshots.
+1. **Resolved:** the code stays: one KMAC256 step, then 5,200 SHA3-512 iterations over `d ‖ root_pk` (`hash::root_fingerprint`). §4.1 is the normative text, not PLAN §3.5's wording. Changing the code would change every safety code, which PLAN D4 forbids (RFC 0008, item 6).
+2. **Resolved:** per-day forward secrecy is accepted. The chain is implemented (`enclave-proto::notify`: `step`, `Chain::advance`, which forgets earlier keys). The recipient steps its chains to yesterday at every sync (`Client::notify_upkeep`), and "Secure my account" replaces them (`forget_notify_keys`). A stolen key opens capsules from its day on, until the chain is replaced; a capsule holds only a sender name and a preview of at most 600 B. Tests `capsules`, `rt16_capsule_always_1024_bytes`, `previews_in_capsules`.
+3. **Resolved:** the exporter is re-specified in `07-groups.md` §5.3 and implementation note 2: it uses the pairwise session's PQ root history (`Session::export_for_peer`, `Session::export_from_peer`), not root-key snapshots. The `P ‖ RK` formula in §8 is superseded by it.

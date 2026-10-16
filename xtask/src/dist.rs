@@ -619,7 +619,7 @@ fn msix_manifest(version: &str, arch: &str, publisher: &str) -> String {
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0"/>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0"/>
   </Dependencies>
   <Resources>
     <Resource Language="en-us"/>

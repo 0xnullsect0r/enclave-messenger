@@ -226,6 +226,10 @@ impl InitiatorIdentity {
             None => w.u8(0),
         };
         let mut v = w.finish();
+        // A long locator with a signature doesn't fit: refused, never cut.
+        if v.len() > IDENTITY_PT_LEN {
+            return Err(ProtoError::Limit);
+        }
         v.resize(IDENTITY_PT_LEN, 0);
         Ok(v)
     }

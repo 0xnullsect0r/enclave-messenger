@@ -37,7 +37,8 @@ enclave-ipc = { path = "../enclave-ipc" }
 enclave-net = { path = "../enclave-net" }
 enclave-store = { path = "../enclave-store" }
 enclave-sandbox = { path = "../enclave-sandbox" }
-enclave-media = { path = "../enclave-media" }
+enclave-media = { path = "../enclave-media", features = ["transcribe"] }
+sha2 = "0.10"
 zeroize = "1"
 enclave-rpc = { path = "../enclave-rpc" }
 enclave-federation = { path = "../enclave-federation" }

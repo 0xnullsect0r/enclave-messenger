@@ -5,6 +5,10 @@ name: Nightly
 # server's and the Nym ingress, on two machines (different runner images);
 # their outputs must be byte-identical (docs/19-ops.md §2).
 #
+# transcribe: voice-note transcription with the real speech model.
+#
+# call-quality: call audio under packet loss, scored with PESQ.
+#
 # flathub: the Flathub submission (packaging/flatpak/flathub.sh, External
 # Gate G4) built from source with no network, as Flathub builds it, and
 # started.
@@ -95,6 +99,75 @@ jobs:
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/
+
+  transcribe:
+    # Voice-note transcription with the real model (docs/18-a11y-i18n.md
+    # §1.1a): the three files the app downloads, checked against the hashes
+    # it pins, and a recording of speech, transcribed by enclave-media and
+    # through the vault's engine.
+    name: Transcription with the speech model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The model and a recording
+        run: |
+          set -euo pipefail
+          m="$RUNNER_TEMP/whisper"; mkdir -p "$m"
+          base=$(sed -n 's/^    "\(https:\/\/huggingface.co[^"]*\)";/\1/p' crates/enclave-media/src/transcribe.rs)
+          test -n "$base"
+          for f in config-tiny.json tokenizer-tiny.json model-tiny-q80.gguf; do
+            curl -sSfL --retry 4 -o "$m/$f" "$base$f"
+          done
+          ( cd "$m" && sha256sum -c ) <<'SUMS'
+          ffdccec4f3211f4c63310f2b7098f309fe70f3952cedc5e4d11e43f5b2379b98  config-tiny.json
+          dfc530298b6fbed1a97c6472c575b026453706e2a204c7f7038f2c9d208b0759  tokenizer-tiny.json
+          edcc907db61aef092f1244dc1e53c55056b472be343e9bbb4dc12ebd4740392f  model-tiny-q80.gguf
+          SUMS
+          curl -sSfL --retry 4 -o "$m/jfk.wav" https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.7.6/samples/jfk.wav
+          echo "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e  $m/jfk.wav" | sha256sum -c
+          echo "ENCLAVE_WHISPER_DIR=$m" >> "$GITHUB_ENV"
+          echo "ENCLAVE_WHISPER_SAMPLE=$m/jfk.wav" >> "$GITHUB_ENV"
+      - name: Libraries
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libfontconfig1-dev libxkbcommon-dev libasound2-dev libpipewire-0.3-dev
+      - name: Transcribe
+        env:
+          ENCLAVE_WHISPER_EXPECT: "fellow americans,ask not,your country"
+        run: |
+          set -euo pipefail
+          cargo test --locked -p enclave-media --features transcribe --lib transcribes_speech_with_the_model -- --nocapture 2>&1 | tee out.txt
+          grep -q "^transcript: " out.txt
+          cargo test --locked -p enclave-vault --test pictures voice_note_through_the_engine -- --nocapture 2>&1 | tee out.txt
+          grep -q "transcript of the tone" out.txt
+
+  call-quality:
+    # Calls under 0, 1, 5 and 10 % packet loss, scored with PESQ on a
+    # recording of speech (docs/11-calls.md §10; ci/calls/pesq.py).
+    name: Call audio quality under loss (PESQ)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Libraries, PESQ and a recording
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libfontconfig1-dev libxkbcommon-dev libasound2-dev libpipewire-0.3-dev
+          python3 -m venv "$RUNNER_TEMP/py"
+          "$RUNNER_TEMP/py/bin/pip" install pesq==0.0.4 numpy==2.4.6 scipy==1.17.1
+          curl -sSfL --retry 4 -o "$RUNNER_TEMP/jfk.wav" https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.7.6/samples/jfk.wav
+          echo "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e  $RUNNER_TEMP/jfk.wav" | sha256sum -c
+      - name: Calls under loss, scored
+        env:
+          ENCLAVE_CALL_QUALITY_DIR: ${{ runner.temp }}/calls
+        run: |
+          set -euo pipefail
+          ENCLAVE_CALL_SPEECH="$RUNNER_TEMP/jfk.wav" cargo test --locked -p enclave-vault --test calls call_quality_under_loss -- --nocapture
+          "$RUNNER_TEMP/py/bin/python" -I ci/calls/pesq.py "$ENCLAVE_CALL_QUALITY_DIR"
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: call-quality
+          path: ${{ runner.temp }}/calls
 
   nix-build:
     name: Nix build (${{ matrix.runner }})

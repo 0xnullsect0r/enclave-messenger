@@ -259,7 +259,7 @@ The work a device does for its tokens (Equi-X, 4 tokens a proof) and the gate's 
 
 ## Open questions
 
-1. ~~The Nym SURB size is not known.~~ Answered (§10): a poll with the 12 reply blocks its answer needs is 5 packets, not PLAN's 1 to 2. Foreground still lands inside the ±20% band.
-2. Whether Nym loop cover returning to the client counts toward the downlink budget in the same way on all platforms (it does in this model).
-3. Every request gets a reply unit in the implemented transports (§1, §2.1). Meeting PLAN's data budget requires sending writes and cover units without reply SURBs. Dropping those replies also removes the only delivery status a sender gets for a write; delivery would then be confirmed by receipts only.
+1. **Resolved:** the Nym SURB size is measured (§10): a poll with the 12 reply blocks its answer needs is 5 packets, not PLAN's 1 to 2. Foreground still lands inside the ±20% band.
+2. **Resolved:** yes, on every platform. The same Nym client code (`enclave-nym-sdk`, run by nymd) sends loop cover at the same profile rates everywhere (`09-transport.md` §6.3), so it counts toward the downlink in the same way. The CI wire check counts it too: its model is 16 packets a tick plus 0.1 a second addressed to the device itself (`ci/federation/pcap-check.py`). iOS has no background profile, so it sends none in the background.
+3. **Resolved:** writes and cover units now go one way over the mixnet, with no reply blocks, and delivery is confirmed by receipts only (`09-transport.md` §6.1, Open question 5). Tests `writes_go_one_way`, `deferred_answers_come_back_through_status_polls` (`enclave-ingress`) and `receipts_resends_and_not_delivered_yet` (`enclave-core`). §1's note on reply units describes the TCP and Tor development transports.
 4. **Resolved:** the Background median latency with other mailboxes present was ≈140 s; Background now polls the inbox on 3 of every 4 ticks (≈112 s, §7.3).

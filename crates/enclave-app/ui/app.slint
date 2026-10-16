@@ -108,6 +108,8 @@ export struct MessageRow {
     voice: bool,
     waveform: [int],
     voice-time: string,
+    // Its words, transcribed on this device (empty until asked for).
+    transcript: string,
     // An animated picture (a clip): its length, "0:03"; empty otherwise.
     clip-time: string,
 }
@@ -208,6 +210,12 @@ component Bubble inherits HorizontalLayout {
     callback copy(string);
     callback add-pack();
     callback play-clip();
+    // A voice note: playing now, and play or stop.
+    in property <bool> playing;
+    callback play-voice();
+    // The transcription model is here: a voice note can be transcribed.
+    in property <bool> can-transcribe;
+    callback transcribe();
     alignment: root.msg.outgoing ? end : start;
     Rectangle {
         max-width: root.bubble-max;
@@ -237,7 +245,7 @@ component Bubble inherits HorizontalLayout {
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
         border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
         accessible-role: text;
-        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
+        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
         accessible-action-default => { root.tapped(); }
         VerticalLayout {
             padding-left: Tokens.space-sm;
@@ -255,14 +263,26 @@ component Bubble inherits HorizontalLayout {
                 spacing: Tokens.space-sm;
                 VerticalLayout {
                     alignment: center;
-                    Path {
-                        width: 20px;
-                        height: 20px;
-                        viewbox-width: 24;
-                        viewbox-height: 24;
-                        commands: Icons.voice;
-                        stroke: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.pine;
-                        stroke-width: 1.75px;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: self.width / 2;
+                        background: play.pressed ? Tokens.pine.darker(20%) : root.msg.outgoing ? Tokens.on-bubble-out : Tokens.pine;
+                        accessible-role: button;
+                        accessible-label: root.playing ? @tr("Stop the voice note") : @tr("Play the voice note");
+                        accessible-action-default => { root.play-voice(); }
+                        Path {
+                            width: 16px;
+                            height: 16px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: root.playing ? Icons.stop : Icons.play;
+                            fill: root.msg.outgoing ? Tokens.bubble-out : Tokens.on-pine;
+                        }
+                        play := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.play-voice(); }
+                        }
                     }
                 }
                 HorizontalLayout {
@@ -284,6 +304,34 @@ component Bubble inherits HorizontalLayout {
                     font-size: Tokens.type-caption;
                     color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
                     vertical-alignment: center;
+                }
+            }
+            // Its words, once transcribed here; until then, a way to ask.
+            if root.msg.voice && root.msg.transcript != "": Text {
+                text: root.msg.transcript;
+                wrap: word-wrap;
+                font-size: Tokens.type-secondary;
+                font-italic: true;
+                color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
+            }
+            if root.msg.voice && root.msg.transcript == "" && root.can-transcribe: HorizontalLayout {
+                alignment: start;
+                Rectangle {
+                    accessible-role: button;
+                    accessible-label: @tr("Transcribe the voice note");
+                    accessible-action-default => { root.transcribe(); }
+                    min-height: 24px;
+                    Text {
+                        text: @tr("Transcribe");
+                        font-size: Tokens.type-caption;
+                        font-weight: 600;
+                        color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.pine;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.transcribe(); }
+                    }
                 }
             }
             if root.msg.sticker && !root.msg.has-image: Rectangle {
@@ -889,6 +937,22 @@ export component AppWindow inherits Window {
     callback answer-call-direct();
     // The caller asked for a direct call (while it rings), and the media
     // goes directly now.
+    // Voice notes: recording one (and for how long), and which one plays
+    // ("conversation:seq").
+    in-out property <bool> voice-recording;
+    in-out property <int> voice-recording-secs;
+    in-out property <string> voice-playing;
+    // Voice-note transcription's model: 0 not here, 1 downloading, 2 ready;
+    // how much has come; why the last download failed.
+    in property <int> transcription;
+    in property <int> transcription-percent;
+    in property <string> transcription-error;
+    callback transcription-model(bool);
+    callback transcribe(string, string);
+    callback record-voice();
+    callback stop-voice(bool);
+    callback play-voice(string, string);
+    callback stop-playing();
     in property <bool> call-direct-asked;
     in property <bool> call-direct;
     // A group call: who is heard in it, our raised hand, and whether the
@@ -941,6 +1005,8 @@ export component AppWindow inherits Window {
     callback load-stickers();
     in property <bool> typing-setting;
     in property <bool> typing;
+    // In a group: who ("Ana, Ben").
+    in property <string> typing-who;
     callback set-typing-setting(bool);
     in property <bool> can-change-words;
     in property <string> held-moves;
@@ -1111,6 +1177,15 @@ export component AppWindow inherits Window {
     // platform can (can-hide-capture).
     in-out property <bool> screen-security: true;
     in property <bool> can-hide-capture;
+    // Which platform's wording (0 Linux, 1 Windows, 2 macOS, 3 Android,
+    // 4 iOS), and whether Windows refused (older than version 2004).
+    in property <int> capture-platform;
+    // Linux without Landlock: the vault's files aren't confined (PC-46).
+    in property <bool> sandbox-weak;
+    // Android may stop the app to save battery; and its setting.
+    in property <bool> battery-restricted;
+    callback open-battery-settings();
+    in property <bool> capture-failed;
     callback set-screen-security(bool);
     // Touch ID or Windows Hello for the app lock: its name where set up.
     in property <string> biometric;
@@ -1386,7 +1461,7 @@ export component AppWindow inherits Window {
                 name-field := Field {
                     placeholder: @tr("Your name");
                     text <=> root.name-input;
-                    accepted => { if root.name-input != "" { root.create-account(root.name-input); } }
+                    accepted => { if root.name-input != "" && !(root.can-join && root.file-keys && root.new-passphrase == "") { root.create-account(root.name-input); } }
                     init => { self.focus(); }
                 }
                 Secondary { text: @tr("Only people you talk to can see this."); }
@@ -1400,12 +1475,12 @@ export component AppWindow inherits Window {
                     }
                 }
                 if root.can-join: Field {
-                    placeholder: @tr("Passphrase for this computer (optional)");
+                    placeholder: root.file-keys ? @tr("Passphrase for this computer") : @tr("Passphrase for this computer (optional)");
                     secret: true;
                     text <=> root.new-passphrase;
                 }
                 if root.can-join && root.file-keys && root.new-passphrase == "": Secondary {
-                    text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files.");
+                    text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. Choose a passphrase: it protects them if someone copies those files.");
                 }
                 if root.can-join && root.new-passphrase != "": Secondary {
                     text: @tr("You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.");
@@ -1414,8 +1489,38 @@ export component AppWindow inherits Window {
                     alignment: start;
                     PrimaryButton {
                         text: @tr("Continue");
-                        enabled: root.name-input != "";
+                        enabled: root.name-input != "" && !(root.can-join && root.file-keys && root.new-passphrase == "");
                         clicked => { root.create-account(root.name-input); }
+                    }
+                }
+            }
+        }
+    }
+
+    // Keys in files and no passphrase yet (restored, or linked, on a
+    // computer without a keyring): one must be set before anything else
+    // (PC-45).
+    if root.screen == Screen.main && root.can-join && root.file-keys && !root.can-lock: Rectangle {
+        background: Tokens.background.with-alpha(0.92);
+        TouchArea { }
+        VerticalLayout {
+            alignment: center;
+            padding: Tokens.space-l;
+            HorizontalLayout {
+                alignment: center;
+                VerticalLayout {
+                    width: min(440px, root.width - 2 * Tokens.space-l);
+                    spacing: Tokens.space-m;
+                    ScreenTitle { text: @tr("Choose a passphrase"); }
+                    Secondary { text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."); }
+                    Field { placeholder: @tr("Passphrase"); secret: true; text <=> root.new-passphrase; }
+                    HorizontalLayout {
+                        alignment: start;
+                        PrimaryButton {
+                            text: root.busy ? @tr("Saving…") : @tr("Set");
+                            enabled: root.new-passphrase != "" && !root.busy;
+                            clicked => { root.set-passphrase(root.new-passphrase); }
+                        }
                     }
                 }
             }
@@ -1849,7 +1954,15 @@ export component AppWindow inherits Window {
                                     horizontal-stretch: 1;
                                     accessible-label: @tr("{} is typing", root.current.name);
                                 }
-                                if !(root.typing && root.current.kind == 0): Caption {
+                                if root.typing && root.current.kind == 1: Caption {
+                                    text: @tr("{} typing…", root.typing-who);
+                                    color: Tokens.pine;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    accessible-label: @tr("{} typing", root.typing-who);
+                                }
+                                if !(root.typing && root.current.kind <= 1): Caption {
                                     text: root.current.kind == 2
                                         ? @tr("Only you, on your devices")
                                         : root.current.kind == 1
@@ -1993,6 +2106,16 @@ export component AppWindow inherits Window {
                             copy(t) => { root.copy-text(t); }
                             add-pack => { root.add-pack(root.current-id, m.seq); }
                             play-clip => { root.play-clip(root.current-id, m.seq); }
+                            playing: root.voice-playing == root.current-id + ":" + m.seq;
+                            can-transcribe: root.transcription == 2;
+                            transcribe => { root.transcribe(root.current-id, m.seq); }
+                            play-voice => {
+                                if root.voice-playing == root.current-id + ":" + m.seq {
+                                    root.stop-playing();
+                                } else {
+                                    root.play-voice(root.current-id, m.seq);
+                                }
+                            }
                         }
                     }
                 }
@@ -2206,7 +2329,29 @@ export component AppWindow inherits Window {
                             label: @tr("Stickers");
                             clicked => { root.load-stickers(); root.open-sheet(Sheet.stickers); }
                         }
-                        composer := Field {
+                        if root.voice-recording: HorizontalLayout {
+                            horizontal-stretch: 1;
+                            spacing: Tokens.space-s;
+                            alignment: start;
+                            Rectangle {
+                                width: 10px;
+                                height: 10px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 5px;
+                                background: #b3261e;
+                            }
+                            Text {
+                                text: @tr("Recording ") + Math.floor(root.voice-recording-secs / 60) + ":" + (Math.mod(root.voice-recording-secs, 60) < 10 ? "0" : "") + Math.mod(root.voice-recording-secs, 60);
+                                vertical-alignment: center;
+                                color: Tokens.text;
+                                accessible-role: text;
+                            }
+                            QuietButton {
+                                text: @tr("Cancel");
+                                clicked => { root.voice-recording = false; root.stop-voice(false); }
+                            }
+                        }
+                        if !root.voice-recording: composer := Field {
                             placeholder: root.editing-seq != "" ? @tr("Edit your message") : @tr("Message");
                             text <=> root.draft;
                             horizontal-stretch: 1;
@@ -2231,7 +2376,22 @@ export component AppWindow inherits Window {
                             text: @tr("Cancel");
                             clicked => { root.editing-seq = ""; root.draft = ""; }
                         }
-                        IconButton {
+                        if root.draft == "" && root.editing-seq == "" && !root.voice-recording && root.current.kind != 2: IconButton {
+                            icon: Icons.voice;
+                            label: @tr("Record a voice note");
+                            clicked => {
+                                root.voice-recording-secs = 0;
+                                root.voice-recording = true;
+                                root.record-voice();
+                            }
+                        }
+                        if root.voice-recording: IconButton {
+                            icon: Icons.send;
+                            label: @tr("Send the voice note");
+                            filled: true;
+                            clicked => { root.voice-recording = false; root.stop-voice(true); }
+                        }
+                        if !root.voice-recording && !(root.draft == "" && root.editing-seq == "" && root.current.kind != 2): IconButton {
                             icon: Icons.send;
                             label: root.editing-seq != "" ? @tr("Save edit") : @tr("Send");
                             filled: true;
@@ -3016,7 +3176,12 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.settings: SheetFrame {
         title: @tr("Settings");
         close => { root.sheet = Sheet.none; }
-        for option[i] in [
+        // iPhone suspends apps in the background: nothing is sent then, and
+        // new messages wake Enclave through Apple's push (PC-05).
+        for option[i] in root.capture-platform == 4 ? [
+            { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 80 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives.") },
+            { title: @tr("Maximum"), text: @tr("Also hides when you're using Enclave, but only while it's open: iPhone stops it in the background, and push is off. Large files send slowly.") },
+        ] : [
             { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background.") },
             { title: @tr("Maximum"), text: @tr("Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly.") },
         ]: Rectangle {
@@ -3091,12 +3256,30 @@ export component AppWindow inherits Window {
         Rectangle { height: 1px; background: Tokens.hairline; }
         if root.can-hide-capture: SwitchRow {
             label: @tr("Hide from screenshots");
-            detail: @tr("Screenshots, screen recordings and screen sharing show a blank window instead of your messages.");
+            detail: root.capture-platform == 4
+                ? @tr("iPhone can't block screenshots. Enclave blurs itself in the app switcher and while the screen is recorded or mirrored.")
+                : root.capture-platform == 2
+                ? @tr("Screen sharing and the system's screenshots leave Enclave's window out. Some other capture tools may still see it.")
+                : root.capture-platform == 3
+                ? @tr("Screenshots, screen recordings and the app switcher show a blank screen instead of your messages.")
+                : @tr("Screenshots, screen recordings and screen sharing show a blank window instead of your messages.");
             on: root.screen-security;
             toggled => { root.set-screen-security(!root.screen-security); }
         }
+        if root.can-hide-capture && root.capture-failed && root.screen-security: Text {
+            text: @tr("This version of Windows can't hide Enclave from screen capture. Windows 10 version 2004 or later can.");
+            color: Tokens.danger;
+            font-size: Tokens.type-secondary;
+            wrap: word-wrap;
+        }
         if !root.can-hide-capture: Secondary {
             text: @tr("On Linux any program you run can capture the screen, and Enclave can't stop it. Close Enclave before sharing your screen.");
+        }
+        if root.sandbox-weak: Text {
+            text: @tr("This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap.");
+            color: Tokens.danger;
+            font-size: Tokens.type-secondary;
+            wrap: word-wrap;
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
         SwitchRow {
@@ -3154,6 +3337,8 @@ export component AppWindow inherits Window {
         if root.can-join: Secondary {
             text: root.can-lock
                 ? @tr("Enclave asks for it each time it starts on this computer.")
+                : root.file-keys
+                ? @tr("Needed: this computer has no keyring, so Enclave's keys are kept in files, and the passphrase protects them.")
                 : @tr("Optional. Enclave would ask for it each time it starts on this computer.");
         }
         if root.can-join: HorizontalLayout {
@@ -3169,7 +3354,7 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             QuietButton { text: @tr("Lock now"); outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
-            QuietButton { text: @tr("Remove passphrase"); danger: true; clicked => { root.set-passphrase(""); } }
+            if !root.file-keys: QuietButton { text: @tr("Remove passphrase"); danger: true; clicked => { root.set-passphrase(""); } }
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
         Body { text: @tr("Screen lock"); font-weight: 600; }
@@ -3285,6 +3470,23 @@ export component AppWindow inherits Window {
             }
         }
         if root.pin-error != "": Text { text: root.pin-error; color: Tokens.danger; font-size: Tokens.type-secondary; wrap: word-wrap; }
+        Body { text: @tr("Voice note transcription"); font-weight: 600; }
+        Secondary {
+            text: root.transcription == 2
+                ? @tr("Voice notes can be turned into text on this device. Nothing you hear is sent anywhere.")
+                : root.transcription == 1
+                ? @tr("Downloading the speech model through Tor… {}%", root.transcription-percent)
+                : @tr("Turn voice notes into text on this device. This downloads a 40 MB speech model through Tor once; what's said never leaves the device.");
+        }
+        if root.transcription-error != "": Text { text: root.transcription-error; color: Tokens.danger; font-size: Tokens.type-secondary; wrap: word-wrap; }
+        HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: root.transcription == 0 ? @tr("Download the model") : root.transcription == 1 ? @tr("Cancel") : @tr("Delete the model");
+                outlined: true;
+                clicked => { root.transcription-model(root.transcription == 0); }
+            }
+        }
         Body { text: @tr("Notifications"); font-weight: 600; }
         Secondary { text: root.previews ? @tr("Notifications on your phone show who wrote and the start of the message. Only your devices can read them; Apple and Google see nothing.") : @tr("Notifications say \"New message\" only. Turn previews on to see who wrote and the start of the message, readable only by your devices."); }
         HorizontalLayout {
@@ -3298,6 +3500,17 @@ export component AppWindow inherits Window {
                 : root.delivery == 3
                 ? @tr("Google's push service wakes Enclave when something arrives. Google learns only that something arrived, not what or from whom.")
                 : @tr("Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery.");
+        }
+        // Staying connected needs Android to leave Enclave running (PC-22).
+        if root.capture-platform == 3 && root.delivery == 0 && root.battery-restricted: Text {
+            text: @tr("Android may stop Enclave to save battery, and messages then wait until you open it. To let it run in the background, find Enclave in the list that opens and turn battery optimization off for it.");
+            color: Tokens.danger;
+            font-size: Tokens.type-secondary;
+            wrap: word-wrap;
+        }
+        if root.capture-platform == 3 && root.delivery == 0 && root.battery-restricted: HorizontalLayout {
+            alignment: start;
+            QuietButton { text: @tr("Open battery settings"); outlined: true; clicked => { root.open-battery-settings(); } }
         }
         if root.can-unifiedpush || root.can-firebase: HorizontalLayout {
             alignment: start;
@@ -3365,7 +3578,9 @@ export component AppWindow inherits Window {
             alignment: start;
             spacing: Tokens.space-s;
             QuietButton { text: @tr("Check for updates"); outlined: true; clicked => { root.check-updates(); } }
-            QuietButton { text: @tr("Verify this build"); outlined: true; clicked => { root.verify-build(); } }
+            // Phones install from their stores, which check the build
+            // (PC-10); the desktop compares its programs with the release's.
+            if root.capture-platform < 3: QuietButton { text: @tr("Verify this build"); outlined: true; clicked => { root.verify-build(); } }
         }
         if root.build-check != "": Secondary { text: root.build-check; }
         HorizontalLayout { alignment: start; AboutSlint { } }
@@ -4045,6 +4260,11 @@ export component AppWindow inherits Window {
     }
 
     // ------------------------------------------------------------- the call
+    Timer {
+        interval: 1s;
+        running: root.voice-recording;
+        triggered => { root.voice-recording-secs += 1; }
+    }
     // The time on the call, counted here between snapshots (also while the
     // call is a tile).
     Timer {

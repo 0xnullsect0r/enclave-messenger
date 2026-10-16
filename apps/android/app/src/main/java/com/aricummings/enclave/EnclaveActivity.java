@@ -149,6 +149,21 @@ public class EnclaveActivity extends android.app.NativeActivity {
         return EnclaveService.delivery(this);
     }
 
+    /** Whether Android may stop the service to save battery (PC-22). */
+    public boolean batteryRestricted() {
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        return pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    /** Android's own list of battery optimisation, where Enclave can be let run. */
+    public void openBatterySettings() {
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        } catch (android.content.ActivityNotFoundException e) {
+            startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
+        }
+    }
+
     /** The ways this phone offers, as bits (1 << way). */
     public int deliveryChoices() {
         int ways = 1;

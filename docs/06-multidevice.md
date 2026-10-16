@@ -122,5 +122,5 @@ When the account publishes a new manifest, each device sends a `DeviceListChange
 
 ## Open questions
 
-1. PLAN §6 says slots hold "a tag and padding". With the 160 B layout there is no padding left: 16 + 144 = 160. The slot header has 7 zero bytes inside the seal instead (`05-ratchet.md` §6.1).
-2. Whether the self-copy may be omitted in Maximum privacy mode on a single-device account, to save 50% of write bandwidth, at the cost of revealing single-device accounts. This spec says no.
+1. **Resolved:** a slot has no padding outside the seal: 16 B tag + 144 B sealed header = 160 B. The 7 zero bytes inside the sealed header take that role, and `Header::decode` rejects them if they aren't zero (`05-ratchet.md` §6.1).
+2. **Resolved:** no. The self-copy is always sent, in every mode. With no other device to seal to, it is a cover envelope of the same size (`Client::send_own`, `envelope::cover_direct`), so a single-device account looks like any other. Test `one_device_self_copy_and_watermark`.

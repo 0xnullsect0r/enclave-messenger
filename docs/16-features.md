@@ -6,53 +6,53 @@ Source: PLAN.md §14 (feature parity), §20 (milestones). This matrix fixes whic
 
 ## 1. Matrix
 
-| Feature | Milestone | Privacy rule | Spec |
-|---|---|---|---|
-| 1:1 text | M6 | Constant-size units | `05-ratchet.md`, `08-envelope.md` |
-| Formatting: bold, italic, strike, mono, spoiler | M6 | Inside content only | `08-envelope.md` §5.6 |
-| Emoji (Noto Color Emoji), reactions | M6 | Reactions ride in `Piggyback` | `08-envelope.md` §5.6 |
-| Replies, forwarding (labelled "Forwarded"), mentions | M6 / M7 | Message IDs are local-only hashes | `02b-key-schedule.md` §7 |
-| Disappearing messages (timer starts on read, per device) | M6 | Crypto-shred; monotonic timers | `14-storage.md` §3 |
-| View-once | M9 | Shredded after view; screenshots still possible (copy says so) | `14-storage.md` §3 |
-| Images | M6 | Re-encoded, EXIF/GPS stripped, sandboxed decode | `15-client.md` §5 |
-| Voice notes | M6 | Opus, sandboxed decode | `15-client.md` §5 |
-| Video | M9 | AV1 + Opus, own container. Animated pictures are built as short AV1 clips (no sound); camera video waits for platform decoders | `15-client.md` §5.3 |
-| Files (up to 100 MiB) | M9 | Never previewed; bucketed | `08-envelope.md` §9 |
-| Typing indicators (**off by default**) | M6 | Only in a tick slot that would otherwise carry cover; never adds a unit (§7) | `09-transport.md` §6.7 |
-| Read receipts (optional, batched) | M6 | Batched in `Piggyback` | `05-ratchet.md` §12 |
-| Encrypted profile (name, photo, about) | M6 | Shared only inside sessions | `05-ratchet.md` §12 |
-| Usernames | M6 | Optional; KT-backed; "public, like an email address" | `12-servers.md` §3.3 |
-| QR codes and invite links | M6 | Secret in fragment; limited use | `03-identity.md` §9 |
-| Note to self | M6 | Uses self-copy path | `06-multidevice.md` §4 |
-| Archive, pin, mute, chat folders | M6 / M9 | Local and synced between own devices | `06-multidevice.md` §5 |
-| Block | M6 | No new tokens for the contact | `09-transport.md` §3.2 |
-| Message requests | M6 | Text only; no auto-download | `09-transport.md` §4 |
-| Spam reports | M9 | Voluntary plaintext | `13-operators.md` §2 |
-| Security codes, change alerts | M5 / M6 | Root-only code | `03-identity.md` §6 |
-| Linked devices | M5 / M6 | Hardened linking | `03-identity.md` §4 |
-| Backups | M5 / M6 | No ratchet state | `14-storage.md` §4 |
-| Groups: admins, announcement-only, invite links, approval | M7 | MAC vectors; approval on by default | `07-groups.md` |
-| 1:1 voice and video calls | M8 | Relay by default; CBR shaping | `11-calls.md` |
-| Group voice and video calls | M8 | SFU forwards SFrame only | `11-calls.md` §8 |
-| Call links, raise hand | M8 | Capability URL | `11-calls.md` §8 |
-| Desktop screen share | M8 | Inside SFrame | `11-calls.md` §8 |
-| Edit (24 h, advisory) | M9 | Recipient may keep the original; UI says "Edited" | — |
-| Delete for everyone (advisory) | M9 | Recipient's client deletes if it cooperates; UI says so | — |
-| Polls | M9 | Tally hash authenticated by creator | `07-groups.md` §7.5 |
-| Pinned messages | M9 | Group state or local | `07-groups.md` §7 |
-| Stickers (encrypted packs) | M9 | Packs are blobs keyed by pack secret | `08-envelope.md` §9 |
-| GIFs (opt-in, via Tor) | M9 | Sender-side fetch through Tor only | `15-client.md` §5 |
-| Contact sharing | M9 | Shares root pin and QR fields | `03-identity.md` §9 |
-| Location (coordinates only) | M9 | No map tiles fetched automatically | — |
-| Search | M9 | Blinded local index | `14-storage.md` §2 |
-| Media gallery | M9 | Local | — |
-| Device transfer | M9 | LAN or bulk blobs; no ratchet state | `03-identity.md` §4.3 |
-| Social recovery | M9 | SLIP-0039 3-of-5, in-person release, 72 h | `03-identity.md` §8.3 |
-| Stories (24 h) | M11 | Same delivery as group messages to a per-user audience | — |
-| Mobile screen share | M11 | Inside SFrame | `11-calls.md` |
-| On-device voice transcription (optional download) | M11 | Local model only; nothing leaves the device | `18-a11y-i18n.md` |
-| Payments | Not planned | — | — |
-| Public group directory | Not planned | — | — |
+| Feature | Milestone | Privacy rule | Spec | Status | Test |
+|---|---|---|---|---|---|
+| 1:1 text | M6 | Constant-size units | `05-ratchet.md`, `08-envelope.md` | Done | `request_accept_chat_refill_and_reopen`, `full_three_kem_conversation` |
+| Formatting: bold, italic, strike, mono, spoiler | M6 | Inside content only | `08-envelope.md` §5.6 | Done | `markdown_is_escaped_and_reads`, `markers_need_boundaries` |
+| Emoji (Noto Color Emoji), reactions | M6 | Reactions ride in `Piggyback` | `08-envelope.md` §5.6 | Open: emoji are drawn with the monochrome Noto Emoji (`ui/fonts/NotoEmoji-Regular.ttf`), not Noto Color Emoji; a reaction goes as its own unit (`Content::React` through `send_content`), not in another envelope's free space as delivery receipts do; the reaction row offers six fixed emoji, with no emoji picker and no way to take a reaction back | `attachments_reactions_edits_deletes_receipts_and_timers`, `group_reactions_edits_deletes` (partial) |
+| Replies, forwarding (labelled "Forwarded"), mentions | M6 / M7 | Message IDs are local-only hashes | `02b-key-schedule.md` §7 | Open: nothing yet: no reply reference in `Content::Text` or group texts and no quoted reply in the bubble; no Forward action or "Forwarded" label; no mentions (member picker, mention parsing, mention notifications) | — |
+| Disappearing messages (timer starts on read, per device) | M6 | Crypto-shred; monotonic timers | `14-storage.md` §3 | Done | `attachments_reactions_edits_deletes_receipts_and_timers`, `rt23_disappearing_timer_uses_monotonic` |
+| View-once | M9 | Shredded after view; screenshots still possible (copy says so) | `14-storage.md` §3 | Open: nothing yet: no view-once flag on attachments (1:1 or group kind 8), no shredding after viewing, no viewer and no "screenshots are still possible" copy | — |
+| Images | M6 | Re-encoded, EXIF/GPS stripped, sandboxed decode | `15-client.md` §5 | Open: a full-size viewer (bubbles show only the 560 px preview); re-encoding on export (the vault's `exportable` re-encodes only voice notes, so **Save** writes the received bytes); no test of picture previews in groups (`load_group_previews`) | `sent_pictures_lose_metadata_and_get_previews`, `jpeg_metadata_is_gone_and_orientation_applied` (partial) |
+| Voice notes | M6 | Opus, sandboxed decode | `15-client.md` §5 | Done | `voice_note_through_the_engine`, `played_in_pieces_and_exported_as_ogg_opus` |
+| Video | M9 | AV1 + Opus, own container. Animated pictures are built as short AV1 clips (no sound); camera video waits for platform decoders | `15-client.md` §5.3 | Open: video from a camera or a video file (the platform decoders in `enclave-platform`: AVFoundation, MediaCodec, Media Foundation, transcoded into the clip container); an Opus track in clips; 30 fps and sizes beyond 480 px; videos up to 100 MiB through the container | `clips_through_the_engine`, `mediad_plays_clips` (animated pictures only) |
+| Files (up to 100 MiB) | M9 | Never previewed; bucketed | `08-envelope.md` §9 | Open: the app sends and saves at most 15 MiB (`MAX_FILE` in `enclave-app/src/shell.rs`, the 15 MiB check in the vault's `Cmd::SaveFile`) because a file crosses IPC in one frame (`enclave-ipc` `MAX_FRAME`, 16 MiB), while core takes 100 MiB (`files::MAX_ATTACHMENT`); no "Open with…" with its warning ("Files can contain harmful content…", `15-client.md` §5) | `attachments_reactions_edits_deletes_receipts_and_timers`, `rt17_attachment_padded_to_bucket` (partial) |
+| Typing indicators (**off by default**) | M6 | Only in a tick slot that would otherwise carry cover; never adds a unit (§7) | `09-transport.md` §6.7 | Open: typing indicators in groups (`client/typing.rs` is 1:1 only; §7) | `typing_indicators` (1:1 only) |
+| Read receipts (optional, batched) | M6 | Batched in `Piggyback` | `05-ratchet.md` §12 | Open: no way to turn them off: core reads the synced `receipts` setting, but no `Cmd`, vault handler or Settings switch sets it; read receipts go as their own `Content::Read` units (`mark_read`), not in another envelope's free space as delivery receipts do (`outbox::wrap_receipts`) | `attachments_reactions_edits_deletes_receipts_and_timers`, `receipts_resends_and_not_delivered_yet` (partial) |
+| Encrypted profile (name, photo, about) | M6 | Shared only inside sessions | `05-ratchet.md` §12 | Open: only a display name exists (on the card and in `Hello`); no profile photo or "about", no content kind that sends profile changes inside sessions, no profile editor in Settings and no contact profile view | — |
+| Usernames | M6 | Optional; KT-backed; "public, like an email address" | `12-servers.md` §3.3 | Done | `usernames_through_key_transparency`, `rt26_confusable_username_rejected` |
+| QR codes and invite links | M6 | Secret in fragment; limited use | `03-identity.md` §9 | Open: the app only makes single-use links (`shell.rs` sends `Cmd::NewInvite(1)`; no choice of 1–20 uses); links don't open the app from the system: no `enclave:` scheme or https App Links / universal links (`apps/android/.../AndroidManifest.xml`, `apps/ios/Info.plist`, desktop packaging), and the front serves no `assetlinks.json` or `apple-app-site-association` | `invite_links`, `rt10_invite_use_limit_enforced` (partial) |
+| Note to self | M6 | Uses self-copy path | `06-multidevice.md` §4 | Done | `link_a_second_device`, `backups_local_and_on_the_server` |
+| Archive, pin, mute, chat folders | M6 / M9 | Local and synced between own devices | `06-multidevice.md` §5 | Open: chat folders (no folder in `ConvPrefs` or own-device sync, no folder UI) | `conversation_prefs`, `own_devices_stay_in_step` (partial) |
+| Block | M6 | No new tokens for the contact | `09-transport.md` §3.2 | Done | `block_and_unblock` |
+| Message requests | M6 | Text only; no auto-download | `09-transport.md` §4 | Done | `rt25_request_media_stripped`, `request_accept_chat_refill_and_reopen` |
+| Spam reports | M9 | Voluntary plaintext | `13-operators.md` §2 | Done | `report_to_the_operator` |
+| Security codes, change alerts | M5 / M6 | Root-only code | `03-identity.md` §6 | Done | `request_accept_chat_refill_and_reopen`, `change_recovery_words` |
+| Linked devices | M5 / M6 | Hardened linking | `03-identity.md` §4 | Done | `link_a_second_device`, `rt09_new_device_banner_7_days` |
+| Backups | M5 / M6 | No ratchet state | `14-storage.md` §4 | Done | `backups_local_and_on_the_server`, `rt08_backup_contains_no_ratchet_state` |
+| Groups: admins, announcement-only, invite links, approval | M7 | MAC vectors; approval on by default | `07-groups.md` | Open: announcement-only can't be turned on (`GroupState::admins_only` exists and `prepare_group_send` checks it, but no client call, admin update or app switch sets it, and receivers don't drop non-admin posts); choosing uses or approval for invite links in the app; links from non-creating admins surviving the creator leaving; group-scoped request capabilities (`proto/grp-invite-cap`) for member-to-member first contact (`07-groups.md` §9) | `group_invite_links`, `state_chain_and_admin_rules` (partial) |
+| 1:1 voice and video calls | M8 | Relay by default; CBR shaping | `11-calls.md` | Done | `audio_goes_both_ways_through_two_relays`, `rt19_call_packets_constant_size_and_rate` |
+| Group voice and video calls | M8 | SFU forwards SFrame only | `11-calls.md` §8 | Done | `a_group_call_through_an_sfu_relay`, `sframe_epochs_reordering_replay_and_tamper` |
+| Call links, raise hand | M8 | Capability URL | `11-calls.md` §8 | Done | `a_guest_is_let_in_from_a_call_links_lobby`, `a_group_call_through_an_sfu_relay` |
+| Desktop screen share | M8 | Inside SFrame | `11-calls.md` §8 | Done | `a_shared_screen_goes_in_place_of_the_camera`, `a_wide_screen_is_letterboxed_not_cut` |
+| Edit (24 h, advisory) | M9 | Recipient may keep the original; UI says "Edited" | — | Done | `attachments_reactions_edits_deletes_receipts_and_timers`, `group_reactions_edits_deletes` |
+| Delete for everyone (advisory) | M9 | Recipient's client deletes if it cooperates; UI says so | — | Open: the app doesn't say it's advisory: **Delete** acts at once, with no copy that the other side's app removes it only if it cooperates (Open question 2) | `attachments_reactions_edits_deletes_receipts_and_timers`, `group_reactions_edits_deletes` (partial) |
+| Polls | M9 | Tally hash authenticated by creator | `07-groups.md` §7.5 | Open: polls in 1:1 conversations (`client/polls.rs` and the vault's `Cmd::CreatePoll` are groups only); anonymous polls | `polls_in_groups` (partial) |
+| Pinned messages | M9 | Group state or local | `07-groups.md` §7 | Open: a list of every pinned message and jumping to one (the bar shows only the latest; `07-groups.md` §7.6) | `pinned_messages` (partial) |
+| Stickers (encrypted packs) | M9 | Packs are blobs keyed by pack secret | `08-envelope.md` §9 | Open: animated stickers (AV1 clips); removing a pack in the app; a pack's preview before **Add pack** (§5) | `sticker_packs`, `sticker_pack_through_the_engine` (partial) |
+| GIFs (opt-in, via Tor) | M9 | Sender-side fetch through Tor only | `15-client.md` §5 | Open: nothing yet: no opt-in setting, no GIF search, no sender-side fetch through Tor (a GIF file the person picks is only sent as an AV1 clip, `15-client.md` §5.3) | — |
+| Contact sharing | M9 | Shares root pin and QR fields | `03-identity.md` §9 | Done | `share_a_contact` |
+| Location (coordinates only) | M9 | No map tiles fetched automatically | — | Open: reading the location from the platform on phones; handing the coordinates to a maps app the person picks (§3) | `share_a_location`, `codec_and_limits` (partial) |
+| Search | M9 | Blinded local index | `14-storage.md` §2 | Done | `the_index_follows_the_messages`, `attachments_reactions_edits_deletes_receipts_and_timers` |
+| Media gallery | M9 | Local | — | Open: a gallery across all conversations (the `gallery` sheet lists one conversation; §4); no test of the gallery | — |
+| Device transfer | M9 | LAN or bulk blobs; no ratchet state | `03-identity.md` §4.3 | Done | `link_a_second_device`, `history_over_the_lan` |
+| Social recovery | M9 | SLIP-0039 3-of-5, in-person release, 72 h | `03-identity.md` §8.3 | Done | `social_recovery`, `rt22_contacts_enforce_72h` |
+| Stories (24 h) | M11 | Same delivery as group messages to a per-user audience | — | Open: nothing yet: no audience model (Open question 1), content kind, 24 h expiry or UI | — |
+| Mobile screen share | M11 | Inside SFrame | `11-calls.md` | Done | `a_shared_screen_goes_in_place_of_the_camera`, `a_wide_screen_is_letterboxed_not_cut` |
+| On-device voice transcription (optional download) | M11 | Local model only; nothing leaves the device | `18-a11y-i18n.md` | Done | `transcribes_speech_with_the_model`, `a_file_comes_in_checked_pieces` |
+| Payments | Not planned | — | — | Not planned | — |
+| Public group directory | Not planned | — | — | Not planned | — |
 
 ## 2. Features explicitly excluded
 
@@ -79,18 +79,18 @@ Local only, in the app (`enclave-app/ui/app.slint`, sheet `gallery`): the conver
 
 ## 7. As implemented: typing indicators
 
-`enclave-core/src/client/typing.rs`; 1:1 conversations only.
+`enclave-core/src/client/typing.rs`; 1:1 conversations and groups.
 
 - **Off by default, and both ways**: Settings → Typing indicators. With them off we send none and show none.
 - **Wire**: `Content::Typing { on }` (content kind 23), sealed like any message. The spec said typing would ride in `Piggyback`, inside a real message's padding, but you type *before* there is a message to ride on, so that can't work. Instead each indicator is its own unit sent with `Transport::exchange_droppable`: it may take only a slot of the next two ticks that would otherwise carry cover, and is dropped if none is free. The pattern on the wire is the same with typing indicators on or off, which is what "never its own unit" was protecting.
 - **What a dropped one costs**: the write token it spent (the contact's server never sees it), and one skipped message key on the receiving side, which the ratchet already handles as a lost message. It carries **no PQ slot**, so a dropped unit never loses a PQ step, and **no self-copy**, so our other devices don't learn we were typing.
 - **Tokens**: none is sent while the contact has given us `TYPING_RESERVE` (8) write tokens or fewer, so real messages always have tokens left.
 - **Timing**: the app sends "typing" when the draft becomes non-empty and repeats it at most every 5 s while the person types, and sends "stopped" when the draft is cleared. A message itself ends the indicator. The receiving app shows "typing…" under the name for `TYPING_SHOW_SECS` (10 s) after the last one, since a "stopped" may never arrive. The sending is detached from the vault's command loop, so waiting for a slot never delays anything else.
-- **Not built**: typing indicators in groups.
+- **Groups**: an indicator is an *ephemeral* group message (`enclave_proto::group::FLAG_EPHEMERAL`, inside the encrypted sender header): to the server an ordinary 14,336 B group unit in the day's mailbox, sent the same droppable way. Its body is sealed under `KMAC256(epoch secret, nonce, "enclave/v1/proto/grp-ephemeral")` rather than a step of the sender chain, and it carries counter `0xFFFFFFFF`, so neither side's chain or frontier moves and a dropped one leaves no gap for members to be warned about (RT-24); the MAC vector authenticates it like any message. It holds `1 ‖ on ‖ u64 time`, and members ignore one more than 30 s off their clock (a replay by the server). A member who hasn't posted in the group yet has no sender chain and sends none (starting one is a rekey). The app shows "Ana, Ben typing…" under the group's name. Test `group_typing_indicators`, and `ephemeral_messages_take_no_step` in `enclave-proto`.
 
 Test `typing_indicators` (`crates/enclave-core/tests/client.rs`): off by default, both ways; on and off arrive in order; with a transport that drops every droppable request, the conversation continues normally afterwards; blocked contacts get none. Screenshots 47–48.
 
 ## Open questions
 
-1. Stories (M11) need an audience model (all contacts, a list, or a group). The delivery design is not in PLAN.md.
-2. "Edit" and "Delete for everyone" are advisory; the exact UI copy for the advisory nature is to be written with `17-design.md` §7.
+1. **Resolved:** the audience is a list the poster picks, all accepted contacts by default. Delivery reuses groups (`07-groups.md`): the list is a private group the poster administers, never shown as a conversation, and each story is a group message that expires after 24 hours. This needs no new wire format or server feature, and the server sees only another group mailbox. A list longer than a group's 100 members is split across several such groups. Stories are not built yet (M11).
+2. **Resolved:** the copy, in the voice of `17-design.md` §7. An edited message shows "Edited". Edit and Delete for everyone say, the first time: "They'll see the change if their app is up to date. Someone who already read the message may have kept it." After Delete for everyone the bubble says "You deleted this message." The app has the Edit and Delete actions (`app.slint`), but none of this copy is in it yet.

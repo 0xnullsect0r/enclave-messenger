@@ -79,5 +79,5 @@ The guide explains the reproducible-build process so that an operator can show a
 
 ## Open questions
 
-1. Whether operators should be able to raise the request-inbox PoW effort for a specific capability after spam reports (§2), since capability IDs could become a weak linking handle.
-2. The report address format and whether reports should also be deliverable to the foundation when the operator does not respond.
+1. **Resolved:** no. Neither operators nor reporters raise the effort for one sender's capability, so no capability becomes a linking handle. The reporter's own client raises the effort for every writer to its own request inbox, for 30 days (`Client::raise_request_effort`, `relax_request_effort`; `RegisterTokens` with `FLAG_EFFORT`, owner only), and its client also raises it on its own during a flood of requests (`FLOOD_PER_DAY`). Tests `report_to_the_operator`, `an_owner_raises_what_requests_cost`.
+2. **Resolved:** the report address is the reported person's home server itself: `Op::Report` sealed to its request key (§2 as implemented), so there is no address format to publish. Reports are not copied to the foundation, which would make it a central place that collects reports about people. An operator who ignores reports is handled through the operator program (§5): the foundation can drop the server from the signed server list (G5).

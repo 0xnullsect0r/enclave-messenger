@@ -391,10 +391,10 @@ Tests (`crates/enclave-proto/tests/session.rs`): `full_three_kem_conversation`, 
 
 ## Open questions
 
-1. The PQ ratchet has no symmetric PQ chain: the PQ key is fixed per `(e_out, e_in)` pair, and `mk = KMAC(mk_DR, pq_key)`. PLAN §5 writes `mk = KMAC256(mk_DR‖mk_PQ, …)` with a per-message `mk_PQ`. The implementation intentionally differs; per-message forward secrecy within an epoch pair rests on the DH chain. The formal model (M2) must confirm the properties with this structure.
-2. PLAN §4 has Bob mix an encapsulation to Alice's auth key into the root key and send a confirmation value `KMAC(SK', "confirm")`. The implementation instead makes Alice's auth key the first PQ ratchet key (id 0), so Bob's first PQ step authenticates Alice (§7.3), and there is no confirmation value. This intentionally differs from PLAN.md.
-3. PLAN §4 mixes the braided McEliece secret into the root key. The implementation folds it into the next ML-KEM out-step (§7.4). This intentionally differs from PLAN.md.
-4. PLAN §5 keeps the next 8 tags per chain; the implementation keeps 64 (`TAG_WINDOW`) and has no slow path. A wider window costs 128 KMAC calls per session per commit; a narrower one makes more lost-message cases unrecoverable.
-5. Resolved: skipped keys are evicted oldest first and expire after 7 days (§10).
-6. Resolved: the mode is bound through the EQXDH transcript into every session key (§9). In-band mode switches must bind the new mode when they are added.
-7. Undefined header flag bits are accepted (§6.1). Rejecting them would make future flags a hard format change; accepting them lets a sender set bits a receiver ignores.
+1. **Resolved:** the structure stays: the PQ key is fixed per `(e_out, e_in)` pair and `mk = KMAC(mk_DR, pq_key)`, with no per-message `mk_PQ` as in PLAN §5. Per-message forward secrecy within an epoch pair rests on the DH chain; post-quantum healing comes from each ML-KEM step, which `formal/proverif/lockstep_pcs.pv` models. The full state machine is not modelled yet (`formal/README.md`) and is in audit A's scope (G1; RFC 0008, item 9).
+2. **Resolved:** Alice's auth key is the first PQ ratchet key (id 0), so Bob's first PQ step authenticates Alice (§7.3), and there is no confirmation value. This intentionally differs from PLAN §4 (RFC 0008, item 9).
+3. **Resolved:** the braided McEliece secret is folded into the next ML-KEM out-step (§7.4), not into the root key as in PLAN §4. Test `mceliece_braid_upgrades_two_kem_session`. The braid is not in the formal models yet (`formal/README.md`, "Not done"; RFC 0008, item 9).
+4. **Resolved:** the window stays at 64 (`TAG_WINDOW`), with no slow path. It costs 128 KMAC calls per session per commit and covers far more loss than PLAN's 8; a message more than 63 positions ahead is not found (§6.2).
+5. **Resolved:** skipped keys are evicted oldest first and expire after 7 days (§10; `MAX_SKIP`, `SKIPPED_MAX_AGE`).
+6. **Resolved:** the mode is bound through the EQXDH transcript into every session key (§9). In-band mode switches must bind the new mode when they are added.
+7. **Resolved:** undefined flag bits stay accepted and ignored (`Header::decode` checks only the zero padding). The flags are inside the compact-sealed header, so only the session's peer can set them, and a future flag can then be added without a format break.

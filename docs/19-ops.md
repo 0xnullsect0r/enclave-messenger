@@ -111,5 +111,5 @@ VerifyUpdate(target):
 
 ## Open questions
 
-1. Whether the maintainers' Ed448 half should sign with the RFC 8032 context parameter instead of a label prefix (`label-registry.md` Open questions).
-2. The forced-upgrade grace (receiving continues for 30 days) is not in PLAN.md.
+1. **Resolved:** neither. A maintainer signature is an SLH-DSA signature plus a composite Ed448 + ML-DSA-87 signature under `enclave/v1/update/release`, and the composite carries the context in its message representative, so both halves are bound to it (ADR 0005; `label-registry.md` Open question 1).
+2. **Resolved:** the 30-day grace stays, as this spec's addition to PLAN.md. Below the signed minimum, sending stops at once (`CoreError::UpdateRequired`), and receiving stops 30 days later (`RECEIVE_GRACE` in `client/updates.rs`), so someone who can't update at once still gets messages and the notice while they do. Test `updates_come_from_the_home_server_and_a_minimum_stops_sending`.

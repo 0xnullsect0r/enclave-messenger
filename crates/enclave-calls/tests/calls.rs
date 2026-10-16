@@ -175,3 +175,108 @@ fn tickets() {
         Some(CallError::Malformed)
     );
 }
+
+/// RT-19: no audio levels on the wire. A WebRTC stack would put RFC 6464's
+/// `ssrc-audio-level` in an RTP header extension, in the clear, telling an
+/// observer who speaks and how loudly. Enclave's media isn't RTP: a packet
+/// shaped like one (RTP v2 with the extension bit, `0xBEDE`, a level) is
+/// refused, and our own plaintexts don't vary with loudness: one length,
+/// one header, for a loud frame, a quiet one and padding.
+#[test]
+fn rt19_rfc6464_extension_rejected() {
+    use enclave_calls::sframe::Sender;
+    use enclave_calls::shape::{Shaper, Stream, decode_plaintext};
+    let rtp = [
+        0x90,
+        111,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0xde,
+        0xad,
+        0xbe,
+        0xef, // header, X set
+        0xbe,
+        0xde,
+        0,
+        1, // one-byte extensions, one word
+        0x10,
+        0x80 | 30,
+        0,
+        0, // ID 1 (ssrc-audio-level): voice, -30 dBov
+        1,
+        2,
+        3, // payload
+    ];
+    let mut pt = rtp.to_vec();
+    pt.resize(Stream::Audio.plaintext_len(), 0);
+    assert!(decode_plaintext(&pt).is_err());
+
+    let mut sh = Shaper::new(Stream::Audio);
+    sh.push_frame(&[0x7f; 80]).unwrap();
+    let loud = sh.next_plaintext();
+    sh.push_frame(&[0x7f; 80]).unwrap();
+    let quiet = {
+        let _ = sh.next_plaintext();
+        sh.push_frame(&[0; 80]).unwrap();
+        sh.next_plaintext()
+    };
+    let pad = sh.next_plaintext();
+    assert_eq!(loud.len(), Stream::Audio.plaintext_len());
+    assert_eq!(quiet.len(), loud.len());
+    assert_eq!(pad.len(), loud.len());
+    assert_eq!(
+        loud[..3],
+        quiet[..3],
+        "the same kind and length for any loudness"
+    );
+    let mut tx = Sender::new(1, &[5; 32]);
+    let sizes: Vec<usize> = [loud, quiet, pad]
+        .iter()
+        .map(|p| tx.protect(0, b"audio", p).unwrap().len())
+        .collect();
+    assert!(
+        sizes
+            .iter()
+            .all(|n| *n == enclave_calls::shape::AUDIO_PACKET),
+        "{sizes:?}"
+    );
+}
+
+/// A short control shares an audio packet with the frame instead of taking
+/// its slot: the stream's latency stays what it was.
+#[test]
+fn a_control_rides_beside_an_audio_frame() {
+    let mut s = Shaper::new(Stream::Audio);
+    let frame = vec![7u8; 84];
+    for i in 0..50 {
+        s.push_frame(&frame).unwrap();
+        if i % 10 == 0 {
+            s.push_control(b"L\x05").unwrap();
+        }
+        let pt = s.next_plaintext();
+        assert_eq!(pt.len(), Stream::Audio.plaintext_len());
+        assert_eq!(s.backlog(), 0, "nothing waits behind a control");
+        let got = shape::decode_plaintexts(&pt).unwrap();
+        assert!(got.contains(&Inner::Media(frame.clone())));
+        assert_eq!(got.len(), if i % 10 == 0 { 2 } else { 1 });
+    }
+    // A frame too big to share waits for the next packet, in order.
+    s.push_control(&[1u8; 60]).unwrap();
+    s.push_frame(&frame).unwrap();
+    assert_eq!(
+        shape::decode_plaintexts(&s.next_plaintext()).unwrap(),
+        vec![Inner::Control(vec![1u8; 60])]
+    );
+    assert_eq!(
+        shape::decode_plaintexts(&s.next_plaintext()).unwrap(),
+        vec![Inner::Media(frame)]
+    );
+    assert_eq!(
+        shape::decode_plaintexts(&s.next_plaintext()).unwrap(),
+        vec![Inner::Padding]
+    );
+}

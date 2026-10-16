@@ -1,11 +1,12 @@
 //! Call audio (`docs/11-calls.md` §6, §10).
 //!
 //! Opus at a constant 32 kbit/s in 20 ms frames of 48 kHz mono, DTX off
-//! and in-band FEC on, so every frame costs the same whether anyone speaks.
-//! The microphone is cleaned up first by WebRTC's audio processing
-//! (`sonora`: AEC3 echo cancellation against what was just played, noise
-//! suppression, automatic gain), in 10 ms halves. Decoding uses
-//! `opus-decoder`, which has no unsafe code; all of this runs in mediad.
+//! and in-band FEC on, so every frame costs the same whether anyone speaks;
+//! how much of each packet the FEC copy takes follows the loss the other
+//! side reports ([`CallAudio::set_loss`]). The microphone is cleaned up
+//! first by WebRTC's audio processing (`sonora`: AEC3 echo cancellation
+//! against what was just played, noise suppression, automatic gain), in
+//! 10 ms halves. The codec is [`crate::opus`]; all of this runs in mediad.
 
 use crate::{MediaError, Result};
 use sonora::config::{EchoCanceller, GainController2, NoiseSuppression};
@@ -37,11 +38,25 @@ pub enum Decode<'a> {
 /// One call's audio: an encoder for the microphone, a decoder for the
 /// other person, and the echo canceller between them.
 pub struct CallAudio {
-    enc: opus_rs::OpusEncoder,
-    dec: opus_decoder::OpusDecoder,
+    enc: crate::opus::Encoder,
+    dec: crate::opus::Decoder,
     apm: AudioProcessing,
     /// A group call's decoders, one per other participant.
-    decoders: std::collections::HashMap<u32, opus_decoder::OpusDecoder>,
+    decoders: std::collections::HashMap<u32, crate::opus::Decoder>,
+}
+
+/// One frame decoded as `what` says.
+fn decode_one(dec: &mut crate::opus::Decoder, what: Decode<'_>) -> Result<Vec<i16>> {
+    let pcm = match what {
+        Decode::Packet(p) if p.len() <= MAX_PACKET => dec.decode(p)?,
+        Decode::Recover(p) if p.len() <= MAX_PACKET => dec.recover(p)?,
+        Decode::Lost => dec.conceal()?,
+        _ => return Err(MediaError::Damaged),
+    };
+    if pcm.len() != FRAME {
+        return Err(MediaError::Damaged);
+    }
+    Ok(pcm)
 }
 
 /// Most other participants one group call decodes.
@@ -50,13 +65,8 @@ pub const MAX_SENDERS: usize = 64;
 impl CallAudio {
     /// A fresh call.
     pub fn new() -> Result<Self> {
-        let mut enc = opus_rs::OpusEncoder::new(RATE as i32, 1, opus_rs::Application::Voip)
-            .map_err(|_| MediaError::Encode)?;
-        enc.bitrate_bps = BITRATE;
-        enc.use_cbr = true;
-        enc.use_inband_fec = true;
-        enc.packet_loss_perc = 10;
-        let dec = opus_decoder::OpusDecoder::new(RATE, 1).map_err(|_| MediaError::Encode)?;
+        let enc = crate::opus::Encoder::new(BITRATE, true)?;
+        let dec = crate::opus::Decoder::new()?;
         let apm = AudioProcessing::builder()
             .config(Config {
                 echo_canceller: Some(EchoCanceller::default()),
@@ -88,37 +98,24 @@ impl CallAudio {
                 dst.copy_from_slice(src);
             }
         }
-        let mut out = vec![0u8; 400];
-        let len = self
-            .enc
-            .encode_i16(&clean, FRAME, &mut out)
-            .map_err(|_| MediaError::Encode)?;
-        if len == 0 || len > MAX_PACKET {
+        let out = self.enc.encode(&clean)?;
+        if out.len() > MAX_PACKET {
             return Err(MediaError::Encode);
         }
-        out.truncate(len);
         Ok(out)
+    }
+
+    /// The loss the other side reports hearing from us, in percent: the
+    /// encoder spends more of each packet on the copy of the frame before
+    /// as it rises (none at 0, where it would only cost quality).
+    pub fn set_loss(&mut self, percent: u8) {
+        self.enc.set_loss(percent);
     }
 
     /// The next 20 ms to play ([`FRAME`] samples). What is played is the
     /// echo canceller's reference, so call this as frames are played.
     pub fn decode(&mut self, what: Decode<'_>) -> Result<Vec<i16>> {
-        let mut pcm = vec![0i16; FRAME];
-        let (packet, fec): (&[u8], bool) = match what {
-            Decode::Packet(p) => (p, false),
-            Decode::Recover(p) => (p, true),
-            Decode::Lost => (&[], false),
-        };
-        if packet.len() > MAX_PACKET {
-            return Err(MediaError::Damaged);
-        }
-        let n = self
-            .dec
-            .decode(packet, &mut pcm, fec)
-            .map_err(|_| MediaError::Damaged)?;
-        if n != FRAME {
-            return Err(MediaError::Damaged);
-        }
+        let pcm = decode_one(&mut self.dec, what)?;
         let mut ignored = vec![0i16; HALF];
         for half in pcm.chunks(HALF) {
             let _ = self.apm.process_render_i16(half, &mut ignored);
@@ -138,23 +135,13 @@ impl CallAudio {
                 if self.decoders.len() >= MAX_SENDERS {
                     continue;
                 }
-                let d = opus_decoder::OpusDecoder::new(RATE, 1).map_err(|_| MediaError::Encode)?;
-                self.decoders.insert(*sender, d);
+                self.decoders.insert(*sender, crate::opus::Decoder::new()?);
             }
             let Some(dec) = self.decoders.get_mut(sender) else {
                 continue;
             };
-            let (packet, fec): (&[u8], bool) = match what {
-                Decode::Packet(p) => (p, false),
-                Decode::Recover(p) => (p, true),
-                Decode::Lost => (&[], false),
-            };
-            if packet.len() > MAX_PACKET {
-                continue;
-            }
-            let mut pcm = vec![0i16; FRAME];
             // A damaged frame from one person leaves the others' voices.
-            if dec.decode(packet, &mut pcm, fec).is_ok_and(|n| n == FRAME) {
+            if let Ok(pcm) = decode_one(dec, *what) {
                 for (s, p) in sum.iter_mut().zip(pcm) {
                     *s += i32::from(p);
                 }
@@ -281,13 +268,13 @@ mod tests {
     #[test]
     fn echo_is_cancelled() {
         // What the far end says is played and picked up by our
-        // microphone 40 ms later, a little quieter. After the canceller
-        // has adapted, what we send back carries much less of it.
+        // microphone 40 ms later, at half the level. Once the canceller has
+        // adapted, what we send back carries almost none of it.
         let mut far = CallAudio::new().unwrap();
         let mut near = CallAudio::new().unwrap();
         let mut listener = CallAudio::new().unwrap();
         let mut played: Vec<Vec<i16>> = Vec::new();
-        let (mut early, mut late) = (0.0, 0.0);
+        let (mut picked_up, mut late) = (0.0, 0.0);
         for f in 0..400 {
             let speech = tone(f, 200.0 + (f % 7) as f32 * 90.0);
             let p = far.encode(&speech).unwrap();
@@ -299,13 +286,13 @@ mod tests {
             };
             let sent = near.encode(&mic).unwrap();
             let back = listener.decode(Decode::Packet(&sent)).unwrap();
-            if (10..60).contains(&f) {
-                early += energy(&back);
-            }
             if (350..400).contains(&f) {
+                picked_up += energy(&mic);
                 late += energy(&back);
             }
         }
-        assert!(late < early / 4.0, "echo {early} → {late}");
+        // The echo the microphone picked up, at least 30 dB down in what
+        // we send.
+        assert!(late < picked_up / 1000.0, "echo {picked_up} → {late}");
     }
 }

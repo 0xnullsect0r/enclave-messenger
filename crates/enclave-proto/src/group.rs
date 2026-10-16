@@ -71,6 +71,15 @@ pub const FLAG_RICH: u8 = 0x02;
 /// Sender-header flag: the content starts with the sender device's
 /// composite signature (On-the-record groups, `07-groups.md` §3), 4,741 B.
 pub const FLAG_SIGNED: u8 = 0x04;
+/// Sender-header flag: an ephemeral message (a typing indicator). It is
+/// sealed under a key from the epoch's secret and the unit's nonce
+/// ([`labels::GRP_EPHEMERAL`]) instead of the sender chain, with counter
+/// [`EPHEMERAL_COUNTER`], and changes no state on either side, so one that
+/// is dropped (it goes only in a slot that would carry cover) leaves no
+/// gap. The MAC vector authenticates it like any message.
+pub const FLAG_EPHEMERAL: u8 = 0x08;
+/// The counter an ephemeral message carries.
+pub const EPHEMERAL_COUNTER: u32 = u32::MAX;
 /// Rekey flag: the rotation starts a new epoch.
 const REKEY_NEW_EPOCH: u8 = 0x01;
 
@@ -961,6 +970,63 @@ impl Group {
         Ok(unit)
     }
 
+    /// Seal an ephemeral message ([`FLAG_EPHEMERAL`]): the same unit as
+    /// [`Group::seal`] to the server, but no step on our chain, no change to
+    /// our frontier, and a capsule of random bytes.
+    pub fn seal_ephemeral(&self, content: &[u8], rng: &mut HedgedRng) -> Result<Vec<u8>> {
+        let es = self.epoch_secret()?;
+        let members = self.state.members.len();
+        let mine = self.mine.as_ref().ok_or(ProtoError::NoSession)?;
+        if mine.epoch != self.state.epoch || mine.mac_keys.len() < members {
+            return Err(ProtoError::NoSession);
+        }
+        let mut unit = vec![0u8; ENVELOPE_LEN];
+        unit[0] = VERSION;
+        unit[1] = EnvelopeKind::Group as u8;
+        unit[2] = SUB_MESSAGE;
+        unit[4..8].copy_from_slice(&self.state.epoch.to_be_bytes());
+        rng.fill("group/nonce", &mut unit[NONCE..ENC])?;
+        let e = &mut unit[ENC..ENC + SENDER_ENC_LEN];
+        e[0] = self.me;
+        e[1] = self.my_device;
+        e[2] = mine.generation;
+        e[3] = FLAG_EPHEMERAL;
+        e[4..8].copy_from_slice(&EPHEMERAL_COUNTER.to_be_bytes());
+        unit[off::STATE..off::FRONTIER].copy_from_slice(&self.state.hash());
+        for (i, id) in self.frontier.iter().enumerate() {
+            unit[off::FRONTIER + 8 * i..off::FRONTIER + 8 * i + 8].copy_from_slice(id);
+        }
+        let nonce: [u8; 32] = unit[NONCE..ENC]
+            .try_into()
+            .map_err(|_| ProtoError::Decode)?;
+        keystream(&es, &nonce, &mut unit[ENC..off::MACS]);
+        rng.fill("group/capsule", &mut unit[off::CAPSULE..off::BODY])?;
+        let mut pad = |b: &mut [u8]| {
+            if rng.fill("group/padding", b).is_err() {
+                b.fill(0);
+            }
+        };
+        let framed = Zeroizing::new(pad_content(content, off::CONTENT_CAPACITY, &mut pad)?);
+        let key = SealKey::from_bytes(kmac256(&es, &nonce, labels::GRP_EPHEMERAL));
+        let body = seal::seal(&key, &body_ad(&unit, false), &framed, rng)?;
+        if body.len() != off::BODY_LEN {
+            return Err(ProtoError::Decode);
+        }
+        unit[off::BODY..].copy_from_slice(&body);
+        let h = mac_input(&unit, false);
+        for p in 0..MAC_ENTRIES {
+            let target = if p < self.me as usize { p } else { p + 1 };
+            let slot = &mut unit[off::MACS + 16 * p..off::MACS + 16 * p + 16];
+            if target < members && self.state.members[target].active {
+                let tag: [u8; 16] = kmac256(&mine.mac_keys[target], &h, labels::GRP_MAC);
+                slot.copy_from_slice(&tag);
+            } else {
+                rng.fill("group/mac-fill", slot)?;
+            }
+        }
+        Ok(unit)
+    }
+
     fn remember(&mut self, id: MsgId) {
         if self.seen_set.insert(id) {
             self.seen.push_back(id);
@@ -1026,6 +1092,30 @@ impl Group {
             }
         }
 
+        // Ephemeral: its own key, nothing committed (not even as seen; a
+        // replay is the caller's to judge by the content's time).
+        if flags & FLAG_EPHEMERAL != 0 {
+            if own_account || counter != EPHEMERAL_COUNTER || flags & FLAG_STATE_UPDATE != 0 {
+                return Err(ProtoError::Decode);
+            }
+            let key = SealKey::from_bytes(kmac256(&es, &nonce, labels::GRP_EPHEMERAL));
+            let framed =
+                Zeroizing::new(seal::open(&key, &body_ad(unit, false), &unit[off::BODY..])?);
+            let content = unpad_content(&framed)?.to_vec();
+            return Ok(GroupMessage {
+                member,
+                device,
+                epoch,
+                generation,
+                counter,
+                id: [0; 8],
+                state_hash: [0; 32],
+                frontier: Vec::new(),
+                flags,
+                own_account,
+                content,
+            });
+        }
         let gmk = if counter < rc.chain.n {
             rc.skipped.remove(&counter).ok_or(ProtoError::Counter)?
         } else {
@@ -1783,5 +1873,49 @@ mod tests {
             assert_eq!(a.open(&unit).unwrap().content, b"hello");
         }
         LEGACY.with(|l| l.set(false));
+    }
+
+    #[test]
+    fn ephemeral_messages_take_no_step() {
+        let mut rng = HedgedRng::new().unwrap();
+        let (s_ab, s_ba) = pair(&mut rng);
+        let mut a = Group::create("G", [1; 64], [9; 16], 100, &mut rng).unwrap();
+        let st = a
+            .state
+            .child(|s| {
+                s.add([2; 64], false, 100).unwrap();
+            })
+            .unwrap();
+        a.apply_state(st).unwrap();
+        a.rotate(&[], None, 100, &mut rng).unwrap();
+        let mut b = Group::join(&a.welcome(1).unwrap(), &[2; 64], 0).unwrap();
+        let target = RekeyTarget {
+            member: 0,
+            device: 0,
+            device_id: [0xa0; 16],
+            session: &s_ba,
+        };
+        for u in b.rotate(&[target], None, 100, &mut rng).unwrap() {
+            a.apply_rekey(&u, &s_ab).unwrap();
+        }
+        let frontier = b.frontier().to_vec();
+        let e = b.seal_ephemeral(b"typing", &mut rng).unwrap();
+        assert_eq!(e.len(), ENVELOPE_LEN);
+        assert_eq!(e[2], SUB_MESSAGE, "the server sees an ordinary message");
+        assert_eq!(b.frontier(), frontier.as_slice());
+        let got = a.open(&e).unwrap();
+        assert_eq!(got.content, b"typing");
+        assert!(got.flags & FLAG_EPHEMERAL != 0);
+        assert_eq!(got.counter, EPHEMERAL_COUNTER);
+        // Changed on the way (body or MAC): refused.
+        for at in [off::BODY + 10, off::MACS] {
+            let mut bad = e.clone();
+            bad[at] ^= 1;
+            assert!(a.open(&bad).is_err());
+        }
+        // Neither chain moved: the next real message is the first.
+        let unit = b.seal(b"hello", 0, &mut rng).unwrap();
+        let m = a.open(&unit).unwrap();
+        assert_eq!((m.counter, m.content.as_slice()), (0, &b"hello"[..]));
     }
 }

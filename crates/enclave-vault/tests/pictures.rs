@@ -280,12 +280,45 @@ async fn voice_note_through_the_engine() {
         _ => None,
     })
     .await;
-    assert_eq!(name, "voice-note.wav");
-    assert!(bytes.starts_with(b"RIFF"));
+    // Saved as Ogg Opus (the note's own packets, playable anywhere).
+    assert_eq!(name, "voice-note.opus");
+    assert!(bytes.starts_with(b"OggS"));
+    assert!(bytes.windows(8).any(|w| w == b"OpusHead"));
     assert!(
         !bytes.windows(4).any(|w| w == b"IART"),
         "no metadata from the original"
     );
+
+    // Played in the app: the sound comes back, 48 kHz mono, all of it.
+    tx.send(Cmd::PlayVoice(sam.clone(), m.seq)).unwrap();
+    let (key, first, pcm) = next(&mut rx, |o| match o {
+        Out::VoiceAudio(k, f, p) => Some((k, f, p)),
+        _ => None,
+    })
+    .await;
+    assert_eq!(key, format!("{sam}:{}", m.seq));
+    assert!(first);
+    assert_eq!(pcm.len(), 48 * 1200);
+
+    // With the speech model at hand (`ENCLAVE_WHISPER_DIR`: the nightly
+    // job downloads it), the note is transcribed here and the text kept
+    // with it; a tone has no words, which is said so.
+    if std::env::var_os("ENCLAVE_WHISPER_DIR").is_some() {
+        let s = next(&mut rx, snapshot(|s| s.transcription == 2)).await;
+        assert!(s.transcription_error.is_empty());
+        tx.send(Cmd::Transcribe(sam.clone(), m.seq)).unwrap();
+        let s = next(
+            &mut rx,
+            snapshot(|s| {
+                s.messages
+                    .iter()
+                    .any(|x| x.voice && !x.transcript.is_empty())
+            }),
+        )
+        .await;
+        let t = &s.messages.iter().find(|x| x.voice).unwrap().transcript;
+        eprintln!("transcript of the tone: {t:?}");
+    }
 }
 
 /// A small animated GIF: `n` frames of a block moving right, 100 ms each.

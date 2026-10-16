@@ -103,6 +103,8 @@ final class Keys {
             cipher.updateAAD(account.getBytes(StandardCharsets.UTF_8));
             byte[] iv = cipher.getIV();
             byte[] sealed = cipher.doFinal(secret);
+            // The copy JNI handed us: not left for the collector to find.
+            Arrays.fill(secret, (byte) 0);
             File tmp = new File(dir(c), hex(account) + ".tmp");
             try (FileOutputStream out = new FileOutputStream(tmp)) {
                 out.write(iv.length);

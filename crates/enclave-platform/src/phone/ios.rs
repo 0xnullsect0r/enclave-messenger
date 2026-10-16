@@ -740,6 +740,13 @@ unsafe extern "C" {
 }
 
 /// Settings → Accessibility → Motion → Reduce Motion.
+/// iOS doesn't stop apps for battery in the way Android does.
+pub(super) fn battery_restricted() -> bool {
+    false
+}
+
+pub(super) fn open_battery_settings() {}
+
 pub(super) fn reduce_motion() -> bool {
     // SAFETY: a UIKit function with no arguments that only reads a setting.
     unsafe { UIAccessibilityIsReduceMotionEnabled() }.as_bool()

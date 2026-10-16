@@ -22,7 +22,10 @@
 pub mod call;
 pub mod callvideo;
 mod exif;
+pub mod opus;
 mod resize;
+#[cfg(feature = "transcribe")]
+pub mod transcribe;
 pub mod video;
 pub mod voice;
 

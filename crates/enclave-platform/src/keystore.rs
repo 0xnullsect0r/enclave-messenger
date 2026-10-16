@@ -504,7 +504,12 @@ pub mod android {
             if out.is_null() {
                 return Ok(None);
             }
-            Ok(Some(env.convert_byte_array(JByteArray::from(out))?))
+            let array = JByteArray::from(out);
+            let bytes = env.convert_byte_array(&array)?;
+            // Then the JVM's copy is overwritten, not left for the collector.
+            let zeros = vec![0i8; bytes.len()];
+            env.set_byte_array_region(&array, 0, &zeros)?;
+            Ok(Some(bytes))
         });
         match got {
             Some(Some(bytes)) => Ok(Zeroizing::new(bytes)),
