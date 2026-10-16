@@ -1,0 +1,37 @@
+(* Write tokens: the server can't link two writes by the same sender
+   (docs/09-transport.md §3.3, as implemented with a shared pool), as an
+   observational equivalence.
+
+   The owner registers a pool of tokens (hashes bound to the inbox
+   address) in one shuffled batch with dummies, then hands tokens out to
+   contacts inside their encrypted sessions. Writes reach the server
+   anonymously (the mixnet), each burning one token. The server sees the
+   batch and the burned tokens. Left: Alice was given tokens 1 and 2 and
+   Bob token 3, and the two writes are Alice's. Right: Alice was given 1
+   and 3, Bob 2, and the writes are one each. The server can't tell.
+
+   The companion model `tokens_batches_link.pv` registers each contact's
+   tokens as their own batch, which links them.
+
+   `cargo xtask proverif` checks the result: *)
+
+(* expect: true *)
+
+free c: channel.
+free addr: bitstring.
+fun h(bitstring, bitstring): bitstring.
+
+(* The sessions that carry tokens to contacts. *)
+free toAlice: channel [private].
+free toBob: channel [private].
+
+process
+  new p1: bitstring; new p2: bitstring; new p3: bitstring; new dummy: bitstring;
+  (* One registration: the pool and a dummy. *)
+  out(c, (h(p1, addr), h(p2, addr), h(p3, addr), dummy));
+  (* Hand-out inside sessions. *)
+  out(toAlice, (p1, choice[p2, p3]));
+  out(toBob, choice[p3, p2]);
+  (* The two writes the server sees: tokens 1 and 2 are burned. *)
+  out(c, p1);
+  out(c, p2)

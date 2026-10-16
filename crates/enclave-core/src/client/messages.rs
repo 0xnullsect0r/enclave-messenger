@@ -101,6 +101,23 @@ pub struct Message {
     /// A voice note's words, transcribed on this device (empty: not
     /// transcribed). Kept in the record, so shredded with it.
     pub transcript: String,
+    /// The message this one answers (its id), if any.
+    pub reply_to: Option<MsgId>,
+    /// Forwarded from another conversation.
+    pub forwarded: bool,
+    /// A group message that mentions us (`@` and our name).
+    pub mentions_me: bool,
+    /// The poll this message asks ([`Client::poll_in`]).
+    pub poll: Option<MsgId>,
+}
+
+/// How a text is sent: as an answer to another message, or forwarded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TextOptions {
+    /// The message it answers (its id, in the same conversation).
+    pub reply: Option<MsgId>,
+    /// Forwarded from another conversation.
+    pub forwarded: bool,
 }
 
 impl Message {
@@ -128,12 +145,16 @@ impl Message {
             sticker: None,
             notice: false,
             transcript: String::new(),
+            reply_to: None,
+            forwarded: false,
+            mentions_me: false,
+            poll: None,
         }
     }
 
     pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(7).u64(self.seq).fixed(&self.id);
+        w.u8(8).u64(self.seq).fixed(&self.id);
         w.u8(u8::from(self.outgoing))
             .u8(u8::from(self.delivered))
             .u8(u8::from(self.read))
@@ -179,13 +200,22 @@ impl Message {
                 .unwrap_or_default(),
         );
         w.bytes(self.transcript.as_bytes());
+        match &self.reply_to {
+            Some(r) => w.u8(1).fixed(r),
+            None => w.u8(0),
+        };
+        w.u8(u8::from(self.forwarded) | (u8::from(self.mentions_me) << 1));
+        match &self.poll {
+            Some(p) => w.u8(1).fixed(p),
+            None => w.u8(0),
+        };
         w.finish()
     }
 
     pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(2..=7).contains(&version) {
+        if !(2..=8).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let s = |r: &mut Reader<'_>, n| {
@@ -249,6 +279,22 @@ impl Message {
         } else {
             String::new()
         };
+        let (reply_to, forwarded, mentions_me) = if version >= 8 {
+            let reply = match r.u8()? {
+                0 => None,
+                1 => Some(r.array()?),
+                _ => return Err(ProtoError::Decode),
+            };
+            let f = r.u8()?;
+            (reply, f & 1 != 0, f & 2 != 0)
+        } else {
+            (None, false, false)
+        };
+        let poll = if version >= 8 && r.u8()? == 1 {
+            Some(r.array()?)
+        } else {
+            None
+        };
         r.end()?;
         Ok(Self {
             seq,
@@ -273,6 +319,10 @@ impl Message {
             sticker,
             notice,
             transcript,
+            reply_to,
+            forwarded,
+            mentions_me,
+            poll,
         })
     }
 
@@ -695,13 +745,23 @@ impl Client {
         let is_read = matches!(content, Content::Read(_));
         match content {
             Content::Text {
-                text, id, expires, ..
+                text,
+                id,
+                expires,
+                reply,
+                forwarded,
+                ..
             } => {
                 self.note_receipt(root, id);
                 if self.find(root, &id).is_ok() {
                     return Ok(events); // duplicate
                 }
-                let m = self.new_message(root, id, false, &text, expires, now)?;
+                let mut m = self.new_message(root, id, false, &text, expires, now)?;
+                if reply.is_some() || forwarded {
+                    m.reply_to = reply;
+                    m.forwarded = forwarded;
+                    self.put_message(root, &m)?;
+                }
                 self.bump_unread(root)?;
                 events.push(Event::Message {
                     root: *root,
@@ -844,6 +904,7 @@ impl Client {
                     events.push(Event::PinsChanged { place });
                 }
             }
+            Content::Poll(b) => events.extend(self.on_contact_poll(root, false, &b, now)?),
             _ => return Err(ProtoError::Decode.into()),
         }
         Ok(events)
@@ -870,11 +931,18 @@ impl Client {
         let mut events = Vec::new();
         match Content::decode(inner)? {
             Content::Text {
-                text, id, expires, ..
+                text,
+                id,
+                expires,
+                reply,
+                forwarded,
+                ..
             } => {
                 if self.find(to, &id).is_err() {
                     let mut m = self.new_message(to, id, true, &text, expires, now)?;
                     m.sent = true;
+                    m.reply_to = reply;
+                    m.forwarded = forwarded;
                     self.put_message(to, &m)?;
                     events.push(Event::Message {
                         root: *to,
@@ -974,12 +1042,13 @@ impl Client {
                     events.push(Event::PinsChanged { place });
                 }
             }
+            Content::Poll(b) => events.extend(self.on_contact_poll(to, true, &b, now)?),
             _ => {}
         }
         Ok(events)
     }
 
-    fn bump_unread(&mut self, root: &[u8; 64]) -> Result<()> {
+    pub(crate) fn bump_unread(&mut self, root: &[u8; 64]) -> Result<()> {
         let c = self.contacts.get_mut(root).ok_or(CoreError::NotFound)?;
         c.unread = c.unread.saturating_add(1);
         let c = c.clone();

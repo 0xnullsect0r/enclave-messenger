@@ -393,6 +393,61 @@ pub(super) fn pick(kind: Pick, done: Picked) {
     }
 }
 
+/// "Open with…": the share sheet for the file, whose "Open in…" and app
+/// rows hand it to another app.
+pub(super) fn open_with(name: &str, bytes: &[u8]) -> bool {
+    let Some(mtm) = mtm() else {
+        return false;
+    };
+    let safe: String = name
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+        .collect();
+    let safe = if safe.is_empty() || safe.starts_with('.') {
+        "file".into()
+    } else {
+        safe
+    };
+    // One file at a time: the earlier ones go.
+    let dir = std::env::temp_dir().join("open");
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join(&safe);
+    if std::fs::create_dir_all(&dir)
+        .and_then(|()| std::fs::write(&path, bytes))
+        .is_err()
+    {
+        return false;
+    }
+    let Some(root) = key_window(mtm).and_then(|w| w.rootViewController()) else {
+        return false;
+    };
+    let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+    let item: Retained<AnyObject> = Retained::into_super(Retained::into_super(url));
+    let items = NSArray::from_retained_slice(&[item]);
+    // SAFETY: the items are NSURLs, which the sheet takes.
+    let sheet = unsafe {
+        objc2_ui_kit::UIActivityViewController::initWithActivityItems_applicationActivities(
+            objc2_ui_kit::UIActivityViewController::alloc(mtm),
+            &items,
+            None,
+        )
+    };
+    // On an iPad the sheet is a popover and needs somewhere to point.
+    if let Some(view) = root.view() {
+        // SAFETY: `popoverPresentationController` returns the controller or
+        // nil, and `setSourceView:` takes a view.
+        unsafe {
+            let pop: Option<Retained<AnyObject>> =
+                objc2::msg_send![&*sheet, popoverPresentationController];
+            if let Some(pop) = pop {
+                let _: () = objc2::msg_send![&*pop, setSourceView: &*view];
+            }
+        }
+    }
+    root.presentViewController_animated_completion(&sheet, true, None);
+    true
+}
+
 pub(super) fn save(name: &str, bytes: Vec<u8>, done: Saved) {
     let Some(mtm) = mtm() else {
         return done(Err("the file can't be saved here".into()));

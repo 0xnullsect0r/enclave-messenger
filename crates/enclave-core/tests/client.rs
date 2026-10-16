@@ -1365,6 +1365,174 @@ async fn group_links_belong_to_their_admin() {
     );
 }
 
+/// Replies quote the message they answer, forwards say so, and a group
+/// text naming a member as `@Name` mentions them (and only them).
+#[tokio::test(flavor = "multi_thread")]
+async fn replies_forwards_and_mentions() {
+    let net = network();
+    let mut cs = Vec::new();
+    for (name, server) in [("Ada", S1), ("Ben", S2), ("Ana Lima", S1)] {
+        cs.push(
+            Client::create(memory(), Arc::new(net.clone()), server, name)
+                .await
+                .unwrap()
+                .0,
+        );
+    }
+    let [mut ada, mut ben, mut ana] = <[Client; 3]>::try_from(cs).ok().unwrap();
+    connect(&mut ada, &mut ben).await;
+    connect(&mut ada, &mut ana).await;
+
+    // 1:1: Ben answers Ada's question.
+    let q = ada.send_text(&ben.root(), "lunch?").await.unwrap();
+    ben.sync().await.unwrap();
+    let opts = enclave_core::TextOptions {
+        reply: Some(q.id),
+        forwarded: false,
+    };
+    ben.send_text_with(&ada.root(), "yes!", opts).await.unwrap();
+    let ev = ada.sync().await.unwrap();
+    let got = ev
+        .iter()
+        .find_map(|e| match e {
+            Event::Message { message, .. } if message.text == "yes!" => Some(message.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(got.reply_to, Some(q.id));
+    assert!(!got.forwarded);
+    // Kept on disk.
+    assert!(
+        ada.messages(&ben.root())
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "yes!" && m.reply_to == Some(q.id))
+    );
+
+    // A group: Ada forwards Ben's answer, and mentions Ana by her full name.
+    let gid = ada
+        .create_group("Lunch", &[ben.root(), ana.root()])
+        .await
+        .unwrap();
+    settle(&mut [&mut ada, &mut ben, &mut ana], 3).await;
+    let fwd = enclave_core::TextOptions {
+        reply: None,
+        forwarded: true,
+    };
+    ada.send_group_text_with(&gid, "yes!", fwd).await.unwrap();
+    let asked = ada
+        .send_group_text(&gid, "@ana lima are you coming?")
+        .await
+        .unwrap();
+    let ev = settle(&mut [&mut ada, &mut ben, &mut ana], 2).await;
+    let find = |events: &[Event], text: &str| {
+        events
+            .iter()
+            .find_map(|e| match e {
+                Event::GroupMessage { message, .. } if message.text == text => {
+                    Some(message.clone())
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert!(find(&ev[1], "yes!").forwarded);
+    assert!(find(&ev[2], "@ana lima are you coming?").mentions_me);
+    assert!(!find(&ev[1], "@ana lima are you coming?").mentions_me);
+    // Ana answers it in the group.
+    let opts = enclave_core::TextOptions {
+        reply: Some(asked.id),
+        forwarded: false,
+    };
+    ana.send_group_text_with(&gid, "on my way", opts)
+        .await
+        .unwrap();
+    let ev = settle(&mut [&mut ada, &mut ben, &mut ana], 2).await;
+    let m = find(&ev[0], "on my way");
+    assert_eq!(m.reply_to, Some(asked.id));
+    assert!(!m.mentions_me);
+}
+
+/// A poll between two people, and an anonymous group poll: members see
+/// that someone voted but not how, the creator counts the sealed votes,
+/// and everyone gets the counts at the close.
+#[tokio::test(flavor = "multi_thread")]
+async fn polls_one_to_one_and_anonymous() {
+    use enclave_core::Place;
+    let net = network();
+    let mut cs = Vec::new();
+    for (name, server) in [("Ada", S1), ("Mo", S2), ("Jo", S1)] {
+        cs.push(
+            Client::create(memory(), Arc::new(net.clone()), server, name)
+                .await
+                .unwrap()
+                .0,
+        );
+    }
+    let [mut ada, mut mo, mut jo] = <[Client; 3]>::try_from(cs).ok().unwrap();
+    connect(&mut ada, &mut mo).await;
+    connect(&mut ada, &mut jo).await;
+
+    // 1:1.
+    let opts = ["Pizza".to_string(), "Soup".into()];
+    let here = Place::Contact(mo.root());
+    let id = ada
+        .create_poll_in(&here, "Dinner?", &opts, false)
+        .await
+        .unwrap();
+    assert!(
+        ada.create_poll_in(&here, "Dinner?", &opts, true)
+            .await
+            .is_err(),
+        "anonymous only in groups"
+    );
+    mo.sync().await.unwrap();
+    let there = Place::Contact(ada.root());
+    let m = mo.messages(&ada.root()).unwrap();
+    assert!(m.iter().any(|m| m.poll == Some(id) && m.text == "Dinner?"));
+    mo.vote_in(&there, &id, 1).await.unwrap();
+    ada.sync().await.unwrap();
+    assert_eq!(ada.poll_in(&here, &id).unwrap().options[1].1, 1);
+    ada.close_poll_in(&here, &id).await.unwrap();
+    mo.sync().await.unwrap();
+    let v = mo.poll_in(&there, &id).unwrap();
+    assert!(v.closed && v.tally_agrees == Some(true));
+
+    // An anonymous group poll.
+    let gid = ada
+        .create_group("Trip", &[mo.root(), jo.root()])
+        .await
+        .unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 3).await;
+    let g = Place::Group(gid);
+    let id = ada
+        .create_poll_in(&g, "Where?", &["Lake".to_string(), "Hills".into()], true)
+        .await
+        .unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 2).await;
+    mo.vote_in(&g, &id, 0).await.unwrap();
+    jo.vote_in(&g, &id, 1).await.unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 2).await;
+    // Ada (the creator) counts both; Jo sees two voters and no counts.
+    let a = ada.poll_in(&g, &id).unwrap();
+    assert!(a.anonymous);
+    assert_eq!((a.options[0].1, a.options[1].1), (1, 1));
+    let j = jo.poll_in(&g, &id).unwrap();
+    assert_eq!(j.voters, 2);
+    assert_eq!((j.options[0].1, j.options[1].1), (0, 0), "no counts yet");
+    assert_eq!(j.mine, Some(1));
+    ada.close_poll_in(&g, &id).await.unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 2).await;
+    let j = jo.poll_in(&g, &id).unwrap();
+    assert!(j.closed);
+    assert_eq!(
+        (j.options[0].1, j.options[1].1),
+        (1, 1),
+        "the counts, at the close"
+    );
+    assert_eq!(j.tally_agrees, None);
+}
+
 /// Polls (07 §7.5): votes reach everyone, a later vote replaces an earlier
 /// one, only the creator closes, and a close that missed a vote shows as a
 /// tally that doesn't match.

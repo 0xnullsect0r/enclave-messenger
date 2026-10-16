@@ -21,14 +21,45 @@ VERSION=0.9.0
 COMMIT=89d54872b176f936232ff39f7a8189b77d83d65e
 SRC=$ROOT/target/lyrebird-src
 
-fetch() {
+# The same commit as a Go module (proxy.golang.org), for when the Tor
+# Project's GitLab can't be reached: its hash is pinned here and checked
+# by Go against the checksum database too.
+MODULE=gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird
+MODULE_SUM=h1:tckklVQZ4U/k89ahYNhT+4kVvUhBFOtmOmtEDc+jvr4=
+
+fetch_git() {
   if [ ! -d "$SRC/.git" ]; then
     rm -rf "$SRC"
-    git clone -q "$REPO" "$SRC"
+    git clone -q "$REPO" "$SRC" || return 1
   fi
-  git -C "$SRC" fetch -q origin "$COMMIT" 2>/dev/null || git -C "$SRC" fetch -q origin
-  git -C "$SRC" checkout -q --detach "$COMMIT"
+  git -C "$SRC" fetch -q origin "$COMMIT" 2>/dev/null || git -C "$SRC" fetch -q origin || return 1
+  git -C "$SRC" checkout -q --detach "$COMMIT" || return 1
   test "$(git -C "$SRC" rev-parse HEAD)" = "$COMMIT"
+}
+
+fetch_proxy() {
+  local json dir
+  json=$(cd "$ROOT" && GOFLAGS=-mod=mod go mod download -json "$MODULE@$COMMIT")
+  dir=$(printf '%s' "$json" | python3 -c '
+import json, sys
+m = json.load(sys.stdin)
+commit, want = sys.argv[1], sys.argv[2]
+if m.get("Sum") != want or m.get("Origin", {}).get("Hash", commit) != commit:
+    sys.exit("lyrebird.sh: the module from the proxy is not the pinned commit")
+print(m["Dir"])' "$COMMIT" "$MODULE_SUM")
+  rm -rf "$SRC" && cp -R "$dir" "$SRC" && chmod -R u+w "$SRC"
+  echo "$COMMIT" > "$SRC/.enclave-proxy"
+}
+
+fetch() {
+  [ -f "$SRC/.enclave-proxy" ] && [ "$(cat "$SRC/.enclave-proxy")" = "$COMMIT" ] && return
+  local wait
+  for wait in 0 15 45; do
+    sleep "$wait"
+    fetch_git && return
+  done
+  echo "lyrebird.sh: $REPO can't be reached; the module from the Go proxy" >&2
+  fetch_proxy
 }
 
 export GOTOOLCHAIN=${GOTOOLCHAIN:-auto} GOFLAGS=-mod=readonly CGO_ENABLED=0

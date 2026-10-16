@@ -165,6 +165,25 @@ pub struct Msg {
     pub clip_ms: u32,
     /// A voice note's transcript, made on this device, or empty.
     pub transcript: String,
+    /// It answers another message, quoted above it.
+    pub quoted: bool,
+    /// The quoted message's position (`u64::MAX`: not in this
+    /// conversation any more).
+    pub quote_seq: u64,
+    /// Who wrote the quoted message ("You" for ours).
+    pub quote_who: String,
+    /// The start of its text.
+    pub quote_text: String,
+    /// Forwarded from another conversation.
+    pub forwarded: bool,
+    /// A group message that mentions us.
+    pub mentions_me: bool,
+    /// An anonymous poll: votes sealed to its creator.
+    pub poll_anonymous: bool,
+    /// How many have voted in the poll.
+    pub poll_voters: u32,
+    /// Our reaction to it (empty: none).
+    pub my_reaction: String,
 }
 
 /// A call as the window shows it (`docs/11-calls.md`).
@@ -580,9 +599,10 @@ pub enum Cmd {
     /// Make a group invite link (admins): group, how many people, whether
     /// each join waits for approval. It comes back as [`Out::Invite`].
     NewGroupInvite(String, u8, bool),
-    /// Ask a group a question: group, question, options.
-    CreatePoll(String, String, Vec<String>),
-    /// Vote in the poll at a group message: group, position, option index.
+    /// Ask a question: conversation (a group or 1:1), question, options,
+    /// anonymous (groups only: votes sealed to us, counts at the close).
+    CreatePoll(String, String, Vec<String>, bool),
+    /// Vote in the poll at a message: conversation, position, option index.
     Vote(String, u64, u32),
     /// Close our poll at a group message: group, position.
     ClosePoll(String, u64),
@@ -652,6 +672,20 @@ pub enum Cmd {
     /// `https://<host>/i#…` page's button): shown in the Add screen once
     /// the profile is open ([`Out::OpenLink`]).
     OpenLink(String),
+    /// Send a text that answers a message: conversation, text, the
+    /// answered message's position.
+    SendReply(String, String, u64),
+    /// Forward a message: from conversation, its position, to
+    /// conversation.
+    Forward(String, u64, String),
+    /// The next part (at most [`FILE_PART`]) of a large file or backup
+    /// the window reads; the command after uses what was staged.
+    Stage(Vec<u8>),
+    /// Send what was staged as a file: conversation, name, caption.
+    SendStaged(String, String, String),
+    /// "Open with…" the file at a message (after the window's warning): it
+    /// comes back like a save, after [`Out::OpenNext`].
+    OpenFile(String, u64),
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -787,6 +821,14 @@ pub enum Cmd {
 /// Most samples in one [`Out::VoiceAudio`] (10 s at 48 kHz).
 pub const VOICE_PIECE: usize = 480_000;
 
+/// Most bytes of a file in one message between the window and the vault:
+/// larger files go in parts ([`Cmd::Stage`], [`Out::FilePart`]), well
+/// under the frame limit.
+pub const FILE_PART: usize = 8 << 20;
+/// Most bytes the vault holds staged from the window (a file of up to
+/// 100 MiB, a backup with its media).
+pub const MAX_STAGED: usize = 512 << 20;
+
 /// The size a shared screen's frames go at ([`Cmd::CallFrame`]).
 pub const SCREEN_WIDTH: u32 = 960;
 /// As above.
@@ -882,6 +924,12 @@ pub enum Out {
     /// Open the Add screen with this link in it (from [`Cmd::OpenLink`]):
     /// the person still taps Add, so a link can't act on its own.
     OpenLink(String),
+    /// A part of a large file for the window to save: name, bytes, the
+    /// last one (then it is saved like [`Out::File`]).
+    FilePart(String, Vec<u8>, bool),
+    /// The next file ([`Out::File`] or parts) is to open in another app,
+    /// not to save.
+    OpenNext,
 }
 
 /// PCM as 16-bit little-endian bytes.
@@ -1061,7 +1109,16 @@ impl Snapshot {
                 .u32(m.voice_ms)
                 .bytes(&m.waveform[..m.waveform.len().min(64)])
                 .u32(m.clip_ms)
-                .str(&m.transcript);
+                .str(&m.transcript)
+                .bool(m.quoted)
+                .u64(m.quote_seq)
+                .str(&m.quote_who)
+                .str(&m.quote_text)
+                .bool(m.forwarded)
+                .bool(m.mentions_me)
+                .bool(m.poll_anonymous)
+                .u32(m.poll_voters)
+                .str(&m.my_reaction);
         }
         w.strs(&self.code_groups)
             .strs(&self.code_words)
@@ -1283,6 +1340,15 @@ impl Snapshot {
                     },
                     clip_ms: r.u32()?,
                     transcript: r.str()?,
+                    quoted: r.bool()?,
+                    quote_seq: r.u64()?,
+                    quote_who: r.str()?,
+                    quote_text: r.str()?,
+                    forwarded: r.bool()?,
+                    mentions_me: r.bool()?,
+                    poll_anonymous: r.bool()?,
+                    poll_voters: r.u32()?,
+                    my_reaction: r.str()?,
                 })
             })
             .collect::<Result<_>>()?;
@@ -1593,7 +1659,7 @@ impl Cmd {
             Cmd::NewInvite(n) => w.u8(38).u8(*n),
             Cmd::CancelInvites => w.u8(39),
             Cmd::NewGroupInvite(g, uses, approve) => w.u8(40).str(g).u8(*uses).bool(*approve),
-            Cmd::CreatePoll(g, q, o) => w.u8(41).str(g).str(q).strs(o),
+            Cmd::CreatePoll(g, q, o, a) => w.u8(41).str(g).str(q).strs(o).bool(*a),
             Cmd::Vote(g, s, c) => w.u8(42).str(g).u64(*s).u32(*c),
             Cmd::ClosePoll(g, s) => w.u8(43).str(g).u64(*s),
             Cmd::SaveBackup(media) => w.u8(44).bool(*media),
@@ -1631,6 +1697,11 @@ impl Cmd {
             Cmd::InFolder(n, on) => w.u8(122).str(n).bool(*on),
             Cmd::ShowFolder(n) => w.u8(123).str(n),
             Cmd::OpenLink(l) => w.u8(124).str(l),
+            Cmd::SendReply(c, t, seq) => w.u8(125).str(c).str(t).u64(*seq),
+            Cmd::Forward(from, seq, to) => w.u8(126).str(from).u64(*seq).str(to),
+            Cmd::Stage(b) => w.u8(127).bytes(b),
+            Cmd::SendStaged(c, n, cap) => w.u8(128).str(c).str(n).str(cap),
+            Cmd::OpenFile(c, seq) => w.u8(129).str(c).u64(*seq),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -1746,7 +1817,7 @@ impl Cmd {
             38 => Cmd::NewInvite(r.u8()?),
             39 => Cmd::CancelInvites,
             40 => Cmd::NewGroupInvite(r.str()?, r.u8()?, r.bool()?),
-            41 => Cmd::CreatePoll(r.str()?, r.str()?, r.strs()?),
+            41 => Cmd::CreatePoll(r.str()?, r.str()?, r.strs()?, r.bool()?),
             42 => Cmd::Vote(r.str()?, r.u64()?, r.u32()?),
             43 => Cmd::ClosePoll(r.str()?, r.u64()?),
             44 => Cmd::SaveBackup(r.bool()?),
@@ -1782,6 +1853,11 @@ impl Cmd {
             122 => Cmd::InFolder(r.str()?, r.bool()?),
             123 => Cmd::ShowFolder(r.str()?),
             124 => Cmd::OpenLink(r.str()?),
+            125 => Cmd::SendReply(r.str()?, r.str()?, r.u64()?),
+            126 => Cmd::Forward(r.str()?, r.u64()?, r.str()?),
+            127 => Cmd::Stage(r.bytes()?),
+            128 => Cmd::SendStaged(r.str()?, r.str()?, r.str()?),
+            129 => Cmd::OpenFile(r.str()?, r.u64()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
@@ -1967,6 +2043,12 @@ impl Out {
                 w.u8(16).str(link);
                 w.0
             }
+            Out::FilePart(name, bytes, last) => {
+                let mut w = Writer::default();
+                w.u8(17).str(name).bytes(bytes).bool(*last);
+                w.0
+            }
+            Out::OpenNext => vec![18],
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -2078,6 +2160,13 @@ impl Out {
             [16, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::OpenLink(r.str()?);
+                r.end()?;
+                Ok(o)
+            }
+            [18] => Ok(Out::OpenNext),
+            [17, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::FilePart(r.str()?, r.bytes()?, r.bool()?);
                 r.end()?;
                 Ok(o)
             }

@@ -326,6 +326,19 @@ jobs:
           cargo install --locked cargo-packager@0.11.8
           cargo xtask packager --target "$TARGET" --formats wix,nsis
           ls -la target/dist
+      # cargo-packager hides candle's own messages: show them.
+      - name: WiX messages (on failure)
+        if: failure()
+        shell: pwsh
+        run: |
+          $tools = "$env:LOCALAPPDATA\.cargo-packager\WixTools"
+          Get-ChildItem -Recurse target/dist/.cargo-packager/wix -Filter main.wxs | ForEach-Object {
+            Write-Host "== $($_.FullName)"
+            $arch = Split-Path -Leaf $_.DirectoryName
+            Push-Location $_.DirectoryName
+            & "$tools\candle.exe" -nologo -arch $arch -ext WixUIExtension -ext WixUtilExtension main.wxs
+            Pop-Location
+          }
       - name: MSIX (makeappx; signed when ENCLAVE_WIN_SIGN_CMD is set)
         env:
           ENCLAVE_MSIX_PUBLISHER: ${{ vars.ENCLAVE_MSIX_PUBLISHER }}
@@ -495,8 +508,25 @@ jobs:
           xcrun simctl boot "$device"
           rm -rf sim/x && mkdir sim/x && (cd sim/x && unzip -q ../*.ipa)
           xcrun simctl install "$device" sim/x/Payload/Enclave.app
-          perl -e 'alarm shift; exec @ARGV' 180 xcrun simctl launch --console-pty "$device" com.aricummings.enclave --smoke-exit | tee sim/launch.log
-          grep -q 'enclave: started' sim/launch.log
+          # The app can't quit itself on iOS, and its output may not reach
+          # simctl: it writes a file in its profile once the vault's first
+          # state arrives, and the check waits for that, then stops it.
+          SIMCTL_CHILD_RUST_BACKTRACE=1 xcrun simctl launch --stdout="$PWD/sim/out.log" --stderr="$PWD/sim/err.log" "$device" com.aricummings.enclave --smoke-exit
+          data=$(xcrun simctl get_app_container "$device" com.aricummings.enclave data)
+          ok=
+          for _ in $(seq 1 90); do
+            if [ -f "$data/Library/Application Support/Enclave/smoke-started" ]; then ok=1; break; fi
+            sleep 2
+          done
+          xcrun simctl terminate "$device" com.aricummings.enclave || true
+          cat sim/out.log sim/err.log 2>/dev/null || true
+          if [ -z "$ok" ]; then
+            ls -la "$data/Library/Application Support/Enclave" 2>/dev/null || true
+            xcrun simctl spawn "$device" log show --last 10m --style compact --predicate 'process == "Enclave"' 2>/dev/null | tail -150 || true
+            for f in ~/Library/Logs/DiagnosticReports/Enclave*; do [ -f "$f" ] && head -120 "$f"; done
+            echo "the app didn't reach its first state in 180 s"
+            exit 1
+          fi
       - name: The app for devices (signed and sent to TestFlight on a release)
         env:
           ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}

@@ -1,0 +1,106 @@
+/*
+ * Changing the recovery words: root migration (docs/03-identity.md §8.2).
+ *
+ * A migration record names the old and new root keys (and the new
+ * manifest), signed by the new root and, when the old words are still
+ * known, by the old root too (`change_recovery_words`); without them
+ * (`replace_lost_root`, words and first device lost) only the new root
+ * signs. A contact accepts a migration only if it arrives inside an
+ * existing session from a device listed in the manifest the contact
+ * holds for the old root (§8.2.3 rule 1), with the signatures verifying;
+ * one without the old root's signature is shown as unconfirmed.
+ *
+ * The attacker runs the network and the servers and has the old words
+ * (`Steal_Old_Words`, at any time), but none of the person's devices.
+ * A session message is modelled as a signature by the sending device's
+ * key, which is what authenticates it.
+ *
+ * Lemma: a contact moves to a new root only if the person made that
+ * migration on one of their devices, with or without the old root's
+ * signature. Sanity: a client that followed a migration on signatures
+ * alone, from the directory or a shared card (which §8.2.3 forbids),
+ * moves to the attacker's root.
+ *
+ * Abstractions: signatures are ideal; the record's encoding, the new
+ * manifest's checks, the KT entry and the time field are not modelled.
+ */
+theory RootMigration
+begin
+
+builtins: signing
+
+rule Account:
+    [ Fr(~old), Fr(~dev) ]
+  --[ OnlyOnce('account') ]->
+    [ !Old(~old), !Device(~dev), !Pinned(pk(~old), pk(~dev)), Out(<pk(~old), pk(~dev)>) ]
+
+rule Steal_Old_Words:
+    [ !Old(old) ] --[ Stolen() ]-> [ Out(old) ]
+
+/* The person changes their words on their device: both roots sign, and
+   the record goes to contacts in sessions. */
+rule Person_Changes_Words:
+    let rec = <'migration', pk(old), pk(~new)> in
+    [ !Old(old), !Device(dev), Fr(~new) ]
+  --[ Migrated(pk(~new)) ]->
+    [ Out(<rec, sign(rec, ~new), sign(rec, old), sign(<'session', rec>, dev)>) ]
+
+/* Words lost, device kept: only the new root signs. */
+rule Device_Replaces_Lost_Root:
+    let rec = <'migration', pk(old), pk(~new)> in
+    [ !Old(old), !Device(dev), Fr(~new) ]
+  --[ Migrated(pk(~new)) ]->
+    [ Out(<rec, sign(rec, ~new), sign(<'session', rec>, dev)>) ]
+
+/* A contact: in a session from a listed device, both signatures. */
+rule Contact_Moves:
+    let rec = <'migration', oldpk, newpk> in
+    [ !Pinned(oldpk, devpk), In(<rec, newsig, oldsig, sess>) ]
+  --[ Moves(newpk),
+      Eq(verify(sess, <'session', rec>, devpk), true),
+      Eq(verify(newsig, rec, newpk), true),
+      Eq(verify(oldsig, rec, oldpk), true) ]->
+    [ ]
+
+/* The same without the old root's signature: shown as unconfirmed. */
+rule Contact_Moves_Unconfirmed:
+    let rec = <'migration', oldpk, newpk> in
+    [ !Pinned(oldpk, devpk), In(<rec, newsig, sess>) ]
+  --[ Moves(newpk),
+      Eq(verify(sess, <'session', rec>, devpk), true),
+      Eq(verify(newsig, rec, newpk), true) ]->
+    [ ]
+
+/* What §8.2.3 forbids: following a record found outside a session. */
+rule Contact_Follows_Directory:
+    let rec = <'migration', oldpk, newpk> in
+    [ !Pinned(oldpk, devpk), In(<rec, newsig, oldsig>) ]
+  --[ FollowsDirectory(newpk),
+      Eq(verify(newsig, rec, newpk), true),
+      Eq(verify(oldsig, rec, oldpk), true) ]->
+    [ ]
+
+restriction equality:
+  "All x y #i. Eq(x, y) @ i ==> x = y"
+
+/* expect: verified */
+lemma only_the_person_migrates:
+  "All newpk #i. Moves(newpk) @ i ==> Ex #j. Migrated(newpk) @ j & j < i"
+
+/* Sanity: signatures alone, with stolen words, move a contact to the
+   attacker's root. */
+/* expect: verified */
+lemma signatures_alone_attacked:
+  exists-trace
+  "Ex newpk #i. FollowsDirectory(newpk) @ i & not (Ex #j. Migrated(newpk) @ j)"
+
+/* Sanity: migration works. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex newpk #i. Moves(newpk) @ i & not (Ex #s. Stolen() @ s)"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end

@@ -127,6 +127,10 @@ pub const GRP_REKEY_OUTER: &str = "enclave/v1/proto/grp-rekey-outer";
 /// the epoch's secret and the unit's nonce: it takes no step on the sender
 /// chain, so one that is dropped leaves no gap.
 pub const GRP_EPHEMERAL: &str = "enclave/v1/proto/grp-ephemeral";
+/// Anonymous poll: transcript prefix of a vote sealed to the poll's key.
+pub const POLL_VOTE: &str = "enclave/v1/proto/poll-vote";
+/// Anonymous poll: the seal key of a vote.
+pub const POLL_VOTE_SEAL: &str = "enclave/v1/proto/poll-vote-seal";
 /// AD prefix of a rekey unit's outer seal.
 pub const WIRE_AD_REKEY: &str = "enclave/v1/wire/ad-rekey";
 /// AD prefix of a rekey unit's common blob.

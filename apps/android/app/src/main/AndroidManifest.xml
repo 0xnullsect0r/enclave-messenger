@@ -79,6 +79,14 @@
             </intent-filter>
         </activity>
 
+        <!-- "Open with…": one received file to the app the person picks,
+             read-only and by a per-intent grant (OpenFiles.java). -->
+        <provider
+            android:name=".OpenFiles"
+            android:authorities="com.aricummings.enclave.open"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <service
             android:name=".EnclaveService"
             android:exported="false"

@@ -7,8 +7,12 @@
 //!   (`docs/19-ops.md`, reproducible builds). Default: `enclave-relay`.
 //! * `dudect`: run the constant-time timing tests (slow; not in `cargo test`).
 //! * `proverif`: run every model in `formal/proverif/` and check each
-//!   query's result against the `(* expect: true|false *)` note before it.
+//!   query's result against the `(* expect: true|false|unproved *)` note
+//!   before it.
 //!   The binary is `$PROVERIF`, or `proverif` on the path.
+//! * `tamarin`: prove every model in `formal/tamarin/` and check each
+//!   lemma against the `/* expect: verified|falsified */` note before it
+//!   (`tamarin.rs`). The binary is `$TAMARIN`, or `tamarin-prover`.
 //! * `done [--report]`: the 1.0 completion gate (`done.rs`).
 //! * `icons [--check]`: the app icons for every platform (`icons.rs`).
 //! * `licenses [--check]`: the notices the app shows (`licenses.rs`).
@@ -21,6 +25,7 @@ mod i18n;
 mod icons;
 mod licenses;
 mod supply;
+mod tamarin;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -39,6 +44,7 @@ fn main() -> ExitCode {
         }
         "dudect" => dudect(),
         "proverif" => proverif(),
+        "tamarin" => tamarin::tamarin(),
         "done" => done::done(std::env::args().any(|a| a == "--report")),
         "icons" => icons::icons(std::env::args().any(|a| a == "--check")),
         "i18n" => match i18n::i18n(std::env::args().any(|a| a == "--check")) {
@@ -127,18 +133,19 @@ fn repro(pkg: &str, bin: &str) -> ExitCode {
     }
 }
 
-/// The timing tests live in `enclave-crypto/tests/dudect.rs` (ignored by
-/// default: they take minutes and need a quiet machine).
-/// Expected results, in order, from `(* expect: true *)` notes.
-fn expectations(model: &str) -> Vec<bool> {
+/// Expected results, in order, from `(* expect: true|false|unproved *)`
+/// notes.
+fn expectations(model: &str) -> Vec<Verdict> {
     model
         .match_indices("(* expect: ")
         .filter_map(|(i, _)| {
             let rest = &model[i + "(* expect: ".len()..];
             if rest.starts_with("true") {
-                Some(true)
+                Some(Verdict::True)
             } else if rest.starts_with("false") {
-                Some(false)
+                Some(Verdict::False)
+            } else if rest.starts_with("unproved") {
+                Some(Verdict::Unproved)
             } else {
                 None
             }
@@ -146,17 +153,38 @@ fn expectations(model: &str) -> Vec<bool> {
         .collect()
 }
 
-/// Results, in order, from ProVerif's `RESULT … is true.` lines. A query
-/// ProVerif can't decide counts as neither.
-fn results(output: &str) -> Vec<Option<bool>> {
+/// A ProVerif result. An equivalence that doesn't hold usually comes back
+/// "cannot be proved" rather than "false": a sanity model expects that
+/// with `(* expect: unproved *)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Verdict {
+    True,
+    False,
+    Unproved,
+}
+
+impl std::fmt::Display for Verdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Verdict::True => "true",
+            Verdict::False => "false",
+            Verdict::Unproved => "unproved",
+        })
+    }
+}
+
+/// Results, in order, from ProVerif's `RESULT … is true.` lines.
+fn results(output: &str) -> Vec<Option<Verdict>> {
     output
         .lines()
         .filter(|l| l.starts_with("RESULT "))
         .map(|l| {
             if l.ends_with(" is true.") {
-                Some(true)
+                Some(Verdict::True)
             } else if l.ends_with(" is false.") {
-                Some(false)
+                Some(Verdict::False)
+            } else if l.ends_with(" cannot be proved.") {
+                Some(Verdict::Unproved)
             } else {
                 None
             }
@@ -218,6 +246,8 @@ fn proverif() -> ExitCode {
     }
 }
 
+/// The timing tests live in `enclave-crypto/tests/dudect.rs` (ignored by
+/// default: they take minutes and need a quiet machine).
 fn dudect() -> ExitCode {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let status = std::process::Command::new(cargo)

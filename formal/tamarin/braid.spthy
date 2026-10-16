@@ -1,0 +1,59 @@
+/*
+ * The braid (docs/04-eqxdh.md §7, docs/05-ratchet.md §7.4): a session
+ * that started on two KEMs (no McEliece, Bob's vault key wasn't known)
+ * folds a McEliece encapsulation to the vault key into Alice's next PQ
+ * step, after which it stands on all three.
+ *
+ * The attacker here breaks X448 and ML-KEM (a lattice break) but not
+ * McEliece: every X448 exponent and ML-KEM secret is handed to it. The
+ * two-KEM session key is then the attacker's; the root after the braid
+ * step mixes in the McEliece secret and is not.
+ *
+ * Lemmas: after the braid, the root key is secret; sanity: before it,
+ * the attacker has the session key.
+ *
+ * Abstractions: the KEMs are ideal; the step's other inputs (the fresh
+ * ML-KEM encapsulation, X448) are the attacker's anyway; the vault key's
+ * check against the manifest commitment is an authentic delivery (a
+ * fact).
+ */
+theory Braid
+begin
+
+builtins: hashing
+
+functions: kpk/1, encaps/2, decaps/2
+equations:
+  decaps(sk, encaps(k, kpk(sk))) = k
+
+rule Bob_Vault:
+    [ Fr(~vault) ] --> [ !Vault(~vault), Out(kpk(~vault)) ]
+
+/* A two-KEM session: its every input is the lattice-and-DH attacker's. */
+rule Two_KEM_Session:
+    let sk = h(<'eqxdh/2kem', ~dh, ~mlkem>) in
+    [ Fr(~dh), Fr(~mlkem) ]
+  --[ TwoKem(sk) ]->
+    [ Session(sk), Out(<~dh, ~mlkem>) ]
+
+/* Alice's next PQ step, with the McEliece encapsulation to Bob's vault
+   key (delivered checked against his manifest). */
+rule Braid_Step:
+    let ct = encaps(~mce, kpk(vault))
+        rk = h(<'ratchet/braid', sk, ~mce, ~step>)
+    in
+    [ Session(sk), !Vault(vault), Fr(~mce), Fr(~step) ]
+  --[ Braided(rk) ]->
+    [ Out(<ct, ~step>) ]
+
+/* expect: verified */
+lemma braid_secures_session:
+  "All rk #i. Braided(rk) @ i ==> not (Ex #j. K(rk) @ j)"
+
+/* Sanity: before the braid, the attacker has the two-KEM key. */
+/* expect: verified */
+lemma two_kem_broken:
+  exists-trace
+  "Ex sk #i #j. TwoKem(sk) @ i & K(sk) @ j"
+
+end

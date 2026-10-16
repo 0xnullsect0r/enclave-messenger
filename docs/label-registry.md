@@ -204,6 +204,8 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/proto/conv-id` | HASH | 256 | `enclave-proto/src/otr.rs` `conv_id`, `conv_id_of` | 1:1 conversation id over the two root hashes, lower first (02b §7) |
 | `enclave/v1/proto/grp-msg-id` | HASH | 256 (first 64 used) | `enclave-proto/src/labels.rs` | Group message ID for the causal frontier (spec: 07 §7) |
 | `enclave/v1/proto/poll-tally-hash` | HASH | 512 | `enclave-core/src/client/polls.rs`, `enclave-proto/src/labels.rs` | Poll-close tally hash (spec: 07 §7) |
+| `enclave/v1/proto/poll-vote` | TR | — | `enclave-core/src/client/polls.rs` `vote_seal_key` | Transcript prefix of an anonymous poll's sealed vote (spec: 07 §7.5) |
+| `enclave/v1/proto/poll-vote-seal` | KMAC | 256 | `enclave-core/src/client/polls.rs` `vote_seal_key` | Seal key of an anonymous poll's vote (spec: 07 §7.5) |
 | `enclave/v1/net/grp-mailbox` | KMAC | 256 | `enclave-proto/src/labels.rs` | Daily group-mailbox address (spec: 07 §4) |
 | `enclave/v1/net/grp-rekey-mailbox` | KMAC | 256 | `enclave-proto/src/labels.rs` | Daily per-bucket rekey sub-mailbox address (spec: 07 §5.5) |
 | `enclave/v1/net/grp-write-key` | KMAC | 256 | `enclave-proto/src/labels.rs` | Group write-token key (spec: 07 §4) |

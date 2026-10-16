@@ -18,6 +18,9 @@ use enclave_rpc::api::{self, DirAction, DirKind, Status};
 
 const SETTING: &str = "username";
 const AUDITED: &str = "username-audit";
+/// The time of our last claim: the server takes a name's claims only in
+/// increasing time, so two claims in one second must not share a time.
+const CLAIMED: &str = "username-claimed";
 /// How often a client checks its own username in the log.
 pub const AUDIT_EVERY_SECS: u64 = 24 * 3600;
 
@@ -61,7 +64,12 @@ impl Client {
             .ok_or(UsernameError::Unavailable)?;
         let name = normalize(name).map_err(|_| UsernameError::NotAllowed)?;
         let key = api::name_key(&name).ok_or(UsernameError::NotAllowed)?;
-        let now = self.now();
+        let last = self
+            .setting(CLAIMED)?
+            .and_then(|b| b.try_into().ok())
+            .map(u64::from_be_bytes)
+            .unwrap_or(0);
+        let now = self.now().max(last + 1);
         let mut value = self.account.root_public.0.to_vec();
         value.extend_from_slice(&self.card().encode());
         let msg = UsernameClaim::message(&self.profile.server, &name, &value, now);
@@ -107,6 +115,7 @@ impl Client {
             Err(e) => return Err(e),
         }
         self.set_setting(SETTING, name.as_bytes())?;
+        self.set_setting(CLAIMED, &now.to_be_bytes())?;
         Ok(format!("{name}@{}", info.domain))
     }
 

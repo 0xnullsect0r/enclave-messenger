@@ -1,0 +1,116 @@
+/*
+ * Device linking (docs/03-identity.md §4, RT-09).
+ *
+ * The new device N shows a link QR: an ephemeral KEM key and a
+ * `link_secret`. The primary P scans it, encapsulates to the key, and
+ * both derive the link keys from the shared secret and `link_psk` (from
+ * `link_secret`). Both show the 3-word phrase of the transcript; the
+ * person picks, on P, the phrase N shows. N then sends its device key
+ * sealed under the link key, P adds it to the manifest, and sends the
+ * account's secrets to N.
+ *
+ * The attacker controls the network, can show P a QR of its own (a code
+ * sent in a message, a fake "support" screen), and may photograph the
+ * real QR (`Photograph_QR`). The person compares phrases only between
+ * their own two screens (the `Shown` fact): a phrase on the attacker's
+ * device never reaches them.
+ *
+ * Lemmas: P adds only a device key that the person's own new device
+ * made, and the account secrets P sends reach only that device. A
+ * photographed QR doesn't help (the link key needs N's KEM secret); a QR
+ * of the attacker's own that P is talked into scanning is stopped by the
+ * phrase check, which binds the transcript. Sanity: without the phrase
+ * check (`P_Adds_Unchecked`), that foreign QR links the attacker's
+ * device.
+ *
+ * Abstractions: the KEM is ideal; the rendezvous mailbox, the PIN and the
+ * manifest signature are not modelled; the decoy phrases are reduced to
+ * an exact comparison.
+ */
+theory Linking
+begin
+
+builtins: hashing
+
+functions: kpk/1, encaps/2, decaps/2, aead/3, adec/3, words/1
+equations:
+  decaps(sk, encaps(k, kpk(sk))) = k,
+  adec(k, ad, aead(k, ad, m)) = m
+
+rule Account:
+    [ Fr(~acct) ] --[ OnlyOnce('account') ]-> [ !Primary(~acct) ]
+
+/* N shows its QR to the person's primary: on screen, not on the
+   network. */
+rule N_Shows_QR:
+    [ Fr(~ek), Fr(~ls), Fr(~dev) ]
+  --[ NewDevice(~dev) ]->
+    [ QR(kpk(~ek), ~ls), NWaits(~ek, ~ls, ~dev), Photo(kpk(~ek), ~ls) ]
+
+/* Someone photographs the QR on N's screen. */
+rule Photograph_QR:
+    [ Photo(pk, ls) ] --[ Photographed() ]-> [ Out(<pk, ls>) ]
+
+/* P scans N's QR, or one the attacker shows it. */
+rule P_Scans:
+    let ct = encaps(~ss, pk)
+        k = h(<'link', ~ss, ls, pk, ct>)
+    in
+    [ !Primary(acct), QR(pk, ls), Fr(~ss) ]
+  --[ Scanned(pk) ]->
+    [ Out(ct), PWaits(acct, k, words(<pk, ct>)) ]
+
+rule P_Scans_Attacker_QR:
+    let ct = encaps(~ss, pk)
+        k = h(<'link', ~ss, ls, pk, ct>)
+    in
+    [ !Primary(acct), In(<pk, ls>), Fr(~ss) ]
+  --[ ScannedForeign(pk) ]->
+    [ Out(ct), PWaits(acct, k, words(<pk, ct>)) ]
+
+/* N takes P's ciphertext from the network, shows its phrase to the person
+   and sends its device key. */
+rule N_Replies:
+    let k = h(<'link', decaps(ek, ct), ls, kpk(ek), ct>) in
+    [ NWaits(ek, ls, dev), In(ct) ]
+  --[ NShows(words(<kpk(ek), ct>)) ]->
+    [ Shown(words(<kpk(ek), ct>)), NLinked(dev, k),
+      Out(aead(k, 'n2p', dev)) ]
+
+/* The person picks, on P, the phrase their new device shows. */
+rule P_Adds:
+    [ PWaits(acct, k, w), Shown(w), In(aead(k, 'n2p', dev)) ]
+  --[ Added(dev), SentAccount(acct, dev) ]->
+    [ Out(aead(k, 'p2n', acct)) ]
+
+/* Sanity variant: no phrase check. */
+rule P_Adds_Unchecked:
+    [ PWaits(acct, k, w), In(aead(k, 'n2p', dev)) ]
+  --[ AddedUnchecked(dev) ]->
+    [ ]
+
+/* expect: verified */
+lemma only_own_device_added:
+  "All dev #i. Added(dev) @ i ==> Ex #j. NewDevice(dev) @ j & j < i"
+
+/* expect: verified */
+lemma account_secrets_secret:
+  "All acct dev #i. SentAccount(acct, dev) @ i ==> not (Ex #j. K(acct) @ j)"
+
+/* Sanity: without the phrase check, a photographed QR links the
+   attacker's device. */
+/* expect: verified */
+lemma unchecked_link_attacked:
+  exists-trace
+  "Ex dev #i. AddedUnchecked(dev) @ i & not (Ex #j. NewDevice(dev) @ j)"
+
+/* Sanity: linking works. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex dev #i. Added(dev) @ i"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end

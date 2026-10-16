@@ -14,6 +14,7 @@ final class Native {
     /** The system's call screen: "answer", "end", "mute:1" or "mute:0". */
     static final int CALL = 6;
     static final int OPEN_LINK = 7;
+    static final int OPEN_FAILED = 8;
 
     /** Push platforms, as the vault numbers them. */
     static final int UNIFIEDPUSH = 1;

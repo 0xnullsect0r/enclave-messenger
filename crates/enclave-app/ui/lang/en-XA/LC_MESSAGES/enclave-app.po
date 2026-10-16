@@ -6,6 +6,14 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: ui/app.slint
+msgid " Anonymous: only the person who asked sees how people voted; everyone sees the results when it closes."
+msgstr "[ Áñóñýmóús: óñlý thé pérsóñ whó áskéd séés hów péóplé vótéd; évérýóñé séés thé résúlts whéñ ít çlósés.········································]"
+
+#: ui/app.slint
+msgid " Only you see how people voted."
+msgstr "[ Óñlý ýóú séé hów péóplé vótéd.············]"
+
+#: ui/app.slint
 msgid " only when they choose to. A WAV recording is sent as a voice note."
 msgstr "[ óñlý whéñ théý çhóósé tó. Á WÁV réçórdíñg ís séñt ás á vóíçé ñóté.··························]"
 
@@ -90,6 +98,10 @@ msgid "1 minute"
 msgstr "[1 míñúté···]"
 
 #: ui/app.slint
+msgid "1 vote so far."
+msgstr "[1 vóté só fár.·····]"
+
+#: ui/app.slint
 msgid "1 week"
 msgstr "[1 wéék··]"
 
@@ -110,6 +122,10 @@ msgid "A backup is on your server now, and is renewed every week."
 msgstr "[Á báçkúp ís óñ ýóúr sérvér ñów, áñd ís réñéwéd évérý wéék.·······················]"
 
 #: enclave-vault/src/engine.rs
+msgid "A file"
+msgstr "[Á fílé··]"
+
+#: enclave-vault/src/engine.rs
 msgid "A folder name is 1 to {} characters, and you can have {} folders."
 msgstr "[Á fóldér ñámé ís 1 tó ········{} çháráçtérs, áñd ýóú çáñ hávé ············{} fóldérs.···]"
 
@@ -122,6 +138,10 @@ msgid "A message may not have arrived"
 msgstr "[Á mésságé máý ñót hávé árrívéd············]"
 
 #: enclave-vault/src/engine.rs
+msgid "A message that isn't here any more"
+msgstr "[Á mésságé thát ísñ't héré áñý móré·············]"
+
+#: enclave-vault/src/engine.rs
 msgid "A pack needs 1 to 40 pictures and a short name."
 msgstr "[Á páçk ñééds 1 tó 40 píçtúrés áñd á shórt ñámé.··················]"
 
@@ -132,6 +152,10 @@ msgstr "[Á páçk ñééds 1 tó 40 píçtúrés.············]"
 #: enclave-vault/src/engine.rs
 msgid "A poll needs a question and at least two options."
 msgstr "[Á póll ñééds á qúéstíóñ áñd át léást twó óptíóñs.···················]"
+
+#: ui/app.slint
+msgid "A reaction replaces your earlier one on that message. They see it change."
+msgstr "[Á réáçtíóñ répláçés ýóúr éárlíér óñé óñ thát mésságé. Théý séé ít çháñgé.·····························]"
 
 #: ui/app.slint
 msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
@@ -242,6 +266,10 @@ msgid "Animated picture"
 msgstr "[Áñímátéd píçtúré······]"
 
 #: ui/app.slint
+msgid "Anonymous"
+msgstr "[Áñóñýmóús···]"
+
+#: ui/app.slint
 msgid "Answer"
 msgstr "[Áñswér··]"
 
@@ -252,6 +280,14 @@ msgstr "[Áñswér díréçtlý······]"
 #: ui/app.slint
 msgid "Answer privately"
 msgstr "[Áñswér prívátélý······]"
+
+#: ui/app.slint
+msgid "Answering {}"
+msgstr "[Áñswéríñg ····{}]"
+
+#: ui/app.slint
+msgid "Answering {}: {}. "
+msgstr "[Áñswéríñg ····{}: {}. ]"
 
 #: ui/app.slint
 msgid "Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
@@ -793,6 +829,10 @@ msgstr "[Çóúldñ't dówñlóád thé vóíçé ñóté. Çhéçk ýóúr çó
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr "[Çóúldñ't édít thát mésságé. Édíts wórk fór 24 hóúrs.····················]"
 
+#: enclave-vault/src/engine.rs
+msgid "Couldn't fetch the file to forward it. Check your connection."
+msgstr "[Çóúldñ't fétçh thé fílé tó fórwárd ít. Çhéçk ýóúr çóññéçtíóñ.························]"
+
 #: enclave-vault/src/engine/call_links.rs enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr "[Çóúldñ't fíñd á príváté róúté ríght ñów. Trý ágáíñ látér.······················]"
@@ -800,6 +840,10 @@ msgstr "[Çóúldñ't fíñd á príváté róúté ríght ñów. Trý ágáíñ
 #: enclave-vault/src/engine.rs
 msgid "Couldn't finish deleting your account. Check your connection and try again: what's done stays done."
 msgstr "[Çóúldñ't fíñísh délétíñg ýóúr áççóúñt. Çhéçk ýóúr çóññéçtíóñ áñd trý ágáíñ: whát's dóñé stáýs dóñé.·······································]"
+
+#: enclave-vault/src/engine.rs
+msgid "Couldn't forward the file yet. Check your connection."
+msgstr "[Çóúldñ't fórwárd thé fílé ýét. Çhéçk ýóúr çóññéçtíóñ.·····················]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't leave the group. Check your connection."
@@ -840,6 +884,14 @@ msgstr "[Çóúldñ't ópéñ thé líñk's wáítíñg róóm ríght ñów.··
 #: enclave-vault/src/engine.rs
 msgid "Couldn't open your profile: {}"
 msgstr "[Çóúldñ't ópéñ ýóúr prófílé: ···········{}]"
+
+#: enclave-app/src/shell.rs
+msgid "Couldn't open {} here."
+msgstr "[Çóúldñ't ópéñ ·····{} héré.··]"
+
+#: enclave-app/src/shell.rs
+msgid "Couldn't open {}: {}"
+msgstr "[Çóúldñ't ópéñ ·····{}: {}]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't pin that message. Check your connection."
@@ -1118,6 +1170,10 @@ msgid "Do you both see these words?"
 msgstr "[Dó ýóú bóth séé thésé wórds?···········]"
 
 #: ui/app.slint
+msgid "Don't answer it"
+msgstr "[Dóñ't áñswér ít······]"
+
+#: ui/app.slint
 msgid "Done"
 msgstr "[Dóñé·]"
 
@@ -1206,8 +1262,8 @@ msgid "Enclave couldn't confirm that this username is genuine, so it didn't add 
 msgstr "[Éñçlávé çóúldñ't çóñfírm thát thís úsérñámé ís géñúíñé, só ít dídñ't ádd áñýóñé. Ásk thém fór théír íñvíté líñk íñstéád.················································]"
 
 #: ui/app.slint
-msgid "Enclave couldn't play this one."
-msgstr "[Éñçlávé çóúldñ't pláý thís óñé.············]"
+msgid "Enclave couldn't open this one."
+msgstr "[Éñçlávé çóúldñ't ópéñ thís óñé.············]"
 
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
@@ -1330,6 +1386,10 @@ msgid "Everyone in {} can vote and see how everyone else voted. Only you can clo
 msgstr "[Évérýóñé íñ ····{} çáñ vóté áñd séé hów évérýóñé élsé vótéd. Óñlý ýóú çáñ çlósé ít.··························]"
 
 #: ui/app.slint
+msgid "Everyone in {} can vote. Only you see how each person voted; everyone sees the results when you close it."
+msgstr "[Évérýóñé íñ ····{} çáñ vóté. Óñlý ýóú séé hów éáçh pérsóñ vótéd; évérýóñé séés thé résúlts whéñ ýóú çlósé ít.····································]"
+
+#: ui/app.slint
 msgid "Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are."
 msgstr "[Évérýóñé ýóú tálk tó wíll séé thát ýóúr séçúrítý çódé çháñgéd, áñd wíll bé áskéd tó çhéçk ít ágáíñ. Ýóúr çóñvérsátíóñs, gróúps áñd dévíçés stáý ás théý áré.······························································]"
 
@@ -1369,6 +1429,10 @@ msgstr "[Fílé: ··{}\n{}]"
 msgid "Files are sealed before they leave this device and padded so their size doesn't give them away. "
 msgstr "[Fílés áré séáléd béfóré théý léávé thís dévíçé áñd páddéd só théír sízé dóésñ't gívé thém áwáý. ······································]"
 
+#: ui/app.slint
+msgid "Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is."
+msgstr "[Fílés çáñ çóñtáíñ hármfúl çóñtéñt, áñd áñóthér ápp máý ñót prótéçt ít ás Éñçlávé dóés. Ópéñ ít óñlý íf ýóú trúst whó séñt ít áñd kñów whát ít ís.··························································]"
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr "[Fírst dévíçé····]"
@@ -1380,6 +1444,22 @@ msgstr "[Fóldérs··]"
 #: ui/app.slint
 msgid "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through."
 msgstr "[Fór á móñth, áñýóñé séñdíñg ýóú á mésságé réqúést hás théír dévíçé dó móré wórk fírst. Ít slóws dówñ péóplé whó séñd máñý; óñé mésságé fróm á fríéñd stíll góés thróúgh.···································································]"
+
+#: ui/app.slint
+msgid "Forward"
+msgstr "[Fórwárd··]"
+
+#: ui/app.slint
+msgid "Forward to"
+msgstr "[Fórwárd tó····]"
+
+#: ui/app.slint
+msgid "Forwarded"
+msgstr "[Fórwárdéd···]"
+
+#: ui/app.slint
+msgid "Forwarded. "
+msgstr "[Fórwárdéd. ····]"
 
 #: ui/app.slint
 msgid "Français"
@@ -1552,6 +1632,10 @@ msgstr "[Íñvíté wíth á líñk·······]"
 #: ui/app.slint
 msgid "It can't get new messages any more. Erase it to remove your conversations from it."
 msgstr "[Ít çáñ't gét ñéw mésságés áñý móré. Érásé ít tó rémóvé ýóúr çóñvérsátíóñs fróm ít.································]"
+
+#: ui/app.slint
+msgid "It goes as a new message, marked Forwarded. A file is sent again, sealed afresh."
+msgstr "[Ít góés ás á ñéw mésságé, márkéd Fórwárdéd. Á fílé ís séñt ágáíñ, séáléd áfrésh.································]"
 
 #: ui/app.slint
 msgid "It is {} compared with the time Enclave's independent witnesses sign. Set the date and time to automatic in your device's settings. Until then, message times may look wrong and some checks may fail."
@@ -1758,6 +1842,14 @@ msgid "Members"
 msgstr "[Mémbérs··]"
 
 #: ui/app.slint
+msgid "Mention someone"
+msgstr "[Méñtíóñ sóméóñé······]"
+
+#: ui/app.slint
+msgid "Mentions you. "
+msgstr "[Méñtíóñs ýóú. ·····]"
+
+#: ui/app.slint
 msgid "Message"
 msgstr "[Mésságé··]"
 
@@ -1800,6 +1892,10 @@ msgstr "[Mísséd çáll (ýóú wéré íñ á çáll)············]
 #: ui/app.slint
 msgid "More people"
 msgstr "[Móré péóplé····]"
+
+#: ui/app.slint
+msgid "More reactions"
+msgstr "[Móré réáçtíóñs·····]"
 
 #: ui/app.slint
 msgid "Move it out of your list until someone writes."
@@ -2074,8 +2170,16 @@ msgid "Only your first device can link new ones."
 msgstr "[Óñlý ýóúr fírst dévíçé çáñ líñk ñéw óñés.················]"
 
 #: ui/app.slint
+msgid "Open"
+msgstr "[Ópéñ·]"
+
+#: ui/app.slint
 msgid "Open battery settings"
 msgstr "[Ópéñ báttérý séttíñgs········]"
+
+#: ui/app.slint
+msgid "Open with…"
+msgstr "[Ópéñ wíth…····]"
 
 #: ui/app.slint
 msgid "Open-source licences"
@@ -2226,8 +2330,16 @@ msgid "Pick these words"
 msgstr "[Píçk thésé wórds······]"
 
 #: ui/app.slint
-msgid "Picture: {}"
-msgstr "[Píçtúré: ···{}]"
+msgid "Picture"
+msgstr "[Píçtúré··]"
+
+#: ui/app.slint
+msgid "Picture, full size"
+msgstr "[Píçtúré, fúll sízé·······]"
+
+#: ui/app.slint
+msgid "Picture: {}. Opens full size."
+msgstr "[Píçtúré: ···{}. Ópéñs fúll sízé.·······]"
 
 #: ui/app.slint
 msgid "Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."
@@ -2302,6 +2414,10 @@ msgid "Raise hand"
 msgstr "[Ráísé háñd····]"
 
 #: ui/app.slint
+msgid "React"
+msgstr "[Réáçt··]"
+
+#: ui/app.slint
 msgid "React {}"
 msgstr "[Réáçt ··{}]"
 
@@ -2372,6 +2488,10 @@ msgstr "[Réñéwéd évérý wéék. Lást: ··········{}.]"
 #: ui/app.slint
 msgid "Renewed every week. Your server sees only an encrypted file; your words alone bring it back."
 msgstr "[Réñéwéd évérý wéék. Ýóúr sérvér séés óñlý áñ éñçrýptéd fílé; ýóúr wórds álóñé bríñg ít báçk.····································]"
+
+#: ui/app.slint
+msgid "Reply"
+msgstr "[Réplý··]"
 
 #: ui/app.slint
 msgid "Report"
@@ -2806,6 +2926,14 @@ msgid "Stopped. Your contacts won't accept that device. Choose new recovery word
 msgstr "[Stóppéd. Ýóúr çóñtáçts wóñ't áççépt thát dévíçé. Çhóósé ñéw réçóvérý wórds sóóñ: whóévér úséd thém stíll hás thém.·············································]"
 
 #: ui/app.slint
+msgid "Take back your reaction"
+msgstr "[Táké báçk ýóúr réáçtíóñ·········]"
+
+#: ui/app.slint
+msgid "Take back {}"
+msgstr "[Táké báçk ····{}]"
+
+#: ui/app.slint
 msgid "Talk privately."
 msgstr "[Tálk prívátélý.······]"
 
@@ -2846,12 +2974,12 @@ msgid "That file is too large to be an Enclave backup."
 msgstr "[Thát fílé ís tóó lárgé tó bé áñ Éñçlávé báçkúp.··················]"
 
 #: enclave-vault/src/engine.rs
-msgid "That file is too large to save from here yet."
-msgstr "[Thát fílé ís tóó lárgé tó sávé fróm héré ýét.··················]"
-
-#: enclave-vault/src/engine.rs
 msgid "That file is too large to send."
 msgstr "[Thát fílé ís tóó lárgé tó séñd.············]"
+
+#: enclave-vault/src/engine.rs
+msgid "That file is too large."
+msgstr "[Thát fílé ís tóó lárgé.·········]"
 
 #: enclave-vault/src/engine.rs
 msgid "That isn't a valid username. Usernames are 3 to 32 letters, numbers or _, and start with a letter."
@@ -2872,6 +3000,10 @@ msgstr "[Thát ísñ't thé çódé óñ théír ñéw dévíçé. Óñ théír 
 #: enclave-vault/src/engine.rs
 msgid "That link isn't an Enclave invite, or it only works on its own screen."
 msgstr "[Thát líñk ísñ't áñ Éñçlávé íñvíté, ór ít óñlý wórks óñ íts ówñ sçrééñ.····························]"
+
+#: enclave-vault/src/engine.rs
+msgid "That message can't be forwarded."
+msgstr "[Thát mésságé çáñ't bé fórwárdéd.············]"
 
 #: enclave-vault/src/engine.rs
 msgid "That name is taken, or looks too much like one that is. Try another."
@@ -3437,6 +3569,10 @@ msgstr "[Vóté fór thís sérvér········]"
 msgid "Vote to move the group"
 msgstr "[Vóté tó móvé thé gróúp········]"
 
+#: ui/app.slint
+msgid "Votes are sealed to you, so other members can't see who chose what."
+msgstr "[Vótés áré séáléd tó ýóú, só óthér mémbérs çáñ't séé whó çhósé whát.··························]"
+
 #: ui/controls.slint
 msgid "Waiting for both codes"
 msgstr "[Wáítíñg fór bóth çódés········]"
@@ -3524,6 +3660,10 @@ msgstr "[Wórks fór ····{} péóplé··]"
 #: enclave-vault/src/engine.rs
 msgid "Write things down for yourself"
 msgstr "[Wríté thíñgs dówñ fór ýóúrsélf············]"
+
+#: ui/app.slint
+msgid "You"
+msgstr "[Ýóú·]"
 
 #: enclave-vault/src/engine.rs
 msgid "You already talk to the person who sent this group link. Ask them to add you to the group."
@@ -3822,6 +3962,10 @@ msgid "{} asked for your part of their recovery. Only continue if you're with {}
 msgstr "[{} áskéd fór ýóúr párt óf théír réçóvérý. Óñlý çóñtíñúé íf ýóú'ré wíth ···························{} ríght ñów.····]"
 
 #: ui/app.slint
+msgid "{} can vote, and you both see each other's vote. Only you can close it."
+msgstr "[{} çáñ vóté, áñd ýóú bóth séé éáçh óthér's vóté. Óñlý ýóú çáñ çlósé ít.···························]"
+
+#: ui/app.slint
 msgid "{} changed their recovery words"
 msgstr "[{} çháñgéd théír réçóvérý wórds···········]"
 
@@ -3876,6 +4020,10 @@ msgstr "[{} týpíñg··]"
 #: ui/app.slint
 msgid "{} typing…"
 msgstr "[{} týpíñg…···]"
+
+#: ui/app.slint
+msgid "{} votes so far."
+msgstr "[{} vótés só fár.·····]"
 
 #: ui/app.slint
 msgid "{} wants to talk"

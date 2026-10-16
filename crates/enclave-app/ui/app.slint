@@ -7,8 +7,8 @@ import "fonts/AtkinsonHyperlegibleNext-SemiBold.ttf";
 import "fonts/AtkinsonHyperlegibleNext-Italic.ttf";
 import "fonts/AtkinsonHyperlegibleNext-SemiBoldItalic.ttf";
 import "fonts/AtkinsonHyperlegibleMono-Regular.ttf";
-// Emoji (reactions, and emoji people type): Noto Emoji, monochrome outlines.
-import "fonts/NotoEmoji-Regular.ttf";
+// Emoji (reactions, and emoji people type): Noto Color Emoji (COLRv1).
+import "fonts/NotoColorEmoji-Regular.ttf";
 import { Tokens } from "tokens.slint";
 import { AboutSlint, ListView } from "std-widgets.slint";
 import {
@@ -100,6 +100,9 @@ export struct MessageRow {
     poll-state: int,
     poll-options: [PollOption],
     poll-ours: bool,
+    // An anonymous poll: votes sealed to whoever asked; how many voted.
+    poll-anonymous: bool,
+    poll-voters: int,
     pinned: bool,
     // A shared contact (empty when the message isn't one).
     contact-name: string,
@@ -118,6 +121,17 @@ export struct MessageRow {
     transcript: string,
     // An animated picture (a clip): its length, "0:03"; empty otherwise.
     clip-time: string,
+    // It answers another message: that one's position (empty when it
+    // isn't here any more), author and first line.
+    quoted: bool,
+    quote-seq: string,
+    quote-who: string,
+    quote-text: string,
+    forwarded: bool,
+    // A group message that mentions us.
+    mentions-me: bool,
+    // Our reaction to it (empty: none).
+    my-reaction: string,
 }
 
 // A crash report on this device (enclave-crash): which process, when, and
@@ -170,7 +184,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -230,13 +244,16 @@ component Bubble inherits HorizontalLayout {
     // The transcription model is here: a voice note can be transcribed.
     in property <bool> can-transcribe;
     callback transcribe();
+    // The quoted message was tapped: show it.
+    callback show-quote(string);
     alignment: root.msg.outgoing ? end : start;
     Rectangle {
         max-width: root.bubble-max;
         // A sticker stands on its own, without a bubble.
         background: root.msg.sticker ? transparent : root.msg.outgoing ? Tokens.bubble-out : Tokens.bubble-in;
-        border-width: root.selected ? 2px : 0px;
-        border-color: Tokens.focus-ring;
+        // A mention of us: a pine edge, so it stands out in a busy group.
+        border-width: root.selected ? 2px : root.msg.mentions-me ? 1px : 0px;
+        border-color: root.selected ? Tokens.focus-ring : Tokens.pine;
         TouchArea { clicked => { root.tapped(); } }
         // Each message is reached with Tab and selected with Enter or
         // Space, which opens its actions (A-3).
@@ -259,7 +276,7 @@ component Bubble inherits HorizontalLayout {
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
         border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
         accessible-role: text;
-        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
+        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.forwarded ? @tr("Forwarded. ") : "") + (root.msg.mentions-me ? @tr("Mentions you. ") : "") + (root.msg.quoted ? @tr("Answering {}: {}. ", root.msg.quote-who, root.msg.quote-text) : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
         accessible-action-default => { root.tapped(); }
         VerticalLayout {
             padding-left: Tokens.space-sm;
@@ -272,6 +289,42 @@ component Bubble inherits HorizontalLayout {
                 font-size: Tokens.type-caption;
                 font-weight: 600;
                 color: Tokens.pine;
+            }
+            if root.msg.forwarded: Text {
+                text: @tr("Forwarded");
+                font-size: Tokens.type-caption;
+                font-italic: true;
+                color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
+            }
+            // The message it answers: tap to go to it.
+            if root.msg.quoted: Rectangle {
+                border-radius: Tokens.radius-control;
+                background: root.msg.outgoing ? Tokens.on-bubble-out.with-alpha(0.12) : Tokens.surface;
+                quote-touch := TouchArea {
+                    mouse-cursor: root.msg.quote-seq != "" ? pointer : default;
+                    clicked => { if root.msg.quote-seq != "" { root.show-quote(root.msg.quote-seq); } }
+                }
+                HorizontalLayout {
+                    spacing: Tokens.space-s;
+                    Rectangle { width: 3px; background: Tokens.pine; }
+                    VerticalLayout {
+                        padding-top: Tokens.space-xs;
+                        padding-bottom: Tokens.space-xs;
+                        padding-right: Tokens.space-s;
+                        if root.msg.quote-who != "": Text {
+                            text: root.msg.quote-who;
+                            font-size: Tokens.type-caption;
+                            font-weight: 600;
+                            color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.pine;
+                        }
+                        Text {
+                            text: root.msg.quote-text;
+                            font-size: Tokens.type-caption;
+                            color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
+                            overflow: elide;
+                        }
+                    }
+                }
             }
             if root.msg.voice: HorizontalLayout {
                 spacing: Tokens.space-sm;
@@ -368,7 +421,13 @@ component Bubble inherits HorizontalLayout {
                     height: parent.height;
                     image-fit: fill;
                     accessible-role: image;
-                    accessible-label: @tr("Picture: {}", root.msg.file);
+                    accessible-label: @tr("Picture: {}. Opens full size.", root.msg.file);
+                    accessible-action-default => { root.play-clip(); }
+                }
+                // Full size: a picture in the viewer, a clip in the player.
+                if !root.msg.sticker: TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.play-clip(); }
                 }
             }
             if root.msg.contact-name != "": HorizontalLayout {
@@ -491,6 +550,13 @@ component Bubble inherits HorizontalLayout {
                         vertical-alignment: center;
                     }
                 }
+            }
+            if root.msg.poll-anonymous && root.msg.poll-state == 1: Text {
+                text: (root.msg.poll-voters == 1 ? @tr("1 vote so far.") : @tr("{} votes so far.", root.msg.poll-voters))
+                    + (root.msg.poll-ours ? @tr(" Only you see how people voted.") : @tr(" Anonymous: only the person who asked sees how people voted; everyone sees the results when it closes."));
+                font-size: Tokens.type-caption;
+                color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
+                wrap: word-wrap;
             }
             if root.msg.poll-state >= 2: Text {
                 text: root.msg.poll-state == 2 ? @tr("Closed.") : @tr("Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone.");
@@ -1165,6 +1231,22 @@ export component AppWindow inherits Window {
     callback create-account(string);
     callback select(string);
     callback send(string, string);
+    // Answering a message: its position, author and first line, shown
+    // above the composer until sent or cancelled.
+    in-out property <string> reply-seq;
+    in-out property <string> reply-who;
+    in-out property <string> reply-text;
+    callback send-reply(string, string, string);
+    // Forwarding: the message, then the conversation picked.
+    in-out property <string> forward-seq;
+    callback forward(string, string, string);
+    // The group composer's member list (@ mentions).
+    in-out property <bool> mention-open;
+    // The message the emoji sheet reacts to.
+    in-out property <string> react-seq;
+    // "Open with…": the message whose file waits for the warning's answer.
+    in-out property <string> confirm-open-seq;
+    callback open-file(string, string);
     callback accept(string);
     callback decline(string);
     callback add-contact(string, string);
@@ -1409,7 +1491,8 @@ export component AppWindow inherits Window {
     in-out property <string> poll-b;
     in-out property <string> poll-c;
     in-out property <string> poll-d;
-    callback create-poll(string, string, string, string, string, string);
+    callback create-poll(string, string, string, string, string, string, bool);
+    in-out property <bool> poll-anonymous;
     callback vote(string, string, int);
     callback close-poll(string, string);
     in-out property <string> attach-caption;
@@ -2262,6 +2345,7 @@ export component AppWindow inherits Window {
                             play-clip => { root.play-clip(root.current-id, m.seq); }
                             playing: root.voice-playing == root.current-id + ":" + m.seq;
                             jump: root.jump-seq == m.seq;
+                            show-quote(seq) => { root.jump-seq = seq; root.selected-seq = seq; }
                             jumped(at) => {
                                 // Its top a little below the view's.
                                 root.scroll-offset = max(0px, flick.content-height - flick.height - at + Tokens.space-l);
@@ -2365,9 +2449,40 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+                        if root.current.kind != 2: QuietButton {
+                            text: "+";
+                            accessible-label: @tr("More reactions");
+                            clicked => { root.react-seq = root.selected-seq; root.sheet = Sheet.emoji; }
+                        }
                         Rectangle { horizontal-stretch: 1; }
                         for m in root.messages: HorizontalLayout {
                             spacing: Tokens.space-xs;
+                            if m.seq == root.selected-seq && m.my-reaction != "": QuietButton {
+                                text: @tr("Take back {}", m.my-reaction);
+                                accessible-label: @tr("Take back your reaction");
+                                clicked => {
+                                    root.react(root.current-id, m.seq, "");
+                                    root.selected-seq = "";
+                                }
+                            }
+                            if m.seq == root.selected-seq && root.current.kind != 2 && !m.deleted: QuietButton {
+                                text: @tr("Reply");
+                                clicked => {
+                                    root.reply-seq = m.seq;
+                                    root.reply-who = m.outgoing ? @tr("You") : m.sender != "" ? m.sender : root.current.name;
+                                    root.reply-text = m.text != "" ? m.text : m.file;
+                                    root.editing-seq = "";
+                                    root.selected-seq = "";
+                                }
+                            }
+                            if m.seq == root.selected-seq && !m.deleted && !m.sticker && m.poll-state == 0 && m.location == "" && m.contact-name == "": QuietButton {
+                                text: @tr("Forward");
+                                clicked => {
+                                    root.forward-seq = m.seq;
+                                    root.selected-seq = "";
+                                    root.sheet = Sheet.forward;
+                                }
+                            }
                             if m.seq == root.selected-seq && root.current.kind != 2: QuietButton {
                                 text: m.pinned ? @tr("Unpin") : @tr("Pin");
                                 accessible-label: m.pinned ? @tr("Unpin for everyone") : @tr("Pin for everyone");
@@ -2413,6 +2528,29 @@ export component AppWindow inherits Window {
                                         }
                                     }
                                     QuietButton { text: @tr("Cancel"); clicked => { root.confirm-delete-seq = ""; } }
+                                }
+                            }
+                            if m.seq == root.selected-seq && m.file != "" && !m.voice && root.confirm-open-seq != m.seq: QuietButton {
+                                text: @tr("Open with…");
+                                clicked => { root.confirm-open-seq = m.seq; }
+                            }
+                            if m.seq == root.selected-seq && root.confirm-open-seq == m.seq: VerticalLayout {
+                                spacing: Tokens.space-xs;
+                                Secondary {
+                                    text: @tr("Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is.");
+                                    wrap: word-wrap;
+                                }
+                                HorizontalLayout {
+                                    spacing: Tokens.space-s;
+                                    QuietButton {
+                                        text: @tr("Open");
+                                        clicked => {
+                                            root.open-file(root.current-id, m.seq);
+                                            root.confirm-open-seq = "";
+                                            root.selected-seq = "";
+                                        }
+                                    }
+                                    QuietButton { text: @tr("Cancel"); clicked => { root.confirm-open-seq = ""; } }
                                 }
                             }
                             if m.seq == root.selected-seq && m.file != "": QuietButton {
@@ -2492,6 +2630,43 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+                if root.reply-seq != "" && root.current.state == 2: Rectangle {
+                    background: Tokens.surface;
+                    HorizontalLayout {
+                        padding-left: Tokens.space-m;
+                        padding-right: Tokens.space-m;
+                        padding-top: Tokens.space-s;
+                        spacing: Tokens.space-s;
+                        Rectangle { width: 3px; background: Tokens.pine; }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            Caption { text: @tr("Answering {}", root.reply-who); font-weight: 600; }
+                            Caption { text: root.reply-text; overflow: elide; }
+                        }
+                        QuietButton {
+                            text: @tr("Cancel");
+                            accessible-label: @tr("Don't answer it");
+                            clicked => { root.reply-seq = ""; }
+                        }
+                    }
+                }
+                if root.mention-open && root.current.kind == 1 && root.current.state == 2: Rectangle {
+                    background: Tokens.surface;
+                    HorizontalLayout {
+                        padding-left: Tokens.space-m;
+                        padding-right: Tokens.space-m;
+                        padding-top: Tokens.space-s;
+                        spacing: Tokens.space-s;
+                        for p in root.members: Chip {
+                            text: "@" + p.name;
+                            chosen: false;
+                            clicked => {
+                                root.draft = root.draft + (root.draft == "" ? "" : " ") + "@" + p.name + " ";
+                                root.mention-open = false;
+                            }
+                        }
+                    }
+                }
                 // Edits and deletes are advisory: said where they're made.
                 if root.editing-seq != "" && root.current.kind != 2: Secondary {
                     x: Tokens.space-m;
@@ -2513,10 +2688,15 @@ export component AppWindow inherits Window {
                             label: @tr("Send a file");
                             clicked => { root.attach-error = ""; root.open-sheet(Sheet.attach); }
                         }
-                        if root.current.kind == 1: IconButton {
+                        if (root.current.kind == 1 || root.current.kind == 0) && root.editing-seq == "": IconButton {
                             icon: Icons.poll;
                             label: @tr("Ask a question");
                             clicked => { root.open-sheet(Sheet.poll); }
+                        }
+                        if root.current.kind == 1 && root.members.length > 0: QuietButton {
+                            text: "@";
+                            accessible-label: @tr("Mention someone");
+                            clicked => { root.mention-open = !root.mention-open; }
                         }
                         if root.current.kind != 2 && root.editing-seq == "": IconButton {
                             icon: Icons.sticker;
@@ -2560,7 +2740,13 @@ export component AppWindow inherits Window {
                                         root.edit-message(root.current-id, root.editing-seq, root.draft);
                                         root.editing-seq = "";
                                     } else {
-                                        root.send(root.current-id, root.draft);
+                                        if root.reply-seq != "" {
+                                            root.send-reply(root.current-id, root.draft, root.reply-seq);
+                                            root.reply-seq = "";
+                                        } else {
+                                            root.send(root.current-id, root.draft);
+                                        }
+                                        root.mention-open = false;
                                         root.scroll-offset = 0;
                                     }
                                     root.draft = "";
@@ -2596,7 +2782,13 @@ export component AppWindow inherits Window {
                                         root.edit-message(root.current-id, root.editing-seq, root.draft);
                                         root.editing-seq = "";
                                     } else {
-                                        root.send(root.current-id, root.draft);
+                                        if root.reply-seq != "" {
+                                            root.send-reply(root.current-id, root.draft, root.reply-seq);
+                                            root.reply-seq = "";
+                                        } else {
+                                            root.send(root.current-id, root.draft);
+                                        }
+                                        root.mention-open = false;
                                         root.scroll-offset = 0;
                                     }
                                     root.draft = "";
@@ -2610,6 +2802,61 @@ export component AppWindow inherits Window {
     }
 
     // ----------------------------------------------------------------- sheets
+    if root.sheet == Sheet.emoji: SheetFrame {
+        title: @tr("React");
+        close => { root.sheet = Sheet.none; }
+        for row in [
+            ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎"],
+            ["🤔", "😮", "😢", "😭", "😡", "😱", "🥳", "😴"],
+            ["👍", "👎", "👏", "🙌", "🙏", "💪", "👀", "🤝"],
+            ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔"],
+            ["🔥", "✨", "🎉", "💯", "✅", "❌", "⭐", "☕"],
+            ["🐶", "🐱", "🌸", "🌈", "🍕", "🍰", "⚽", "🎵"],
+        ]: HorizontalLayout {
+            spacing: Tokens.space-xs;
+            for e in row: Rectangle {
+                width: Tokens.space-touch-target-min;
+                height: Tokens.space-touch-target-min;
+                border-radius: Tokens.radius-control;
+                background: pick-touch.has-hover ? Tokens.bubble-in : transparent;
+                accessible-role: button;
+                accessible-label: @tr("React {}", e);
+                accessible-action-default => { root.react(root.current-id, root.react-seq, e); root.selected-seq = ""; root.sheet = Sheet.none; }
+                Text {
+                    text: e;
+                    font-size: 26px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                pick-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.react(root.current-id, root.react-seq, e); root.selected-seq = ""; root.sheet = Sheet.none; }
+                }
+            }
+        }
+        Caption {
+            text: @tr("A reaction replaces your earlier one on that message. They see it change.");
+            wrap: word-wrap;
+        }
+    }
+
+    if root.sheet == Sheet.forward: SheetFrame {
+        title: @tr("Forward to");
+        close => { root.sheet = Sheet.none; }
+        Secondary {
+            text: @tr("It goes as a new message, marked Forwarded. A file is sent again, sealed afresh.");
+            wrap: word-wrap;
+        }
+        for c in root.contacts: ContactItem {
+            item: c;
+            selected: false;
+            clicked => {
+                root.forward(root.current-id, root.forward-seq, c.id);
+                root.sheet = Sheet.none;
+            }
+        }
+    }
+
     if root.sheet == Sheet.my-code: SheetFrame {
         title: @tr("Your code");
         close => { root.sheet = Sheet.none; }
@@ -3142,7 +3389,20 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.poll: SheetFrame {
         title: @tr("Ask a question");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: @tr("Everyone in {} can vote and see how everyone else voted. Only you can close it.", root.current.name); }
+        Secondary {
+            text: root.current.kind != 1
+                ? @tr("{} can vote, and you both see each other's vote. Only you can close it.", root.current.name)
+                : root.poll-anonymous
+                    ? @tr("Everyone in {} can vote. Only you see how each person voted; everyone sees the results when you close it.", root.current.name)
+                    : @tr("Everyone in {} can vote and see how everyone else voted. Only you can close it.", root.current.name);
+            wrap: word-wrap;
+        }
+        if root.current.kind == 1: SwitchRow {
+            label: @tr("Anonymous");
+            detail: @tr("Votes are sealed to you, so other members can't see who chose what.");
+            on: root.poll-anonymous;
+            toggled => { root.poll-anonymous = !root.poll-anonymous; }
+        }
         Field { placeholder: @tr("Question"); text <=> root.poll-question; }
         Field { placeholder: @tr("Option 1"); text <=> root.poll-a; }
         Field { placeholder: @tr("Option 2"); text <=> root.poll-b; }
@@ -3153,7 +3413,7 @@ export component AppWindow inherits Window {
             PrimaryButton {
                 text: root.busy ? @tr("Sending…") : @tr("Ask");
                 enabled: root.poll-question != "" && root.poll-a != "" && root.poll-b != "" && !root.busy;
-                clicked => { root.create-poll(root.current-id, root.poll-question, root.poll-a, root.poll-b, root.poll-c, root.poll-d); }
+                clicked => { root.create-poll(root.current-id, root.poll-question, root.poll-a, root.poll-b, root.poll-c, root.poll-d, root.current.kind == 1 && root.poll-anonymous); }
             }
         }
     }
@@ -4381,9 +4641,9 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.player: SheetFrame {
-        title: @tr("Animated picture");
+        title: root.player-frames.length == 1 ? @tr("Picture") : @tr("Animated picture");
         close => { root.sheet = Sheet.none; }
-        if root.player-frames.length == 0: Secondary { text: root.busy ? @tr("Getting it ready…") : @tr("Enclave couldn't play this one."); }
+        if root.player-frames.length == 0: Secondary { text: root.busy ? @tr("Getting it ready…") : @tr("Enclave couldn't open this one."); }
         if root.player-frames.length > 0: Rectangle {
             height: self.width * root.player-frames[0].height / max(1, root.player-frames[0].width);
             border-radius: Tokens.radius-control;
@@ -4394,7 +4654,7 @@ export component AppWindow inherits Window {
                 height: parent.height;
                 image-fit: contain;
                 accessible-role: image;
-                accessible-label: @tr("Animated picture");
+                accessible-label: root.player-frames.length == 1 ? @tr("Picture, full size") : @tr("Animated picture");
             }
         }
         // Plays on a loop while the sheet is open; reduce-motion shows the

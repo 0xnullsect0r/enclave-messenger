@@ -81,6 +81,10 @@ pub enum Content {
         id: MsgId,
         /// Disappearing timer in seconds (0 = off).
         expires: u32,
+        /// The message this one answers (its id), shown quoted above it.
+        reply: Option<MsgId>,
+        /// Forwarded from another conversation: shown "Forwarded".
+        forwarded: bool,
     },
     /// Token refill with no user-visible content.
     Tokens(Vec<Token>),
@@ -198,6 +202,9 @@ pub enum Content {
     /// Call signalling (`enclave_calls::message::CallMessage`, encoded;
     /// `11-calls.md` §2).
     Call(Vec<u8>),
+    /// A poll in a 1:1 conversation, a vote or its close (the group
+    /// encoding, `client/polls.rs`).
+    Poll(Vec<u8>),
     /// The sender's notification key chain for capsules sent to them, from
     /// `day` on, and whether they want previews (`10-push.md` §4).
     NotifyKey {
@@ -313,6 +320,7 @@ impl Content {
                 | Content::Sticker { .. }
                 | Content::ContactShare { .. }
                 | Content::Pin { .. }
+                | Content::Poll(_)
         )
     }
 
@@ -408,6 +416,9 @@ const K_SIGNED: u8 = 33;
 const K_CLOSED: u8 = 34;
 const K_NOTIFY_KEY: u8 = 35;
 const K_CALL: u8 = 36;
+const K_POLL: u8 = 37;
+/// Largest encoded 1:1 poll message.
+pub const MAX_POLL: usize = 8_192;
 /// Longest composite signature (ML-DSA-87 and Ed448).
 pub const MAX_SIG: usize = 4_741;
 /// Largest encoded location.
@@ -502,6 +513,8 @@ impl Content {
                 text,
                 id,
                 expires,
+                reply,
+                forwarded,
             } => {
                 if tokens.len() > MAX_TOKENS || text.len() > MAX_LONG_TEXT || *expires > MAX_TIMER {
                     return too_large;
@@ -509,6 +522,11 @@ impl Content {
                 w.u8(K_TEXT);
                 put_tokens(&mut w, tokens);
                 w.bytes(text.as_bytes()).fixed(id).u32(*expires);
+                match reply {
+                    Some(r) => w.u8(1).fixed(r),
+                    None => w.u8(0),
+                };
+                w.u8(u8::from(*forwarded));
             }
             Content::Tokens(tokens) => {
                 if tokens.len() > MAX_TOKENS {
@@ -752,6 +770,12 @@ impl Content {
                 }
                 w.u8(K_CALL).bytes(b);
             }
+            Content::Poll(b) => {
+                if b.len() > MAX_POLL {
+                    return too_large;
+                }
+                w.u8(K_POLL).bytes(b);
+            }
             Content::NotifyKey { key, day, previews } => {
                 w.u8(K_NOTIFY_KEY)
                     .fixed(key)
@@ -784,6 +808,16 @@ impl Content {
                 text: get_str(&mut r, MAX_LONG_TEXT)?,
                 id: r.array()?,
                 expires: timer(r.u32()?)?,
+                reply: match r.u8()? {
+                    0 => None,
+                    1 => Some(r.array()?),
+                    _ => return Err(ProtoError::Decode),
+                },
+                forwarded: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(ProtoError::Decode),
+                },
             },
             K_TOKENS => Content::Tokens(get_tokens(&mut r)?),
             K_GROUP_WELCOME => Content::GroupWelcome(r.bytes(MAX_WELCOME)?.to_vec()),
@@ -881,6 +915,7 @@ impl Content {
             },
             K_CLOSED => Content::Closed,
             K_CALL => Content::Call(r.bytes(MAX_CALL)?.to_vec()),
+            K_POLL => Content::Poll(r.bytes(MAX_POLL)?.to_vec()),
             K_NOTIFY_KEY => Content::NotifyKey {
                 key: r.array()?,
                 day: r.u32()?,
@@ -971,6 +1006,8 @@ mod tests {
                 text: "héllo 👋".into(),
                 id: [1; 16],
                 expires: 3600,
+                reply: Some([7; 16]),
+                forwarded: true,
             },
             Content::Tokens(vec![[9; 32]; 8]),
             Content::GroupWelcome(vec![5; 7000]),
@@ -1034,6 +1071,7 @@ mod tests {
             },
             Content::Closed,
             Content::Call(vec![1; 1800]),
+            Content::Poll(vec![2; 300]),
             Content::NotifyKey {
                 key: [3; 32],
                 day: 20_000,
@@ -1083,7 +1121,9 @@ mod tests {
                 tokens: vec![],
                 text: long,
                 id: [0; 16],
-                expires: 0
+                expires: 0,
+                reply: None,
+                forwarded: false,
             }
             .encode()
             .is_err()

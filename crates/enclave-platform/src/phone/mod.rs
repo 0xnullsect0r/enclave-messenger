@@ -63,6 +63,14 @@ pub enum Event {
     /// A link opened with the app (a tapped `enclave:` link): for the Add
     /// screen.
     OpenLink(String),
+    /// "Open with…" couldn't hand the file over (why).
+    OpenFailed(String),
+}
+
+/// "Open with…": hand a received file to an app the person picks. False
+/// when it can't be done here.
+pub fn open_with(name: &str, bytes: &[u8]) -> bool {
+    imp::open_with(name, bytes)
 }
 
 /// A call is ringing: show the system's incoming-call screen (CallKit,

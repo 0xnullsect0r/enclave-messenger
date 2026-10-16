@@ -511,31 +511,46 @@ async fn a_group_call_through_an_sfu_relay() {
         txs
     });
     let txs = talk.await.unwrap();
-    // What each side's window got. A slow machine decodes behind the
-    // call: wait (up to 20 s) for Ben's pictures rather than a fixed time.
+    // What each side's window and call got. A slow machine decodes behind
+    // the call: wait (up to 20 s) until Ben has pictures and everyone has
+    // heard everyone else, rather than a fixed time.
     let mut outs: Vec<Vec<Out>> = vec![Vec::new(); sides.len()];
+    let mut evs: Vec<Vec<CallEvent>> = (0..sides.len()).map(|_| Vec::new()).collect();
     let start = std::time::Instant::now();
     let deadline = start + Duration::from_secs(20);
     loop {
         tokio::time::sleep(Duration::from_millis(250)).await;
-        for (i, (_, out, _)) in sides.iter_mut().enumerate() {
+        for (i, (_, out, ev)) in sides.iter_mut().enumerate() {
             while let Ok(o) = out.try_recv() {
                 outs[i].push(o);
+            }
+            while let Ok(e) = ev.try_recv() {
+                evs[i].push(e);
             }
         }
         let ben = outs[1]
             .iter()
             .filter(|o| matches!(o, Out::CallTile(..)))
             .count();
+        let all_heard = evs.iter().all(|e| {
+            e.iter()
+                .filter_map(|e| match e {
+                    CallEvent::Media(_, FromCall::Heard(p)) => Some(*p),
+                    _ => None,
+                })
+                .collect::<std::collections::BTreeSet<u32>>()
+                .len()
+                == pid.len() - 1
+        });
         let settled = start.elapsed() >= Duration::from_secs(1);
-        if (ben >= 3 && settled) || std::time::Instant::now() > deadline {
+        if (ben >= 3 && all_heard && settled) || std::time::Instant::now() > deadline {
             break;
         }
     }
-    for (i, (_, _, ev)) in sides.iter_mut().enumerate() {
+    for (i, ev) in evs.into_iter().enumerate() {
         let mut heard = std::collections::BTreeSet::new();
         let (mut connected, mut hand, mut react) = (false, false, false);
-        while let Ok(e) = ev.try_recv() {
+        for e in ev {
             match e {
                 CallEvent::Media(_, FromCall::Connected) => connected = true,
                 CallEvent::Media(_, FromCall::Heard(p)) => {

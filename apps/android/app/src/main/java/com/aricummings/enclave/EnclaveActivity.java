@@ -254,6 +254,32 @@ public class EnclaveActivity extends android.app.NativeActivity {
     }
 
     /** Ask where to save `bytes` as `name`; answers nativeSaved. */
+    /** "Open with…": the file to the app the person picks. Earlier ones go. */
+    public void openWith(String name, byte[] bytes) {
+        runOnUiThread(() -> {
+            try {
+                java.io.File d = OpenFiles.dir(this);
+                if (d.isDirectory()) {
+                    for (java.io.File old : d.listFiles()) old.delete();
+                }
+                d.mkdirs();
+                String safe = name.replaceAll("[/\\\\]", "_");
+                java.io.File f = new java.io.File(d, safe.isEmpty() ? "file" : safe);
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) {
+                    o.write(bytes);
+                }
+                android.net.Uri uri = new android.net.Uri.Builder()
+                        .scheme("content").authority(OpenFiles.AUTHORITY).appendPath(f.getName()).build();
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, OpenFiles.mime(f.getName()));
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(Intent.createChooser(i, null));
+            } catch (Exception e) {
+                Native.event(Native.OPEN_FAILED, e.toString());
+            }
+        });
+    }
+
     public void save(int request, String name, byte[] bytes) {
         runOnUiThread(() -> {
             pendingSave = bytes;

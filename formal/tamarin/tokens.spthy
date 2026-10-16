@@ -1,0 +1,77 @@
+/*
+ * Privacy Pass tokens (docs/rfcs/0003-privacy-pass-voprf.md, RFC 9578
+ * type 0x0001, VOPRF P-384), as the blob allocations, relay tickets and
+ * the credential gate use them.
+ *
+ * The issuer evaluates its PRF on the client's (blinded) input after a
+ * proof of work; a token is the input and its PRF value, redeemed once
+ * at the same issuer, which keeps a spent set.
+ *
+ * Lemmas: every token the issuer accepts was issued by it (no forgery
+ * without the issuer key), and no issued token is accepted twice; so the
+ * accepted tokens never outnumber the issued ones. Sanity: without the
+ * spent set (`Redeem_Unchecked`) a token is accepted twice.
+ *
+ * Abstractions: the PRF is a random oracle keyed by the issuer key.
+ * Blinding is left out: it gives unlinkability (an equivalence property
+ * this model doesn't state), not unforgeability, and the VOPRF's proof
+ * of correct evaluation is reduced to the client receiving the right
+ * value. The proof of work is a fresh challenge solved by anyone.
+ */
+theory Tokens
+begin
+
+builtins: hashing
+
+functions: prf/2
+
+rule Issuer:
+    [ Fr(~k) ] --[ OnlyOnce('issuer') ]-> [ !Issuer(~k) ]
+
+/* The issuer answers a request that carries a solved challenge. */
+rule Challenge:
+    [ Fr(~c) ] --> [ Challenge(~c), Out(~c) ]
+
+rule Issue:
+    [ !Issuer(k), Challenge(c), In(<c, x>) ]
+  --[ Issued(x) ]->
+    [ Out(prf(k, x)) ]
+
+/* Redeeming: the issuer checks the value and the spent set. */
+rule Redeem:
+    [ !Issuer(k), In(<x, prf(k, x)>) ]
+  --[ Accepted(x), Spend(x) ]->
+    [ ]
+
+rule Redeem_Unchecked:
+    [ !Issuer(k), In(<x, prf(k, x)>) ]
+  --[ AcceptedUnchecked(x) ]->
+    [ ]
+
+restriction spent_once:
+  "All x #i #j. Spend(x) @ i & Spend(x) @ j ==> #i = #j"
+
+/* expect: verified */
+lemma no_forgery:
+  "All x #i. Accepted(x) @ i ==> Ex #j. Issued(x) @ j & j < i"
+
+/* expect: verified */
+lemma no_double_spend:
+  "All x #i #j. Accepted(x) @ i & Accepted(x) @ j ==> #i = #j"
+
+/* Sanity: without the spent set, one token is accepted twice. */
+/* expect: verified */
+lemma unchecked_double_spend:
+  exists-trace
+  "Ex x #i #j. AcceptedUnchecked(x) @ i & AcceptedUnchecked(x) @ j & not (#i = #j)"
+
+/* Sanity: tokens work. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex x #i. Accepted(x) @ i"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end

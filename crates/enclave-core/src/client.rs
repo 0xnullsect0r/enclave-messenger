@@ -177,7 +177,7 @@ pub use invites::{InviteInfo, JOIN_PREFIX, JoinLink};
 pub use link::{DeviceInfo, LinkCode, LinkOffer, LinkProgress, LinkingDevice};
 pub use location::{Location, MAX_LOCATION_LABEL};
 pub use meet::{MEET_PREFIX, MeetMatch};
-pub use messages::{EDIT_WINDOW, Message, Reaction};
+pub use messages::{EDIT_WINDOW, Message, Reaction, TextOptions};
 pub use migrate::{HELD_MOVE_NOTICE_SECS, Moved};
 use own_sync::NS_CARD_OWED;
 pub use own_sync::{INACTIVE_SECS, NEW_DEVICE_SECS, OwnDeviceState};
@@ -278,8 +278,8 @@ pub enum Event {
     },
     /// A vote arrived or a poll closed.
     PollChanged {
-        /// The group.
-        group_id: [u8; 32],
+        /// The conversation (a group or a 1:1 one).
+        place: Place,
         /// The poll.
         poll: [u8; 16],
     },
@@ -1408,6 +1408,18 @@ impl Client {
 
     /// Send a text message.
     pub async fn send_text(&mut self, root: &[u8; 64], text: &str) -> Result<Message> {
+        self.send_text_with(root, text, TextOptions::default())
+            .await
+    }
+
+    /// Send a text message that answers another (`reply`, by its id) or
+    /// was forwarded from another conversation.
+    pub async fn send_text_with(
+        &mut self,
+        root: &[u8; 64],
+        text: &str,
+        opts: TextOptions,
+    ) -> Result<Message> {
         if text.len() > crate::content::MAX_LONG_TEXT {
             return Err(CoreError::TooLong);
         }
@@ -1424,6 +1436,8 @@ impl Client {
         };
         let refilled = !tokens.is_empty();
         let mut msg = self.store_message(root, true, text, now)?;
+        msg.reply_to = opts.reply;
+        msg.forwarded = opts.forwarded;
         let sent = self
             .send_tracked(
                 root,
@@ -1433,6 +1447,8 @@ impl Client {
                     text: text.to_string(),
                     id: msg.id,
                     expires: msg.expires_secs,
+                    reply: opts.reply,
+                    forwarded: opts.forwarded,
                 },
                 now,
             )
@@ -1442,6 +1458,8 @@ impl Client {
             text: text.to_string(),
             id: msg.id,
             expires: msg.expires_secs,
+            reply: opts.reply,
+            forwarded: opts.forwarded,
         };
         self.send_self_copy(root, &copy, now).await?;
         if refilled && let Some(c) = self.contacts.get_mut(root) {
@@ -2278,6 +2296,8 @@ impl Client {
                             text,
                             id,
                             expires: 0,
+                            reply: None,
+                            forwarded: false,
                         });
                     }
                 }
@@ -2352,6 +2372,8 @@ impl Client {
                     text,
                     id,
                     expires,
+                    reply,
+                    forwarded,
                 } => {
                     add_tokens(&mut c.tokens, self.my_share(tokens));
                     c.received_since_refill = c.received_since_refill.saturating_add(1);
@@ -2360,6 +2382,8 @@ impl Client {
                         text,
                         id,
                         expires,
+                        reply,
+                        forwarded,
                     });
                 }
                 Content::ModeChange { on_record, seq } => {

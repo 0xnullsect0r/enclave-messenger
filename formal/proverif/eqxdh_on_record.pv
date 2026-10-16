@@ -1,0 +1,37 @@
+(* The sanity check for `eqxdh_deniable.pv`: On the record (docs/05-ratchet.md
+   §9) a message carries its sender's signature, which Bob can't make.
+   The judge, holding Bob's secrets, tells Alice's real message (left)
+   from one Bob made alone (right, signed with a key of his own): the
+   equivalence fails, as it should (ProVerif: "cannot be proved").
+
+   `cargo xtask proverif` checks the result: *)
+
+(* expect: unproved *)
+
+free c: channel.
+
+type exponent.
+type G.
+const g: G [data].
+fun exp(G, exponent): G.
+equation forall x: exponent, y: exponent; exp(exp(g, x), y) = exp(exp(g, y), x).
+
+type skey.
+fun spk(skey): bitstring.
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, k: skey; checksign(sign(m, k), spk(k)) = m.
+
+fun kdf(G): bitstring.
+fun seal(bitstring, bitstring): bitstring.
+reduc forall k: bitstring, m: bitstring; open(k, seal(k, m)) = m.
+
+free m: bitstring.
+
+process
+  new ika: exponent; new alice: skey;
+  new spkb: exponent; new bobsig: skey;
+  out(c, (exp(g, ika), spk(alice), spkb, bobsig));
+  let k = kdf(choice[exp(exp(g, spkb), ika), exp(exp(g, ika), spkb)]) in
+  (* Alice's signature, or the best Bob can do. *)
+  let s = choice[sign(m, alice), sign(m, bobsig)] in
+  out(c, seal(k, (m, s)))

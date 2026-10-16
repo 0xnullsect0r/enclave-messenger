@@ -51,6 +51,7 @@ pub(crate) fn group_preview(content: &[u8], flags: u8) -> Option<String> {
             super::polls::Rich::Attachment { caption, .. } if !caption.is_empty() => Some(caption),
             super::polls::Rich::Attachment { .. } => Some("Sent a file".into()),
             super::polls::Rich::Sticker { .. } => Some("Sent a sticker".into()),
+            super::polls::Rich::Text { text, .. } => Some(text),
             _ => None,
         };
     }

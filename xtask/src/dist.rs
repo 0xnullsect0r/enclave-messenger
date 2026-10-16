@@ -545,7 +545,8 @@ fn packager_config(target: &str, formats: &[&str]) -> Result<serde_json::Value, 
             "installerIcon": root.join("packaging/icons/enclave.ico"),
             "compression": "lzma",
         },
-        "wix": {},
+        // Our copy of the template, for arm64 (InstallerVersion 500).
+        "wix": { "template": root.join("packaging/windows/main.wxs") },
         "windows": { "allowDowngrades": false },
         // Tapped `enclave:` links open the app with the link as its
         // argument (docs/03-identity.md §4.2).

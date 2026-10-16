@@ -18,7 +18,7 @@ use prost::Message as _;
 pub struct Pb {
     #[prost(
         oneof = "Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37"
     )]
     pub kind: Option<Kind>,
 }
@@ -98,6 +98,8 @@ pub enum Kind {
     NotifyKey(NotifyKey),
     #[prost(bytes, tag = "36")]
     Call(Vec<u8>),
+    #[prost(bytes, tag = "37")]
+    Poll(Vec<u8>),
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -140,6 +142,11 @@ pub struct Text {
     pub id: Vec<u8>,
     #[prost(uint32, tag = "4")]
     pub expires: u32,
+    /// The message this one answers (empty: none).
+    #[prost(bytes = "vec", tag = "5")]
+    pub reply: Vec<u8>,
+    #[prost(bool, tag = "6")]
+    pub forwarded: bool,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -347,11 +354,15 @@ pub fn to_pb(c: &Content) -> Pb {
             text,
             id,
             expires,
+            reply,
+            forwarded,
         } => Kind::Text(Text {
             tokens: toks(&tokens),
             text,
             id: id.to_vec(),
             expires,
+            reply: reply.map(|r| r.to_vec()).unwrap_or_default(),
+            forwarded,
         }),
         Content::Tokens(t) => Kind::Tokens(Tokens { tokens: toks(&t) }),
         Content::GroupWelcome(b) => Kind::GroupWelcome(b),
@@ -484,6 +495,7 @@ pub fn to_pb(c: &Content) -> Pb {
         }),
         Content::Closed => Kind::Closed(true),
         Content::Call(b) => Kind::Call(b.clone()),
+        Content::Poll(b) => Kind::Poll(b.clone()),
         Content::NotifyKey { key, day, previews } => Kind::NotifyKey(NotifyKey {
             key: key.to_vec(),
             day,
@@ -511,6 +523,12 @@ pub fn from_pb(p: Pb) -> Result<Content> {
             text: t.text,
             id: id(t.id)?,
             expires: t.expires,
+            reply: if t.reply.is_empty() {
+                None
+            } else {
+                Some(id(t.reply)?)
+            },
+            forwarded: t.forwarded,
         },
         Kind::Tokens(t) => Content::Tokens(arrs(t.tokens)?),
         Kind::GroupWelcome(b) => Content::GroupWelcome(b),
@@ -608,6 +626,12 @@ pub fn from_pb(p: Pb) -> Result<Content> {
                 return Err(ProtoError::Decode);
             }
             Content::Call(b)
+        }
+        Kind::Poll(b) => {
+            if b.len() > crate::content::MAX_POLL {
+                return Err(ProtoError::Decode);
+            }
+            Content::Poll(b)
         }
         Kind::NotifyKey(n) => Content::NotifyKey {
             key: arr(n.key)?,

@@ -53,6 +53,8 @@ impl Client {
             text: text.to_string(),
             id,
             expires: 0,
+            reply: None,
+            forwarded: false,
         };
         self.send_self_copy(&own, &content, now).await?;
         Ok(m)

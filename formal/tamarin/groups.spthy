@@ -1,0 +1,98 @@
+/*
+ * Groups, bounded to three members (docs/07-groups.md §3-§4).
+ *
+ * Messages are sealed under the epoch key every member holds and carry a
+ * MAC vector: one MAC per other member, under the pairwise MAC key the
+ * two share (delivered over their PQ session). A rekey after a removal
+ * sends the next epoch key to each remaining member over its pairwise
+ * session only.
+ *
+ * Carol is the insider: she holds the epoch key and her own pairwise
+ * keys from the start (`Carol_Is_Corrupt`). Lemmas: Bob accepts a message
+ * as Alice's only if Alice sent it, although Carol can seal anything to
+ * the group (insider unforgeability); after Carol is removed, the next
+ * epoch key stays secret from her (removed members lose access at the
+ * next epoch).
+ *
+ * Abstractions: the sessions that carry pairwise keys and rekeys are
+ * secure channels (facts); the state hash chain and the exporter rekey's
+ * derivation are not modelled.
+ */
+theory Groups
+begin
+
+builtins: hashing
+
+/* MACs have no equations; a seal opens with its key (in rules, by
+   pattern matching). */
+functions: aead/3, adec/3, mac/2
+equations:
+  adec(k, ad, aead(k, ad, m)) = m
+
+rule Group_Setup:
+    [ Fr(~e1), Fr(~kab), Fr(~kac), Fr(~kbc) ]
+  --[ OnlyOnce('setup'), Epoch1(~e1) ]->
+    [ !Member('A', ~e1, ~kab, ~kac), !Member('B', ~e1, ~kab, ~kbc),
+      CarolKeys(~e1, ~kac, ~kbc) ]
+
+/* Carol is a member, and corrupt: everything she holds is the
+   attacker's. */
+rule Carol_Is_Corrupt:
+    [ CarolKeys(e1, kac, kbc) ] --[ Corrupt('C') ]-> [ Out(<e1, kac, kbc>) ]
+
+/* Alice posts: sealed under the epoch key, with a MAC for Bob and one
+   for Carol. */
+rule Alice_Posts:
+    let body = aead(e1, 'A', ~m) in
+    [ !Member('A', e1, kab, kac), Fr(~m) ]
+  --[ Posted('A', ~m) ]->
+    [ Out(<body, mac(kab, body), mac(kac, body)>) ]
+
+/* Bob takes a message as Alice's only with her MAC under their key. */
+rule Bob_Accepts_From_Alice:
+    let body = aead(e1, 'A', m) in
+    [ !Member('B', e1, kab, kbc), In(<body, mac(kab, body), cmac>) ]
+  --[ AcceptedFrom('B', 'A', m) ]->
+    [ ]
+
+/* Alice removes Carol: the next epoch key goes to Bob over their
+   pairwise session, never to Carol. */
+rule Remove_Carol:
+    [ !Member('A', e1, kab, kac), Fr(~e2) ]
+  --[ Rekey(~e2), OnlyOnce('rekey') ]->
+    [ RekeyToBob(~e2), !Epoch2('A', ~e2) ]
+
+rule Bob_Gets_Rekey:
+    [ RekeyToBob(e2) ] --> [ !Epoch2('B', e2) ]
+
+/* After the rekey, a post under the new epoch key. */
+rule Alice_Posts_Epoch2:
+    [ !Epoch2('A', e2), Fr(~m) ]
+  --[ PostedE2(~m) ]->
+    [ Out(aead(e2, 'A', ~m)) ]
+
+/* expect: verified */
+lemma insider_cannot_forge:
+  "All m #i. AcceptedFrom('B', 'A', m) @ i ==> Ex #j. Posted('A', m) @ j & j < i"
+
+/* expect: verified */
+lemma removed_member_loses_access:
+  "All e2 #i. Rekey(e2) @ i ==> not (Ex #j. K(e2) @ j)"
+
+/* Sanity: Carol, as a member, can seal to the group (she knows the
+   epoch key). */
+/* expect: verified */
+lemma insider_knows_epoch_key:
+  exists-trace
+  "Ex e1 #i #j. Epoch1(e1) @ i & K(e1) @ j"
+
+/* Sanity: Bob does accept Alice's messages. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex m #i. AcceptedFrom('B', 'A', m) @ i"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end

@@ -1,0 +1,87 @@
+/*
+ * The wrap table of a direct envelope (docs/08-envelope.md §5,
+ * docs/05-ratchet.md §5-§6).
+ *
+ * One fresh body key `bk` seals the body; each recipient device gets `bk`
+ * in its own slot, sealed under the header key of that device's pairwise
+ * session with the associated data `tag ‖ SHA3-512(sealed body)`. Two
+ * recipient devices, either of which may be compromised (its session key
+ * leaks).
+ *
+ * Lemmas: `bk` stays secret unless a recipient's session key leaks; a
+ * device accepts only a body the sender sealed for it, even when the
+ * other recipient is compromised and knows `bk` (the slot binds the
+ * sealed body, so a body made with a known `bk` fails the honest slot).
+ *
+ * Abstractions: AEAD is ideal; the slot's lookup tag and the ratchet that
+ * produces the header keys are not modelled (a session is a shared key).
+ */
+theory WrapTable
+begin
+
+builtins: hashing
+
+functions: aead/3, adec/3
+equations:
+  adec(k, ad, aead(k, ad, m)) = m
+
+/* A pairwise session between the sender and each recipient device. */
+rule Sessions:
+    [ Fr(~hk1), Fr(~hk2) ]
+  --[ OnlyOnce('sessions') ]->
+    [ !Sender(~hk1, ~hk2), !Device('d1', ~hk1), !Device('d2', ~hk2) ]
+
+rule Reveal_Device:
+    [ !Device(d, hk) ] --[ Reveal(d) ]-> [ Out(hk) ]
+
+rule Send:
+    let body = aead(~bk, 'hdr16', ~m)
+        slot1 = aead(hk1, <'tag1', h(body)>, ~bk)
+        slot2 = aead(hk2, <'tag2', h(body)>, ~bk)
+    in
+    [ !Sender(hk1, hk2), Fr(~bk), Fr(~m) ]
+  --[ Sent(~m), BodyKey(~bk) ]->
+    [ Out(<slot1, slot2, body>) ]
+
+/* The slot and the body open (pattern matching is decryption). */
+rule Receive_1:
+    let body = aead(bk, 'hdr16', m) in
+    [ !Device('d1', hk), In(<aead(hk, <'tag1', h(body)>, bk), body>) ]
+  --[ Accept('d1', m) ]->
+    [ ]
+
+/* The slot and the body open (pattern matching is decryption). */
+rule Receive_2:
+    let body = aead(bk, 'hdr16', m) in
+    [ !Device('d2', hk), In(<aead(hk, <'tag2', h(body)>, bk), body>) ]
+  --[ Accept('d2', m) ]->
+    [ ]
+
+/* expect: verified */
+lemma body_key_secret:
+  "All bk #i. BodyKey(bk) @ i ==>
+     not (Ex #j. K(bk) @ j) | (Ex d #r. Reveal(d) @ r)"
+
+/* Device 1 accepts only what the sender sent, whatever happened to
+   device 2. */
+/* expect: verified */
+lemma slot_binds_body:
+  "All m #i. Accept('d1', m) @ i ==>
+     (Ex #j. Sent(m) @ j & j < i) | (Ex #r. Reveal('d1') @ r)"
+
+/* Sanity: device 2's compromise does give the attacker body keys. */
+/* expect: verified */
+lemma other_device_learns_key:
+  exists-trace
+  "Ex bk #i #j #r. BodyKey(bk) @ i & K(bk) @ j & Reveal('d2') @ r"
+
+/* Sanity: delivery works. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex m #i #j. Sent(m) @ i & Accept('d1', m) @ j & not (Ex d #r. Reveal(d) @ r)"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end

@@ -1,0 +1,61 @@
+(* Deniability of EQXDH off the record (docs/04-eqxdh.md, docs/05-ratchet.md
+   §9), as an observational equivalence.
+
+   A judge holds everything Bob holds: his identity, signed, one-time and
+   vault secrets, and Alice's public keys. It is shown either Alice's
+   real first message to Bob (left) or one Bob made alone (right): his
+   own fresh ephemeral key, his own encapsulations to his own keys, the
+   same DH values computed from his side, and a body under the resulting
+   key. If the judge can't tell them apart, the transcript proves nothing
+   about Alice. The DH values agree by the exponent equation; the KEM
+   ciphertexts are made the same way on both sides.
+
+   The companion model `eqxdh_on_record.pv` adds Alice's signature (On the
+   record) and finds the judge's distinguisher.
+
+   `cargo xtask proverif` checks the result: *)
+
+(* expect: true *)
+
+free c: channel.
+
+type exponent.
+type G.
+const g: G [data].
+fun exp(G, exponent): G.
+equation forall x: exponent, y: exponent; exp(exp(g, x), y) = exp(exp(g, y), x).
+
+type ksk.
+type key.
+type nonce.
+
+fun mlpk(ksk): bitstring.
+fun mlct(bitstring, nonce): bitstring.
+fun mlss(bitstring, nonce): key.
+reduc forall sk: ksk, r: nonce; mldec(sk, mlct(mlpk(sk), r)) = mlss(mlpk(sk), r).
+
+fun combine(G, G, G, G, key, key, key, bitstring): key.
+fun seal(key, bitstring): bitstring.
+reduc forall k: key, m: bitstring; open(k, seal(k, m)) = m.
+
+free m: bitstring.
+
+process
+  new ika: exponent;
+  new ikb: exponent; new spk: exponent; new opk: exponent;
+  new pq: ksk; new vault: ksk; new authb: ksk;
+  (* The judge has Bob's secrets and everyone's public keys. *)
+  out(c, (exp(g, ika), ikb, spk, opk, pq, vault, authb));
+  new ek: exponent;
+  new r1: nonce; new r2: nonce; new r3: nonce;
+  let ekp = exp(g, ek) in
+  let ct1 = mlct(mlpk(pq), r1) in
+  let ct2 = mlct(mlpk(vault), r2) in
+  let ct3 = mlct(mlpk(authb), r3) in
+  let tr = (exp(g, ika), exp(g, ikb), exp(g, spk), exp(g, opk), ekp, ct1, ct2, ct3) in
+  (* Left: Alice computes DH1 with her identity secret. Right: Bob
+     computes the same value from his signed prekey secret. *)
+  let dh1 = choice[exp(exp(g, spk), ika), exp(exp(g, ika), spk)] in
+  let sk = combine(dh1, exp(exp(g, ikb), ek), exp(exp(g, spk), ek), exp(exp(g, opk), ek),
+                   mlss(mlpk(pq), r1), mlss(mlpk(vault), r2), mlss(mlpk(authb), r3), tr) in
+  out(c, (ekp, ct1, ct2, ct3, seal(sk, m)))

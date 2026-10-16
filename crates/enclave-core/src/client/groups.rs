@@ -9,6 +9,7 @@
 //! rotates before its first send, whenever its chain is due, and whenever a
 //! member it has not yet keyed becomes reachable.
 
+use super::messages::TextOptions;
 use super::search::Place;
 use super::{Client, ContactState, Event, sanitize_name};
 use crate::card::ContactCard;
@@ -123,6 +124,12 @@ pub struct GroupMessage {
     pub notice: bool,
     /// A voice note's words, transcribed on this device.
     pub transcript: String,
+    /// The message this one answers (its id), if any.
+    pub reply_to: Option<[u8; 16]>,
+    /// Forwarded from another conversation.
+    pub forwarded: bool,
+    /// It mentions us (`@` and our name; the sender lists who).
+    pub mentions_me: bool,
 }
 
 fn put_who(w: &mut Writer, who: &Option<[u8; 64]>) {
@@ -156,7 +163,7 @@ impl GroupMessage {
 
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(9).u64(self.seq);
+        w.u8(10).u64(self.seq);
         put_who(&mut w, &self.from);
         w.bytes(self.from_name.as_bytes())
             .bytes(self.text.as_bytes())
@@ -191,13 +198,18 @@ impl GroupMessage {
         });
         w.u8(u8::from(self.notice));
         w.bytes(self.transcript.as_bytes());
+        match &self.reply_to {
+            Some(r) => w.u8(1).fixed(r),
+            None => w.u8(0),
+        };
+        w.u8(u8::from(self.forwarded) | (u8::from(self.mentions_me) << 1));
         w.finish()
     }
 
     fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=9).contains(&version) {
+        if !(1..=10).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let seq = r.u64()?;
@@ -255,6 +267,17 @@ impl GroupMessage {
         } else {
             String::new()
         };
+        let (reply_to, forwarded, mentions_me) = if version >= 10 {
+            let reply = match r.u8()? {
+                0 => None,
+                1 => Some(r.array()?),
+                _ => return Err(ProtoError::Decode),
+            };
+            let f = r.u8()?;
+            (reply, f & 1 != 0, f & 2 != 0)
+        } else {
+            (None, false, false)
+        };
         r.end()?;
         Ok(Self {
             seq,
@@ -273,6 +296,9 @@ impl GroupMessage {
             signed,
             notice,
             transcript,
+            reply_to,
+            forwarded,
+            mentions_me,
         })
     }
 }
@@ -570,18 +596,86 @@ impl Client {
 
     /// Send text to a group.
     pub async fn send_group_text(&mut self, gid: &[u8; 32], text: &str) -> Result<GroupMessage> {
+        self.send_group_text_with(gid, text, TextOptions::default())
+            .await
+    }
+
+    /// Send a group text that answers another message or was forwarded.
+    /// Members named in it as `@Name` are listed as mentioned, so their
+    /// apps point it out (and notify them even in a muted group).
+    pub async fn send_group_text_with(
+        &mut self,
+        gid: &[u8; 32],
+        text: &str,
+        opts: TextOptions,
+    ) -> Result<GroupMessage> {
         if text.len() > MAX_TEXT {
             return Err(CoreError::TooLong);
         }
         let now = self.now();
         self.prepare_group_send(gid, now).await?;
         let id: [u8; 16] = self.rng.array("core/group-msg-id")?;
+        let mentions = self.mentions_in(gid, text);
         let mut msg = self.store_group_message(gid, id, None, text, now)?;
-        let content = [&id[..], text.as_bytes()].concat();
-        self.post_group(gid, &content, 0, now).await?;
+        msg.reply_to = opts.reply;
+        msg.forwarded = opts.forwarded;
+        if opts.reply.is_none() && !opts.forwarded && mentions.is_empty() {
+            // A plain text, as every version reads it.
+            let content = [&id[..], text.as_bytes()].concat();
+            self.post_group(gid, &content, 0, now).await?;
+        } else {
+            let rich = super::polls::Rich::Text {
+                id,
+                text: text.to_string(),
+                reply: opts.reply,
+                forwarded: opts.forwarded,
+                mentions,
+            };
+            self.post_group(gid, &rich.encode(), FLAG_RICH, now).await?;
+        }
         msg.delivered = true;
         self.put_group_message(gid, &msg)?;
         Ok(msg)
+    }
+
+    /// Who `text` mentions: members whose name follows an `@` (the
+    /// longest name that matches, so "@Ana Lima" isn't also "@Ana"), as
+    /// the first 16 bytes of their root. Not ourselves.
+    pub(crate) fn mentions_in(&self, gid: &[u8; 32], text: &str) -> Vec<[u8; 16]> {
+        let Some(e) = self.groups.get(gid) else {
+            return Vec::new();
+        };
+        let me = self.account.root_public.0;
+        let mut names: Vec<([u8; 64], String)> = e
+            .group
+            .state
+            .members
+            .iter()
+            .filter(|m| m.root != me)
+            .map(|m| (m.root, self.member_name(e, &m.root)))
+            .filter(|(_, n)| !n.is_empty())
+            .collect();
+        names.sort_by_key(|(_, n)| std::cmp::Reverse(n.chars().count()));
+        let mut out: Vec<[u8; 16]> = Vec::new();
+        let lower = text.to_lowercase();
+        for (at, _) in lower.match_indices('@') {
+            let rest = &lower[at + 1..];
+            if let Some((root, _)) = names.iter().find(|(_, n)| {
+                let n = n.to_lowercase();
+                rest.starts_with(&n)
+                    && !rest[n.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphanumeric)
+            }) {
+                let mut id = [0u8; 16];
+                id.copy_from_slice(&root[..16]);
+                if !out.contains(&id) && out.len() < super::polls::MAX_MENTIONS {
+                    out.push(id);
+                }
+            }
+        }
+        out
     }
 
     /// Remove a member (admins only): a new epoch the removed member never
@@ -1520,6 +1614,9 @@ impl Client {
             },
             notice: false,
             transcript: String::new(),
+            reply_to: None,
+            forwarded: false,
+            mentions_me: false,
         };
         self.put_group_message(gid, &m)?;
         self.save_group(gid)?;

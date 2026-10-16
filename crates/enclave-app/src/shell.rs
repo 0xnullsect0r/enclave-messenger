@@ -26,8 +26,23 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Largest file sent from here (it crosses to the vault in one message).
-const MAX_FILE: u64 = 15 * 1024 * 1024;
+/// Largest file sent from here (`enclave_core::files::MAX_ATTACHMENT`);
+/// it crosses to the vault in parts ([`stage`]).
+const MAX_FILE: u64 = 100 * 1024 * 1024;
+/// Largest backup read from here (with its photos and files).
+const MAX_BACKUP: u64 = enclave_ipc::MAX_STAGED as u64;
+
+/// Hand `bytes` to the vault in parts it keeps for the next command;
+/// false when they fit in that command itself.
+fn stage(t: &tokio::sync::mpsc::UnboundedSender<Cmd>, bytes: &[u8]) -> bool {
+    if bytes.len() <= enclave_ipc::FILE_PART {
+        return false;
+    }
+    for part in bytes.chunks(enclave_ipc::FILE_PART) {
+        let _ = t.send(Cmd::Stage(part.to_vec()));
+    }
+    true
+}
 /// Largest picture file read for a sticker pack (it is redrawn small).
 const MAX_STICKER_FILE: u64 = 4 * 1024 * 1024;
 /// Most bytes read for one pack (one IPC message).
@@ -78,6 +93,52 @@ fn save_with_dialog(ui: &AppWindow, name: String, bytes: Vec<u8>) {
             ui.set_file_note(crate::i18n::tr(&note).into());
         }
     });
+}
+
+#[cfg(desktop)]
+/// Where "Open with…" leaves the file it hands over: one folder only this
+/// user reads, emptied each time and when the app starts.
+fn open_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("enclave-open-{}", whoami_tag()))
+}
+
+#[cfg(desktop)]
+fn whoami_tag() -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .hash(&mut h);
+    format!("{:08x}", h.finish() as u32)
+}
+
+#[cfg(desktop)]
+/// "Open with…": write the file (the window warned first) and hand it to
+/// the system, which opens it in the app that takes its kind.
+fn open_with(ui: &AppWindow, name: &str, bytes: &[u8]) {
+    let dir = open_dir();
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join(safe_name(name));
+    let written = std::fs::create_dir_all(&dir).and_then(|()| {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        std::fs::write(&path, bytes)
+    });
+    let opened = written.and_then(|()| {
+        #[cfg(target_os = "linux")]
+        let mut c = std::process::Command::new("xdg-open");
+        #[cfg(target_os = "macos")]
+        let mut c = std::process::Command::new("open");
+        #[cfg(windows)]
+        let mut c = std::process::Command::new("explorer.exe");
+        c.arg(&path).spawn().map(|_| ())
+    });
+    if let Err(e) = opened {
+        ui.set_file_note(crate::i18n::tr(&format!("Couldn't open {name}: {e}")).into());
+    }
 }
 
 #[cfg(desktop)]
@@ -588,7 +649,6 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         .skip(1)
         .find(|a| a.starts_with("enclave:") || a.starts_with("https://"))
         .cloned();
-    #[cfg(desktop)]
     let profile = match &mode {
         Mode::Server { profile, .. } => Some(profile.clone()),
         _ => None,
@@ -602,6 +662,15 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     let single_process = args.iter().any(|a| a == "--single-process");
     // Install checks: quit once the vault's first state is shown.
     let smoke = args.iter().any(|a| a == "--smoke-exit");
+    // Where a phone check (which may not see the app's output) looks for
+    // the vault's first state.
+    let smoke_file = profile
+        .as_ref()
+        .filter(|_| smoke)
+        .map(|p| p.join("smoke-started"));
+    // What "Open with…" handed over last time goes.
+    #[cfg(desktop)]
+    let _ = std::fs::remove_dir_all(open_dir());
     // Wayland matches the window to its .desktop file by this id.
     let _ = slint::set_xdg_app_id("com.aricummings.Enclave");
     let ui = AppWindow::new()?;
@@ -648,7 +717,15 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             let mut audio: Option<crate::audio::CallAudio> = None;
             let mut camera: Option<CallCamera> = None;
             let mut screen: Option<crate::screen::Share> = None;
+            // A large file the vault hands over in parts.
+            let mut incoming: Vec<u8> = Vec::new();
+            // The next file is for "Open with…".
+            let mut open_next = false;
             while let Some(o) = out.blocking_recv() {
+                if let (Some(f), Out::Snapshot(_)) = (&smoke_file, &o) {
+                    eprintln!("enclave: the vault is ready");
+                    let _ = std::fs::write(f, b"started\n");
+                }
                 // Files are written here, in the UI process, where the
                 // person chooses: the vault can't reach anything outside
                 // its profile.
@@ -794,7 +871,27 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         Out::Snapshot(s)
                     }
                     Out::File(name, bytes) => {
-                        let _ = w.upgrade_in_event_loop(move |ui| save_with_dialog(&ui, name, bytes));
+                        if std::mem::take(&mut open_next) {
+                            let _ = w.upgrade_in_event_loop(move |ui| open_with(&ui, &name, &bytes));
+                        } else {
+                            let _ = w.upgrade_in_event_loop(move |ui| save_with_dialog(&ui, name, bytes));
+                        }
+                        continue;
+                    }
+                    Out::FilePart(name, part, last) => {
+                        incoming.extend_from_slice(&part);
+                        if last {
+                            let bytes = std::mem::take(&mut incoming);
+                            if std::mem::take(&mut open_next) {
+                                let _ = w.upgrade_in_event_loop(move |ui| open_with(&ui, &name, &bytes));
+                            } else {
+                                let _ = w.upgrade_in_event_loop(move |ui| save_with_dialog(&ui, name, bytes));
+                            }
+                        }
+                        continue;
+                    }
+                    Out::OpenNext => {
+                        open_next = true;
                         continue;
                     }
                     Out::Notify(n) => {
@@ -879,6 +976,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         let _ = ui.show();
                     }
                     Out::File(..)
+                    | Out::FilePart(..)
+                    | Out::OpenNext
                     | Out::Invite(_)
                     | Out::Notify(_)
                     | Out::LanChunks(..)
@@ -971,7 +1070,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         // The backup is read here, in the UI process: the vault never
         // touches the person's files.
         let archive = match std::fs::read(path.trim()) {
-            Ok(b) if b.len() as u64 <= MAX_FILE => b,
+            Ok(b) if b.len() as u64 <= MAX_BACKUP => b,
             Ok(_) => {
                 if let Some(ui) = w.upgrade() {
                     ui.set_restore_error(
@@ -988,6 +1087,11 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                 }
                 return;
             }
+        };
+        let archive = if stage(&t, &archive) {
+            Vec::new()
+        } else {
+            archive
         };
         let _ = t.send(Cmd::Restore(secrets, archive));
     });
@@ -1091,7 +1195,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             Vec::new()
         } else {
             match std::fs::read(path.trim()) {
-                Ok(b) if b.len() as u64 <= MAX_FILE => b,
+                Ok(b) if b.len() as u64 <= MAX_BACKUP => b,
                 _ => {
                     if let Some(ui) = w.upgrade() {
                         ui.set_backup_check(crate::i18n::tr("Couldn't open that file.").into());
@@ -1099,6 +1203,11 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     return;
                 }
             }
+        };
+        let archive = if stage(&t, &archive) {
+            Vec::new()
+        } else {
+            archive
         };
         let _ = t.send(Cmd::CheckBackup(words.trim().to_string(), archive));
     });
@@ -1162,13 +1271,18 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::AskShares);
     });
     let t = tx.clone();
-    ui.on_create_poll(move |id, q, a, b, c, d| {
+    ui.on_create_poll(move |id, q, a, b, c, d, anonymous| {
         let options = [a, b, c, d]
             .iter()
             .map(|o| o.trim().to_string())
             .filter(|o| !o.is_empty())
             .collect();
-        let _ = t.send(Cmd::CreatePoll(id.to_string(), q.to_string(), options));
+        let _ = t.send(Cmd::CreatePoll(
+            id.to_string(),
+            q.to_string(),
+            options,
+            anonymous,
+        ));
     });
     let t = tx.clone();
     ui.on_vote(move |id, seq, choice| {
@@ -1198,6 +1312,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         if let Some(ui) = w.upgrade() {
             ui.set_scroll_offset(0.0);
             ui.set_pins_open(false);
+            ui.set_reply_seq("".into());
+            ui.set_mention_open(false);
         }
         let _ = t.send(Cmd::Select(id.to_string()));
     });
@@ -1205,6 +1321,25 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     ui.on_send(move |id, text| {
         enclave_platform::window::haptic(enclave_platform::window::Haptic::Tick);
         let _ = t.send(Cmd::Send(id.to_string(), text.to_string()));
+    });
+    let t = tx.clone();
+    ui.on_send_reply(move |id, text, seq| {
+        enclave_platform::window::haptic(enclave_platform::window::Haptic::Tick);
+        if let Ok(seq) = seq.parse() {
+            let _ = t.send(Cmd::SendReply(id.to_string(), text.to_string(), seq));
+        }
+    });
+    let t = tx.clone();
+    ui.on_open_file(move |id, seq| {
+        if let Ok(seq) = seq.parse() {
+            let _ = t.send(Cmd::OpenFile(id.to_string(), seq));
+        }
+    });
+    let t = tx.clone();
+    ui.on_forward(move |from, seq, to| {
+        if let Ok(seq) = seq.parse() {
+            let _ = t.send(Cmd::Forward(from.to_string(), seq, to.to_string()));
+        }
     });
     let t = tx.clone();
     ui.on_accept(move |id| {
@@ -1463,7 +1598,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let path = std::path::PathBuf::from(path.trim());
         let result = std::fs::metadata(&path).and_then(|m| {
             if m.len() > MAX_FILE {
-                Err(std::io::Error::other("larger than 15 MB"))
+                Err(std::io::Error::other("larger than 100 MB"))
             } else {
                 std::fs::read(&path)
             }
@@ -1474,12 +1609,16 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "file".into());
-                let _ = t.send(Cmd::SendFile(
-                    id.to_string(),
-                    name,
-                    bytes,
-                    caption.to_string(),
-                ));
+                if stage(&t, &bytes) {
+                    let _ = t.send(Cmd::SendStaged(id.to_string(), name, caption.to_string()));
+                } else {
+                    let _ = t.send(Cmd::SendFile(
+                        id.to_string(),
+                        name,
+                        bytes,
+                        caption.to_string(),
+                    ));
+                }
             }
             Err(e) => {
                 if let Some(ui) = w.upgrade() {
@@ -1633,6 +1772,13 @@ mod phone {
             let _ =
                 w.upgrade_in_event_loop(move |ui| ui.set_file_note(crate::i18n::tr(&note).into()));
         });
+    }
+
+    /// "Open with…": the system's choice of apps for the file.
+    pub fn open_with(ui: &AppWindow, name: &str, bytes: &[u8]) {
+        if !p::open_with(name, bytes) {
+            ui.set_file_note(crate::i18n::tr(&format!("Couldn't open {name} here.")).into());
+        }
     }
 
     /// A notification (the platform skips it while the app is in front).

@@ -310,6 +310,9 @@ struct Engine {
     /// A link opened from outside the app, waiting for the profile to be
     /// open and unlocked ([`Cmd::OpenLink`]).
     opened_link: Option<String>,
+    /// A large file or backup the window is handing over in parts
+    /// ([`Cmd::Stage`]).
+    staged: Vec<u8>,
     picked: BTreeSet<[u8; 64]>,
     link_offer: Option<enclave_core::LinkOffer>,
     link_status: String,
@@ -634,6 +637,55 @@ fn pin_text(text: &str, file: bool) -> String {
 }
 
 /// How a stored message reads in the conversation.
+/// A poll's options, counts and state, on its message's row.
+fn fill_poll(msg: &mut Msg, p: &enclave_core::client::PollView) {
+    msg.poll_options = p.options.iter().map(|o| o.0.clone()).collect();
+    msg.poll_counts = p.options.iter().map(|o| o.1).collect();
+    msg.poll_mine = p.mine.map_or(0, |i| i32::from(i) + 1);
+    msg.poll_state = match (p.closed, p.tally_agrees) {
+        (false, _) => 1,
+        (true, Some(false)) => 3,
+        (true, _) => 2,
+    };
+    msg.poll_ours = p.ours;
+    msg.poll_anonymous = p.anonymous;
+    msg.poll_voters = p.voters;
+}
+
+/// A row that answers another message: the quoted one's position, author
+/// and the start of its text (or a line saying it's gone).
+fn quote(mut row: Msg, q: Option<(u64, String, String)>) -> Msg {
+    match q {
+        Some((seq, who, text)) => {
+            row.quote_seq = seq;
+            row.quote_who = who;
+            row.quote_text = text;
+        }
+        None => {
+            row.quote_seq = u64::MAX;
+            row.quote_text = "A message that isn't here any more".into();
+        }
+    }
+    row
+}
+
+/// The start of a quoted message, one line.
+fn quoted_text(text: &str, attachment: bool, deleted: bool) -> String {
+    if deleted {
+        return "This message was deleted.".into();
+    }
+    let t = text.lines().next().unwrap_or("").trim();
+    let t = if t.is_empty() && attachment {
+        "A file"
+    } else {
+        t
+    };
+    match t.char_indices().nth(80) {
+        Some((i, _)) => format!("{}…", &t[..i]),
+        None => t.to_string(),
+    }
+}
+
 fn display(m: &enclave_core::Message, now: u64) -> Msg {
     let mut text = if m.deleted {
         "This message was deleted.".to_string()
@@ -723,6 +775,9 @@ fn is_clip(a: &enclave_core::files::Attachment) -> bool {
 
 /// Longest side of a clip's frames in the player.
 const PLAYER_SIDE: u16 = 360;
+/// Longest side of a picture in the full-size viewer (its RGBA crosses to
+/// the window in one message: 1,600² × 4 B, under the 15 MiB limit).
+const VIEWER_SIDE: u16 = 1600;
 
 /// Decode a picture's preview, or a clip's poster (and note its
 /// length), and send it to the window.
@@ -799,7 +854,8 @@ fn notices(c: &Client, events: &[Event]) -> Vec<enclave_ipc::Notice> {
                 )
             }
             Event::GroupMessage { group_id, message } if message.from.is_some() => {
-                if c.conv_prefs(&Place::Group(*group_id)).muted {
+                // A mention gets through a muted group.
+                if c.conv_prefs(&Place::Group(*group_id)).muted && !message.mentions_me {
                     continue;
                 }
                 let group = c
@@ -1030,6 +1086,7 @@ pub async fn run_with(
         selected_notes: false,
         folder: String::new(),
         opened_link: None,
+        staged: Vec::new(),
         picked: BTreeSet::new(),
         link_offer: None,
         link_status: String::new(),
@@ -1371,6 +1428,22 @@ impl Engine {
         {
             return (with_extension(&name, "opus"), ogg);
         }
+        // A picture is decoded and encoded again in the media sandbox
+        // before it leaves the app, so whatever else the sender's file
+        // carried (metadata, a payload for another program's decoder)
+        // stays behind (`15-client.md` §5). One that won't decode is saved
+        // as it came, like any file.
+        let jpeg = bytes.starts_with(&[0xFF, 0xD8, 0xFF]);
+        let png = bytes.starts_with(b"\x89PNG\r\n\x1a\n");
+        if (jpeg || png)
+            && let Ok(clean) = self.media.sanitize(bytes.clone()).await
+        {
+            let ext = match clean.format {
+                enclave_media::Format::Png => "png",
+                _ => "jpg",
+            };
+            return (with_extension(&name, ext), clean.bytes);
+        }
         (name, bytes)
     }
 
@@ -1463,6 +1536,33 @@ impl Engine {
     }
 
     async fn handle(&mut self, cmd: Cmd) {
+        // A large file comes in parts; the command after takes them.
+        let cmd = match cmd {
+            Cmd::Stage(b) => {
+                if self.staged.len() + b.len() > enclave_ipc::MAX_STAGED {
+                    self.staged = Vec::new();
+                    self.status = "That file is too large.".into();
+                    self.push();
+                } else {
+                    self.staged.extend_from_slice(&b);
+                }
+                return;
+            }
+            Cmd::SendStaged(c, n, cap) => {
+                Cmd::SendFile(c, n, std::mem::take(&mut self.staged), cap)
+            }
+            Cmd::OpenFile(c, seq) => {
+                let _ = self.out.send(Out::OpenNext);
+                Cmd::SaveFile(c, seq)
+            }
+            Cmd::Restore(s, b) if b.is_empty() && !self.staged.is_empty() => {
+                Cmd::Restore(s, std::mem::take(&mut self.staged))
+            }
+            Cmd::CheckBackup(w, b) if b.is_empty() && !self.staged.is_empty() => {
+                Cmd::CheckBackup(w, std::mem::take(&mut self.staged))
+            }
+            other => other,
+        };
         // Locked by the app PIN, the profile is open but the window gets
         // nothing until the PIN (or the emergency PIN) comes. What the
         // phone says on its own (in front or not, push, a new window,
@@ -1571,11 +1671,9 @@ impl Engine {
             Cmd::SaveBackup(media) => {
                 if let Some(c) = self.client.as_mut() {
                     match c.export_backup_with(media) {
-                        Ok(b) if b.len() <= 15 * 1024 * 1024 => {
+                        Ok(b) if b.len() <= enclave_ipc::MAX_STAGED => {
                             let day = chrono::Local::now().format("%Y-%m-%d");
-                            let _ = self
-                                .out
-                                .send(Out::File(format!("Enclave backup {day}.enclave"), b));
+                            self.send_out_file(format!("Enclave backup {day}.enclave"), b);
                         }
                         Ok(_) => {
                             self.status = if media {
@@ -1910,41 +2008,19 @@ impl Engine {
                     self.status = "Couldn't delete that note.".into();
                 }
             }
-            Cmd::Send(id, text) if id.starts_with('g') => {
-                let Some(gid) = self.group_of(&id) else {
-                    return;
-                };
-                self.push();
-                if let Some(c) = self.client.as_mut()
-                    && let Err(e) = c.send_group_text(&gid, &text).await
-                {
-                    self.status = if matches!(e, CoreError::RecoveryHeld) {
-                        HELD_TEXT.into()
-                    } else {
-                        "Couldn't send to the group yet. We'll keep trying.".into()
-                    };
-                }
-            }
             Cmd::Send(id, text) => {
-                let Some(root) = self.root_of(&id) else {
-                    return;
-                };
-                // The message itself ends their "typing…".
-                self.typing_sent.remove(&root);
-                // Show it as "sending privately" right away.
-                self.push();
-                if let Some(c) = self.client.as_mut()
-                    && let Err(err) = c.send_text(&root, &text).await
-                {
-                    self.status = match err {
-                        CoreError::OutOfTokens => {
-                            "Waiting for them to come online before sending more.".into()
-                        }
-                        CoreError::RecoveryHeld => HELD_TEXT.into(),
-                        _ => "Couldn't send yet. We'll try again when you're back online.".into(),
-                    };
-                }
+                self.send_with(&id, &text, enclave_core::TextOptions::default())
+                    .await;
             }
+            Cmd::SendReply(id, text, seq) => {
+                let reply = self.message_id_at(&id, seq);
+                let opts = enclave_core::TextOptions {
+                    reply,
+                    forwarded: false,
+                };
+                self.send_with(&id, &text, opts).await;
+            }
+            Cmd::Forward(from, seq, to) => self.forward(&from, seq, &to).await,
             Cmd::Accept(id) => {
                 if let (Some(root), Some(c)) = (self.root_of(&id), self.client.as_mut()) {
                     // A join request: accepting lets them into the group.
@@ -1968,11 +2044,14 @@ impl Engine {
                     self.selected = None;
                 }
             }
-            Cmd::CreatePoll(id, question, options) => {
+            Cmd::CreatePoll(id, question, options, anonymous) => {
                 self.busy = true;
                 self.push();
-                if let (Some(gid), Some(c)) = (self.group_of(&id), self.client.as_mut()) {
-                    match c.create_poll(&gid, question.trim(), &options).await {
+                if let (Some(place), Some(c)) = (self.place_of(&id), self.client.as_mut()) {
+                    match c
+                        .create_poll_in(&place, question.trim(), &options, anonymous)
+                        .await
+                    {
                         Ok(_) => self.effect(Effect::PollCreated),
                         Err(CoreError::TooLong) => {
                             self.status =
@@ -1986,13 +2065,9 @@ impl Engine {
                 self.busy = false;
             }
             Cmd::Vote(id, seq, choice) => {
-                if let (Some(gid), Some(c)) = (self.group_of(&id), self.client.as_mut())
-                    && let Some(poll) = c
-                        .group_messages(&gid)
-                        .ok()
-                        .and_then(|ms| ms.into_iter().find(|m| m.seq == seq))
-                        .and_then(|m| m.poll)
-                    && c.vote(&gid, &poll, u8::try_from(choice).unwrap_or(u8::MAX))
+                if let Some((place, poll)) = self.poll_at(&id, seq)
+                    && let Some(c) = self.client.as_mut()
+                    && c.vote_in(&place, &poll, u8::try_from(choice).unwrap_or(u8::MAX))
                         .await
                         .is_err()
                 {
@@ -2000,13 +2075,9 @@ impl Engine {
                 }
             }
             Cmd::ClosePoll(id, seq) => {
-                if let (Some(gid), Some(c)) = (self.group_of(&id), self.client.as_mut())
-                    && let Some(poll) = c
-                        .group_messages(&gid)
-                        .ok()
-                        .and_then(|ms| ms.into_iter().find(|m| m.seq == seq))
-                        .and_then(|m| m.poll)
-                    && c.close_poll(&gid, &poll).await.is_err()
+                if let Some((place, poll)) = self.poll_at(&id, seq)
+                    && let Some(c) = self.client.as_mut()
+                    && c.close_poll_in(&place, &poll).await.is_err()
                 {
                     self.status = "Couldn't close the poll. Check your connection.".into();
                 }
@@ -2522,12 +2593,9 @@ impl Engine {
                         .map(|a| a.name)
                         .unwrap_or_else(|| "file".into());
                     match c.fetch_group_attachment(&gid, seq).await {
-                        Ok(bytes) if bytes.len() <= 15 * 1024 * 1024 => {
+                        Ok(bytes) => {
                             let (name, bytes) = self.exportable(name, bytes).await;
-                            let _ = self.out.send(Out::File(name, bytes));
-                        }
-                        Ok(_) => {
-                            self.status = "That file is too large to save from here yet.".into()
+                            self.send_out_file(name, bytes);
                         }
                         Err(_) => {
                             self.status =
@@ -2549,12 +2617,9 @@ impl Engine {
                         .map(|a| a.name)
                         .unwrap_or_else(|| "file".into());
                     match c.fetch_attachment(&root, seq).await {
-                        Ok(bytes) if bytes.len() <= 15 * 1024 * 1024 => {
+                        Ok(bytes) => {
                             let (name, bytes) = self.exportable(name, bytes).await;
-                            let _ = self.out.send(Out::File(name, bytes));
-                        }
-                        Ok(_) => {
-                            self.status = "That file is too large to save from here yet.".into()
+                            self.send_out_file(name, bytes);
                         }
                         Err(_) => {
                             self.status =
@@ -2924,19 +2989,28 @@ impl Engine {
                             .and_then(|m| m.attachment),
                         _ => None,
                     };
-                    if let Some(a) = att.filter(is_clip) {
-                        bytes = c.fetch_file(&a).await.ok();
+                    if let Some(a) = att.filter(is_picture) {
+                        let clip = is_clip(&a);
+                        bytes = c.fetch_file(&a).await.ok().map(|b| (b, clip));
                     }
                 }
+                // A clip plays; a still picture shows full size, as one
+                // frame (decoded in the sandbox like its preview).
                 let played = match bytes {
-                    Some(b) => self.media.clip_frames(b, PLAYER_SIDE).await.ok(),
+                    Some((b, true)) => self.media.clip_frames(b, PLAYER_SIDE).await.ok(),
+                    Some((b, false)) => self
+                        .media
+                        .thumbnail(b, VIEWER_SIDE)
+                        .await
+                        .ok()
+                        .map(|f| (vec![f], 0)),
                     None => None,
                 };
                 let clip = match played {
                     Some((frames, ms)) if !frames.is_empty() => enclave_ipc::ClipFrames {
                         width: frames[0].width,
                         height: frames[0].height,
-                        interval_ms: ms / frames.len() as u32,
+                        interval_ms: ms / frames.len().max(1) as u32,
                         frames: frames.into_iter().map(|f| f.pixels).collect(),
                     },
                     // The player then says it couldn't play it.
@@ -3321,6 +3395,8 @@ impl Engine {
                     self.busy = false;
                 }
             }
+            // Turned into other commands before they get here (`handle`).
+            Cmd::Stage(_) | Cmd::SendStaged(..) | Cmd::OpenFile(..) => {}
         }
     }
 
@@ -3914,6 +3990,176 @@ impl Engine {
                 d.replies += 1;
                 let _ = d.sam.send_text(&root, reply).await;
             }
+        }
+    }
+
+    /// Send a text to conversation `id` (a contact or a group).
+    async fn send_with(&mut self, id: &str, text: &str, opts: enclave_core::TextOptions) {
+        if id == NOTES_ID {
+            if let Some(c) = self.client.as_mut()
+                && c.send_note(text).await.is_err()
+            {
+                self.status = "Couldn't save that note.".into();
+            }
+            return;
+        }
+        if let Some(gid) = self.group_of(id) {
+            self.push();
+            if let Some(c) = self.client.as_mut()
+                && let Err(e) = c.send_group_text_with(&gid, text, opts).await
+            {
+                self.status = if matches!(e, CoreError::RecoveryHeld) {
+                    HELD_TEXT.into()
+                } else {
+                    "Couldn't send to the group yet. We'll keep trying.".into()
+                };
+            }
+            return;
+        }
+        let Some(root) = self.root_of(id) else {
+            return;
+        };
+        // The message itself ends their "typing…".
+        self.typing_sent.remove(&root);
+        // Show it as "sending privately" right away.
+        self.push();
+        if let Some(c) = self.client.as_mut()
+            && let Err(err) = c.send_text_with(&root, text, opts).await
+        {
+            self.status = match err {
+                CoreError::OutOfTokens => {
+                    "Waiting for them to come online before sending more.".into()
+                }
+                CoreError::RecoveryHeld => HELD_TEXT.into(),
+                _ => "Couldn't send yet. We'll try again when you're back online.".into(),
+            };
+        }
+    }
+
+    /// A file for the window to save: in one message, or in parts.
+    fn send_out_file(&self, name: String, bytes: Vec<u8>) {
+        if bytes.len() <= enclave_ipc::FILE_PART {
+            let _ = self.out.send(Out::File(name, bytes));
+            return;
+        }
+        let n = bytes.chunks(enclave_ipc::FILE_PART).count();
+        for (i, part) in bytes.chunks(enclave_ipc::FILE_PART).enumerate() {
+            let _ = self
+                .out
+                .send(Out::FilePart(name.clone(), part.to_vec(), i + 1 == n));
+        }
+    }
+
+    /// Conversation `id` as a place (a group or a contact).
+    fn place_of(&self, id: &str) -> Option<Place> {
+        self.group_of(id)
+            .map(Place::Group)
+            .or_else(|| self.root_of(id).map(Place::Contact))
+    }
+
+    /// The poll asked by the message at `seq` in conversation `id`.
+    fn poll_at(&self, id: &str, seq: u64) -> Option<(Place, [u8; 16])> {
+        let c = self.client.as_ref()?;
+        let place = self.place_of(id)?;
+        let poll = match place {
+            Place::Group(g) => {
+                c.group_messages(&g)
+                    .ok()?
+                    .into_iter()
+                    .find(|m| m.seq == seq)?
+                    .poll?
+            }
+            Place::Contact(r) => {
+                c.messages(&r)
+                    .ok()?
+                    .into_iter()
+                    .find(|m| m.seq == seq)?
+                    .poll?
+            }
+        };
+        Some((place, poll))
+    }
+
+    /// The id of the message at `seq` in conversation `id`.
+    fn message_id_at(&self, id: &str, seq: u64) -> Option<[u8; 16]> {
+        let c = self.client.as_ref()?;
+        if let Some(gid) = self.group_of(id) {
+            return c
+                .group_messages(&gid)
+                .ok()?
+                .into_iter()
+                .find(|m| m.seq == seq)
+                .map(|m| m.id);
+        }
+        let root = self.root_of(id)?;
+        c.messages(&root)
+            .ok()?
+            .into_iter()
+            .find(|m| m.seq == seq)
+            .map(|m| m.id)
+    }
+
+    /// Forward the message at `seq` in `from` to conversation `to`: a text
+    /// goes as "Forwarded"; a file is fetched and sent again (sealed anew,
+    /// so nothing links the two copies).
+    async fn forward(&mut self, from: &str, seq: u64, to: &str) {
+        let (from_g, from_r) = (self.group_of(from), self.root_of(from));
+        let (to_g, to_r) = (self.group_of(to), self.root_of(to));
+        let Some(c) = self.client.as_mut() else {
+            return;
+        };
+        // What it is: its text, and its file if it has one.
+        let found = if let Some(gid) = from_g {
+            c.group_messages(&gid)
+                .ok()
+                .and_then(|ms| ms.into_iter().find(|m| m.seq == seq))
+                .filter(|m| !m.deleted && !m.notice && m.poll.is_none() && m.sticker.is_none())
+                .map(|m| (m.text, m.attachment))
+        } else if let Some(root) = from_r {
+            c.messages(&root)
+                .ok()
+                .and_then(|ms| ms.into_iter().find(|m| m.seq == seq))
+                .filter(|m| !m.deleted && !m.notice && m.sticker.is_none() && m.location.is_none())
+                .map(|m| (m.text, m.attachment))
+        } else {
+            None
+        };
+        let Some((text, attachment)) = found else {
+            self.status = "That message can't be forwarded.".into();
+            return;
+        };
+        let Some(a) = attachment else {
+            let opts = enclave_core::TextOptions {
+                reply: None,
+                forwarded: true,
+            };
+            self.send_with(to, &text, opts).await;
+            return;
+        };
+        let bytes = if let Some(gid) = from_g {
+            c.fetch_group_attachment(&gid, seq).await
+        } else if let Some(root) = from_r {
+            c.fetch_attachment(&root, seq).await
+        } else {
+            return;
+        };
+        let Ok(bytes) = bytes else {
+            self.status = "Couldn't fetch the file to forward it. Check your connection.".into();
+            return;
+        };
+        let sent = if let Some(gid) = to_g {
+            c.send_group_file(&gid, &a.name, &a.mime, &bytes, &text)
+                .await
+                .is_ok()
+        } else if let Some(root) = to_r {
+            c.send_attachment(&root, &a.name, &a.mime, &bytes, &text)
+                .await
+                .is_ok()
+        } else {
+            false
+        };
+        if !sent {
+            self.status = "Couldn't forward the file yet. Check your connection.".into();
         }
     }
 
@@ -4600,6 +4846,43 @@ impl Engine {
                         }
                     })
                     .collect();
+                for (row, m) in s.messages.iter_mut().zip(msgs.iter()) {
+                    row.forwarded = m.forwarded && !m.deleted;
+                    row.my_reaction = m
+                        .reactions
+                        .iter()
+                        .find(|r| r.from_us)
+                        .map(|r| r.emoji.clone())
+                        .unwrap_or_default();
+                    if let Some(p) = m
+                        .poll
+                        .filter(|_| !m.deleted)
+                        .and_then(|id| c.poll_in(&Place::Contact(ct.root), &id))
+                    {
+                        row.can_edit = false;
+                        fill_poll(row, &p);
+                    }
+                    if let Some(id) = m.reply_to.filter(|_| !m.deleted) {
+                        let q = msgs.iter().find(|x| x.id == id);
+                        let who = match q {
+                            Some(q) if q.outgoing => "You".to_string(),
+                            _ => ct.name.clone(),
+                        };
+                        *row = Msg {
+                            quoted: true,
+                            ..quote(
+                                std::mem::take(row),
+                                q.map(|q| {
+                                    (
+                                        q.seq,
+                                        who,
+                                        quoted_text(&q.text, q.attachment.is_some(), q.deleted),
+                                    )
+                                }),
+                            )
+                        };
+                    }
+                }
                 let pinned_msgs: Vec<_> = pinned
                     .iter()
                     .filter_map(|id| msgs.iter().find(|m| m.id == *id && !m.deleted))
@@ -4806,19 +5089,39 @@ impl Engine {
                             msg.pack_added = c.has_sticker_pack(att);
                         }
                         if let Some(p) = m.poll.and_then(|id| c.poll(&g.id, &id)) {
-                            msg.poll_options = p.options.iter().map(|o| o.0.clone()).collect();
-                            msg.poll_counts = p.options.iter().map(|o| o.1).collect();
-                            msg.poll_mine = p.mine.map_or(0, |i| i32::from(i) + 1);
-                            msg.poll_state = match p.tally_agrees {
-                                None => 1,
-                                Some(true) => 2,
-                                Some(false) => 3,
-                            };
-                            msg.poll_ours = p.ours;
+                            fill_poll(&mut msg, &p);
                         }
                         msg
                     })
                     .collect();
+                for (row, m) in s.messages.iter_mut().zip(msgs.iter()) {
+                    row.forwarded = m.forwarded && !m.deleted;
+                    row.mentions_me = m.mentions_me && !m.deleted;
+                    row.my_reaction = m
+                        .reactions
+                        .iter()
+                        .find(|r| r.from.is_none())
+                        .map(|r| r.emoji.clone())
+                        .unwrap_or_default();
+                    if let Some(id) = m.reply_to.filter(|_| !m.deleted) {
+                        let q = msgs.iter().find(|x| x.id == id).map(|q| {
+                            let who = if q.from.is_none() {
+                                "You".to_string()
+                            } else {
+                                q.from_name.clone()
+                            };
+                            (
+                                q.seq,
+                                who,
+                                quoted_text(&q.text, q.attachment.is_some(), q.deleted),
+                            )
+                        });
+                        *row = Msg {
+                            quoted: true,
+                            ..quote(std::mem::take(row), q)
+                        };
+                    }
+                }
             }
             rows.push((last.map(|m| m.at).unwrap_or(0), row));
         }

@@ -1,0 +1,60 @@
+/*
+ * Lockstep post-compromise security (docs/05-ratchet.md), against a
+ * quantum attacker, adapted from the shape of Signal's SPQR models.
+ *
+ * The attacker learns the session's root key (a device compromise it
+ * then leaves). One round trip it sees but does not alter heals the
+ * session: Alice sends a fresh ML-KEM encapsulation key, Bob encapsulates
+ * to it, and both mix the shared secret into the root (`Heal_KEM`). The
+ * X448 step alone does not heal against this attacker, who takes discrete
+ * logs: its exponents are the attacker's (`Heal_X448`).
+ *
+ * Lemmas: after a KEM step the new root key is secret; sanity: after an
+ * X448-only step the attacker has it.
+ *
+ * Abstractions: the round trip is delivered as sent (the attacker sees
+ * it, `Out`, but the parties read it from a fact); the chains, counters,
+ * skipped keys and the braid are not modelled; one compromise, then one
+ * healing step.
+ */
+theory Lockstep
+begin
+
+builtins: hashing
+
+functions: kpk/1, encaps/2, decaps/2, dh/2
+equations:
+  decaps(sk, encaps(k, kpk(sk))) = k
+
+/* A session whose root key leaks. */
+rule Compromise:
+    [ Fr(~rk) ] --[ Leaked(~rk) ]-> [ Root(~rk), Out(~rk) ]
+
+/* Alice's ML-KEM step: a fresh key pair, Bob's encapsulation, and the
+   shared secret mixed in. The attacker sees both messages. */
+rule Heal_KEM:
+    let ct = encaps(~ss, kpk(~dk))
+        rk2 = h(<'ratchet/root', rk, ~ss>)
+    in
+    [ Root(rk), Fr(~dk), Fr(~ss) ]
+  --[ HealedKEM(rk2) ]->
+    [ Out(<kpk(~dk), ct>) ]
+
+/* The X448 step alone: the quantum attacker has its exponents. */
+rule Heal_X448:
+    let rk2 = h(<'ratchet/root', rk, dh(~a, ~b)>) in
+    [ Root(rk), Fr(~a), Fr(~b) ]
+  --[ HealedX448(rk2) ]->
+    [ Out(<~a, ~b>) ]
+
+/* expect: verified */
+lemma kem_step_heals:
+  "All rk #i. HealedKEM(rk) @ i ==> not (Ex #j. K(rk) @ j)"
+
+/* Sanity: the X448 step alone doesn't heal. */
+/* expect: verified */
+lemma x448_step_does_not_heal:
+  exists-trace
+  "Ex rk #i #j. HealedX448(rk) @ i & K(rk) @ j"
+
+end

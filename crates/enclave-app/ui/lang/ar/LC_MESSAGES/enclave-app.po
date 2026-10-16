@@ -6,6 +6,14 @@ msgstr ""
 "Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
 
 #: ui/app.slint
+msgid " Anonymous: only the person who asked sees how people voted; everyone sees the results when it closes."
+msgstr ""
+
+#: ui/app.slint
+msgid " Only you see how people voted."
+msgstr ""
+
+#: ui/app.slint
 msgid " only when they choose to. A WAV recording is sent as a voice note."
 msgstr ""
 
@@ -90,6 +98,10 @@ msgid "1 minute"
 msgstr ""
 
 #: ui/app.slint
+msgid "1 vote so far."
+msgstr ""
+
+#: ui/app.slint
 msgid "1 week"
 msgstr ""
 
@@ -110,6 +122,10 @@ msgid "A backup is on your server now, and is renewed every week."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "A file"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "A folder name is 1 to {} characters, and you can have {} folders."
 msgstr ""
 
@@ -122,6 +138,10 @@ msgid "A message may not have arrived"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "A message that isn't here any more"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "A pack needs 1 to 40 pictures and a short name."
 msgstr ""
 
@@ -131,6 +151,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "A poll needs a question and at least two options."
+msgstr ""
+
+#: ui/app.slint
+msgid "A reaction replaces your earlier one on that message. They see it change."
 msgstr ""
 
 #: ui/app.slint
@@ -242,6 +266,10 @@ msgid "Animated picture"
 msgstr ""
 
 #: ui/app.slint
+msgid "Anonymous"
+msgstr ""
+
+#: ui/app.slint
 msgid "Answer"
 msgstr ""
 
@@ -251,6 +279,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Answer privately"
+msgstr ""
+
+#: ui/app.slint
+msgid "Answering {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Answering {}: {}. "
 msgstr ""
 
 #: ui/app.slint
@@ -793,12 +829,20 @@ msgstr ""
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Couldn't fetch the file to forward it. Check your connection."
+msgstr ""
+
 #: enclave-vault/src/engine/call_links.rs enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't finish deleting your account. Check your connection and try again: what's done stays done."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Couldn't forward the file yet. Check your connection."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -839,6 +883,14 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't open your profile: {}"
+msgstr ""
+
+#: enclave-app/src/shell.rs
+msgid "Couldn't open {} here."
+msgstr ""
+
+#: enclave-app/src/shell.rs
+msgid "Couldn't open {}: {}"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -1118,6 +1170,10 @@ msgid "Do you both see these words?"
 msgstr ""
 
 #: ui/app.slint
+msgid "Don't answer it"
+msgstr ""
+
+#: ui/app.slint
 msgid "Done"
 msgstr ""
 
@@ -1206,7 +1262,7 @@ msgid "Enclave couldn't confirm that this username is genuine, so it didn't add 
 msgstr ""
 
 #: ui/app.slint
-msgid "Enclave couldn't play this one."
+msgid "Enclave couldn't open this one."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -1330,6 +1386,10 @@ msgid "Everyone in {} can vote and see how everyone else voted. Only you can clo
 msgstr ""
 
 #: ui/app.slint
+msgid "Everyone in {} can vote. Only you see how each person voted; everyone sees the results when you close it."
+msgstr ""
+
+#: ui/app.slint
 msgid "Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are."
 msgstr ""
 
@@ -1369,6 +1429,10 @@ msgstr ""
 msgid "Files are sealed before they leave this device and padded so their size doesn't give them away. "
 msgstr ""
 
+#: ui/app.slint
+msgid "Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr ""
@@ -1379,6 +1443,22 @@ msgstr ""
 
 #: ui/app.slint
 msgid "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through."
+msgstr ""
+
+#: ui/app.slint
+msgid "Forward"
+msgstr ""
+
+#: ui/app.slint
+msgid "Forward to"
+msgstr ""
+
+#: ui/app.slint
+msgid "Forwarded"
+msgstr ""
+
+#: ui/app.slint
+msgid "Forwarded. "
 msgstr ""
 
 #: ui/app.slint
@@ -1551,6 +1631,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "It can't get new messages any more. Erase it to remove your conversations from it."
+msgstr ""
+
+#: ui/app.slint
+msgid "It goes as a new message, marked Forwarded. A file is sent again, sealed afresh."
 msgstr ""
 
 #: ui/app.slint
@@ -1758,6 +1842,14 @@ msgid "Members"
 msgstr ""
 
 #: ui/app.slint
+msgid "Mention someone"
+msgstr ""
+
+#: ui/app.slint
+msgid "Mentions you. "
+msgstr ""
+
+#: ui/app.slint
 msgid "Message"
 msgstr ""
 
@@ -1799,6 +1891,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "More people"
+msgstr ""
+
+#: ui/app.slint
+msgid "More reactions"
 msgstr ""
 
 #: ui/app.slint
@@ -2074,7 +2170,15 @@ msgid "Only your first device can link new ones."
 msgstr ""
 
 #: ui/app.slint
+msgid "Open"
+msgstr ""
+
+#: ui/app.slint
 msgid "Open battery settings"
+msgstr ""
+
+#: ui/app.slint
+msgid "Open with…"
 msgstr ""
 
 #: ui/app.slint
@@ -2226,7 +2330,15 @@ msgid "Pick these words"
 msgstr ""
 
 #: ui/app.slint
-msgid "Picture: {}"
+msgid "Picture"
+msgstr ""
+
+#: ui/app.slint
+msgid "Picture, full size"
+msgstr ""
+
+#: ui/app.slint
+msgid "Picture: {}. Opens full size."
 msgstr ""
 
 #: ui/app.slint
@@ -2302,6 +2414,10 @@ msgid "Raise hand"
 msgstr ""
 
 #: ui/app.slint
+msgid "React"
+msgstr ""
+
+#: ui/app.slint
 msgid "React {}"
 msgstr ""
 
@@ -2371,6 +2487,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Renewed every week. Your server sees only an encrypted file; your words alone bring it back."
+msgstr ""
+
+#: ui/app.slint
+msgid "Reply"
 msgstr ""
 
 #: ui/app.slint
@@ -2806,6 +2926,14 @@ msgid "Stopped. Your contacts won't accept that device. Choose new recovery word
 msgstr ""
 
 #: ui/app.slint
+msgid "Take back your reaction"
+msgstr ""
+
+#: ui/app.slint
+msgid "Take back {}"
+msgstr ""
+
+#: ui/app.slint
 msgid "Talk privately."
 msgstr ""
 
@@ -2846,11 +2974,11 @@ msgid "That file is too large to be an Enclave backup."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
-msgid "That file is too large to save from here yet."
+msgid "That file is too large to send."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
-msgid "That file is too large to send."
+msgid "That file is too large."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -2871,6 +2999,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "That link isn't an Enclave invite, or it only works on its own screen."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "That message can't be forwarded."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3437,6 +3569,10 @@ msgstr ""
 msgid "Vote to move the group"
 msgstr ""
 
+#: ui/app.slint
+msgid "Votes are sealed to you, so other members can't see who chose what."
+msgstr ""
+
 #: ui/controls.slint
 msgid "Waiting for both codes"
 msgstr ""
@@ -3523,6 +3659,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Write things down for yourself"
+msgstr ""
+
+#: ui/app.slint
+msgid "You"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3822,6 +3962,10 @@ msgid "{} asked for your part of their recovery. Only continue if you're with {}
 msgstr ""
 
 #: ui/app.slint
+msgid "{} can vote, and you both see each other's vote. Only you can close it."
+msgstr ""
+
+#: ui/app.slint
 msgid "{} changed their recovery words"
 msgstr ""
 
@@ -3875,6 +4019,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "{} typing…"
+msgstr ""
+
+#: ui/app.slint
+msgid "{} votes so far."
 msgstr ""
 
 #: ui/app.slint

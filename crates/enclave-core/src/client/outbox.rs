@@ -131,12 +131,19 @@ impl Client {
         // A re-send carries no write tokens: those went with the first.
         let keep = match content {
             Content::Text {
-                text, id, expires, ..
+                text,
+                id,
+                expires,
+                reply,
+                forwarded,
+                ..
             } => Content::Text {
                 tokens: Vec::new(),
                 text: text.clone(),
                 id: *id,
                 expires: *expires,
+                reply: *reply,
+                forwarded: *forwarded,
             },
             c => c.clone(),
         };

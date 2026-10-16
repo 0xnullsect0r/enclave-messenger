@@ -271,6 +271,19 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
                 SharedString::new()
             },
             transcript: m.transcript.clone().into(),
+            quoted: m.quoted,
+            quote_seq: if m.quote_seq == u64::MAX {
+                SharedString::new()
+            } else {
+                m.quote_seq.to_string().into()
+            },
+            quote_who: m.quote_who.clone().into(),
+            quote_text: m.quote_text.clone().into(),
+            forwarded: m.forwarded,
+            mentions_me: m.mentions_me,
+            poll_anonymous: m.poll_anonymous,
+            poll_voters: i32::try_from(m.poll_voters).unwrap_or(i32::MAX),
+            my_reaction: m.my_reaction.clone().into(),
             voice_time: if m.voice_ms > 0 {
                 let s = m.voice_ms.div_ceil(1000);
                 format!("{}:{:02}", s / 60, s % 60).into()

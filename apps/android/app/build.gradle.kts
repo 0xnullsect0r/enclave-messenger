@@ -8,7 +8,11 @@ val enclaveVersionCode = (System.getenv("ENCLAVE_VERSION_CODE") ?: "1").toInt()
 // The release key (environment release-android); without it the build is
 // signed with a key made for the run (CI dry runs), which installs but
 // can't update a release.
-val keystore = System.getenv("ANDROID_KEYSTORE_FILE")
+val keystore = System.getenv("ANDROID_KEYSTORE_FILE")?.takeIf { it.isNotEmpty() }
+// The release key's passwords and alias, only with the release key (a dry
+// run may have them set while it signs with the run's key).
+fun releaseEnv(name: String): String =
+    keystore?.let { System.getenv(name)?.takeIf { v -> v.isNotEmpty() } } ?: "enclave-run"
 
 android {
     namespace = "com.aricummings.enclave"
@@ -48,9 +52,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file(keystore ?: "${layout.buildDirectory.get()}/run.keystore")
-            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "enclave-run"
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "enclave-run"
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: "enclave-run"
+            storePassword = releaseEnv("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = releaseEnv("ANDROID_KEY_ALIAS")
+            keyPassword = releaseEnv("ANDROID_KEY_PASSWORD")
         }
     }
 

@@ -245,6 +245,23 @@ pub(super) fn pick(kind: Pick, done: Picked) {
     }
 }
 
+/// "Open with…": the activity writes the file where only its provider
+/// serves it, and asks which app opens it.
+pub(super) fn open_with(name: &str, bytes: &[u8]) -> bool {
+    with(|env, a| {
+        let name = env.new_string(name)?;
+        let data = env.byte_array_from_slice(bytes)?;
+        env.call_method(
+            a,
+            "openWith",
+            "(Ljava/lang/String;[B)V",
+            &[JValue::Object(&name), JValue::Object(&data)],
+        )
+        .map(|_| ())
+    })
+    .is_some()
+}
+
 pub(super) fn save(name: &str, bytes: Vec<u8>, done: Saved) {
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     if let Ok(mut m) = SAVES.lock() {
@@ -423,6 +440,7 @@ pub fn event(kind: i32, data: &str) {
         }
         3 => Event::Wake,
         7 => Event::OpenLink(data.to_string()),
+        8 => Event::OpenFailed(data.to_string()),
         6 => match data {
             "answer" => Event::CallAnswered,
             "end" => Event::CallEnded,

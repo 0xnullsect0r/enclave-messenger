@@ -1,0 +1,21 @@
+(* The sanity check for `tokens_unlinkable.pv`: if each contact's tokens
+   were registered as their own batch (the per-contact derivation of
+   PLAN §9.3, which the client no longer uses), the server would link two
+   writes to one sender. Same scenario: left, both writes are Alice's;
+   right, one each. The equivalence fails, as it should (ProVerif: "cannot be proved").
+
+   `cargo xtask proverif` checks the result: *)
+
+(* expect: unproved *)
+
+free c: channel.
+free addr: bitstring.
+fun h(bitstring, bitstring): bitstring.
+
+process
+  new p1: bitstring; new p2: bitstring; new p3: bitstring;
+  (* Alice's batch, then Bob's. *)
+  out(c, (h(p1, addr), h(choice[p2, p3], addr)));
+  out(c, h(choice[p3, p2], addr));
+  out(c, p1);
+  out(c, p2)

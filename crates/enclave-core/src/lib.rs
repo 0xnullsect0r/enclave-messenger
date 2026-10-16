@@ -42,7 +42,7 @@ pub use client::{
     HistoryServe, HostVotes, LanHistory, ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS,
     TicketWallet, fetch_due,
 };
-pub use client::{RECEIVE_GRACE, UpdateStatus};
+pub use client::{RECEIVE_GRACE, TextOptions, UpdateStatus};
 pub use enclave_kt::KtPolicy;
 pub use enclave_push_relay::Platform as PushPlatform;
 

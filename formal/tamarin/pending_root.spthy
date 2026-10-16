@@ -1,0 +1,108 @@
+/*
+ * The pending-root window (docs/03-identity.md §8.1, RT-22).
+ *
+ * A manifest update co-signed by a listed device takes effect at once.
+ * One without a co-signature (recovery on a new phone) waits 72 hours, in
+ * which any listed device may veto it; contacts take it only after the
+ * wait and only without a veto, and the account's servers log the
+ * manifest with its attestations, so every contact sees the same ones.
+ *
+ * The attacker has the recovery words (`Steal_Words`: the root key) and
+ * runs the network and the servers. The person still has a listed device,
+ * which fetches the account's manifest every 10 minutes: the 72-hour
+ * wait is modelled as the assumption that the device sees every pending
+ * update before any contact's wait ends (`restriction device_sees_in_time`).
+ * The device co-signs only what its person started, and vetoes anything
+ * else it sees.
+ *
+ * Lemma: a contact takes a manifest only if the person started it, while
+ * the person has their device. Sanity: once every device is lost
+ * (`Lose_Device`: nothing looks in time), stolen words do win.
+ *
+ * Abstractions: signatures are ideal; time is the order of events.
+ */
+theory PendingRoot
+begin
+
+builtins: signing
+
+rule Account:
+    [ Fr(~root), Fr(~dev) ]
+  --[ OnlyOnce('account') ]->
+    [ !Root(~root), !Device(~dev), Out(<pk(~root), pk(~dev)>) ]
+
+/* Every device lost (or never online during the wait). */
+rule Lose_Device:
+    [ !Device(dev) ] --[ Lost() ]-> [ ]
+
+rule Steal_Words:
+    [ !Root(root) ] --[ Stolen() ]-> [ Out(root) ]
+
+/* The person, on their device, changes the manifest: root-signed and
+   co-signed. */
+rule Person_Updates:
+    [ !Root(root), !Device(dev), Fr(~m) ]
+  --[ Started(~m), Cosigned(~m) ]->
+    [ Out(<~m, sign(~m, root), sign(<'cosign', ~m>, dev)>) ]
+
+/* A root-signed update without a co-signature goes to the log as
+   pending. */
+rule Post_Pending:
+    [ !Root(root), In(<m, sign(m, root)>) ]
+  --[ Pending(m), Logged(m) ]->
+    [ !Waiting(m) ]
+
+/* The device fetches the manifest and vetoes a pending update its person
+   didn't start (`Started` would have co-signed it). */
+rule Device_Sees:
+    [ !Device(dev), !Waiting(m) ]
+  --[ DeviceSaw(m), Veto(m) ]->
+    [ !Vetoed(m) ]
+
+/* A contact takes a co-signed update at once. */
+rule Contact_Takes_Cosigned:
+    [ !Root(root), !Device(dev), In(<m, sign(m, root), sign(<'cosign', m>, dev)>) ]
+  --[ Takes(m) ]->
+    [ ]
+
+/* A contact takes a pending update after the wait, if the log shows no
+   veto (`no_veto_taken`). */
+rule Contact_Takes_After_Wait:
+    [ !Waiting(m) ]
+  --[ WaitEnds(m), Takes(m), NoVeto(m) ]->
+    [ ]
+
+/* The wait is long enough for a device the person still has to look. */
+restriction device_sees_in_time:
+  "All m #i. WaitEnds(m) @ i ==> (Ex #j. DeviceSaw(m) @ j & j < i) | (Ex #l. Lost() @ l)"
+
+/* The log is consistent: a contact sees a veto that exists. */
+restriction no_veto_taken:
+  "All m #i #j. NoVeto(m) @ i & Veto(m) @ j ==> F"
+
+/* expect: verified */
+lemma stolen_words_cannot_take_over:
+  "All m #i. Takes(m) @ i ==> (Ex #j. Started(m) @ j & j < i) | (Ex #l. Lost() @ l)"
+
+/* Sanity: with every device lost, stolen words take the account. */
+/* expect: verified */
+lemma lost_devices_lose:
+  exists-trace
+  "Ex m #i #l. Takes(m) @ i & Lost() @ l & not (Ex #j. Started(m) @ j)"
+
+/* Sanity: with the words, the attacker can post a pending update. */
+/* expect: verified */
+lemma stolen_words_reach_pending:
+  exists-trace
+  "Ex m #i #s. Pending(m) @ i & Stolen() @ s"
+
+/* Sanity: the person's own updates go through. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex m #i. Takes(m) @ i & not (Ex #s. Stolen() @ s)"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end

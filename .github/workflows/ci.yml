@@ -146,6 +146,24 @@ jobs:
       - name: Every query gives its expected result
         run: cargo xtask proverif
 
+  tamarin:
+    name: formal models (Tamarin)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The pinned Tamarin release (checked against its SHA-256) and
+      # Ubuntu's Maude.
+      - name: Install Tamarin 1.10.0
+        run: |
+          sudo apt-get update && sudo apt-get install -y maude
+          curl -sSfL -o tamarin.tgz https://github.com/tamarin-prover/tamarin-prover/releases/download/1.10.0/tamarin-prover-1.10.0-linux64-ubuntu.tar.gz
+          echo "538fe055b65f419aac4710015948f0e6a2253d2f61958c136e2d2bd67981028c  tamarin.tgz" | sha256sum -c
+          mkdir tamarin && tar xzf tamarin.tgz -C tamarin
+          echo "TAMARIN=$PWD/tamarin/tamarin-prover" >> "$GITHUB_ENV"
+      - name: Every lemma gives its expected result
+        run: cargo xtask tamarin
+
   postgres:
     name: server state on PostgreSQL
     runs-on: ubuntu-24.04

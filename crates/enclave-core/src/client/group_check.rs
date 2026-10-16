@@ -332,6 +332,9 @@ impl Client {
                 signed: None,
                 notice: true,
                 transcript: String::new(),
+                reply_to: None,
+                forwarded: false,
+                mentions_me: false,
             };
             self.put_group_message(gid, &m)?;
         }

@@ -1,0 +1,90 @@
+/*
+ * EQXDH v1 (docs/04-eqxdh.md) against a quantum attacker: PLAN D12's
+ * "all KEMs broken, optical exchange not recorded" lemma.
+ *
+ * Alice's session key combines four X448 values, ML-KEM to Bob's one-time
+ * PQ prekey, McEliece to Bob's vault key and ML-KEM to Bob's device auth
+ * key, the PSK and the transcript (EnclaveCombine). The quantum attacker
+ * takes discrete logs and opens every KEM ciphertext: every private key,
+ * ephemeral exponent and KEM encapsulation secret is handed to it as it
+ * is made. Since it knows every exponent, an X448 value is modelled as a
+ * function of both exponents (`dh`) it can compute, not with
+ * Diffie-Hellman equations. A session whose PSK came from an in-person
+ * scan the attacker never saw stays secret; one without a PSK does not.
+ *
+ * `cargo xtask tamarin` checks each lemma against the result noted
+ * before it (expect: verified / falsified).
+ */
+theory EQXDH_Quantum
+begin
+
+builtins: hashing
+
+/* A KEM: `encaps(k, pk)` carries the shared secret `k` (fresh) to the
+   holder of `pk`'s secret key. */
+functions: kpk/1, encaps/2, decaps/2, dh/2, combine/9, nopsk/0
+equations:
+  decaps(sk, encaps(k, kpk(sk))) = k
+
+/* Bob's identity, signed prekey, vault key and device auth key, public;
+   their secrets go straight to the quantum attacker. */
+rule Bob_Keys:
+    [ Fr(~ikb), Fr(~spk), Fr(~vault), Fr(~authb) ]
+  --[ OnlyOnce('bob') ]->
+    [ !Bob(~ikb, ~spk, ~vault, ~authb),
+      Out(<kpk(~vault), kpk(~authb)>),
+      Out(<~ikb, ~spk, ~vault, ~authb>) ]
+
+rule Alice_Keys:
+    [ Fr(~ika) ]
+  --[ OnlyOnce('alice') ]->
+    [ !Alice(~ika), Out(~ika) ]
+
+/* A one-time prekey pair (X448 and ML-KEM), with its secrets. */
+rule Bob_OneTime:
+    [ Fr(~opk), Fr(~pq) ]
+  -->
+    [ OneTime(~opk, ~pq), Out(kpk(~pq)), Out(<~opk, ~pq>) ]
+
+/* Met in person: a PSK over the optical channel, never seen by the
+   attacker. */
+rule Meet:
+    [ Fr(~bond) ]
+  -->
+    [ Psk(~bond) ]
+
+/* Without a PSK. */
+rule NoMeet:
+    [ ]
+  -->
+    [ Psk(nopsk) ]
+
+rule Alice_Send:
+    let ct1 = encaps(~k1, kpk(pq))
+        ct2 = encaps(~k2, kpk(vault))
+        ct3 = encaps(~k3, kpk(authb))
+        tr = h(<ika, ikb, spk, opk, kpk(pq), kpk(vault), kpk(authb), ~ek, ct1, ct2, ct3>)
+        sk = combine(dh(ika, spk), dh(~ek, ikb), dh(~ek, spk), dh(~ek, opk),
+                     ~k1, ~k2, ~k3, p, tr)
+    in
+    [ !Alice(ika), !Bob(ikb, spk, vault, authb), OneTime(opk, pq), Psk(p),
+      Fr(~ek), Fr(~k1), Fr(~k2), Fr(~k3) ]
+  --[ AliceKey(sk, p) ]->
+    [ Out(<ct1, ct2, ct3>), Out(<~ek, ~k1, ~k2, ~k3>) ]
+
+/* With every private value known, the attacker can compute all Alice
+   did except the PSK. */
+/* expect: verified */
+lemma psk_session_secret:
+  "All sk p #i. AliceKey(sk, p) @ i & not (p = nopsk) ==> not (Ex #j. K(sk) @ j)"
+
+/* Sanity: without a PSK the quantum attacker has the key. */
+/* expect: verified */
+lemma no_psk_session_broken:
+  exists-trace
+  "Ex sk #i #j. AliceKey(sk, nopsk) @ i & K(sk) @ j"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end
