@@ -345,9 +345,19 @@ fn group_fixture(base: &Snapshot) -> Snapshot {
             false,
             "14:40",
         ),
-        m("Chapter 4 by Friday?", "Priya Raman", false, "15:02"),
+        m(
+            "Chapter 4 by *Friday*? No _spoilers_, please.",
+            "Priya Raman",
+            false,
+            "15:02",
+        ),
         m("Friday works for me.", "", true, "15:08"),
-        m("Same here. I'll bring tea.", "Tomasz", false, "15:10"),
+        m(
+            "Same here. I'll bring tea. ||The butler did it.||",
+            "Tomasz",
+            false,
+            "15:10",
+        ),
     ];
     g
 }

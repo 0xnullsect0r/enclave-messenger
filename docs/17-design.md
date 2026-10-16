@@ -22,7 +22,7 @@ Two families, both SIL OFL 1.1, bundled unmodified with `OFL.txt` in `LICENSES/`
 
 | Face | Weights | Job |
 |---|---|---|
-| **Atkinson Hyperlegible Next** | 400, 600 only | Everything people read: messages, UI, headings. Built for low-vision legibility. |
+| **Atkinson Hyperlegible Next** | 400, 600 only (and their italics, used only for `_italic_` text people write) | Everything people read: messages, UI, headings. Built for low-vision legibility. |
 | **Atkinson Hyperlegible Mono** | 400 | Only things people must **compare or copy exactly**: security codes, recovery words, link and invite codes. Its 0/O and 1/l/I glyphs are clearly different. |
 
 Content fonts (not design choices): Noto Color Emoji for emoji; Noto Sans, bundled per shipped locale, for scripts Atkinson does not cover.

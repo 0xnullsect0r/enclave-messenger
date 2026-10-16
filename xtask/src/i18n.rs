@@ -342,7 +342,10 @@ fn po(
         out.push('\n');
         // Where it is (files, not lines, so catalogs change only when the
         // strings do).
-        let mut files = refs.clone();
+        let mut files: Vec<&str> = refs
+            .iter()
+            .map(|r| r.rsplit_once(':').map_or(r.as_str(), |(f, _)| f))
+            .collect();
         files.sort();
         files.dedup();
         out.push_str(&format!("#: {}\n", files.join(" ")));

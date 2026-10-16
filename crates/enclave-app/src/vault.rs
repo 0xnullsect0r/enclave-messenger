@@ -302,7 +302,10 @@ pub mod phone {
                         };
                         if let Out::Notify(n) = out {
                             let n = crate::i18n::notice(n);
-                            enclave_platform::phone::notify(&n.title, &n.body);
+                            enclave_platform::phone::notify(
+                                &n.title,
+                                &crate::format::preview(&n.body),
+                            );
                         }
                     }
                 });

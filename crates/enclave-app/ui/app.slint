@@ -3,6 +3,9 @@
 // that appears only when something has really been confirmed.
 import "fonts/AtkinsonHyperlegibleNext-Regular.ttf";
 import "fonts/AtkinsonHyperlegibleNext-SemiBold.ttf";
+// Italics only for what people write (_italic_ in a message).
+import "fonts/AtkinsonHyperlegibleNext-Italic.ttf";
+import "fonts/AtkinsonHyperlegibleNext-SemiBoldItalic.ttf";
 import "fonts/AtkinsonHyperlegibleMono-Regular.ttf";
 // Emoji (reactions, and emoji people type): Noto Emoji, monochrome outlines.
 import "fonts/NotoEmoji-Regular.ttf";
@@ -67,6 +70,13 @@ export struct PollOption {
 
 export struct MessageRow {
     text: string,
+    // The text with its formatting (`src/format.rs`): spoilers hidden,
+    // and shown (while the message is selected); and the same for a
+    // screen reader.
+    rich: styled-text,
+    rich-revealed: styled-text,
+    spoken: string,
+    spoken-revealed: string,
     outgoing: bool,
     time: string,
     status: int,
@@ -207,7 +217,7 @@ component Bubble inherits HorizontalLayout {
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
         border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
         accessible-role: text;
-        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + root.msg.text + ", " + root.msg.time;
+        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
         accessible-action-default => { root.tapped(); }
         VerticalLayout {
             padding-left: Tokens.space-sm;
@@ -351,12 +361,19 @@ component Bubble inherits HorizontalLayout {
                     clicked => { root.add-pack(); }
                 }
             }
-            if root.msg.text != "": Text {
+            // A poll's question as it is; a message with its formatting.
+            if root.msg.text != "" && root.msg.poll-state > 0: Text {
                 text: root.msg.text;
                 font-size: Tokens.type-body;
-                font-weight: root.msg.poll-state > 0 ? 600 : 400;
+                font-weight: 600;
                 color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
                 wrap: word-wrap;
+            }
+            if root.msg.text != "" && root.msg.poll-state == 0: StyledText {
+                text: root.selected ? root.msg.rich-revealed : root.msg.rich;
+                default-font-size: Tokens.type-body;
+                default-color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
+                accessible-role: none;
             }
             for o[i] in root.msg.poll-options: Rectangle {
                 min-width: 220px;
@@ -627,8 +644,8 @@ component SheetFrame inherits Rectangle {
             }
             body := Flickable {
                 vertical-stretch: 1;
-                viewport-width: self.width;
-                viewport-height: inner.preferred-height;
+                content-width: self.width;
+                content-height: inner.preferred-height;
                 inner := VerticalLayout {
                     x: 0;
                     y: 0;

@@ -115,7 +115,7 @@ fn row(r: &Row) -> ContactRow {
             initials(&r.name).into()
         },
         tint: tint(r.tint),
-        preview: r.preview.clone().into(),
+        preview: crate::format::preview(&r.preview).into(),
         time: r.time.clone().into(),
         unread: r.unread,
         state: r.state,
@@ -232,6 +232,10 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
         })
         .map(|(m, img)| MessageRow {
             text: m.text.clone().into(),
+            rich: crate::format::styled(&m.text, false),
+            rich_revealed: crate::format::styled(&m.text, true),
+            spoken: crate::format::spoken(&m.text, false).into(),
+            spoken_revealed: crate::format::spoken(&m.text, true).into(),
             outgoing: m.outgoing,
             time: m.time.clone().into(),
             status: m.status,

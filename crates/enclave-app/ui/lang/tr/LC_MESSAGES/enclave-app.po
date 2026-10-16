@@ -5,3126 +5,3130 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: ui/app.slint:2104
+#: ui/app.slint
 msgid " only when they choose to. A WAV recording is sent as a voice note."
 msgstr ""
 
-#: ui/app.slint:1529
+#: ui/app.slint
 msgid " people · Off the record"
 msgstr ""
 
-#: ui/app.slint:1529
+#: ui/app.slint
 msgid " people · On the record"
 msgstr ""
 
-#: ui/app.slint:368
+#: ui/app.slint
 msgid " vote"
 msgstr ""
 
-#: ui/app.slint:368
+#: ui/app.slint
 msgid " votes"
 msgstr ""
 
-#: ui/app.slint:1530
+#: ui/app.slint
 msgid " · Off the record"
 msgstr ""
 
-#: ui/app.slint:1530
+#: ui/app.slint
 msgid " · On the record"
 msgstr ""
 
-#: ui/app.slint:2576
+#: ui/app.slint
 msgid " · The group is here"
 msgstr ""
 
-#: ui/app.slint:2576
+#: ui/app.slint
 msgid " · You're here"
 msgstr ""
 
-#: ui/app.slint:2577
+#: ui/app.slint
 msgid " · {} of {} admins voted for it"
 msgstr ""
 
-#: ui/app.slint:433
+#: ui/app.slint
 msgid ", muted"
 msgstr ""
 
-#: ui/app.slint:433
+#: ui/app.slint
 msgid ", pinned"
 msgstr ""
 
-#: ui/app.slint:368
+#: ui/app.slint
 msgid ", your vote"
 msgstr ""
 
-#: ui/app.slint:433
+#: ui/app.slint
 msgid ", {} unread"
 msgstr ""
 
-#: ui/app.slint:2639
+#: ui/app.slint
 msgid ". Moving: still telling your contacts and groups. Keep Enclave running until it's done."
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid ". Select it to save it as a sound file. "
 msgstr ""
 
-#: ui/app.slint:2070
+#: ui/app.slint
 msgid "1 day"
 msgstr ""
 
-#: ui/app.slint:2069 ui/app.slint:2781
+#: ui/app.slint
 msgid "1 hour"
 msgstr ""
 
-#: ui/app.slint:1932
+#: ui/app.slint
 msgid "1 invite link hasn't been used yet."
 msgstr ""
 
-#: ui/app.slint:2780
+#: ui/app.slint
 msgid "1 minute"
 msgstr ""
 
-#: ui/app.slint:2071
+#: ui/app.slint
 msgid "1 week"
 msgstr ""
 
-#: ui/app.slint:2781
+#: ui/app.slint
 msgid "15 minutes"
 msgstr ""
 
-#: ui/app.slint:2068 ui/app.slint:2780
+#: ui/app.slint
 msgid "5 minutes"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3676 enclave-vault/src/engine.rs:3715
+#: enclave-vault/src/engine.rs
 msgid "A PIN needs at least {} digits."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1449
+#: enclave-vault/src/engine.rs
 msgid "A backup is on your server now, and is renewed every week."
 msgstr ""
 
-#: ui/app.slint:1640
+#: ui/app.slint
 msgid "A message may not have arrived"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1967
+#: enclave-vault/src/engine.rs
 msgid "A pack needs 1 to 40 pictures and a short name."
 msgstr ""
 
-#: enclave-app/src/shell.rs:814
+#: enclave-app/src/shell.rs
 msgid "A pack needs 1 to 40 pictures."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1818
+#: enclave-vault/src/engine.rs
 msgid "A poll needs a question and at least two options."
 msgstr ""
 
-#: ui/app.slint:1344
+#: ui/app.slint
 msgid "A username server showed people different lists"
 msgstr ""
 
-#: ui/app.slint:2922 ui/app.slint:2927
+#: ui/app.slint
 msgid "About Enclave"
 msgstr ""
 
-#: ui/app.slint:1656
+#: ui/app.slint
 msgid "Accept"
 msgstr ""
 
-#: ui/app.slint:1264 ui/app.slint:306
+#: ui/app.slint
 msgid "Add"
 msgstr ""
 
-#: ui/app.slint:2110
+#: ui/app.slint
 msgid "Add a caption (optional)"
 msgstr ""
 
-#: ui/app.slint:349
+#: ui/app.slint
 msgid "Add pack"
 msgstr ""
 
-#: ui/app.slint:3198
+#: ui/app.slint
 msgid "Add people"
 msgstr ""
 
-#: ui/app.slint:3081
+#: ui/app.slint
 msgid "Add people as contacts first. Groups are made from people who have accepted you."
 msgstr ""
 
-#: ui/app.slint:1941
+#: ui/app.slint
 msgid "Add someone"
 msgstr ""
 
-#: ui/app.slint:350
+#: ui/app.slint
 msgid "Add this sticker pack"
 msgstr ""
 
-#: ui/app.slint:3242
+#: ui/app.slint
 msgid "Add to group"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2017
+#: enclave-vault/src/engine.rs
 msgid "Added the pack {}."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4479
+#: enclave-vault/src/engine.rs
 msgid "Added {}{}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4476
+#: enclave-vault/src/engine.rs
 msgid "Added {}{} · Message history follows 24 hours after linking, sooner if both devices confirm"
 msgstr ""
 
-#: ui/app.slint:3242
+#: ui/app.slint
 msgid "Adding…"
 msgstr ""
 
-#: ui/app.slint:3142
+#: ui/app.slint
 msgid "Admin"
 msgstr ""
 
-#: ui/app.slint:2233
+#: ui/app.slint
 msgid "Also block them"
 msgstr ""
 
-#: ui/app.slint:2604
+#: ui/app.slint
 msgid "Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly."
 msgstr ""
 
-#: ui/app.slint:1304
+#: ui/app.slint
 msgid "An admin needs to let you in. You'll see the group here when they do."
 msgstr ""
 
-#: ui/app.slint:2817
+#: ui/app.slint
 msgid "An encrypted copy of your contacts, messages and notes. Only your recovery words open it."
 msgstr ""
 
-#: ui/app.slint:3455 ui/app.slint:3468
+#: ui/app.slint
 msgid "Animated picture"
 msgstr ""
 
-#: ui/app.slint:2912
+#: ui/app.slint
 msgid "Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
 msgstr ""
 
-#: ui/app.slint:3025
+#: ui/app.slint
 msgid "Anyone who collects enough of these can take over their account. Never give it over a message or a call, even if it seems to be them."
 msgstr ""
 
-#: ui/app.slint:2703
+#: ui/app.slint
 msgid "Anyone who knows it can send you a message request. Choosing a new one retires this one."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3703
+#: enclave-vault/src/engine.rs
 msgid "App PIN set."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2412
+#: enclave-vault/src/engine.rs
 msgid "Approved. Your contacts will accept your new device now."
 msgstr ""
 
-#: ui/app.slint:2016
+#: ui/app.slint
 msgid "Archive"
 msgstr ""
 
-#: ui/app.slint:1446
+#: ui/app.slint
 msgid "Archived ({})"
 msgstr ""
 
-#: ui/app.slint:2374
+#: ui/app.slint
 msgid "Ask"
 msgstr ""
 
-#: ui/app.slint:1018
+#: ui/app.slint
 msgid "Ask a friend in person"
 msgstr ""
 
-#: ui/app.slint:1834 ui/app.slint:2363
+#: ui/app.slint
 msgid "Ask a question"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4452
+#: enclave-vault/src/engine.rs
 msgid "Ask for history now"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2431
+#: enclave-vault/src/engine.rs
 msgid "Asked for your message history. Confirm on the device you linked from to send it now."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4055
+#: enclave-vault/src/engine.rs
 msgid "Asks to join {}"
 msgstr ""
 
-#: ui/app.slint:1078 ui/app.slint:1504
+#: ui/app.slint
 msgid "Back"
 msgstr ""
 
-#: ui/app.slint:1340
+#: ui/app.slint
 msgid "Back to the private route"
 msgstr ""
 
-#: ui/app.slint:2816
+#: ui/app.slint
 msgid "Backup"
 msgstr ""
 
-#: ui/app.slint:1324
+#: ui/app.slint
 msgid "Backup route: slower to hide who you talk to"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1456
+#: enclave-vault/src/engine.rs
 msgid "Backups are made on the device that holds your recovery words."
 msgstr ""
 
-#: ui/app.slint:1659 ui/app.slint:2051
+#: ui/app.slint
 msgid "Block"
 msgstr ""
 
-#: ui/app.slint:2053
+#: ui/app.slint
 msgid "Block "
 msgstr ""
 
-#: ui/app.slint:1661
+#: ui/app.slint
 msgid "Block {}"
 msgstr ""
 
-#: ui/app.slint:493
+#: ui/app.slint
 msgid "Blocked"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2158
+#: enclave-vault/src/engine.rs
 msgid "Blocked on this device, but couldn't reach your server to stop their messages. We'll drop anything they send."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2074
+#: enclave-vault/src/engine.rs
 msgid "Blocked, but the report didn't go through. Check your connection."
 msgstr ""
 
-#: ui/app.slint:2000
+#: ui/app.slint
 msgid "Both of you see when this changes, and who changed it."
 msgstr ""
 
-#: enclave-vault/src/netd.rs:58
+#: enclave-vault/src/netd.rs
 msgid "Bridge "
 msgstr ""
 
-#: ui/app.slint:1012
+#: ui/app.slint
 msgid "Bring your account back"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3056
+#: enclave-vault/src/engine.rs
 msgid "Bringing over your contacts…"
 msgstr ""
 
-#: ui/app.slint:2664
+#: ui/app.slint
 msgid "Built-in"
 msgstr ""
 
-#: ui/app.slint:3567
+#: ui/app.slint
 msgid "Camera"
 msgstr ""
 
-#: ui/app.slint:1235 ui/app.slint:1864 ui/app.slint:3587
+#: ui/app.slint
 msgid "Cancel"
 msgstr ""
 
-#: ui/app.slint:1936
+#: ui/app.slint
 msgid "Cancel them"
 msgstr ""
 
-#: ui/app.slint:1058 ui/app.slint:1106 ui/app.slint:2709 ui/app.slint:2746 ui/app.slint:2770
+#: ui/app.slint
 msgid "Change"
 msgstr ""
 
-#: ui/app.slint:2860
+#: ui/app.slint
 msgid "Change PIN"
 msgstr ""
 
-#: ui/app.slint:3435 ui/app.slint:3536
+#: ui/app.slint
 msgid "Change my words"
 msgstr ""
 
-#: ui/app.slint:3513
+#: ui/app.slint
 msgid "Change your recovery words"
 msgstr ""
 
-#: ui/app.slint:2847
+#: ui/app.slint
 msgid "Check"
 msgstr ""
 
-#: ui/app.slint:1564
+#: ui/app.slint
 msgid "Check code"
 msgstr ""
 
-#: ui/app.slint:2465
+#: ui/app.slint
 msgid "Check it's really {}"
 msgstr ""
 
-#: ui/app.slint:2836
+#: ui/app.slint
 msgid "Check my backup"
 msgstr ""
 
-#: ui/app.slint:1770
+#: ui/app.slint
 msgid "Check now"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2103
+#: enclave-vault/src/engine.rs
 msgid "Check the coordinates: latitude from -90 to 90, longitude from -180 to 180."
 msgstr ""
 
-#: ui/app.slint:3048
+#: ui/app.slint
 msgid "Check their screen shows these words: {}"
 msgstr ""
 
-#: ui/app.slint:1530 ui/app.slint:2518 ui/app.slint:3142 ui/controls.slint:61
+#: ui/app.slint ui/controls.slint
 msgid "Checked"
 msgstr ""
 
-#: ui/app.slint:2518
+#: ui/app.slint
 msgid "Checked in person"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2715
+#: enclave-vault/src/engine.rs
 msgid "Checked, but couldn't reach the server to update your conversation. It will finish when you're back online."
 msgstr ""
 
-#: ui/app.slint:2456 ui/app.slint:2709 ui/app.slint:2847 ui/app.slint:3330
+#: ui/app.slint
 msgid "Checking…"
 msgstr ""
 
-#: ui/app.slint:2709
+#: ui/app.slint
 msgid "Choose"
 msgstr ""
 
-#: ui/app.slint:2985
+#: ui/app.slint
 msgid "Choose 3 to 5 people you trust and can meet. Each gets a share by message, and can only give it back to you in person."
 msgstr ""
 
-#: ui/app.slint:2842
+#: ui/app.slint
 msgid "Choose a backup file to check"
 msgstr ""
 
-#: ui/app.slint:1486
+#: ui/app.slint
 msgid "Choose a conversation"
 msgstr ""
 
-#: enclave-app/src/shell.rs:223 ui/app.slint:2108
+#: enclave-app/src/shell.rs ui/app.slint
 msgid "Choose a file to send"
 msgstr ""
 
-#: ui/app.slint:1368
+#: ui/app.slint
 msgid "Choose a new username"
 msgstr ""
 
-#: ui/app.slint:2533
+#: ui/app.slint
 msgid "Choose a server"
 msgstr ""
 
-#: ui/app.slint:2917
+#: ui/app.slint
 msgid "Choose again"
 msgstr ""
 
-#: ui/app.slint:1107
+#: ui/app.slint
 msgid "Choose another server"
 msgstr ""
 
-#: ui/app.slint:2917
+#: ui/app.slint
 msgid "Choose friends"
 msgstr ""
 
-#: enclave-app/src/shell.rs:218 ui/app.slint:2185
+#: enclave-app/src/shell.rs ui/app.slint
 msgid "Choose pictures for the pack"
 msgstr ""
 
-#: ui/app.slint:1059
+#: ui/app.slint
 msgid "Choose the server your backup is on"
 msgstr ""
 
-#: ui/app.slint:3081
+#: ui/app.slint
 msgid "Choose who to add. Everyone in the group can see who else is in it."
 msgstr ""
 
-#: enclave-app/src/shell.rs:208
+#: enclave-app/src/shell.rs
 msgid "Choose your backup"
 msgstr ""
 
-#: ui/app.slint:1052
+#: ui/app.slint
 msgid "Choose your backup file"
 msgstr ""
 
-#: ui/app.slint:1052 ui/app.slint:2108 ui/app.slint:2185 ui/app.slint:2842
+#: ui/app.slint
 msgid "Choose…"
 msgstr ""
 
-#: ui/app.slint:3002
+#: ui/app.slint
 msgid "Chosen"
 msgstr ""
 
-#: ui/app.slint:626
+#: ui/app.slint
 msgid "Close"
 msgstr ""
 
-#: ui/app.slint:404
+#: ui/app.slint
 msgid "Close poll"
 msgstr ""
 
-#: ui/app.slint:397
+#: ui/app.slint
 msgid "Closed."
 msgstr ""
 
-#: ui/app.slint:397
+#: ui/app.slint
 msgid "Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone."
 msgstr ""
 
-#: ui/app.slint:1564
+#: ui/app.slint
 msgid "Code"
 msgstr ""
 
-#: ui/app.slint:1033
+#: ui/app.slint
 msgid "Code for a friend who holds part of your recovery"
 msgstr ""
 
-#: ui/app.slint:2470
+#: ui/app.slint
 msgid "Compare these numbers with {} in person or on a call. If every group matches, tap They match."
 msgstr ""
 
-#: ui/app.slint:298
+#: ui/app.slint
 msgid "Contact you shared"
 msgstr ""
 
-#: ui/app.slint:298
+#: ui/app.slint
 msgid "Contact. Check their code when you meet."
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "Contact: {}. "
 msgstr ""
 
-#: ui/app.slint:1125 ui/app.slint:2428 ui/app.slint:3330
+#: ui/app.slint
 msgid "Continue"
 msgstr ""
 
-#: ui/app.slint:1541
+#: ui/app.slint
 msgid "Conversation settings"
 msgstr ""
 
-#: ui/app.slint:1421
+#: ui/app.slint
 msgid "Conversations"
 msgstr ""
 
-#: enclave-app/src/shell.rs:1000
+#: enclave-app/src/shell.rs
 msgid "Copied. It's cleared from the clipboard after 60 seconds."
 msgstr ""
 
-#: ui/app.slint:3190
+#: ui/app.slint
 msgid "Copy a group invite link"
 msgstr ""
 
-#: ui/app.slint:1234
+#: ui/app.slint
 msgid "Copy code"
 msgstr ""
 
-#: ui/app.slint:326
+#: ui/app.slint
 msgid "Copy coordinates"
 msgstr ""
 
-#: ui/app.slint:327
+#: ui/app.slint
 msgid "Copy coordinates {}"
 msgstr ""
 
-#: ui/app.slint:1926 ui/app.slint:3189
+#: ui/app.slint
 msgid "Copy invite link"
 msgstr ""
 
-#: ui/app.slint:1927
+#: ui/app.slint
 msgid "Copy username"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1796
+#: enclave-vault/src/engine.rs
 msgid "Couldn't accept yet. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2018
+#: enclave-vault/src/engine.rs
 msgid "Couldn't add that pack. Check your connection."
 msgstr ""
 
-#: ui/app.slint:1959
+#: ui/app.slint
 msgid "Couldn't add them"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:837
+#: enclave-vault/src/engine.rs
 msgid "Couldn't add them with this link. Ask them to send a new one."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2621
+#: enclave-vault/src/engine.rs
 msgid "Couldn't add them. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2433
+#: enclave-vault/src/engine.rs
 msgid "Couldn't ask for message history."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2608
+#: enclave-vault/src/engine.rs
 msgid "Couldn't cancel your invite links. Check your connection and try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2925
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change the mode. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2581
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change the passphrase: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2263
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change the timer. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2639
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change who is an admin. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2801
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change your recovery words. Your old words still work. Check your connection and try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:856
+#: enclave-vault/src/engine.rs
 msgid "Couldn't claim that name. Try again in a moment."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1850
+#: enclave-vault/src/engine.rs
 msgid "Couldn't close the poll. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3295
+#: enclave-vault/src/engine.rs
 msgid "Couldn't connect to the private network yet. Trying again in a minute."
 msgstr ""
 
-#: enclave-app/src/shell.rs:1002
+#: enclave-app/src/shell.rs
 msgid "Couldn't copy it."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3001
+#: enclave-vault/src/engine.rs
 msgid "Couldn't create the group. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2256
+#: enclave-vault/src/engine.rs
 msgid "Couldn't delete that message. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1749
+#: enclave-vault/src/engine.rs
 msgid "Couldn't delete that note."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2414
+#: enclave-vault/src/engine.rs
 msgid "Couldn't do that. Try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2367 enclave-vault/src/engine.rs:2394
+#: enclave-vault/src/engine.rs
 msgid "Couldn't download the file. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2242
+#: enclave-vault/src/engine.rs
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1613
+#: enclave-vault/src/engine.rs
 msgid "Couldn't finish deleting your account. Check your connection and try again: what's done stays done."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2667
+#: enclave-vault/src/engine.rs
 msgid "Couldn't leave the group. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1437
+#: enclave-vault/src/engine.rs
 msgid "Couldn't make a backup."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1722
+#: enclave-vault/src/engine.rs
 msgid "Couldn't make a code for your friends. Try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1863 enclave-vault/src/engine.rs:2597
+#: enclave-vault/src/engine.rs
 msgid "Couldn't make an invite link. Check your connection and try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1523
+#: enclave-vault/src/engine.rs
 msgid "Couldn't move your account."
 msgstr ""
 
-#: enclave-app/src/shell.rs:578
+#: enclave-app/src/shell.rs
 msgid "Couldn't open that file."
 msgstr ""
 
-#: enclave-app/src/shell.rs:480
+#: enclave-app/src/shell.rs
 msgid "Couldn't open that file: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1046 enclave-vault/src/engine.rs:2549
+#: enclave-vault/src/engine.rs
 msgid "Couldn't open your profile: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2210
+#: enclave-vault/src/engine.rs
 msgid "Couldn't pin that message. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1522
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1539
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach the group's server. Try again in a moment."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2488
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach the server. Check your connection and try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3073
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach the server. Still trying…"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:836
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach their server. Check your connection and try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:854
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach your server. Check your connection and try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1458 enclave-vault/src/engine.rs:2432 enclave-vault/src/engine.rs:2438 enclave-vault/src/engine.rs:2459 enclave-vault/src/engine.rs:3570
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach your server. Try again in a moment."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2413
+#: enclave-vault/src/engine.rs
 msgid "Couldn't reach your server. Try again now — this matters."
 msgstr ""
 
-#: enclave-app/src/shell.rs:927
+#: enclave-app/src/shell.rs
 msgid "Couldn't read that file: {}."
 msgstr ""
 
-#: enclave-app/src/shell.rs:808
+#: enclave-app/src/shell.rs
 msgid "Couldn't read {}: {}."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2461
+#: enclave-vault/src/engine.rs
 msgid "Couldn't remove that device."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2656
+#: enclave-vault/src/engine.rs
 msgid "Couldn't remove them. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1742
+#: enclave-vault/src/engine.rs
 msgid "Couldn't save that note."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2561 enclave-vault/src/engine.rs:2838 enclave-vault/src/engine.rs:3701 enclave-vault/src/engine.rs:3740
+#: enclave-vault/src/engine.rs
 msgid "Couldn't save the lock settings."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2947
+#: enclave-vault/src/engine.rs
 msgid "Couldn't save them: {}"
 msgstr ""
 
-#: enclave-app/src/shell.rs:1071 enclave-app/src/shell.rs:70
+#: enclave-app/src/shell.rs
 msgid "Couldn't save {}: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1592
+#: enclave-vault/src/engine.rs
 msgid "Couldn't seal your part for them. Ask them to show their code again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2439
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send message history."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2337
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send the file. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2109
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send the location. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1821
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send the poll. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2228
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send the reaction. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2075
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send the report. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1994
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send the sticker. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1763
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send to the group yet. We'll keep trying."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1783
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send yet. We'll try again when you're back online."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1540
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send your vote."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1838
+#: enclave-vault/src/engine.rs
 msgid "Couldn't send your vote. The poll may be closed."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1415
+#: enclave-vault/src/engine.rs
 msgid "Couldn't set up your address: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1632
+#: enclave-vault/src/engine.rs
 msgid "Couldn't set your PIN. Try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1942
+#: enclave-vault/src/engine.rs
 msgid "Couldn't share that contact. They need to have shared their code with you first."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1570
+#: enclave-vault/src/engine.rs
 msgid "Couldn't share your recovery. Choose at least two people you talk to, and check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2491
+#: enclave-vault/src/engine.rs
 msgid "Couldn't start linking. Try again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1695
+#: enclave-vault/src/engine.rs
 msgid "Couldn't tell everyone yet. It goes on when you're back online."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2212
+#: enclave-vault/src/engine.rs
 msgid "Couldn't unpin that message. Check your connection."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1969
+#: enclave-vault/src/engine.rs
 msgid "Couldn't upload the pack. Check your connection."
 msgstr ""
 
-#: ui/app.slint:3122
+#: ui/app.slint
 msgid "Create group"
 msgstr ""
 
-#: ui/app.slint:3122
+#: ui/app.slint
 msgid "Creating…"
 msgstr ""
 
-#: ui/app.slint:2855
+#: ui/app.slint
 msgid "Current PIN"
 msgstr ""
 
-#: ui/app.slint:1657 ui/app.slint:1738 ui/app.slint:2903
+#: ui/app.slint
 msgid "Delete"
 msgstr ""
 
-#: ui/app.slint:1740
+#: ui/app.slint
 msgid "Delete for everyone"
 msgstr ""
 
-#: ui/app.slint:2907 ui/app.slint:3497
+#: ui/app.slint
 msgid "Delete my account"
 msgstr ""
 
-#: ui/app.slint:1740
+#: ui/app.slint
 msgid "Delete note"
 msgstr ""
 
-#: ui/app.slint:3481
+#: ui/app.slint
 msgid "Delete your account"
 msgstr ""
 
-#: ui/app.slint:2904
+#: ui/app.slint
 msgid "Delete your account for everyone, or only erase this device."
 msgstr ""
 
-#: ui/app.slint:3497
+#: ui/app.slint
 msgid "Deleting…"
 msgstr ""
 
-#: ui/app.slint:148
+#: ui/app.slint
 msgid "Delivered"
 msgstr ""
 
-#: ui/app.slint:2063
+#: ui/app.slint
 msgid "Disappearing messages"
 msgstr ""
 
-#: ui/app.slint:1557 ui/app.slint:2040
+#: ui/app.slint
 msgid "Disappearing messages: off"
 msgstr ""
 
-#: ui/app.slint:1557 ui/app.slint:2040
+#: ui/app.slint
 msgid "Disappearing messages: on"
 msgstr ""
 
-#: ui/app.slint:3517
+#: ui/app.slint
 msgid "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working."
 msgstr ""
 
-#: ui/app.slint:3518
+#: ui/app.slint
 msgid "Do this only if your words are lost and so is the device that had them. This device gets 24 new words and becomes the one that holds them."
 msgstr ""
 
-#: ui/app.slint:2382
+#: ui/app.slint
 msgid "Do you both see these words?"
 msgstr ""
 
-#: ui/app.slint:2391 ui/app.slint:3073 ui/app.slint:3420
+#: ui/app.slint
 msgid "Done"
 msgstr ""
 
-#: ui/app.slint:3195
+#: ui/app.slint
 msgid "Each link works for one person, for 7 days. You approve them before they join, and they see only new messages."
 msgstr ""
 
-#: ui/app.slint:2104
+#: ui/app.slint
 msgid "Each member downloads them"
 msgstr ""
 
-#: ui/app.slint:1730
+#: ui/app.slint
 msgid "Edit"
 msgstr ""
 
-#: ui/app.slint:1843
+#: ui/app.slint
 msgid "Edit your message"
 msgstr ""
 
-#: ui/app.slint:2802
+#: ui/app.slint
 msgid "Emergency PIN"
 msgstr ""
 
-#: ui/app.slint:2808
+#: ui/app.slint
 msgid "Emergency PIN (at least 4 digits)"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3742
+#: enclave-vault/src/engine.rs
 msgid "Emergency PIN removed."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3744
+#: enclave-vault/src/engine.rs
 msgid "Emergency PIN set. Entering it where Enclave asks for your PIN or passphrase erases this device."
 msgstr ""
 
-#: ui/app.slint:2937 ui/app.slint:2941 ui/app.slint:648
+#: ui/app.slint
 msgid "Enclave"
 msgstr ""
 
-#: ui/app.slint:2739
+#: ui/app.slint
 msgid "Enclave asks for it each time it starts on this computer."
 msgstr ""
 
-#: ui/app.slint:2854
+#: ui/app.slint
 msgid "Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account."
 msgstr ""
 
-#: enclave-app/src/shell.rs:207
+#: enclave-app/src/shell.rs
 msgid "Enclave backup"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1425
+#: enclave-vault/src/engine.rs
 msgid "Enclave backup {}.enclave"
 msgstr ""
 
-#: ui/app.slint:1766
+#: ui/app.slint
 msgid "Enclave can't confirm it was them who did this. Check the security code in person before sharing anything private."
 msgstr ""
 
-#: ui/app.slint:1325
+#: ui/app.slint
 msgid "Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:827
+#: enclave-vault/src/engine.rs
 msgid "Enclave couldn't confirm that this username is genuine, so it didn't add anyone. Ask them for their invite link instead."
 msgstr ""
 
-#: ui/app.slint:3457
+#: ui/app.slint
 msgid "Enclave couldn't play this one."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2292
+#: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2305
+#: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that picture, so it wasn't sent. Try another file."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2277
+#: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit WAV file."
 msgstr ""
 
-#: ui/app.slint:2962
+#: ui/app.slint
 msgid "Enclave is built with the work of these projects, under the licences below."
 msgstr ""
 
-#: ui/app.slint:1144
+#: ui/app.slint
 msgid "Enclave is locked"
 msgstr ""
 
-#: ui/app.slint:2763
+#: ui/app.slint
 msgid "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
 msgstr ""
 
-#: ui/app.slint:2761
+#: ui/app.slint
 msgid "Enclave locks itself when you haven't used it for a while, and your passphrase opens it again."
 msgstr ""
 
-#: enclave-app/src/camera.rs:83
+#: enclave-app/src/camera.rs
 msgid "Enclave may not use the camera. Allow it in System Settings → Privacy & Security → Camera."
 msgstr ""
 
-#: ui/app.slint:1309
+#: ui/app.slint
 msgid "Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block."
 msgstr ""
 
-#: ui/app.slint:2883
+#: ui/app.slint
 msgid "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery."
 msgstr ""
 
-#: enclave-app/src/vault.rs:121 enclave-app/src/vault.rs:238
+#: enclave-app/src/vault.rs
 msgid "Enclave's vault stopped ({}). Restart Enclave."
 msgstr ""
 
-#: ui/app.slint:3361
+#: ui/app.slint
 msgid "English"
 msgstr ""
 
-#: ui/app.slint:1315
+#: ui/app.slint
 msgid "Enter my own"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1435 enclave-vault/src/engine.rs:1453 enclave-vault/src/engine.rs:1521
+#: enclave-vault/src/engine.rs
 msgid "Enter your PIN on the recovery words sheet first."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2798
+#: enclave-vault/src/engine.rs
 msgid "Enter your PIN to change your recovery words."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1610
+#: enclave-vault/src/engine.rs
 msgid "Enter your PIN to delete your account."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2457
+#: enclave-vault/src/engine.rs
 msgid "Enter your PIN to remove a device."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1704
+#: enclave-vault/src/engine.rs
 msgid "Enter your PIN to secure your account."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1567
+#: enclave-vault/src/engine.rs
 msgid "Enter your PIN to share your recovery."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1631
+#: enclave-vault/src/engine.rs
 msgid "Enter your current PIN first."
 msgstr ""
 
-#: ui/app.slint:3508
+#: ui/app.slint
 msgid "Erase only this device"
 msgstr ""
 
-#: ui/app.slint:1299 ui/app.slint:2907 ui/app.slint:3481 ui/app.slint:3497
+#: ui/app.slint
 msgid "Erase this device"
 msgstr ""
 
-#: ui/app.slint:2904
+#: ui/app.slint
 msgid "Erase this device. Deleting the account is done on the device that holds your recovery words."
 msgstr ""
 
-#: ui/app.slint:3361
+#: ui/app.slint
 msgid "Español"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:236
+#: enclave-vault/src/engine.rs
 msgid "Every message travels as a sealed unit of exactly the same size, so a server can't tell a short hello from a long letter."
 msgstr ""
 
-#: ui/app.slint:2365
+#: ui/app.slint
 msgid "Everyone in {} can vote and see how everyone else voted. Only you can close it."
 msgstr ""
 
-#: ui/app.slint:3523
+#: ui/app.slint
 msgid "Everyone you talk to will see that your security code changed, and will be asked to check it again. Your conversations, groups and devices stay as they are."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1713
+#: enclave-vault/src/engine.rs
 msgid "Everything on this device was erased."
 msgstr ""
 
-#: ui/app.slint:2260
+#: ui/app.slint
 msgid "Everything sent in this conversation, newest last. Files stay sealed on this device until you save them."
 msgstr ""
 
-#: ui/app.slint:1988
+#: ui/app.slint
 msgid "Extra protection: finishing…"
 msgstr ""
 
-#: ui/app.slint:2297
+#: ui/app.slint
 msgid "File"
 msgstr ""
 
-#: ui/app.slint:2267
+#: ui/app.slint
 msgid "File: "
 msgstr ""
 
-#: enclave-vault/src/engine.rs:542
+#: enclave-vault/src/engine.rs
 msgid "File: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:543
+#: enclave-vault/src/engine.rs
 msgid "File: {}\n{}"
 msgstr ""
 
-#: ui/app.slint:2104
+#: ui/app.slint
 msgid "Files are sealed before they leave this device and padded so their size doesn't give them away. "
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4439
+#: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr ""
 
-#: ui/app.slint:2240
+#: ui/app.slint
 msgid "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through."
 msgstr ""
 
-#: ui/app.slint:3362
+#: ui/app.slint
 msgid "Français"
 msgstr ""
 
-#: ui/app.slint:2945
+#: ui/app.slint
 msgid "Free software under the GNU General Public License, version 3, with additional permissions for app stores. Anyone can read, build and check it: github.com/0xnullsect0r/enclave-messenger."
 msgstr ""
 
-#: ui/app.slint:991
+#: ui/app.slint
 msgid "Get started"
 msgstr ""
 
-#: ui/app.slint:3457
+#: ui/app.slint
 msgid "Getting it ready…"
 msgstr ""
 
-#: ui/app.slint:2913
+#: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
 msgstr ""
 
-#: ui/app.slint:2882
+#: ui/app.slint
 msgid "Google's push service wakes Enclave when something arrives. Google learns only that something arrived, not what or from whom."
 msgstr ""
 
-#: ui/app.slint:1265
+#: ui/app.slint
 msgid "Group"
 msgstr ""
 
-#: ui/app.slint:3080
+#: ui/app.slint
 msgid "Group name"
 msgstr ""
 
-#: ui/app.slint:2485
+#: ui/app.slint
 msgid "Group {}: {}"
 msgstr ""
 
-#: ui/app.slint:2209
+#: ui/app.slint
 msgid "Harassment or threats"
 msgstr ""
 
-#: ui/app.slint:1792
+#: ui/app.slint
 msgid "Help them get back in"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:234
+#: enclave-vault/src/engine.rs
 msgid "Hi, I'm Sam. I'm a demo contact running on this computer, so you can try Enclave before inviting anyone. Accept to start talking."
 msgstr ""
 
-#: ui/app.slint:1453
+#: enclave-app/src/format.rs
+msgid "Hidden text"
+msgstr ""
+
+#: ui/app.slint
 msgid "Hide"
 msgstr ""
 
-#: ui/app.slint:1436
+#: ui/app.slint
 msgid "Hide archived, "
 msgstr ""
 
-#: ui/app.slint:2676
+#: ui/app.slint
 msgid "Hide from screenshots"
 msgstr ""
 
-#: ui/app.slint:2603
+#: ui/app.slint
 msgid "Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background."
 msgstr ""
 
-#: ui/app.slint:3580
+#: ui/app.slint
 msgid "Hold their code up to the camera."
 msgstr ""
 
-#: ui/app.slint:992
+#: ui/app.slint
 msgid "I already have Enclave"
 msgstr ""
 
-#: ui/app.slint:3041
+#: ui/app.slint
 msgid "I'm with them: continue"
 msgstr ""
 
-#: ui/app.slint:3420
+#: ui/app.slint
 msgid "I've written them down"
 msgstr ""
 
-#: ui/app.slint:2469
+#: ui/app.slint
 msgid "If anything changes, we'll tell you before you send anything."
 msgstr ""
 
-#: ui/app.slint:2388
+#: ui/app.slint
 msgid "If anything changes, we'll tell you before you send anything. Your conversation now also rests on a secret that only crossed the room between your two screens."
 msgstr ""
 
-#: ui/app.slint:2804
+#: ui/app.slint
 msgid "If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected."
 msgstr ""
 
-#: ui/app.slint:3052
+#: ui/app.slint
 msgid "If the words differ, close this: you scanned the wrong screen. If they match, let {} scan this code."
 msgstr ""
 
-#: ui/app.slint:1788
+#: ui/app.slint
 msgid "If they lose every device, meet them: their new phone shows a code, and you give them your part by scanning it. Only in person."
 msgstr ""
 
-#: ui/app.slint:3353
+#: ui/app.slint
 msgid "If you lose this device, these 24 words bring your account back. Anyone who has them can become you. Write them down on paper and keep them somewhere safe."
 msgstr ""
 
-#: ui/app.slint:2828
+#: ui/app.slint
 msgid "In backups you save here. They can get large."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:238
+#: enclave-vault/src/engine.rs
 msgid "In demo mode nothing you type leaves this computer."
 msgstr ""
 
-#: ui/app.slint:2827
+#: ui/app.slint
 msgid "Include photos and files"
 msgstr ""
 
-#: ui/app.slint:2227
+#: ui/app.slint
 msgid "Include their last messages"
 msgstr ""
 
-#: enclave-app/src/shell.rs:358
+#: enclave-app/src/shell.rs
 msgid "Invite link copied. It works for one person, for 7 days, and is cleared from the clipboard after 60 seconds."
 msgstr ""
 
-#: ui/app.slint:1295
+#: ui/app.slint
 msgid "It can't get new messages any more. Erase it to remove your conversations from it."
 msgstr ""
 
-#: ui/app.slint:1359
+#: ui/app.slint
 msgid "It is {} compared with the time Enclave's independent witnesses sign. Set the date and time to automatic in your device's settings. Until then, message times may look wrong and some checks may fail."
 msgstr ""
 
-#: ui/app.slint:3302
+#: ui/app.slint
 msgid "It stops getting new messages, and your contacts stop sending to it. Messages already on it stay there until it's erased."
 msgstr ""
 
-#: ui/app.slint:1280
+#: ui/app.slint
 msgid "It's me"
 msgstr ""
 
-#: ui/app.slint:3362
+#: ui/app.slint
 msgid "Italiano"
 msgstr ""
 
-#: ui/app.slint:2819
+#: ui/app.slint
 msgid "Keep a backup on my server"
 msgstr ""
 
-#: ui/app.slint:3313 ui/app.slint:3502
+#: ui/app.slint
 msgid "Keep it"
 msgstr ""
 
-#: ui/app.slint:2005
+#: ui/app.slint
 msgid "Keep it above your other conversations. Up to 4."
 msgstr ""
 
-#: ui/app.slint:1393
+#: ui/app.slint
 msgid "Keep typing…"
 msgstr ""
 
-#: ui/app.slint:1331
+#: ui/app.slint
 msgid "Keep waiting"
 msgstr ""
 
-#: ui/app.slint:1641
+#: ui/app.slint
 msgid "Later messages from {} came over a minute ago, but an earlier one hasn't. If it comes, it's marked “delivered late”. Their app sends it again if it was lost."
 msgstr ""
 
-#: ui/app.slint:2316
+#: ui/app.slint
 msgid "Latitude, like 52.5200"
 msgstr ""
 
-#: ui/app.slint:3258
+#: ui/app.slint
 msgid "Leave"
 msgstr ""
 
-#: ui/app.slint:3249
+#: ui/app.slint
 msgid "Leave group"
 msgstr ""
 
-#: ui/app.slint:3252
+#: ui/app.slint
 msgid "Leave {}?"
 msgstr ""
 
-#: ui/app.slint:2986
+#: ui/app.slint
 msgid "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."
 msgstr ""
 
-#: ui/app.slint:1893
+#: ui/app.slint
 msgid "Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."
 msgstr ""
 
-#: ui/app.slint:1195
+#: ui/app.slint
 msgid "Link this device"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4441
+#: enclave-vault/src/engine.rs
 msgid "Linked device"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3029
+#: enclave-vault/src/engine.rs
 msgid "Linked. Your new device will finish setting up in a moment."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3068
+#: enclave-vault/src/engine.rs
 msgid "Linking didn't finish. Start again on both devices."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3033
+#: enclave-vault/src/engine.rs
 msgid "Linking didn't finish. Try again from the new device."
 msgstr ""
 
-#: ui/app.slint:312
+#: ui/app.slint
 msgid "Location"
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "Location: {} {}. "
 msgstr ""
 
-#: ui/app.slint:2775
+#: ui/app.slint
 msgid "Lock after"
 msgstr ""
 
-#: ui/app.slint:2786
+#: ui/app.slint
 msgid "Lock after {}"
 msgstr ""
 
-#: ui/app.slint:2754 ui/app.slint:2799
+#: ui/app.slint
 msgid "Lock now"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3705
+#: enclave-vault/src/engine.rs
 msgid "Lock settings saved."
 msgstr ""
 
-#: ui/app.slint:2317
+#: ui/app.slint
 msgid "Longitude, like 13.4050"
 msgstr ""
 
-#: ui/app.slint:2893
+#: ui/app.slint
 msgid "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1965
+#: enclave-vault/src/engine.rs
 msgid "Made the pack {} with {} stickers."
 msgstr ""
 
-#: ui/app.slint:2173
+#: ui/app.slint
 msgid "Make a pack"
 msgstr ""
 
-#: ui/app.slint:2178
+#: ui/app.slint
 msgid "Make a sticker pack"
 msgstr ""
 
-#: ui/app.slint:3150
+#: ui/app.slint
 msgid "Make admin"
 msgstr ""
 
-#: ui/app.slint:2239
+#: ui/app.slint
 msgid "Make message requests cost more"
 msgstr ""
 
-#: ui/app.slint:3513
+#: ui/app.slint
 msgid "Make new recovery words"
 msgstr ""
 
-#: ui/app.slint:3447 ui/app.slint:3536
+#: ui/app.slint
 msgid "Make new words"
 msgstr ""
 
-#: ui/app.slint:2196
+#: ui/app.slint
 msgid "Make pack"
 msgstr ""
 
-#: ui/app.slint:2837
+#: ui/app.slint
 msgid "Make sure the words you wrote down open your backup, without restoring anything."
 msgstr ""
 
-#: ui/app.slint:3151
+#: ui/app.slint
 msgid "Make {} an admin"
 msgstr ""
 
-#: ui/app.slint:3416
+#: ui/app.slint
 msgid "Making your new words…"
 msgstr ""
 
-#: ui/app.slint:2196
+#: ui/app.slint
 msgid "Making…"
 msgstr ""
 
-#: ui/app.slint:2604
+#: ui/app.slint
 msgid "Maximum"
 msgstr ""
 
-#: ui/app.slint:1989
+#: ui/app.slint
 msgid "Maximum privacy holds what you write until all three kinds of encryption protect this conversation. It goes out on its own once {}'s app has finished setting it up."
 msgstr ""
 
-#: ui/app.slint:2382
+#: ui/app.slint
 msgid "Meet in person"
 msgstr ""
 
-#: ui/app.slint:1548
+#: ui/app.slint
 msgid "Members"
 msgstr ""
 
-#: ui/app.slint:1843
+#: ui/app.slint
 msgid "Message"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2437
+#: enclave-vault/src/engine.rs
 msgid "Message history sent. It appears on the other device when it next connects."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:769
+#: enclave-vault/src/engine.rs
 msgid "Message request from {}"
 msgstr ""
 
-#: ui/app.slint:1408
+#: ui/app.slint
 msgid "Message requests"
 msgstr ""
 
-#: ui/app.slint:1394
+#: ui/app.slint
 msgid "Messages"
 msgstr ""
 
-#: ui/app.slint:3166
+#: ui/app.slint
 msgid "Messages carry their sender's signature. Anyone who gets a copy can prove who wrote them."
 msgstr ""
 
-#: ui/app.slint:1336
+#: ui/app.slint
 msgid "Messages go to your server through Tor instead of the private network. Switch back when the private network works again."
 msgstr ""
 
-#: ui/app.slint:1530 ui/app.slint:3142
+#: ui/app.slint
 msgid "Met in person"
 msgstr ""
 
-#: ui/app.slint:2017
+#: ui/app.slint
 msgid "Move it out of your list until someone writes."
 msgstr ""
 
-#: ui/app.slint:2588
+#: ui/app.slint
 msgid "Move my account"
 msgstr ""
 
-#: ui/app.slint:2533
+#: ui/app.slint
 msgid "Move the group"
 msgstr ""
 
-#: ui/app.slint:2533 ui/app.slint:2644
+#: ui/app.slint
 msgid "Move to another server"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1519
+#: enclave-vault/src/engine.rs
 msgid "Moving your account. Contacts and groups are told as they come online, so keep Enclave running for a while."
 msgstr ""
 
-#: ui/app.slint:2588
+#: ui/app.slint
 msgid "Moving…"
 msgstr ""
 
-#: ui/app.slint:2010
+#: ui/app.slint
 msgid "Mute"
 msgstr ""
 
-#: ui/app.slint:1263
+#: ui/app.slint
 msgid "My code"
 msgstr ""
 
-#: ui/app.slint:2318
+#: ui/app.slint
 msgid "Name it (optional)"
 msgstr ""
 
-#: ui/app.slint:2782
+#: ui/app.slint
 msgid "Never"
 msgstr ""
 
-#: ui/app.slint:2768 ui/app.slint:2858
+#: ui/app.slint
 msgid "New PIN"
 msgstr ""
 
-#: ui/app.slint:1349
+#: ui/app.slint
 msgid "New device linked"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4202 ui/app.slint:3078
+#: enclave-vault/src/engine.rs ui/app.slint
 msgid "New group"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:784
+#: enclave-vault/src/engine.rs
 msgid "New message"
 msgstr ""
 
-#: ui/app.slint:2011
+#: ui/app.slint
 msgid "New messages are counted quietly and don't bring it back from the archive."
 msgstr ""
 
-#: ui/app.slint:2065
+#: ui/app.slint
 msgid "New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."
 msgstr ""
 
-#: ui/app.slint:2744
+#: ui/app.slint
 msgid "New passphrase"
 msgstr ""
 
-#: enclave-app/src/camera.rs:97
+#: enclave-app/src/camera.rs
 msgid "No camera was found."
 msgstr ""
 
-#: ui/app.slint:1393
+#: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr ""
 
-#: ui/app.slint:986
+#: ui/app.slint
 msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr ""
 
-#: ui/app.slint:2946
+#: ui/app.slint
 msgid "No single company runs its servers: independent operators do, and the foundation only signs the list of them."
 msgstr ""
 
-#: ui/app.slint:2138
+#: ui/app.slint
 msgid "No sticker packs yet. Make one from your own pictures, or add one from a sticker someone sends you."
 msgstr ""
 
-#: ui/app.slint:1995 ui/app.slint:3167
+#: ui/app.slint
 msgid "Nobody can prove to others who wrote these messages."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:826
+#: enclave-vault/src/engine.rs
 msgid "Nobody has that username. Check the spelling, or ask them for their invite link."
 msgstr ""
 
-#: ui/app.slint:3150
+#: ui/app.slint
 msgid "Not admin"
 msgstr ""
 
-#: ui/app.slint:1530 ui/controls.slint:61
+#: ui/app.slint ui/controls.slint
 msgid "Not checked yet"
 msgstr ""
 
-#: ui/app.slint:150
+#: ui/app.slint
 msgid "Not delivered yet"
 msgstr ""
 
-#: ui/app.slint:2524 ui/app.slint:3045 ui/app.slint:3539
+#: ui/app.slint
 msgid "Not now"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2826
+#: enclave-vault/src/engine.rs
 msgid "Not unlocked. Type your PIN instead."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4372
+#: enclave-vault/src/engine.rs
 msgid "Note to self"
 msgstr ""
 
-#: ui/app.slint:2871
+#: ui/app.slint
 msgid "Notifications"
 msgstr ""
 
-#: ui/app.slint:2872
+#: ui/app.slint
 msgid "Notifications on your phone show who wrote and the start of the message. Only your devices can read them; Apple and Google see nothing."
 msgstr ""
 
-#: ui/app.slint:2872
+#: ui/app.slint
 msgid "Notifications say \"New message\" only. Turn previews on to see who wrote and the start of the message, readable only by your devices."
 msgstr ""
 
-#: ui/app.slint:2067
+#: ui/app.slint
 msgid "Off"
 msgstr ""
 
-#: ui/app.slint:3174
+#: ui/app.slint
 msgid "Off the record: nobody can prove to others who wrote these messages. Admins can change this."
 msgstr ""
 
-#: ui/app.slint:2652
+#: ui/app.slint
 msgid "Off. If your network blocks Tor, a bridge gets around it. Use Tor's built-in bridges or Snowflake, or paste obfs4 or WebTunnel bridge lines from bridges.torproject.org."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3477
+#: enclave-vault/src/engine.rs
 msgid "Offline. Messages will send when you're back."
 msgstr ""
 
-#: ui/app.slint:3528
+#: ui/app.slint
 msgid "Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards."
 msgstr ""
 
-#: ui/app.slint:2682
+#: ui/app.slint
 msgid "On Linux any program you run can capture the screen, and Enclave can't stop it. Close Enclave before sharing your screen."
 msgstr ""
 
-#: ui/app.slint:147
+#: ui/app.slint
 msgid "On its way"
 msgstr ""
 
-#: ui/app.slint:1335
+#: ui/app.slint
 msgid "On the backup route"
 msgstr ""
 
-#: ui/app.slint:1198
+#: ui/app.slint
 msgid "On the device you already use, open Settings → Your devices and paste this code. Only use it with your own account."
 msgstr ""
 
-#: ui/app.slint:1992 ui/app.slint:3164
+#: ui/app.slint
 msgid "On the record"
 msgstr ""
 
-#: ui/app.slint:3173
+#: ui/app.slint
 msgid "On the record: messages carry their sender's signature. Admins can change this."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1957
+#: enclave-vault/src/engine.rs
 msgid "One of those files isn't a picture Enclave can read, so no pack was made."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3516
+#: enclave-vault/src/engine.rs
 msgid "One of your friends' codes doesn't open on this device. Ask them to scan the code on this screen again."
 msgstr ""
 
-#: ui/app.slint:1284
+#: ui/app.slint
 msgid "One of your other devices stopped this change"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3448
+#: enclave-vault/src/engine.rs
 msgid "One of your other devices stopped this change. Your contacts won't accept this device."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1538
+#: enclave-vault/src/engine.rs
 msgid "Only admins can vote to move a group."
 msgstr ""
 
-#: enclave-vault/src/netd.rs:66
+#: enclave-vault/src/netd.rs
 msgid "Only obfs4, WebTunnel and Snowflake bridges work here. Get some at bridges.torproject.org."
 msgstr ""
 
-#: ui/app.slint:1101
+#: ui/app.slint
 msgid "Only people you talk to can see this."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1607
+#: enclave-vault/src/engine.rs
 msgid "Only the device that holds your recovery words can delete your account."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1520
+#: enclave-vault/src/engine.rs
 msgid "Only the device that holds your recovery words can move your account, and not while another move is still finishing."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1705
+#: enclave-vault/src/engine.rs
 msgid "Only the device that holds your recovery words can secure your account, once a change already under way is done."
 msgstr ""
 
-#: ui/app.slint:3505
+#: ui/app.slint
 msgid "Only want Enclave gone from this device? Erase it instead; your account stays on your other devices."
 msgstr ""
 
-#: ui/app.slint:1527
+#: ui/app.slint
 msgid "Only you, on your devices"
 msgstr ""
 
-#: ui/app.slint:3345
+#: ui/app.slint
 msgid "Only your first device can link new ones."
 msgstr ""
 
-#: ui/app.slint:2951 ui/app.slint:2959
+#: ui/app.slint
 msgid "Open-source licences"
 msgstr ""
 
-#: ui/app.slint:1163
+#: ui/app.slint
 msgid "Opening…"
 msgstr ""
 
-#: ui/app.slint:2792
+#: ui/app.slint
 msgid "Opens the screen lock only. Removing a device, new recovery words and deleting your account still need your PIN."
 msgstr ""
 
-#: ui/app.slint:2367
+#: ui/app.slint
 msgid "Option 1"
 msgstr ""
 
-#: ui/app.slint:2368
+#: ui/app.slint
 msgid "Option 2"
 msgstr ""
 
-#: ui/app.slint:2369
+#: ui/app.slint
 msgid "Option 3 (optional)"
 msgstr ""
 
-#: ui/app.slint:2370
+#: ui/app.slint
 msgid "Option 4 (optional)"
 msgstr ""
 
-#: ui/app.slint:2702
+#: ui/app.slint
 msgid "Optional. A username is public, like an email address: anyone who knows it can send you a message request."
 msgstr ""
 
-#: ui/app.slint:2740
+#: ui/app.slint
 msgid "Optional. Enclave would ask for it each time it starts on this computer."
 msgstr ""
 
-#: ui/app.slint:1015
+#: ui/app.slint
 msgid "Or get your friends' shares: meet each of them, let them scan the code below, and scan the code they show you back, one in each box."
 msgstr ""
 
-#: ui/app.slint:2492
+#: ui/app.slint
 msgid "Or read these words to each other:"
 msgstr ""
 
-#: ui/app.slint:1913
+#: ui/app.slint
 msgid "Or they can look you up as"
 msgstr ""
 
-#: ui/app.slint:1147 ui/app.slint:2853
+#: ui/app.slint
 msgid "PIN"
 msgstr ""
 
-#: ui/app.slint:2768
+#: ui/app.slint
 msgid "PIN (at least 4 digits)"
 msgstr ""
 
-#: ui/app.slint:2858
+#: ui/app.slint
 msgid "PIN (at least 6)"
 msgstr ""
 
-#: ui/app.slint:2181
+#: ui/app.slint
 msgid "Pack name"
 msgstr ""
 
-#: ui/app.slint:3018
+#: ui/app.slint
 msgid "Part of {}'s recovery"
 msgstr ""
 
-#: ui/app.slint:1147 ui/app.slint:2736 ui/app.slint:2744
+#: ui/app.slint
 msgid "Passphrase"
 msgstr ""
 
-#: ui/app.slint:1112
+#: ui/app.slint
 msgid "Passphrase for this computer (optional)"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2577
+#: enclave-vault/src/engine.rs
 msgid "Passphrase removed. Anyone using this computer account can open Enclave."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2575
+#: enclave-vault/src/engine.rs
 msgid "Passphrase set. You'll type it each time Enclave starts."
 msgstr ""
 
-#: ui/app.slint:1943
+#: ui/app.slint
 msgid "Paste the invite link they sent you, or type their username."
 msgstr ""
 
-#: ui/app.slint:1943
+#: ui/app.slint
 msgid "Paste the invite link they sent you."
 msgstr ""
 
-#: ui/app.slint:2841
+#: ui/app.slint
 msgid "Path to a backup file (or leave empty for the one on your server)"
 msgstr ""
 
-#: ui/app.slint:2107
+#: ui/app.slint
 msgid "Path to the file"
 msgstr ""
 
-#: ui/app.slint:1051
+#: ui/app.slint
 msgid "Path to your backup file (or leave empty for the one on your server)"
 msgstr ""
 
-#: ui/app.slint:2184
+#: ui/app.slint
 msgid "Paths to pictures, separated by ;"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:240
+#: enclave-vault/src/engine.rs
 msgid "People can also find you by username, if you choose one in Settings. Mine is @sam@demo.enclave."
 msgstr ""
 
-#: ui/app.slint:2297
+#: ui/app.slint
 msgid "Photo"
 msgstr ""
 
-#: ui/app.slint:2267
+#: ui/app.slint
 msgid "Photo: "
 msgstr ""
 
-#: ui/app.slint:341
+#: ui/app.slint
 msgid "Photo: {}"
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "Photo: {}. "
 msgstr ""
 
-#: ui/app.slint:2258
+#: ui/app.slint
 msgid "Photos and files"
 msgstr ""
 
-#: ui/app.slint:2031
+#: ui/app.slint
 msgid "Photos and files ({})"
 msgstr ""
 
-#: ui/app.slint:1195
+#: ui/app.slint
 msgid "Pick these words"
 msgstr ""
 
-#: ui/app.slint:279
+#: ui/app.slint
 msgid "Picture: {}"
 msgstr ""
 
-#: ui/app.slint:2180
+#: ui/app.slint
 msgid "Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."
 msgstr ""
 
-#: ui/app.slint:1722
+#: ui/app.slint
 msgid "Pin"
 msgstr ""
 
-#: ui/app.slint:1723
+#: ui/app.slint
 msgid "Pin for everyone"
 msgstr ""
 
-#: ui/app.slint:2004
+#: ui/app.slint
 msgid "Pin to top"
 msgstr ""
 
-#: ui/app.slint:1587
+#: ui/app.slint
 msgid "Pinned"
 msgstr ""
 
-#: ui/app.slint:1576
+#: ui/app.slint
 msgid "Pinned message: "
 msgstr ""
 
-#: ui/app.slint:1587
+#: ui/app.slint
 msgid "Pinned · {}"
 msgstr ""
 
-#: ui/app.slint:336
+#: ui/app.slint
 msgid "Play animated picture, {}"
 msgstr ""
 
-#: ui/app.slint:335
+#: ui/app.slint
 msgid "Play · {}"
 msgstr ""
 
-#: ui/app.slint:3363
+#: ui/app.slint
 msgid "Português"
 msgstr ""
 
-#: ui/app.slint:1610
+#: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
 msgstr ""
 
-#: ui/app.slint:1214
+#: ui/app.slint
 msgid "QR code of this device's link code"
 msgstr ""
 
-#: ui/app.slint:1907
+#: ui/app.slint
 msgid "QR code of your contact code"
 msgstr ""
 
-#: ui/app.slint:2366
+#: ui/app.slint
 msgid "Question"
 msgstr ""
 
-#: ui/app.slint:1698
+#: ui/app.slint
 msgid "React {}"
 msgstr ""
 
-#: ui/app.slint:149
+#: ui/app.slint
 msgid "Read"
 msgstr ""
 
-#: ui/app.slint:2909 ui/app.slint:2983
+#: ui/app.slint
 msgid "Recovery with friends"
 msgstr ""
 
-#: ui/app.slint:2723
+#: ui/app.slint
 msgid "Recovery words"
 msgstr ""
 
-#: ui/app.slint:2814 ui/app.slint:3155 ui/app.slint:3279
+#: ui/app.slint
 msgid "Remove"
 msgstr ""
 
-#: ui/app.slint:3308
+#: ui/app.slint
 msgid "Remove device"
 msgstr ""
 
-#: ui/app.slint:2755
+#: ui/app.slint
 msgid "Remove passphrase"
 msgstr ""
 
-#: ui/app.slint:3301
+#: ui/app.slint
 msgid "Remove this device?"
 msgstr ""
 
-#: ui/app.slint:3157 ui/app.slint:3280
+#: ui/app.slint
 msgid "Remove {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2456
+#: enclave-vault/src/engine.rs
 msgid "Removed. Your contacts will stop sending to it. If it may be in someone else's hands, secure your account next."
 msgstr ""
 
-#: ui/app.slint:3308
+#: ui/app.slint
 msgid "Removing…"
 msgstr ""
 
-#: ui/app.slint:2821
+#: ui/app.slint
 msgid "Renewed every week."
 msgstr ""
 
-#: ui/app.slint:2821
+#: ui/app.slint
 msgid "Renewed every week. Last: {}."
 msgstr ""
 
-#: ui/app.slint:2822
+#: ui/app.slint
 msgid "Renewed every week. Your server sees only an encrypted file; your words alone bring it back."
 msgstr ""
 
-#: ui/app.slint:1665 ui/app.slint:2045
+#: ui/app.slint
 msgid "Report"
 msgstr ""
 
-#: ui/app.slint:1667 ui/app.slint:2047 ui/app.slint:2204
+#: ui/app.slint
 msgid "Report {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2072
+#: enclave-vault/src/engine.rs
 msgid "Reported and blocked. Their server's operator can close their account's request inbox."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2073
+#: enclave-vault/src/engine.rs
 msgid "Reported. Their server's operator can close their account's request inbox."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2136
+#: enclave-vault/src/engine.rs
 msgid "Request sent to {}. Check their security code when you meet."
 msgstr ""
 
-#: ui/app.slint:1319
+#: ui/app.slint
 msgid "Restart Enclave to use the new bridge settings"
 msgstr ""
 
-#: ui/app.slint:1074
+#: ui/app.slint
 msgid "Restore"
 msgstr ""
 
-#: ui/app.slint:996
+#: ui/app.slint
 msgid "Restore from a backup"
 msgstr ""
 
-#: ui/app.slint:1074
+#: ui/app.slint
 msgid "Restore from my server"
 msgstr ""
 
-#: ui/app.slint:1074
+#: ui/app.slint
 msgid "Restoring…"
 msgstr ""
 
-#: ui/app.slint:2575
+#: ui/app.slint
 msgid "Run by "
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3091
+#: enclave-vault/src/engine.rs
 msgid "Sam (demo)"
 msgstr ""
 
-#: ui/app.slint:1747 ui/app.slint:2302 ui/app.slint:2663
+#: ui/app.slint
 msgid "Save"
 msgstr ""
 
-#: ui/app.slint:2834
+#: ui/app.slint
 msgid "Save a backup"
 msgstr ""
 
-#: ui/app.slint:1869
+#: ui/app.slint
 msgid "Save edit"
 msgstr ""
 
-#: ui/app.slint:1372
+#: ui/app.slint
 msgid "Save your recovery words"
 msgstr ""
 
-#: ui/app.slint:1748 ui/app.slint:2303
+#: ui/app.slint
 msgid "Save {}"
 msgstr ""
 
-#: enclave-app/src/shell.rs:1069
+#: enclave-app/src/shell.rs
 msgid "Saved as {}"
 msgstr ""
 
-#: enclave-app/src/shell.rs:69
+#: enclave-app/src/shell.rs
 msgid "Saved to {}"
 msgstr ""
 
-#: ui/app.slint:2746
+#: ui/app.slint
 msgid "Saving…"
 msgstr ""
 
-#: ui/app.slint:1949
+#: ui/app.slint
 msgid "Say hello (optional)"
 msgstr ""
 
-#: ui/app.slint:1947 ui/app.slint:2417 ui/app.slint:3035 ui/app.slint:3325
+#: ui/app.slint
 msgid "Scan"
 msgstr ""
 
-#: ui/app.slint:1043
+#: ui/app.slint
 msgid "Scan a friend's code"
 msgstr ""
 
-#: ui/app.slint:3030
+#: ui/app.slint
 msgid "Scan or paste the code on their new device"
 msgstr ""
 
-#: ui/app.slint:3035
+#: ui/app.slint
 msgid "Scan the code on their new device with the camera"
 msgstr ""
 
-#: ui/app.slint:3325
+#: ui/app.slint
 msgid "Scan the new device's code with the camera"
 msgstr ""
 
-#: ui/app.slint:2417
+#: ui/app.slint
 msgid "Scan their code with the camera"
 msgstr ""
 
-#: ui/app.slint:1947
+#: ui/app.slint
 msgid "Scan their invite code with the camera"
 msgstr ""
 
-#: ui/app.slint:3547
+#: ui/app.slint
 msgid "Scanning a code"
 msgstr ""
 
-#: ui/app.slint:2758
+#: ui/app.slint
 msgid "Screen lock"
 msgstr ""
 
-#: ui/app.slint:2677
+#: ui/app.slint
 msgid "Screenshots, screen recordings and screen sharing show a blank window instead of your messages."
 msgstr ""
 
-#: ui/app.slint:2440
+#: ui/app.slint
 msgid "Seal words: {}"
 msgstr ""
 
-#: ui/controls.slint:96
+#: ui/controls.slint
 msgid "Sealed"
 msgstr ""
 
-#: ui/app.slint:1381
+#: ui/app.slint
 msgid "Search messages"
 msgstr ""
 
-#: ui/app.slint:2892 ui/app.slint:2898
+#: ui/app.slint
 msgid "Secure my account"
 msgstr ""
 
-#: ui/app.slint:2893
+#: ui/app.slint
 msgid "Securing your account. This finishes on its own."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1703
+#: enclave-vault/src/engine.rs
 msgid "Securing your account: new keys and inboxes are on their way to your contacts, groups and other devices. This finishes on its own."
 msgstr ""
 
-#: ui/app.slint:2898
+#: ui/app.slint
 msgid "Securing…"
 msgstr ""
 
-#: ui/app.slint:1564
+#: ui/app.slint
 msgid "Security code"
 msgstr ""
 
-#: ui/controls.slint:61
+#: ui/controls.slint
 msgid "Security code changed"
 msgstr ""
 
-#: ui/app.slint:1869 ui/app.slint:2120 ui/app.slint:2322
+#: ui/app.slint
 msgid "Send"
 msgstr ""
 
-#: ui/app.slint:1829 ui/app.slint:2102
+#: ui/app.slint
 msgid "Send a file"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4450
+#: enclave-vault/src/engine.rs
 msgid "Send history now"
 msgstr ""
 
-#: ui/app.slint:2247
+#: ui/app.slint
 msgid "Send report"
 msgstr ""
 
-#: ui/app.slint:1971
+#: ui/app.slint
 msgid "Send request"
 msgstr ""
 
-#: ui/app.slint:2154
+#: ui/app.slint
 msgid "Send sticker {} from {}"
 msgstr ""
 
-#: ui/app.slint:146
+#: ui/app.slint
 msgid "Sending privately"
 msgstr ""
 
-#: ui/app.slint:1971
+#: ui/app.slint
 msgid "Sending request…"
 msgstr ""
 
-#: ui/app.slint:2120 ui/app.slint:2247 ui/app.slint:2374
+#: ui/app.slint
 msgid "Sending…"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:721
+#: enclave-vault/src/engine.rs
 msgid "Sent a file"
 msgstr ""
 
-#: ui/app.slint:2746 ui/app.slint:2770 ui/app.slint:2810
+#: ui/app.slint
 msgid "Set"
 msgstr ""
 
-#: ui/app.slint:2860
+#: ui/app.slint
 msgid "Set PIN"
 msgstr ""
 
-#: ui/app.slint:2854
+#: ui/app.slint
 msgid "Set a PIN, and Enclave asks for it before removing a device, changing your recovery words or deleting your account. Someone who picks up your unlocked phone can't do those."
 msgstr ""
 
-#: ui/app.slint:2764
+#: ui/app.slint
 msgid "Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked."
 msgstr ""
 
-#: ui/app.slint:1182
+#: ui/app.slint
 msgid "Setting up your private address…"
 msgstr ""
 
-#: ui/app.slint:1256 ui/app.slint:2600
+#: ui/app.slint
 msgid "Settings"
 msgstr ""
 
-#: ui/app.slint:3010
+#: ui/app.slint
 msgid "Share"
 msgstr ""
 
-#: ui/app.slint:1040
+#: ui/app.slint
 msgid "Share 1 (the code a friend shows you)"
 msgstr ""
 
-#: ui/app.slint:1045
+#: ui/app.slint
 msgid "Share 2"
 msgstr ""
 
-#: ui/app.slint:1046
+#: ui/app.slint
 msgid "Share 3 (if needed)"
 msgstr ""
 
-#: ui/app.slint:1047
+#: ui/app.slint
 msgid "Share 4 (if needed)"
 msgstr ""
 
-#: ui/app.slint:1048
+#: ui/app.slint
 msgid "Share 5 (if needed)"
 msgstr ""
 
-#: ui/app.slint:2336
+#: ui/app.slint
 msgid "Share a contact"
 msgstr ""
 
-#: ui/app.slint:2125
+#: ui/app.slint
 msgid "Share a contact instead"
 msgstr ""
 
-#: ui/app.slint:2129 ui/app.slint:2313
+#: ui/app.slint
 msgid "Share a location"
 msgstr ""
 
-#: ui/app.slint:3529
+#: ui/app.slint
 msgid "Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards."
 msgstr ""
 
-#: ui/app.slint:3010
+#: ui/app.slint
 msgid "Share with {} ({} needed)"
 msgstr ""
 
-#: ui/app.slint:2345
+#: ui/app.slint
 msgid "Share {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4066
+#: enclave-vault/src/engine.rs
 msgid "Shared a contact"
 msgstr ""
 
-#: ui/app.slint:3010
+#: ui/app.slint
 msgid "Sharing…"
 msgstr ""
 
-#: ui/app.slint:1453 ui/app.slint:3384
+#: ui/app.slint
 msgid "Show"
 msgstr ""
 
-#: ui/app.slint:1436
+#: ui/app.slint
 msgid "Show archived, "
 msgstr ""
 
-#: ui/app.slint:2509
+#: ui/app.slint
 msgid "Show in English"
 msgstr ""
 
-#: ui/app.slint:2509
+#: ui/app.slint
 msgid "Show in my language"
 msgstr ""
 
-#: ui/app.slint:2687
+#: ui/app.slint
 msgid "Show people when you're typing, and see when they are. They only replace cover traffic, so they never use more data, and some may not arrive."
 msgstr ""
 
-#: ui/app.slint:2875
+#: ui/app.slint
 msgid "Show previews"
 msgstr ""
 
-#: ui/app.slint:3371
+#: ui/app.slint
 msgid "Show the words in {}"
 msgstr ""
 
-#: ui/app.slint:3357
+#: ui/app.slint
 msgid "Show them in:"
 msgstr ""
 
-#: ui/app.slint:2395
+#: ui/app.slint
 msgid "Show this code to the other person and scan theirs. It only works face to face: codes sent over a message or a call don't count."
 msgstr ""
 
-#: ui/app.slint:1377
+#: ui/app.slint
 msgid "Show words"
 msgstr ""
 
-#: ui/app.slint:1488
+#: ui/app.slint
 msgid "Show your code to someone next to you, or send them your invite link. Meeting in person is the strongest way to check it's really them."
 msgstr ""
 
-#: ui/app.slint:2665
+#: ui/app.slint
 msgid "Snowflake"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3426
+#: enclave-vault/src/engine.rs
 msgid "Some people in {} may be seeing different messages."
 msgstr ""
 
-#: ui/app.slint:1268
+#: ui/app.slint
 msgid "Someone is setting up your account on another device"
 msgstr ""
 
-#: ui/app.slint:298
+#: ui/app.slint
 msgid "Someone you already talk to"
 msgstr ""
 
-#: ui/app.slint:2210
+#: ui/app.slint
 msgid "Something else"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2719
+#: enclave-vault/src/engine.rs
 msgid "Something went wrong. Scan each other's codes again."
 msgstr ""
 
-#: ui/app.slint:2208
+#: ui/app.slint
 msgid "Spam"
 msgstr ""
 
-#: ui/app.slint:2603
+#: ui/app.slint
 msgid "Standard"
 msgstr ""
 
-#: ui/app.slint:1486
+#: ui/app.slint
 msgid "Start your first conversation"
 msgstr ""
 
-#: ui/app.slint:3259
+#: ui/app.slint
 msgid "Stay"
 msgstr ""
 
-#: ui/app.slint:2888
+#: ui/app.slint
 msgid "Stay connected"
 msgstr ""
 
-#: ui/app.slint:264
+#: ui/app.slint
 msgid "Sticker"
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "Sticker. "
 msgstr ""
 
-#: ui/app.slint:1839 ui/app.slint:2136
+#: ui/app.slint
 msgid "Stickers"
 msgstr ""
 
-#: ui/app.slint:1275
+#: ui/app.slint
 msgid "Stop it"
 msgstr ""
 
-#: ui/app.slint:3151
+#: ui/app.slint
 msgid "Stop {} being an admin"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2411
+#: enclave-vault/src/engine.rs
 msgid "Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them."
 msgstr ""
 
-#: ui/app.slint:980
+#: ui/app.slint
 msgid "Talk privately."
 msgstr ""
 
-#: ui/app.slint:3425
+#: ui/app.slint
 msgid "Telling your contacts and groups about your new words. This finishes on its own."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1649 enclave-vault/src/engine.rs:2532
+#: enclave-vault/src/engine.rs
 msgid "That PIN isn't right."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3019
+#: enclave-vault/src/engine.rs
 msgid "That code didn't work. Check that the new device is still showing it."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:830
+#: enclave-vault/src/engine.rs
 msgid "That code is for getting an account back. It only works there, with the friend next to you."
 msgstr ""
 
-#: enclave-vault/src/netd.rs:73
+#: enclave-vault/src/netd.rs
 msgid "That doesn't look like a whole bridge line. Copy each line in full."
 msgstr ""
 
-#: enclave-app/src/shell.rs:472
+#: enclave-app/src/shell.rs
 msgid "That file is too large to be an Enclave backup."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2363 enclave-vault/src/engine.rs:2390
+#: enclave-vault/src/engine.rs
 msgid "That file is too large to save from here yet."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2334
+#: enclave-vault/src/engine.rs
 msgid "That file is too large to send."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:825
+#: enclave-vault/src/engine.rs
 msgid "That isn't a valid username. Usernames are 3 to 32 letters, numbers or _, and start with a letter."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:831
+#: enclave-vault/src/engine.rs
 msgid "That isn't an Enclave invite link."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2697
+#: enclave-vault/src/engine.rs
 msgid "That isn't an in-person code. Ask them to open Meet in person and show theirs."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1589
+#: enclave-vault/src/engine.rs
 msgid "That isn't the code on their new device. On their device, it's under Bring your account back → Ask a friend in person."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:851
+#: enclave-vault/src/engine.rs
 msgid "That name is taken, or looks too much like one that is. Try another."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2547
+#: enclave-vault/src/engine.rs
 msgid "That passphrase doesn't open this profile."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:829
+#: enclave-vault/src/engine.rs
 msgid "That's an in-person code. It only works in Meet in person, with them next to you."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3727
+#: enclave-vault/src/engine.rs
 msgid "That's your app PIN. Choose another emergency PIN."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3683
+#: enclave-vault/src/engine.rs
 msgid "That's your emergency PIN. Choose another."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2694
+#: enclave-vault/src/engine.rs
 msgid "That's your own code. Scan the other person's."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:833
+#: enclave-vault/src/engine.rs
 msgid "That's your own invite link."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3720
+#: enclave-vault/src/engine.rs
 msgid "That's your passphrase. Choose another emergency PIN."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1451
+#: enclave-vault/src/engine.rs
 msgid "The backup on your server is deleted."
 msgstr ""
 
-#: enclave-app/src/camera.rs:100
+#: enclave-app/src/camera.rs
 msgid "The camera is busy or can't be opened."
 msgstr ""
 
-#: ui/app.slint:2540
+#: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1535
+#: enclave-vault/src/engine.rs
 msgid "The group moves to that server tomorrow."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3577
+#: enclave-vault/src/engine.rs
 msgid "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup."
 msgstr ""
 
-#: ui/app.slint:2206
+#: ui/app.slint
 msgid "The report goes to the people who run {}'s server. It doesn't say who you are. They can close the account's message requests; they can't read your conversations."
 msgstr ""
 
-#: ui/app.slint:1364
+#: ui/app.slint
 msgid "The server's public log now shows {} pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private."
 msgstr ""
 
-#: ui/app.slint:2416
+#: ui/app.slint
 msgid "Their code: enclave:meet#…"
 msgstr ""
 
-#: ui/app.slint:1779
+#: ui/app.slint
 msgid "Their new key is on hold in this group until it does. Ask them to open Enclave, and check with them another way before sharing anything private."
 msgstr ""
 
-#: ui/app.slint:1038
+#: ui/app.slint
 msgid "Their screen should show: {}. Each friend scans this same code."
 msgstr ""
 
-#: ui/app.slint:1765
+#: ui/app.slint
 msgid "Their security code changed too. Check it again before sharing anything private."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1477
+#: enclave-vault/src/engine.rs
 msgid "There's no backup on your server for these words."
 msgstr ""
 
-#: ui/app.slint:2025
+#: ui/app.slint
 msgid "These choices stay on this device. Nobody in the conversation sees them."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1488
+#: enclave-vault/src/engine.rs
 msgid "These words don't open this backup. Check them, and that it is your Enclave backup."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1487
+#: enclave-vault/src/engine.rs
 msgid "These words open the backup, but it's another account's."
 msgstr ""
 
-#: ui/app.slint:1373
+#: ui/app.slint
 msgid "They bring your account back if you lose this device."
 msgstr ""
 
-#: ui/app.slint:2234
+#: ui/app.slint
 msgid "They can't send you anything more, and they aren't told."
 msgstr ""
 
-#: ui/app.slint:1806
+#: ui/app.slint
 msgid "They can't send you messages, and they aren't told. Anything they send is dropped."
 msgstr ""
 
-#: ui/app.slint:2460
+#: ui/app.slint
 msgid "They don't"
 msgstr ""
 
-#: ui/app.slint:2456 ui/app.slint:2523
+#: ui/app.slint
 msgid "They match"
 msgstr ""
 
-#: ui/app.slint:1269
+#: ui/app.slint
 msgid "They used your recovery words. If this isn't you, stop it now. Otherwise your contacts will accept that device on {}."
 msgstr ""
 
-#: ui/app.slint:3199
+#: ui/app.slint
 msgid "They'll see new messages from now on, not what was said before they joined."
 msgstr ""
 
-#: ui/app.slint:3430
+#: ui/app.slint
 msgid "Think someone may have seen them? You can replace them with new words."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3214
+#: enclave-vault/src/engine.rs
 msgid "This build has no server to set up on. Start it with --server, or with a server list."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:828
+#: enclave-vault/src/engine.rs
 msgid "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2831
+#: enclave-vault/src/engine.rs
 msgid "This computer has no Touch ID or Windows Hello set up."
 msgstr ""
 
-#: ui/app.slint:1117
+#: ui/app.slint
 msgid "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files."
 msgstr ""
 
-#: ui/app.slint:3484
+#: ui/app.slint
 msgid "This deletes your account for everyone. Your contacts see that you closed it, you leave every group, your username is withdrawn for good, and your server deletes your inboxes. Then everything on this device is erased, and your other devices erase themselves. It can't be undone."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4437
+#: enclave-vault/src/engine.rs
 msgid "This device"
 msgstr ""
 
-#: ui/app.slint:1294
+#: ui/app.slint
 msgid "This device was removed from your account"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3452
+#: enclave-vault/src/engine.rs
 msgid "This device was removed from your account on another device. It can't get new messages."
 msgstr ""
 
-#: ui/app.slint:1358
+#: ui/app.slint
 msgid "This device's clock is wrong"
 msgstr ""
 
-#: ui/app.slint:3488
+#: ui/app.slint
 msgid "This erases your conversations and keys from this device only. Your account goes on on your other devices."
 msgstr ""
 
-#: enclave-app/src/view.rs:512
+#: enclave-app/src/view.rs
 msgid "This group's messages are kept on {}."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:835
+#: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:832
+#: enclave-vault/src/engine.rs
 msgid "This link is damaged. Ask them to send it again."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:537 enclave-vault/src/engine.rs:585
+#: enclave-vault/src/engine.rs
 msgid "This message was deleted."
 msgstr ""
 
-#: ui/app.slint:1308
+#: ui/app.slint
 msgid "This network seems to block Tor"
 msgstr ""
 
-#: enclave-app/src/shell.rs:408
+#: enclave-app/src/shell.rs
 msgid "This takes a few seconds."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3527 enclave-vault/src/engine.rs:3575
+#: enclave-vault/src/engine.rs
 msgid "Those shares don't fit together, or there aren't enough of them. Check each one, or ask one more friend."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3031
+#: enclave-vault/src/engine.rs
 msgid "Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account."
 msgstr ""
 
-#: ui/app.slint:3320
+#: ui/app.slint
 msgid "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device."
 msgstr ""
 
-#: ui/app.slint:1978 ui/app.slint:2528
+#: ui/app.slint
 msgid "Together right now? Meet in person"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2512
+#: enclave-vault/src/engine.rs
 msgid "Too many tries. Try again in {} seconds."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1647
+#: enclave-vault/src/engine.rs
 msgid "Too many wrong PINs. Try again at {}."
 msgstr ""
 
-#: ui/app.slint:2649
+#: ui/app.slint
 msgid "Tor bridges"
 msgstr ""
 
-#: ui/app.slint:1320
+#: ui/app.slint
 msgid "Tor picks up bridges when it starts."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:237
+#: enclave-vault/src/engine.rs
 msgid "Try the \"Check code\" button above. With a real person you'd compare those numbers face to face or on a call."
 msgstr ""
 
-#: ui/app.slint:2666 ui/app.slint:2800
+#: ui/app.slint
 msgid "Turn off"
 msgstr ""
 
-#: ui/app.slint:2875
+#: ui/app.slint
 msgid "Turn previews off"
 msgstr ""
 
-#: ui/app.slint:3491
+#: ui/app.slint
 msgid "Type delete to confirm"
 msgstr ""
 
-#: ui/app.slint:2315
+#: ui/app.slint
 msgid "Type or paste the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."
 msgstr ""
 
-#: ui/app.slint:1145
+#: ui/app.slint
 msgid "Type your PIN to open Enclave."
 msgstr ""
 
-#: ui/app.slint:1145
+#: ui/app.slint
 msgid "Type your passphrase to open your messages on this computer."
 msgstr ""
 
-#: ui/app.slint:2686
+#: ui/app.slint
 msgid "Typing indicators"
 msgstr ""
 
-#: ui/app.slint:1809 ui/app.slint:2051
+#: ui/app.slint
 msgid "Unblock"
 msgstr ""
 
-#: ui/app.slint:2053
+#: ui/app.slint
 msgid "Unblock "
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2160
+#: enclave-vault/src/engine.rs
 msgid "Unblocked, but couldn't send them a way to write to you yet. Check your connection."
 msgstr ""
 
-#: ui/app.slint:1163
+#: ui/app.slint
 msgid "Unlock"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2816
+#: enclave-vault/src/engine.rs
 msgid "Unlock Enclave"
 msgstr ""
 
-#: ui/app.slint:2791
+#: ui/app.slint
 msgid "Unlock with {}"
 msgstr ""
 
-#: ui/app.slint:1722
+#: ui/app.slint
 msgid "Unpin"
 msgstr ""
 
-#: ui/app.slint:1723
+#: ui/app.slint
 msgid "Unpin for everyone"
 msgstr ""
 
-#: ui/app.slint:2228
+#: ui/app.slint
 msgid "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:848
+#: enclave-vault/src/engine.rs
 msgid "Use 3 to 32 letters, numbers or _, starting with a letter."
 msgstr ""
 
-#: ui/app.slint:2890
+#: ui/app.slint
 msgid "Use Google's push"
 msgstr ""
 
-#: ui/app.slint:2889
+#: ui/app.slint
 msgid "Use UnifiedPush"
 msgstr ""
 
-#: ui/app.slint:1314
+#: ui/app.slint
 msgid "Use a bridge"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1628
+#: enclave-vault/src/engine.rs
 msgid "Use at least {} digits or letters."
 msgstr ""
 
-#: ui/app.slint:1330
+#: ui/app.slint
 msgid "Use it"
 msgstr ""
 
-#: ui/app.slint:2588
+#: ui/app.slint
 msgid "Use this server"
 msgstr ""
 
-#: ui/app.slint:1168
+#: ui/app.slint
 msgid "Use {}"
 msgstr ""
 
-#: ui/app.slint:2692
+#: ui/app.slint
 msgid "Username"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:824
+#: enclave-vault/src/engine.rs
 msgid "Usernames aren't available on that server. Ask them for their invite link instead."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:845
+#: enclave-vault/src/engine.rs
 msgid "Usernames aren't available on your server yet."
 msgstr ""
 
-#: ui/app.slint:2656
+#: ui/app.slint
 msgid "Using Snowflake: Tor traffic passes through volunteers' browsers, and looks like a video call."
 msgstr ""
 
-#: ui/app.slint:2654
+#: ui/app.slint
 msgid "Using Tor's built-in bridges."
 msgstr ""
 
-#: ui/app.slint:2657
+#: ui/app.slint
 msgid "Using your own bridges."
 msgstr ""
 
-#: ui/app.slint:2942
+#: ui/app.slint
 msgid "Version {}"
 msgstr ""
 
-#: ui/app.slint:250
+#: ui/app.slint
 msgid "Voice note"
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "Voice note, "
 msgstr ""
 
-#: ui/app.slint:2588
+#: ui/app.slint
 msgid "Vote for this server"
 msgstr ""
 
-#: ui/app.slint:3181
+#: ui/app.slint
 msgid "Vote to move the group"
 msgstr ""
 
-#: ui/controls.slint:96
+#: ui/controls.slint
 msgid "Waiting for both codes"
 msgstr ""
 
-#: ui/app.slint:493
+#: ui/app.slint
 msgid "Waiting for them to accept"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1780
+#: enclave-vault/src/engine.rs
 msgid "Waiting for them to come online before sending more."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3050
+#: enclave-vault/src/engine.rs
 msgid "Waiting for you to pick them there…"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2484
+#: enclave-vault/src/engine.rs
 msgid "Waiting for your other device…"
 msgstr ""
 
-#: ui/app.slint:1678
+#: ui/app.slint
 msgid "Waiting for {} to accept"
 msgstr ""
 
-#: ui/app.slint:1303
+#: ui/app.slint
 msgid "Waiting to join {}"
 msgstr ""
 
-#: ui/app.slint:493
+#: ui/app.slint
 msgid "Wants to talk"
 msgstr ""
 
-#: ui/app.slint:1094
+#: ui/app.slint
 msgid "What should people call you?"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:239
+#: enclave-vault/src/engine.rs
 msgid "When you're ready, share your invite link with someone you trust."
 msgstr ""
 
-#: ui/app.slint:3337
+#: ui/app.slint
 msgid "Which words does your new device show?"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1429
+#: enclave-vault/src/engine.rs
 msgid "With photos and files your backup is too large to save from here. Save it without them, or keep one on your server."
 msgstr ""
 
-#: ui/app.slint:2877
+#: ui/app.slint
 msgid "With the app closed"
 msgstr ""
 
-#: ui/app.slint:3524
+#: ui/app.slint
 msgid "Without the old words Enclave can't prove to your contacts that this was you, so each of them is asked to check your security code in person. Your conversations, groups and devices stay as they are, and your username stays with the old words."
 msgstr ""
 
-#: ui/app.slint:2503
+#: ui/app.slint
 msgid "Word {} of 10: {}"
 msgstr ""
 
-#: ui/app.slint:3402
+#: ui/app.slint
 msgid "Word {} of {}: {}"
 msgstr ""
 
-#: ui/app.slint:1228
+#: ui/app.slint
 msgid "Words: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4375
+#: enclave-vault/src/engine.rs
 msgid "Write things down for yourself"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:834
+#: enclave-vault/src/engine.rs
 msgid "You already talk to the person who sent this group link. Ask them to add you to the group."
 msgstr ""
 
-#: ui/app.slint:2465
+#: ui/app.slint
 msgid "You and {} are checked"
 msgstr ""
 
-#: ui/app.slint:2382
+#: ui/app.slint
 msgid "You and {} are checked in person"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1878
+#: enclave-vault/src/engine.rs
 msgid "You asked to join {}. You'll be in once an admin lets you in."
 msgstr ""
 
-#: ui/app.slint:1805
+#: ui/app.slint
 msgid "You blocked {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3016
+#: enclave-vault/src/engine.rs
 msgid "You can link up to 4 devices. Remove one first."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2193
+#: enclave-vault/src/engine.rs
 msgid "You can pin {} conversations. Unpin one first."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:4511
+#: enclave-vault/src/engine.rs
 msgid "You can send once your contacts accept this device. Until then they wouldn't get it."
 msgstr ""
 
-#: ui/app.slint:2359
+#: ui/app.slint
 msgid "You can share people you already talk to."
 msgstr ""
 
-#: ui/app.slint:1819
+#: ui/app.slint
 msgid "You can still read this conversation. Nothing more can be sent to them."
 msgstr ""
 
-#: ui/app.slint:1679
+#: ui/app.slint
 msgid "You can write again once they accept your request."
 msgstr ""
 
-#: ui/app.slint:1652
+#: ui/app.slint
 msgid "You haven't talked before. They can't see whether you've read this until you accept. The name is what they typed; check their security code before sharing anything private."
 msgstr ""
 
-#: ui/app.slint:1787
+#: ui/app.slint
 msgid "You hold part of {}'s recovery"
 msgstr ""
 
-#: ui/app.slint:3005
+#: ui/app.slint
 msgid "You need at least two conversations with people you trust first."
 msgstr ""
 
-#: ui/app.slint:1013
+#: ui/app.slint
 msgid "You need your backup file, and either your 24 recovery words or enough shares from the friends who hold them."
 msgstr ""
 
-#: ui/app.slint:1290
+#: ui/app.slint
 msgid "You restored your account without one of your other devices, so contacts wait until {} before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then."
 msgstr ""
 
-#: ui/app.slint:3253
+#: ui/app.slint
 msgid "You'll stop getting its messages. Someone would have to add you again."
 msgstr ""
 
-#: ui/app.slint:1120
+#: ui/app.slint
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "You: "
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3906 enclave-vault/src/engine.rs:4069 enclave-vault/src/engine.rs:4197
+#: enclave-vault/src/engine.rs
 msgid "You: {}"
 msgstr ""
 
-#: ui/app.slint:1014 ui/app.slint:2838
+#: ui/app.slint
 msgid "Your 24 recovery words"
 msgstr ""
 
-#: ui/app.slint:2894 ui/app.slint:3006 ui/app.slint:3303 ui/app.slint:3382 ui/app.slint:3492 ui/app.slint:3531
+#: ui/app.slint
 msgid "Your PIN"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1624
+#: enclave-vault/src/engine.rs
 msgid "Your PIN is set. Enclave asks for it before anything that acts for your whole account."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3564
+#: enclave-vault/src/engine.rs
 msgid "Your account is back on this device. Contacts will accept it after 72 hours unless one of your other devices stops it."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1604
+#: enclave-vault/src/engine.rs
 msgid "Your account is deleted, and everything on this device was erased."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3456
+#: enclave-vault/src/engine.rs
 msgid "Your account was deleted from another of your devices, so everything on this device was erased too."
 msgstr ""
 
-#: ui/app.slint:1350
+#: ui/app.slint
 msgid "Your account was linked to {}. If that wasn't you, remove it now: it can read your new messages."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1431
+#: enclave-vault/src/engine.rs
 msgid "Your backup is too large to save from here. Keep one on your server instead."
 msgstr ""
 
-#: ui/app.slint:1891
+#: ui/app.slint
 msgid "Your code"
 msgstr ""
 
-#: ui/app.slint:1069
+#: ui/app.slint
 msgid "Your contacts accept this device after 72 hours, unless one of your other devices stops it. That wait protects you if someone else has your words."
 msgstr ""
 
-#: ui/app.slint:1289
+#: ui/app.slint
 msgid "Your contacts are checking this device"
 msgstr ""
 
-#: ui/app.slint:1285
+#: ui/app.slint
 msgid "Your contacts won't accept this device, so it can't send. If this was you, link this device from your other one instead."
 msgstr ""
 
-#: ui/app.slint:1354 ui/app.slint:2729 ui/app.slint:3265
+#: ui/app.slint
 msgid "Your devices"
 msgstr ""
 
-#: ui/app.slint:2410
+#: ui/app.slint
 msgid "Your in-person code"
 msgstr ""
 
-#: ui/app.slint:2539
+#: ui/app.slint
 msgid "Your inboxes, username and invite links move with you. Contacts and groups are told as they come online; keep Enclave running until the move is done."
 msgstr ""
 
-#: enclave-app/src/shell.rs:360
+#: enclave-app/src/shell.rs
 msgid "Your invite link (it works for one person, for 7 days): {}"
 msgstr ""
 
-#: ui/app.slint:1994
+#: ui/app.slint
 msgid "Your messages carry your signature. Anyone who gets a copy can prove you wrote them."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2865
+#: enclave-vault/src/engine.rs
 msgid "Your messages from your other device are here."
 msgstr ""
 
-#: ui/app.slint:2537
+#: ui/app.slint
 msgid "Your messages wait on this server until your devices collect them. It sees only sealed units of one size: it can't read them or tell who sent them. You can move later."
 msgstr ""
 
-#: ui/app.slint:1096
+#: ui/app.slint
 msgid "Your name"
 msgstr ""
 
-#: ui/app.slint:1199
+#: ui/app.slint
 msgid "Your other device now shows four sets of words. Pick the set that matches these."
 msgstr ""
 
-#: ui/app.slint:3067
+#: ui/app.slint
 msgid "Your part of {}'s recovery, sealed for their new device"
 msgstr ""
 
-#: ui/app.slint:2880
+#: ui/app.slint
 msgid "Your push service (UnifiedPush) wakes Enclave when something arrives. It learns only that something arrived, not what or from whom."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1556
+#: enclave-vault/src/engine.rs
 msgid "Your recovery is shared. Any {} of these {} people can help you get your account back."
 msgstr ""
 
-#: ui/app.slint:3349
+#: ui/app.slint
 msgid "Your recovery words"
 msgstr ""
 
-#: ui/app.slint:3442
+#: ui/app.slint
 msgid "Your recovery words are on the device you set Enclave up on first, not this one. Lost the words and that device too? You can make new words here."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1564
+#: enclave-vault/src/engine.rs
 msgid "Your recovery words changed, so the share you took back stops working. Write the new words down."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3997 ui/app.slint:2637
+#: enclave-vault/src/engine.rs ui/app.slint
 msgid "Your server"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:3567
+#: enclave-vault/src/engine.rs
 msgid "Your server has no backup for these words. Check the words, or restore from a backup file."
 msgstr ""
 
-#: ui/app.slint:1056 ui/app.slint:1104
+#: ui/app.slint
 msgid "Your server: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:2607
+#: enclave-vault/src/engine.rs
 msgid "Your unused invite links no longer work."
 msgstr ""
 
-#: ui/app.slint:1363
+#: ui/app.slint
 msgid "Your username no longer leads to you"
 msgstr ""
 
-#: ui/app.slint:2698
+#: ui/app.slint
 msgid "Your username: {}"
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1536
+#: enclave-vault/src/engine.rs
 msgid "Your vote is in. The group moves once more than half of its admins vote for the same server."
 msgstr ""
 
-#: ui/app.slint:3378
+#: ui/app.slint
 msgid "Your words are locked with your PIN."
 msgstr ""
 
-#: enclave-vault/src/engine.rs:1485
+#: enclave-vault/src/engine.rs
 msgid "Your words open this backup{}: {} contacts and {} messages and notes. It would bring your account back."
 msgstr ""
 
-#: ui/app.slint:1946
+#: ui/app.slint
 msgid "enclave:add#…"
 msgstr ""
 
-#: ui/app.slint:1946
+#: ui/app.slint
 msgid "enclave:add#…  or  @name@server"
 msgstr ""
 
-#: ui/app.slint:3324
+#: ui/app.slint
 msgid "enclave:link#…"
 msgstr ""
 
-#: ui/app.slint:210
+#: ui/app.slint
 msgid "length unknown"
 msgstr ""
 
-#: ui/app.slint:2659
+#: ui/app.slint
 msgid "obfs4 … cert=… iat-mode=0"
 msgstr ""
 
-#: ui/app.slint:1519
+#: ui/app.slint
 msgid "typing…"
 msgstr ""
 
-#: ui/app.slint:2297
+#: ui/app.slint
 msgid "you sent it"
 msgstr ""
 
-#: ui/app.slint:3365
+#: ui/app.slint
 msgid "zh-Hans"
 msgstr ""
 
-#: ui/app.slint:3365
+#: ui/app.slint
 msgid "zh-Hant"
 msgstr ""
 
-#: ui/app.slint:3021
+#: ui/app.slint
 msgid "{} asked for your part of their recovery. Only continue if you're with {} right now."
 msgstr ""
 
-#: ui/app.slint:1762
+#: ui/app.slint
 msgid "{} changed their recovery words"
 msgstr ""
 
-#: ui/app.slint:1778
+#: ui/app.slint
 msgid "{} changed their recovery words, but this device didn't hear it from them"
 msgstr ""
 
-#: ui/app.slint:1818
+#: ui/app.slint
 msgid "{} closed their account"
 msgstr ""
 
-#: ui/app.slint:2104
+#: ui/app.slint
 msgid "{} downloads them"
 msgstr ""
 
-#: ui/app.slint:1345
+#: ui/app.slint
 msgid "{} gave you and one of your contacts two different signed versions of its public list of usernames. Someone may be trying to send you, or them, to the wrong person. Check security codes, ideally in person, before sharing anything private."
 msgstr ""
 
-#: ui/app.slint:2338
+#: ui/app.slint
 msgid "{} gets their code and can send them a request. Nobody is told who shared it."
 msgstr ""
 
-#: ui/app.slint:1932
+#: ui/app.slint
 msgid "{} invite links haven't been used yet."
 msgstr ""
 
-#: ui/app.slint:1523
+#: ui/app.slint
 msgid "{} is typing"
 msgstr ""
 
-#: ui/app.slint:3132
+#: ui/app.slint
 msgid "{} people, you included. Everyone in the group can see who else is in it."
 msgstr ""
 
-#: ui/app.slint:1576
+#: ui/app.slint
 msgid "{} pinned messages. Latest: "
 msgstr ""
 
-#: ui/app.slint:1651
+#: ui/app.slint
 msgid "{} wants to talk"
 msgstr ""
 
-#: ui/app.slint:1763
+#: ui/app.slint
 msgid "{}'s account moved to a new key"
 msgstr ""
 
-#: ui/app.slint:2444
+#: ui/app.slint
 msgid "{}'s phone should show the same three words. If it does, you scanned each other and nobody else."
 msgstr ""
 
-#: ui/app.slint:2554
+#: ui/app.slint
 msgid "{}, run by {}"
 msgstr ""
 
-#: ui/app.slint:3363
+#: ui/app.slint
 msgid "Čeština"
 msgstr ""

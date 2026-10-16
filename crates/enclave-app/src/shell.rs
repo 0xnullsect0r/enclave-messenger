@@ -94,7 +94,9 @@ fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
         .name("enclave-notify".into())
         .spawn(move || {
             let mut note = notify_rust::Notification::new();
-            note.appname("Enclave").summary(&n.title).body(&n.body);
+            note.appname("Enclave")
+                .summary(&n.title)
+                .body(&crate::format::preview(&n.body));
             #[cfg(windows)]
             note.app_id(NOTIFY_APP_ID);
             #[cfg(all(unix, not(target_os = "macos")))]
@@ -1077,7 +1079,7 @@ mod phone {
 
     /// A notification (the platform skips it while the app is in front).
     pub fn notify(_ui: &AppWindow, n: enclave_ipc::Notice) {
-        p::notify(&n.title, &n.body);
+        p::notify(&n.title, &crate::format::preview(&n.body));
     }
 
     /// Scan a code with the back camera into the field `target` names.
