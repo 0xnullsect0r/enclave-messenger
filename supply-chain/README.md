@@ -1,7 +1,8 @@
 # Supply chain: `cargo vet`
 
-`cargo vet --locked` runs in CI (job `cargo-vet`). Every crate in
-`Cargo.lock` is either
+`cargo vet --locked` runs in CI (job `cargo-vet`) for this workspace and
+for `nym/` (its own `nym/supply-chain/`, same imports). Every crate in
+each `Cargo.lock` is either
 
 * **audited**: covered by an audit imported from Mozilla, Google, the
   Bytecode Alliance, Embark, ISRG or Zcash (`config.toml` `[imports]`,
@@ -29,6 +30,7 @@ bytes, or make randomness:
 | TLS and certificates | `rustls`, `rustls-webpki`, `rustls-pki-types`, `rustls-platform-verifier`, `ring`, `tokio-rustls`, `hyper-rustls`, `x509-parser`, `der`, `der-parser`, `spki`, `pkcs8`, `sec1`, `pem` |
 | Parsers of untrusted input | `prost`, `prost-derive`, `png`, `gif`, `zune-jpeg`, `image-webp`, `image`, `rav1d`, `opus-decoder`, `opus-rs`, `redb`, `httparse`, `h2`, `hyper`, `serde_json`, `toml`, `url`, `bip39` |
 | Tor (arti) | every `tor-*` and `arti-client` crate (arti 0.46) |
+| Nym (`nym/` only) | every `nym-*` crate, including the patched ones in `third_party/` (`nym-client-core`, `nym-gateway-client`, `nym-gateway-requests`, `nym-credential-storage`), `sphinx-packet`, `x25519-dalek`, `curve25519-dalek` |
 
 `cargo vet suggest` lists the cheapest next audits (smallest diffs from
 an already audited version). The vendored patches in `third_party/`

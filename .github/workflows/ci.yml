@@ -99,6 +99,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: cargo install --locked cargo-vet@0.10.2
       - run: cargo vet --locked
+      - run: cargo vet --locked
+        working-directory: nym
 
   deny-ios:
     name: cargo-deny (iOS licences)
