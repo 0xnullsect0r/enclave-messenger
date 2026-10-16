@@ -199,7 +199,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -544,8 +544,8 @@ component Bubble inherits HorizontalLayout {
             if root.msg.sticker && !root.msg.outgoing && !root.msg.pack-added && !root.msg.deleted: HorizontalLayout {
                 alignment: start;
                 QuietButton {
-                    text: @tr("Add pack");
-                    accessible-label: @tr("Add this sticker pack");
+                    text: @tr("See the pack");
+                    accessible-label: @tr("See this sticker pack before adding it");
                     clicked => { root.add-pack(); }
                 }
             }
@@ -1196,6 +1196,13 @@ export component AppWindow inherits Window {
     callback share-location(string, string, string, string);
     callback report(string, int, bool, bool, bool);
     callback add-pack(string, string);
+    // Stickers: remove an added pack; look at a pack before adding it.
+    callback remove-pack(string);
+    callback preview-pack(string, string);
+    in-out property <string> pack-conversation;
+    in-out property <string> pack-seq;
+    in property <string> pack-preview-title;
+    in property <[StickerCell]> pack-preview-cells;
     callback send-sticker(string, string, int);
     callback load-stickers();
     in property <bool> typing-setting;
@@ -2414,7 +2421,12 @@ export component AppWindow inherits Window {
                                 root.map-label = m.location-label;
                                 root.sheet = Sheet.open-map;
                             }
-                            add-pack => { root.add-pack(root.current-id, m.seq); }
+                            add-pack => {
+                                root.pack-conversation = root.current-id;
+                                root.pack-seq = m.seq;
+                                root.preview-pack(root.current-id, m.seq);
+                                root.sheet = Sheet.pack-preview;
+                            }
                             play-clip => { root.play-clip(root.current-id, m.seq); }
                             open-view-once => {
                                 root.view-once-seq = m.seq;
@@ -3248,7 +3260,15 @@ export component AppWindow inherits Window {
         if root.sticker-packs.length == 0: Secondary { text: @tr("No sticker packs yet. Make one from your own pictures, or add one from a sticker someone sends you."); }
         for p in root.sticker-packs: VerticalLayout {
             spacing: Tokens.space-xs;
-            Caption { text: p.title; font-weight: 600; }
+            HorizontalLayout {
+                spacing: Tokens.space-s;
+                Caption { text: p.title; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                QuietButton {
+                    text: @tr("Remove");
+                    accessible-label: @tr("Remove the pack {} from this device", p.title);
+                    clicked => { root.remove-pack(p.id); }
+                }
+            }
             Flickable {
                 height: 72px;
                 content-width: p.count * 76px;
@@ -3287,7 +3307,7 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.new-pack: SheetFrame {
         title: @tr("Make a sticker pack");
         close => { root.sheet = Sheet.stickers; }
-        Secondary { text: @tr("Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."); }
+        Secondary { text: @tr("Pictures are redrawn small, without their metadata, and sealed into one pack; a GIF becomes a short animation. People you send a sticker to can add the whole pack."); }
         Field { placeholder: @tr("Pack name"); text <=> root.pack-title; }
         HorizontalLayout {
             spacing: Tokens.space-s;
@@ -4793,6 +4813,41 @@ export component AppWindow inherits Window {
                 outlined: true;
                 clicked => { root.open-sheet(Sheet.change-words); }
             }
+        }
+    }
+
+    if root.sheet == Sheet.pack-preview: SheetFrame {
+        title: root.pack-preview-title != "" ? root.pack-preview-title : @tr("Sticker pack");
+        close => { root.sheet = Sheet.none; }
+        Secondary {
+            text: root.pack-preview-cells.length == 0 ? (root.busy ? @tr("Getting the pack…") : @tr("Enclave couldn't open this pack."))
+                : @tr("{} stickers. Adding the pack keeps it on this device, sealed, for you to send from.", root.pack-preview-cells.length);
+            wrap: word-wrap;
+        }
+        Flickable {
+            height: 80px;
+            content-width: root.pack-preview-cells.length * 76px;
+            HorizontalLayout {
+                spacing: 4px;
+                for c in root.pack-preview-cells: Rectangle {
+                    width: 72px;
+                    height: 72px;
+                    accessible-role: image;
+                    accessible-label: @tr("Sticker {}", c.index + 1);
+                    if c.has-image: Image { source: c.image; width: 64px; height: 64px; image-fit: contain; }
+                    if !c.has-image: Caption { text: c.index + 1; }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            PrimaryButton {
+                text: @tr("Add pack");
+                enabled: root.pack-preview-cells.length > 0;
+                clicked => { root.add-pack(root.pack-conversation, root.pack-seq); root.sheet = Sheet.none; }
+            }
+            QuietButton { text: @tr("Not now"); clicked => { root.sheet = Sheet.none; } }
         }
     }
 

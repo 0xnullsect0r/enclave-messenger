@@ -198,10 +198,6 @@ msgid "Add someone"
 msgstr "[Ádd sóméóñé····]"
 
 #: ui/app.slint
-msgid "Add this sticker pack"
-msgstr "[Ádd thís stíçkér páçk········]"
-
-#: ui/app.slint
 msgid "Add to group"
 msgstr "[Ádd tó gróúp····]"
 
@@ -850,6 +846,10 @@ msgid "Couldn't forward the file yet. Check your connection."
 msgstr "[Çóúldñ't fórwárd thé fílé ýét. Çhéçk ýóúr çóññéçtíóñ.·····················]"
 
 #: enclave-vault/src/engine.rs
+msgid "Couldn't get that pack. Check your connection."
+msgstr "[Çóúldñ't gét thát páçk. Çhéçk ýóúr çóññéçtíóñ.··················]"
+
+#: enclave-vault/src/engine.rs
 msgid "Couldn't leave the group. Check your connection."
 msgstr "[Çóúldñ't léávé thé gróúp. Çhéçk ýóúr çóññéçtíóñ.···················]"
 
@@ -968,6 +968,10 @@ msgstr "[Çóúldñ't réçórd······]"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't remove that device."
 msgstr "[Çóúldñ't rémóvé thát dévíçé.···········]"
+
+#: enclave-vault/src/engine.rs
+msgid "Couldn't remove that pack."
+msgstr "[Çóúldñ't rémóvé thát páçk.··········]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't remove them. Check your connection."
@@ -1273,6 +1277,10 @@ msgstr "[Éñçlávé çóúldñ't çóñfírm thát thís úsérñámé ís gé
 msgid "Enclave couldn't open this one."
 msgstr "[Éñçlávé çóúldñ't ópéñ thís óñé.············]"
 
+#: ui/app.slint
+msgid "Enclave couldn't open this pack."
+msgstr "[Éñçlávé çóúldñ't ópéñ thís páçk.············]"
+
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
 msgstr "[Éñçlávé çóúldñ't réád thát GÍF, só ít wásñ't séñt. Trý áñóthér fílé.···························]"
@@ -1496,6 +1504,10 @@ msgstr "[Gét stártéd····]"
 #: ui/app.slint
 msgid "Getting it ready…"
 msgstr "[Géttíñg ít réádý…······]"
+
+#: ui/app.slint
+msgid "Getting the pack…"
+msgstr "[Géttíñg thé páçk…······]"
 
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
@@ -2138,6 +2150,10 @@ msgid "On the record: messages carry their sender's signature. Admins can change
 msgstr "[Óñ thé réçórd: mésságés çárrý théír séñdér's sígñátúré. Ádmíñs çáñ çháñgé thís.·······························]"
 
 #: enclave-vault/src/engine.rs
+msgid "One of those animations is too long for a sticker, so no pack was made."
+msgstr "[Óñé óf thósé áñímátíóñs ís tóó lóñg fór á stíçkér, só ñó páçk wás mádé.····························]"
+
+#: enclave-vault/src/engine.rs
 msgid "One of those files isn't a picture Enclave can read, so no pack was made."
 msgstr "[Óñé óf thósé fílés ísñ't á píçtúré Éñçlávé çáñ réád, só ñó páçk wás mádé.·····························]"
 
@@ -2406,8 +2422,8 @@ msgid "Picture: {}. Opens full size."
 msgstr "[Píçtúré: ···{}. Ópéñs fúll sízé.·······]"
 
 #: ui/app.slint
-msgid "Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."
-msgstr "[Píçtúrés áré rédráwñ smáll, wíthóút théír métádátá, áñd séáléd íñtó óñé páçk. Péóplé ýóú séñd á stíçkér tó çáñ ádd thé whólé páçk.····················································]"
+msgid "Pictures are redrawn small, without their metadata, and sealed into one pack; a GIF becomes a short animation. People you send a sticker to can add the whole pack."
+msgstr "[Píçtúrés áré rédráwñ smáll, wíthóút théír métádátá, áñd séáléd íñtó óñé páçk; á GÍF béçómés á shórt áñímátíóñ. Péóplé ýóú séñd á stíçkér tó çáñ ádd thé whólé páçk.·································································]"
 
 #: ui/app.slint
 msgid "Pin"
@@ -2526,12 +2542,20 @@ msgid "Remove passphrase"
 msgstr "[Rémóvé pássphrásé······]"
 
 #: ui/app.slint
+msgid "Remove the pack {} from this device"
+msgstr "[Rémóvé thé páçk ······{} fróm thís dévíçé······]"
+
+#: ui/app.slint
 msgid "Remove this device?"
 msgstr "[Rémóvé thís dévíçé?·······]"
 
 #: ui/app.slint
 msgid "Remove {}"
 msgstr "[Rémóvé ··{}]"
+
+#: enclave-vault/src/engine.rs
+msgid "Removed the pack {} from this device."
+msgstr "[Rémóvéd thé páçk ······{} fróm thís dévíçé.·······]"
 
 #: enclave-vault/src/engine.rs
 msgid "Removed. Your contacts will stop sending to it. If it may be in someone else's hands, secure your account next."
@@ -2732,6 +2756,14 @@ msgstr "[Séçúrítý çódé·····]"
 #: ui/controls.slint
 msgid "Security code changed"
 msgstr "[Séçúrítý çódé çháñgéd········]"
+
+#: ui/app.slint
+msgid "See the pack"
+msgstr "[Séé thé páçk····]"
+
+#: ui/app.slint
+msgid "See this sticker pack before adding it"
+msgstr "[Séé thís stíçkér páçk béfóré áddíñg ít···············]"
 
 #: ui/app.slint
 msgid "Send"
@@ -2968,6 +3000,14 @@ msgstr "[Stáý çóññéçtéd·····]"
 #: ui/app.slint
 msgid "Sticker"
 msgstr "[Stíçkér··]"
+
+#: ui/app.slint
+msgid "Sticker pack"
+msgstr "[Stíçkér páçk····]"
+
+#: ui/app.slint
+msgid "Sticker {}"
+msgstr "[Stíçkér ···{}]"
 
 #: ui/app.slint
 msgid "Sticker. "
@@ -4120,6 +4160,10 @@ msgstr "[{} píññéd mésságés. Látést: ··········]"
 #: ui/app.slint
 msgid "{} reacted {}"
 msgstr "[{} réáçtéd ···{}]"
+
+#: ui/app.slint
+msgid "{} stickers. Adding the pack keeps it on this device, sealed, for you to send from."
+msgstr "[{} stíçkérs. Áddíñg thé páçk kééps ít óñ thís dévíçé, séáléd, fór ýóú tó séñd fróm.································]"
 
 #: ui/app.slint
 msgid "{} typing"

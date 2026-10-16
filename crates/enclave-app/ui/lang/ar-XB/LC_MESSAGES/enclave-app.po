@@ -198,10 +198,6 @@ msgid "Add someone"
 msgstr "‫Add someone‬"
 
 #: ui/app.slint
-msgid "Add this sticker pack"
-msgstr "‫Add this sticker pack‬"
-
-#: ui/app.slint
 msgid "Add to group"
 msgstr "‫Add to group‬"
 
@@ -850,6 +846,10 @@ msgid "Couldn't forward the file yet. Check your connection."
 msgstr "‫Couldn't forward the file yet. Check your connection.‬"
 
 #: enclave-vault/src/engine.rs
+msgid "Couldn't get that pack. Check your connection."
+msgstr "‫Couldn't get that pack. Check your connection.‬"
+
+#: enclave-vault/src/engine.rs
 msgid "Couldn't leave the group. Check your connection."
 msgstr "‫Couldn't leave the group. Check your connection.‬"
 
@@ -968,6 +968,10 @@ msgstr "‫Couldn't record‬"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't remove that device."
 msgstr "‫Couldn't remove that device.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Couldn't remove that pack."
+msgstr "‫Couldn't remove that pack.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't remove them. Check your connection."
@@ -1273,6 +1277,10 @@ msgstr "‫Enclave couldn't confirm that this username is genuine, so it didn't 
 msgid "Enclave couldn't open this one."
 msgstr "‫Enclave couldn't open this one.‬"
 
+#: ui/app.slint
+msgid "Enclave couldn't open this pack."
+msgstr "‫Enclave couldn't open this pack.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
 msgstr "‫Enclave couldn't read that GIF, so it wasn't sent. Try another file.‬"
@@ -1496,6 +1504,10 @@ msgstr "‫Get started‬"
 #: ui/app.slint
 msgid "Getting it ready…"
 msgstr "‫Getting it ready…‬"
+
+#: ui/app.slint
+msgid "Getting the pack…"
+msgstr "‫Getting the pack…‬"
 
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
@@ -2138,6 +2150,10 @@ msgid "On the record: messages carry their sender's signature. Admins can change
 msgstr "‫On the record: messages carry their sender's signature. Admins can change this.‬"
 
 #: enclave-vault/src/engine.rs
+msgid "One of those animations is too long for a sticker, so no pack was made."
+msgstr "‫One of those animations is too long for a sticker, so no pack was made.‬"
+
+#: enclave-vault/src/engine.rs
 msgid "One of those files isn't a picture Enclave can read, so no pack was made."
 msgstr "‫One of those files isn't a picture Enclave can read, so no pack was made.‬"
 
@@ -2406,8 +2422,8 @@ msgid "Picture: {}. Opens full size."
 msgstr "‫Picture: ‬{}‫. Opens full size.‬"
 
 #: ui/app.slint
-msgid "Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack."
-msgstr "‫Pictures are redrawn small, without their metadata, and sealed into one pack. People you send a sticker to can add the whole pack.‬"
+msgid "Pictures are redrawn small, without their metadata, and sealed into one pack; a GIF becomes a short animation. People you send a sticker to can add the whole pack."
+msgstr "‫Pictures are redrawn small, without their metadata, and sealed into one pack; a GIF becomes a short animation. People you send a sticker to can add the whole pack.‬"
 
 #: ui/app.slint
 msgid "Pin"
@@ -2526,12 +2542,20 @@ msgid "Remove passphrase"
 msgstr "‫Remove passphrase‬"
 
 #: ui/app.slint
+msgid "Remove the pack {} from this device"
+msgstr "‫Remove the pack ‬{}‫ from this device‬"
+
+#: ui/app.slint
 msgid "Remove this device?"
 msgstr "‫Remove this device?‬"
 
 #: ui/app.slint
 msgid "Remove {}"
 msgstr "‫Remove ‬{}"
+
+#: enclave-vault/src/engine.rs
+msgid "Removed the pack {} from this device."
+msgstr "‫Removed the pack ‬{}‫ from this device.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Removed. Your contacts will stop sending to it. If it may be in someone else's hands, secure your account next."
@@ -2732,6 +2756,14 @@ msgstr "‫Security code‬"
 #: ui/controls.slint
 msgid "Security code changed"
 msgstr "‫Security code changed‬"
+
+#: ui/app.slint
+msgid "See the pack"
+msgstr "‫See the pack‬"
+
+#: ui/app.slint
+msgid "See this sticker pack before adding it"
+msgstr "‫See this sticker pack before adding it‬"
 
 #: ui/app.slint
 msgid "Send"
@@ -2968,6 +3000,14 @@ msgstr "‫Stay connected‬"
 #: ui/app.slint
 msgid "Sticker"
 msgstr "‫Sticker‬"
+
+#: ui/app.slint
+msgid "Sticker pack"
+msgstr "‫Sticker pack‬"
+
+#: ui/app.slint
+msgid "Sticker {}"
+msgstr "‫Sticker ‬{}"
 
 #: ui/app.slint
 msgid "Sticker. "
@@ -4120,6 +4160,10 @@ msgstr "{}‫ pinned messages. Latest: ‬"
 #: ui/app.slint
 msgid "{} reacted {}"
 msgstr "{}‫ reacted ‬{}"
+
+#: ui/app.slint
+msgid "{} stickers. Adding the pack keeps it on this device, sealed, for you to send from."
+msgstr "{}‫ stickers. Adding the pack keeps it on this device, sealed, for you to send from.‬"
 
 #: ui/app.slint
 msgid "{} typing"

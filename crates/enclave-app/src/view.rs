@@ -37,6 +37,21 @@ pub fn apply_clip(ui: &AppWindow, c: ClipFrames) {
     ui.set_player_frames(ModelRc::from(Rc::new(VecModel::from(frames))));
 }
 
+/// A sticker pack before adding it: its title, and a cell per sticker
+/// for the pictures that follow.
+pub fn apply_pack_preview(ui: &AppWindow, title: &str, n: u32) {
+    ui.set_pack_preview_title(title.into());
+    let cells: Vec<crate::StickerCell> = (0..n.min(64))
+        .map(|i| crate::StickerCell {
+            pack: enclave_ipc::PACK_PREVIEW.into(),
+            index: i as i32,
+            has_image: false,
+            image: Image::default(),
+        })
+        .collect();
+    ui.set_pack_preview_cells(ModelRc::from(Rc::new(VecModel::from(cells))));
+}
+
 pub fn apply_preview(ui: &AppWindow, p: Preview) {
     let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
         &p.pixels, p.width, p.height,
@@ -45,6 +60,15 @@ pub fn apply_preview(ui: &AppWindow, p: Preview) {
         c.borrow_mut()
             .insert((p.conversation.clone(), p.seq), img.clone())
     });
+    if p.conversation == enclave_ipc::PACK_PREVIEW {
+        let model = ui.get_pack_preview_cells();
+        if let Some(mut c) = usize::try_from(p.seq).ok().and_then(|i| model.row_data(i)) {
+            c.image = img;
+            c.has_image = true;
+            model.set_row_data(p.seq as usize, c);
+        }
+        return;
+    }
     if p.conversation.starts_with("stickers/") {
         let model = ui.get_sticker_cells();
         for i in 0..model.row_count() {

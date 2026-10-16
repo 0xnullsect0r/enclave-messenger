@@ -1022,6 +1022,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         ui.set_sheet(Sheet::Add);
                         let _ = ui.show();
                     }
+                    Out::PackPreview(title, n) => view::apply_pack_preview(&ui, &title, n),
                     Out::Gallery(rows) => {
                         let rows: Vec<crate::GalleryRow> = rows
                             .into_iter()
@@ -1483,6 +1484,20 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     ui.on_add_pack(move |id, seq| {
         if let Ok(seq) = seq.parse() {
             let _ = t.send(Cmd::AddPack(id.to_string(), seq));
+        }
+    });
+    let t = tx.clone();
+    ui.on_remove_pack(move |id| {
+        let _ = t.send(Cmd::RemovePack(id.to_string()));
+    });
+    let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_preview_pack(move |id, seq| {
+        if let Some(ui) = w.upgrade() {
+            ui.set_pack_preview_cells(slint::ModelRc::default());
+        }
+        if let Ok(seq) = seq.parse() {
+            let _ = t.send(Cmd::PreviewPack(id.to_string(), seq));
         }
     });
     let t = tx.clone();

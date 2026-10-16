@@ -349,6 +349,8 @@ fn cmds() -> Vec<Cmd> {
         Cmd::SendViewOnce("ab".into(), "now.jpg".into(), "".into()),
         Cmd::OpenViewOnce("ab".into(), 5),
         Cmd::AllFiles,
+        Cmd::RemovePack("0011".into()),
+        Cmd::PreviewPack("ab".into(), 6),
         Cmd::Transcribe("ab".into(), 3),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
@@ -423,6 +425,7 @@ fn round_trips() {
         Out::OpenLink("enclave:join#AAAA".into()),
         Out::FilePart("big.bin".into(), vec![7; 4096], true),
         Out::OpenNext,
+        Out::PackPreview("Cats".into(), 12),
         Out::Gallery(vec![enclave_ipc::GalleryRow {
             conversation: "g01".into(),
             name: "Trip".into(),

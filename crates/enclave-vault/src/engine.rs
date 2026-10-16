@@ -783,6 +783,23 @@ const VIEWER_SIDE: u16 = 1600;
 
 /// Decode a picture's preview, or a clip's poster (and note its
 /// length), and send it to the window.
+/// A sticker's picture in the picker or a pack preview: a picture's
+/// thumbnail, or an animated sticker's first frame.
+async fn sticker_thumbnail(
+    media: &crate::media::Media,
+    bytes: Vec<u8>,
+) -> Option<enclave_media::Rgba> {
+    if enclave_media::video::is_clip(&bytes) {
+        media
+            .clip_poster(bytes, PICKER_SIDE)
+            .await
+            .ok()
+            .map(|(t, _)| t)
+    } else {
+        media.thumbnail(bytes, PICKER_SIDE).await.ok()
+    }
+}
+
 async fn send_preview(
     media: &crate::media::Media,
     clips: &mut HashMap<(String, u64), u32>,
@@ -1375,6 +1392,25 @@ impl Engine {
         if voice {
             self.push();
         }
+    }
+
+    /// The attachment of message `seq` in conversation `id` (1:1 or group).
+    fn message_attachment(&self, id: &str, seq: u64) -> Option<enclave_core::files::Attachment> {
+        let c = self.client.as_ref()?;
+        if let Some(gid) = self.group_of(id) {
+            return c
+                .group_messages(&gid)
+                .ok()?
+                .into_iter()
+                .find(|m| m.seq == seq)?
+                .attachment;
+        }
+        let root = self.root_of(id)?;
+        c.messages(&root)
+            .ok()?
+            .into_iter()
+            .find(|m| m.seq == seq)?
+            .attachment
     }
 
     /// A conversation's attachment (1:1 or group), from the local copy or
@@ -2226,9 +2262,23 @@ impl Engine {
                     .into_iter()
                     .take(enclave_core::client::MAX_STICKERS)
                 {
-                    // Re-encoded like any picture, and small.
-                    match self.media.shrink(p, STICKER_SIDE).await {
-                        Ok(s) => stickers.push(s.bytes),
+                    // A GIF becomes a short AV1 clip (an animated sticker);
+                    // anything else is re-encoded like any picture, and
+                    // small.
+                    let made = if enclave_media::video::is_gif(&p) {
+                        self.media.clip(p).await.map(|(clip, ..)| clip)
+                    } else {
+                        self.media.shrink(p, STICKER_SIDE).await.map(|s| s.bytes)
+                    };
+                    match made {
+                        Ok(b) if b.len() <= enclave_core::client::MAX_STICKER_BYTES => {
+                            stickers.push(b)
+                        }
+                        Ok(_) => {
+                            self.status = "One of those animations is too long for a sticker, so no pack was made.".into();
+                            self.busy = false;
+                            return;
+                        }
                         Err(_) => {
                             self.status = "One of those files isn't a picture Enclave can read, so no pack was made.".into();
                             self.busy = false;
@@ -2309,7 +2359,7 @@ impl Engine {
                             continue;
                         };
                         self.previews.insert((conv.clone(), u64::from(i)));
-                        if let Ok(t) = self.media.thumbnail(bytes, PICKER_SIDE).await {
+                        if let Some(t) = sticker_thumbnail(&self.media, bytes).await {
                             let _ = self.out.send(Out::Preview(enclave_ipc::Preview {
                                 conversation: conv.clone(),
                                 seq: u64::from(i),
@@ -2320,6 +2370,55 @@ impl Engine {
                         }
                     }
                 }
+            }
+            Cmd::RemovePack(pack) => {
+                let Some(c) = self.client.as_mut() else {
+                    return;
+                };
+                let Some(p) = c
+                    .sticker_packs()
+                    .into_iter()
+                    .find(|p| hex_short(&p.key) == pack)
+                else {
+                    return;
+                };
+                self.status = match c.remove_sticker_pack(&p.key) {
+                    Ok(()) => format!("Removed the pack {} from this device.", p.title),
+                    Err(_) => "Couldn't remove that pack.".into(),
+                };
+                let conv = format!("stickers/{pack}");
+                self.previews.retain(|(c, _)| *c != conv);
+            }
+            Cmd::PreviewPack(id, seq) => {
+                self.busy = true;
+                self.push();
+                let att = self.message_attachment(&id, seq);
+                let pack = match (att, self.client.as_mut()) {
+                    (Some(att), Some(c)) => c.fetch_sticker_pack(&att).await.ok(),
+                    _ => None,
+                };
+                match pack {
+                    Some(p) => {
+                        let _ = self
+                            .out
+                            .send(Out::PackPreview(p.title.clone(), p.stickers.len() as u32));
+                        for (i, bytes) in p.stickers.into_iter().enumerate() {
+                            if let Some(t) = sticker_thumbnail(&self.media, bytes).await {
+                                let _ = self.out.send(Out::Preview(enclave_ipc::Preview {
+                                    conversation: enclave_ipc::PACK_PREVIEW.into(),
+                                    seq: i as u64,
+                                    width: t.width,
+                                    height: t.height,
+                                    pixels: t.pixels,
+                                }));
+                            }
+                        }
+                    }
+                    None => {
+                        self.status = "Couldn't get that pack. Check your connection.".into();
+                    }
+                }
+                self.busy = false;
             }
             Cmd::Report(id, reason, quote, block, costlier) => {
                 use enclave_rpc::api::ReportReason;
@@ -3045,9 +3144,32 @@ impl Engine {
                             .and_then(|m| m.attachment),
                         _ => None,
                     };
-                    if let Some(a) = att.filter(is_picture) {
-                        let clip = is_clip(&a);
-                        bytes = c.fetch_file(&a).await.ok().map(|b| (b, clip));
+                    // An animated sticker: its clip in the pack.
+                    let sticker = match (root, gid) {
+                        (Some(r), _) => c
+                            .messages(&r)
+                            .ok()
+                            .and_then(|v| v.into_iter().find(|m| m.seq == seq))
+                            .and_then(|m| m.sticker),
+                        (None, Some(g)) => c
+                            .group_messages(&g)
+                            .ok()
+                            .and_then(|v| v.into_iter().find(|m| m.seq == seq))
+                            .and_then(|m| m.sticker),
+                        _ => None,
+                    };
+                    match (att, sticker) {
+                        (Some(pack), Some(i)) => {
+                            bytes = c.sticker_picture(&pack, i).await.ok().map(|b| {
+                                let clip = enclave_media::video::is_clip(&b);
+                                (b, clip)
+                            });
+                        }
+                        (Some(a), None) if is_picture(&a) => {
+                            let clip = is_clip(&a);
+                            bytes = c.fetch_file(&a).await.ok().map(|b| (b, clip));
+                        }
+                        _ => {}
                     }
                 }
                 let clip = self.viewer_frames(bytes).await;

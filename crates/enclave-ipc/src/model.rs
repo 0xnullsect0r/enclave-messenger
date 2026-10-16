@@ -698,6 +698,12 @@ pub enum Cmd {
     OpenViewOnce(String, u64),
     /// List every file in every conversation ([`Out::Gallery`]).
     AllFiles,
+    /// Remove an added sticker pack (its id).
+    RemovePack(String),
+    /// Show the pack a sticker message carries before adding it: its
+    /// title and count ([`Out::PackPreview`]), then each picture as a
+    /// [`Out::Preview`] for conversation [`PACK_PREVIEW`].
+    PreviewPack(String, u64),
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -944,7 +950,13 @@ pub enum Out {
     OpenNext,
     /// Every file in every conversation, newest first ([`Cmd::AllFiles`]).
     Gallery(Vec<GalleryRow>),
+    /// A sticker pack before adding it ([`Cmd::PreviewPack`]): its title
+    /// and how many stickers.
+    PackPreview(String, u32),
 }
+
+/// The conversation name a pack preview's pictures come under.
+pub const PACK_PREVIEW: &str = "pack-preview";
 
 /// A file in the gallery across all conversations.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -1745,6 +1757,8 @@ impl Cmd {
             Cmd::SendViewOnce(c, n, cap) => w.u8(130).str(c).str(n).str(cap),
             Cmd::OpenViewOnce(c, seq) => w.u8(131).str(c).u64(*seq),
             Cmd::AllFiles => w.u8(132),
+            Cmd::RemovePack(p) => w.u8(133).str(p),
+            Cmd::PreviewPack(c, seq) => w.u8(134).str(c).u64(*seq),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -1904,6 +1918,8 @@ impl Cmd {
             130 => Cmd::SendViewOnce(r.str()?, r.str()?, r.str()?),
             131 => Cmd::OpenViewOnce(r.str()?, r.u64()?),
             132 => Cmd::AllFiles,
+            133 => Cmd::RemovePack(r.str()?),
+            134 => Cmd::PreviewPack(r.str()?, r.u64()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
@@ -2095,6 +2111,11 @@ impl Out {
                 w.0
             }
             Out::OpenNext => vec![18],
+            Out::PackPreview(title, n) => {
+                let mut w = Writer::default();
+                w.u8(20).str(title).u32(*n);
+                w.0
+            }
             Out::Gallery(rows) => {
                 let mut w = Writer::default();
                 let rows = &rows[..rows.len().min(MAX_GALLERY)];
@@ -2225,6 +2246,12 @@ impl Out {
                 Ok(o)
             }
             [18] => Ok(Out::OpenNext),
+            [20, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::PackPreview(r.str()?, r.u32()?);
+                r.end()?;
+                Ok(o)
+            }
             [19, ..] => {
                 let mut r = Reader(&b[1..]);
                 let n = r.u32()? as usize;

@@ -195,7 +195,7 @@ pub use servers::ListUpdate;
 pub use social::{
     MAX_HOLDERS, RELEASE_PREFIX, SHARE_PREFIX, ShareRelease, ShareRequest, words_from_shares,
 };
-pub use stickers::{InstalledPack, MAX_STICKERS, PACK_MIME, StickerPack};
+pub use stickers::{InstalledPack, MAX_STICKER_BYTES, MAX_STICKERS, PACK_MIME, StickerPack};
 pub use typing::{TYPING_RESERVE, TYPING_SHOW_SECS};
 pub use updates::{RECEIVE_GRACE, UpdateStatus};
 pub use usernames::AUDIT_EVERY_SECS;

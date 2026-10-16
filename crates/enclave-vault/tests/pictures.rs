@@ -490,3 +490,81 @@ async fn group_previews_and_the_gallery_across_conversations() {
     );
     assert!(rows.iter().all(|r| r.picture && r.outgoing));
 }
+
+/// Stickers, the rest: a GIF in a pack becomes an animated sticker (a
+/// short AV1 clip); a sticker opens in the viewer from its message (in
+/// demo mode the vault refuses to decode the clip itself: that happens in
+/// mediad, `mediad_plays_clips`); a pack is looked at before it is added
+/// (its title, count and pictures); and an added pack can be removed.
+#[tokio::test(flavor = "multi_thread")]
+async fn animated_stickers_pack_preview_and_removal() {
+    let (tx, mut rx) = enclave_vault::spawn(enclave_vault::Mode::Demo);
+    tx.send(Cmd::Create("Robin".into(), String::new())).unwrap();
+    let s = next(&mut rx, snapshot(|s| !s.requests.is_empty())).await;
+    let sam = s.requests[0].id.clone();
+    tx.send(Cmd::Accept(sam.clone())).unwrap();
+    next(
+        &mut rx,
+        snapshot(|s| s.contacts.iter().any(|c| c.id == sam && c.state == 2)),
+    )
+    .await;
+    tx.send(Cmd::Select(sam.clone())).unwrap();
+
+    tx.send(Cmd::CreatePack(
+        "Moving".into(),
+        vec![photo(), animation(6)],
+    ))
+    .unwrap();
+    let s = next(&mut rx, snapshot(|s| !s.sticker_packs.is_empty())).await;
+    let pack = s.sticker_packs[0].clone();
+    assert_eq!(pack.count, 2);
+
+    // Both go out; the still one opens in the viewer, the animated one
+    // isn't decoded by the vault.
+    let mut seqs = Vec::new();
+    for index in [0, 1] {
+        tx.send(Cmd::SendSticker(sam.clone(), pack.id.clone(), index))
+            .unwrap();
+        let s = next(
+            &mut rx,
+            snapshot(move |s| {
+                s.messages.iter().filter(|m| m.sticker).count() == index as usize + 1
+            }),
+        )
+        .await;
+        seqs.push(s.messages.iter().rfind(|m| m.sticker).unwrap().seq);
+    }
+    for (seq, frames) in seqs.iter().zip([1usize, 0]) {
+        tx.send(Cmd::PlayClip(sam.clone(), *seq)).unwrap();
+        let clip = next(&mut rx, |o| match o {
+            Out::Clip(c) => Some(c),
+            _ => None,
+        })
+        .await;
+        assert_eq!(clip.frames.len(), frames);
+    }
+
+    // The pack behind a sticker message, before adding it.
+    tx.send(Cmd::PreviewPack(sam.clone(), seqs[0])).unwrap();
+    let (title, n) = next(&mut rx, |o| match o {
+        Out::PackPreview(t, n) => Some((t, n)),
+        _ => None,
+    })
+    .await;
+    assert_eq!((title.as_str(), n), ("Moving", 2));
+    let p = next(&mut rx, |o| match o {
+        Out::Preview(p) if p.conversation == enclave_ipc::PACK_PREVIEW => Some(p),
+        _ => None,
+    })
+    .await;
+    assert_eq!(p.seq, 0);
+    assert!(p.width > 0 && p.height > 0);
+
+    // Removed from this device.
+    tx.send(Cmd::RemovePack(pack.id.clone())).unwrap();
+    next(
+        &mut rx,
+        snapshot(|s| s.sticker_packs.is_empty() && s.status.contains("Removed the pack Moving")),
+    )
+    .await;
+}
