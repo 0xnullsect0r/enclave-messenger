@@ -308,6 +308,19 @@ jobs:
           $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path "target/$env:TARGET/release/dist/enclave.exe"))
           if ($null -eq $icon) { throw "no icon" }
           & "target/$env:TARGET/release/dist/enclave.exe" --version
+      # cargo-packager fetches WiX 3.11, which can't build arm64 installers
+      # (3.14 added them): put the 3.14.1 binaries where it looks first,
+      # checked against their published SHA-256.
+      - name: WiX 3.14 for the .msi
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\wix314-binaries.zip"
+          Invoke-WebRequest -Uri https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($hash -ne "6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31") { throw "WiX: unexpected hash $hash" }
+          $dest = "$env:LOCALAPPDATA\.cargo-packager\WixTools"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Expand-Archive -Force -Path $zip -DestinationPath $dest
       - name: Installers (cargo-packager)
         run: |
           cargo install --locked cargo-packager@0.11.8
@@ -482,7 +495,7 @@ jobs:
           xcrun simctl boot "$device"
           rm -rf sim/x && mkdir sim/x && (cd sim/x && unzip -q ../*.ipa)
           xcrun simctl install "$device" sim/x/Payload/Enclave.app
-          timeout 180 xcrun simctl launch --console-pty "$device" com.aricummings.enclave --smoke-exit | tee sim/launch.log
+          perl -e 'alarm shift; exec @ARGV' 180 xcrun simctl launch --console-pty "$device" com.aricummings.enclave --smoke-exit | tee sim/launch.log
           grep -q 'enclave: started' sim/launch.log
       - name: The app for devices (signed and sent to TestFlight on a release)
         env:

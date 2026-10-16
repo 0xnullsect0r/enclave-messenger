@@ -511,8 +511,28 @@ async fn a_group_call_through_an_sfu_relay() {
         txs
     });
     let txs = talk.await.unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    for (i, (_, out, ev)) in sides.iter_mut().enumerate() {
+    // What each side's window got. A slow machine decodes behind the
+    // call: wait (up to 20 s) for Ben's pictures rather than a fixed time.
+    let mut outs: Vec<Vec<Out>> = vec![Vec::new(); sides.len()];
+    let start = std::time::Instant::now();
+    let deadline = start + Duration::from_secs(20);
+    loop {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        for (i, (_, out, _)) in sides.iter_mut().enumerate() {
+            while let Ok(o) = out.try_recv() {
+                outs[i].push(o);
+            }
+        }
+        let ben = outs[1]
+            .iter()
+            .filter(|o| matches!(o, Out::CallTile(..)))
+            .count();
+        let settled = start.elapsed() >= Duration::from_secs(1);
+        if (ben >= 3 && settled) || std::time::Instant::now() > deadline {
+            break;
+        }
+    }
+    for (i, (_, _, ev)) in sides.iter_mut().enumerate() {
         let mut heard = std::collections::BTreeSet::new();
         let (mut connected, mut hand, mut react) = (false, false, false);
         while let Ok(e) = ev.try_recv() {
@@ -544,7 +564,7 @@ async fn a_group_call_through_an_sfu_relay() {
             assert!(react, "{} saw Dana's reaction", names[i]);
         }
         let (mut loud, mut tiles) = (0, 0);
-        while let Ok(o) = out.try_recv() {
+        for o in std::mem::take(&mut outs[i]) {
             match o {
                 Out::CallAudio(pcm) => {
                     let e: f64 =
@@ -847,23 +867,25 @@ async fn a_shared_screen_goes_in_place_of_the_camera() {
     // Let the call settle, then count a phase's packets on the relays.
     tokio::time::sleep(Duration::from_millis(800)).await;
     let carried = || async { ra.lock().await.stats().to_peer + rb.lock().await.stats().to_peer };
-    let before = carried().await;
+    // Packets a second over each phase, by the clock: the phases' lengths
+    // vary with the machine's timers (Windows ticks in 15.6 ms steps).
+    let (before, t0) = (carried().await, std::time::Instant::now());
     let mut tick = tokio::time::interval(Duration::from_millis(1000 / u64::from(tier.fps)));
     for n in 0..(3 * tier.fps) {
         tick.tick().await;
         a_tx.send(ToCall::Frame(picture(tier.width, tier.height, n)))
             .unwrap();
     }
-    let camera_phase = carried().await - before;
+    let camera_phase = (carried().await - before) as f64 / t0.elapsed().as_secs_f64();
     a_tx.send(ToCall::Screen(true)).unwrap();
-    let before = carried().await;
+    let (before, t0) = (carried().await, std::time::Instant::now());
     let mut tick = tokio::time::interval(Duration::from_millis(1000 / u64::from(screen.fps)));
     for n in 0..(3 * screen.fps) {
         tick.tick().await;
         a_tx.send(ToCall::Frame(picture(screen.width, screen.height, n)))
             .unwrap();
     }
-    let screen_phase = carried().await - before;
+    let screen_phase = (carried().await - before) as f64 / t0.elapsed().as_secs_f64();
     tokio::time::sleep(Duration::from_millis(1500)).await;
     let (mut cameras, mut screens) = (0, 0);
     while let Ok(o) = b_out.try_recv() {
@@ -878,9 +900,12 @@ async fn a_shared_screen_goes_in_place_of_the_camera() {
     }
     assert!(cameras >= 3, "Ben saw {cameras} camera pictures");
     assert!(screens >= 2, "and {screens} of the screen");
-    // The same stream on the wire (within the jitter of three seconds).
-    let (c, s) = (camera_phase as f64, screen_phase as f64);
-    assert!((s - c).abs() / c < 0.05, "packets: camera {c}, screen {s}");
+    // The same stream on the wire: the same packets a second.
+    let (c, s) = (camera_phase, screen_phase);
+    assert!(
+        (s - c).abs() / c < 0.05,
+        "packets a second: camera {c:.1}, screen {s:.1}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
