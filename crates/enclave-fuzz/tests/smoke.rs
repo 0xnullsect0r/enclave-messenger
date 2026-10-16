@@ -31,6 +31,8 @@ fn samples() -> Vec<Vec<u8>> {
             text: "hello".into(),
             id: [2; 16],
             expires: 60,
+            reply: Some([4; 16]),
+            forwarded: true,
         }
         .encode()
         .unwrap(),
