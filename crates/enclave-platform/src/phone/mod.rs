@@ -67,6 +67,34 @@ pub enum Event {
     OpenFailed(String),
 }
 
+/// Where the phone is (latitude, longitude in degrees), or why not.
+pub type Located = Box<dyn FnOnce(Result<(f64, f64), String>) + Send>;
+static LOCATED: std::sync::Mutex<Option<Located>> = std::sync::Mutex::new(None);
+
+/// Ask the phone where it is, once (the system asks the person the first
+/// time); `done` gets the answer. Android reads its GPS only, never a
+/// network location service.
+pub fn locate(done: impl FnOnce(Result<(f64, f64), String>) + Send + 'static) {
+    if let Ok(mut l) = LOCATED.lock() {
+        *l = Some(Box::new(done));
+    }
+    imp::locate();
+}
+
+/// The answer to [`locate`].
+pub(crate) fn located(r: Result<(f64, f64), String>) {
+    let done = LOCATED.lock().ok().and_then(|mut l| l.take());
+    if let Some(done) = done {
+        done(r);
+    }
+}
+
+/// Hand a place to a maps app the person picks. False when it can't be
+/// done here.
+pub fn open_map(lat: f64, lon: f64, label: &str) -> bool {
+    imp::open_map(lat, lon, label)
+}
+
 /// "Open with…": hand a received file to an app the person picks. False
 /// when it can't be done here.
 pub fn open_with(name: &str, bytes: &[u8]) -> bool {

@@ -57,6 +57,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Enclave uses the microphone for calls. Your voice is encrypted on this iPhone before it leaves.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Only when you tap Use my location: the place goes, encrypted, to the conversation you chose.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Enclave uses the camera to scan codes (invites, meeting in person, linking a device) and for video calls, encrypted on this iPhone before they leave. Scanned frames never leave the app.</string>
 	<!-- remote-notification: message wakes (the NSE decrypts them); voip:

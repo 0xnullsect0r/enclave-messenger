@@ -50,6 +50,7 @@ public class EnclaveActivity extends android.app.NativeActivity {
     private static final int PERMISSION_CAMERA = 1;
     private static final int PERMISSION_NOTIFY = 2;
     private static final int PERMISSION_MICROPHONE = 3;
+    private static final int PERMISSION_LOCATION = 4;
     private static final String CHANNEL = "messages";
     /** How long a copied text stays on the clipboard. */
     private static final long CLIPBOARD_MS = 60_000;
@@ -280,6 +281,63 @@ public class EnclaveActivity extends android.app.NativeActivity {
         });
     }
 
+    /** One fix from the GPS (never a network location service); the
+     *  answer goes to Native.event(LOCATION or LOCATION_FAILED). */
+    public void locate() {
+        runOnUiThread(() -> {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSION_LOCATION);
+                return;
+            }
+            readLocation();
+        });
+    }
+
+    private void readLocation() {
+        try {
+            android.location.LocationManager lm = getSystemService(android.location.LocationManager.class);
+            String gps = android.location.LocationManager.GPS_PROVIDER;
+            if (lm == null || !lm.isProviderEnabled(gps)) {
+                Native.event(Native.LOCATION_FAILED, "Turn on Location (GPS) in the phone's settings, then try again.");
+                return;
+            }
+            java.util.function.Consumer<android.location.Location> report = loc -> {
+                if (loc == null) {
+                    Native.event(Native.LOCATION_FAILED, "The phone couldn't find where it is. Try again outside or near a window.");
+                } else {
+                    Native.event(Native.LOCATION, loc.getLatitude() + "," + loc.getLongitude());
+                }
+            };
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                lm.getCurrentLocation(gps, null, getMainExecutor(), report);
+            } else {
+                lm.requestSingleUpdate(gps, new android.location.LocationListener() {
+                    @Override
+                    public void onLocationChanged(android.location.Location loc) {
+                        report.accept(loc);
+                    }
+                }, android.os.Looper.getMainLooper());
+            }
+        } catch (SecurityException e) {
+            Native.event(Native.LOCATION_FAILED, "Enclave may not use your location. Allow it in Settings → Apps → Enclave → Permissions.");
+        } catch (Exception e) {
+            Native.event(Native.LOCATION_FAILED, e.toString());
+        }
+    }
+
+    /** A geo: link in the chooser, so the person picks the maps app. */
+    public void openMap(double lat, double lon, String label) {
+        runOnUiThread(() -> {
+            String q = lat + "," + lon + (label.isEmpty() ? "" : "(" + Uri.encode(label) + ")");
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:" + lat + "," + lon + "?q=" + q));
+            try {
+                startActivity(Intent.createChooser(i, null));
+            } catch (Exception e) {
+                Native.event(Native.OPEN_FAILED, "No maps app here opens places.");
+            }
+        });
+    }
+
     public void save(int request, String name, byte[] bytes) {
         runOnUiThread(() -> {
             pendingSave = bytes;
@@ -481,6 +539,14 @@ public class EnclaveActivity extends android.app.NativeActivity {
     @Override
     public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
+        if (request == PERMISSION_LOCATION) {
+            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+                readLocation();
+            } else {
+                Native.event(Native.LOCATION_FAILED, "Enclave may not use your location. Allow it in Settings → Apps → Enclave → Permissions.");
+            }
+            return;
+        }
         if (request == PERMISSION_CAMERA) {
             if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
                 openCamera();

@@ -28,7 +28,7 @@ use objc2_core_video::{
     CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
 };
 use objc2_foundation::{
-    NSArray, NSData, NSDate, NSDictionary, NSNotification, NSNotificationCenter, NSNumber,
+    NSArray, NSData, NSDate, NSDictionary, NSError, NSNotification, NSNotificationCenter, NSNumber,
     NSOperationQueue, NSString, NSURL,
 };
 use objc2_ui_kit::{
@@ -418,11 +418,15 @@ pub(super) fn open_with(name: &str, bytes: &[u8]) -> bool {
     {
         return false;
     }
+    let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+    share(mtm, Retained::into_super(Retained::into_super(url)))
+}
+
+/// The share sheet for one item: the person picks the app.
+fn share(mtm: MainThreadMarker, item: Retained<AnyObject>) -> bool {
     let Some(root) = key_window(mtm).and_then(|w| w.rootViewController()) else {
         return false;
     };
-    let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
-    let item: Retained<AnyObject> = Retained::into_super(Retained::into_super(url));
     let items = NSArray::from_retained_slice(&[item]);
     // SAFETY: the items are NSURLs, which the sheet takes.
     let sheet = unsafe {
@@ -818,6 +822,135 @@ pub(super) fn text_scale() -> f32 {
 #[link(name = "UIKit", kind = "framework")]
 unsafe extern "C" {
     fn UIAccessibilityIsReduceMotionEnabled() -> objc2::runtime::Bool;
+}
+
+/// "Open in maps": a maps link in the share sheet, so the person picks
+/// the app (Apple Maps, or another that takes the link).
+pub(super) fn open_map(lat: f64, lon: f64, label: &str) -> bool {
+    let Some(mtm) = mtm() else {
+        return false;
+    };
+    let q: String = label
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    let link = format!("https://maps.apple.com/?ll={lat:.6},{lon:.6}&q={q}");
+    let Some(url) = NSURL::URLWithString(&NSString::from_str(&link)) else {
+        return false;
+    };
+    share(mtm, Retained::into_super(Retained::into_super(url)))
+}
+
+/// `CLLocationCoordinate2D`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Coordinate {
+    latitude: f64,
+    longitude: f64,
+}
+
+// SAFETY: the C struct's layout and Objective-C type encoding.
+unsafe impl objc2::Encode for Coordinate {
+    const ENCODING: objc2::Encoding =
+        objc2::Encoding::Struct("CLLocationCoordinate2D", &[f64::ENCODING, f64::ENCODING]);
+}
+
+#[link(name = "CoreLocation", kind = "framework")]
+unsafe extern "C" {}
+
+thread_local! {
+    /// The location manager and its delegate while a request runs.
+    static LOCATING: RefCell<Option<(Retained<AnyObject>, Retained<LocationDelegate>)>> =
+        const { RefCell::new(None) };
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "EnclaveLocationDelegate"]
+    struct LocationDelegate;
+
+    unsafe impl NSObjectProtocol for LocationDelegate {}
+
+    impl LocationDelegate {
+        #[unsafe(method(locationManager:didUpdateLocations:))]
+        fn updated(&self, _: &AnyObject, locations: &NSArray<AnyObject>) {
+            if let Some(last) = locations.lastObject() {
+                // SAFETY: a CLLocation answers `coordinate`.
+                let c: Coordinate = unsafe { msg_send![&*last, coordinate] };
+                super::located(Ok((c.latitude, c.longitude)));
+            }
+            finish_locating();
+        }
+
+        #[unsafe(method(locationManager:didFailWithError:))]
+        fn failed(&self, _: &AnyObject, error: &NSError) {
+            super::located(Err(error.localizedDescription().to_string()));
+            finish_locating();
+        }
+
+        #[unsafe(method(locationManagerDidChangeAuthorization:))]
+        fn authorization(&self, manager: &AnyObject) {
+            // SAFETY: CLLocationManager's `authorizationStatus` (iOS 14).
+            let status: i32 = unsafe { msg_send![manager, authorizationStatus] };
+            match status {
+                // When in use, always: ask for one fix.
+                3 | 4 => {
+                    // SAFETY: `requestLocation` takes no arguments.
+                    unsafe {
+                        let _: () = msg_send![manager, requestLocation];
+                    }
+                }
+                // Restricted, denied.
+                1 | 2 => {
+                    super::located(Err(
+                        "Enclave may not use your location. Allow it in Settings → Enclave → Location.".into(),
+                    ));
+                    finish_locating();
+                }
+                _ => {}
+            }
+        }
+    }
+);
+
+fn finish_locating() {
+    LOCATING.with(|l| l.borrow_mut().take());
+}
+
+/// One location fix, with the system's permission prompt the first time;
+/// the answer goes to [`super::located`].
+pub(super) fn locate() {
+    let Some(mtm) = mtm() else {
+        return super::located(Err("No location here.".into()));
+    };
+    let Some(class) = AnyClass::get(c"CLLocationManager") else {
+        return super::located(Err("No location here.".into()));
+    };
+    let delegate: Retained<LocationDelegate> = {
+        let this = LocationDelegate::alloc(mtm).set_ivars(());
+        // SAFETY: NSObject's init on a freshly allocated object.
+        unsafe { msg_send![super(this), init] }
+    };
+    // SAFETY: CLLocationManager's `new`, `setDelegate:` with an object
+    // answering its delegate methods, and `requestWhenInUseAuthorization`;
+    // the delegate is kept alive in LOCATING until it answers.
+    unsafe {
+        let manager: Retained<AnyObject> = msg_send![class, new];
+        let _: () = msg_send![&*manager, setDelegate: &*delegate];
+        LOCATING.with(|l| *l.borrow_mut() = Some((manager.clone(), delegate)));
+        let _: () = msg_send![&*manager, requestWhenInUseAuthorization];
+        // Already allowed: no change comes, so ask for the fix now.
+        let status: i32 = msg_send![&*manager, authorizationStatus];
+        if status == 3 || status == 4 {
+            let _: () = msg_send![&*manager, requestLocation];
+        }
+    }
 }
 
 /// Settings → Accessibility → Motion → Reduce Motion.

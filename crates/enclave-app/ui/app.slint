@@ -199,7 +199,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -251,6 +251,7 @@ component Bubble inherits HorizontalLayout {
     callback close-poll();
     callback add-contact();
     callback copy(string);
+    callback open-map();
     callback add-pack();
     callback play-clip();
     callback open-view-once();
@@ -518,6 +519,11 @@ component Bubble inherits HorizontalLayout {
                         text: @tr("Copy coordinates");
                         accessible-label: @tr("Copy coordinates {}", root.msg.location);
                         clicked => { root.copy(root.msg.location); }
+                    }
+                    QuietButton {
+                        text: @tr("Open in maps");
+                        accessible-label: @tr("Open {} in a maps app", root.msg.location);
+                        clicked => { root.open-map(); }
                     }
                 }
             }
@@ -1219,6 +1225,14 @@ export component AppWindow inherits Window {
     in-out property <bool> report-quote: true;
     in-out property <bool> report-block: true;
     in-out property <bool> report-costlier: true;
+    // "Open in maps": the place, after the sheet that says what it means.
+    in-out property <string> map-coordinates;
+    in-out property <string> map-label;
+    callback open-map(string, string);
+    // Phones: "Use my location" fills the fields (or says why not).
+    callback locate();
+    in-out property <bool> locating;
+    in-out property <string> location-note;
     in-out property <string> location-lat;
     // Photos and files in the open conversation.
     in property <int> gallery-count;
@@ -2395,6 +2409,11 @@ export component AppWindow inherits Window {
                             close-poll => { root.close-poll(root.current-id, m.seq); }
                             add-contact => { root.add-shared(root.current-id, m.seq); }
                             copy(t) => { root.copy-text(t); }
+                            open-map => {
+                                root.map-coordinates = m.location;
+                                root.map-label = m.location-label;
+                                root.sheet = Sheet.open-map;
+                            }
                             add-pack => { root.add-pack(root.current-id, m.seq); }
                             play-clip => { root.play-clip(root.current-id, m.seq); }
                             open-view-once => {
@@ -3452,7 +3471,23 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.location: SheetFrame {
         title: @tr("Share a location");
         close => { root.sheet = Sheet.none; }
-        Secondary { text: @tr("Type or paste the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."); }
+        Secondary { text: root.capture-platform >= 3 ? @tr("Use where the phone is, or type the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place.") : @tr("Type or paste the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."); }
+        if root.capture-platform >= 3: HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: root.locating ? @tr("Finding where you are…") : @tr("Use my location");
+                outlined: true;
+                clicked => {
+                    if !root.locating { root.location-note = ""; root.locate(); }
+                }
+            }
+        }
+        if root.location-note != "": Text {
+            text: root.location-note;
+            color: Tokens.danger;
+            font-size: Tokens.type-secondary;
+            wrap: word-wrap;
+        }
         Field { placeholder: @tr("Latitude, like 52.5200"); mono: true; text <=> root.location-lat; }
         Field { placeholder: @tr("Longitude, like 13.4050"); mono: true; text <=> root.location-lon; }
         Field { placeholder: @tr("Name it (optional)"); text <=> root.location-name; }
@@ -4758,6 +4793,21 @@ export component AppWindow inherits Window {
                 outlined: true;
                 clicked => { root.open-sheet(Sheet.change-words); }
             }
+        }
+    }
+
+    if root.sheet == Sheet.open-map: SheetFrame {
+        title: @tr("Open in maps");
+        close => { root.sheet = Sheet.none; }
+        Body { text: @tr("This hands {} to a maps app you pick. That app may look the place up online, and its maker may learn it.", root.map-label != "" ? root.map-label + " (" + root.map-coordinates + ")" : root.map-coordinates); }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            PrimaryButton {
+                text: @tr("Open");
+                clicked => { root.open-map(root.map-coordinates, root.map-label); root.sheet = Sheet.none; }
+            }
+            QuietButton { text: @tr("Not now"); clicked => { root.sheet = Sheet.none; } }
         }
     }
 

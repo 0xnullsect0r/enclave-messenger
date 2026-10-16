@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Scanning codes; asked for when a scan starts. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Sharing a location (asked for when the person taps "Use my location"; GPS only). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Calls: the microphone (asked when a call starts), and the call
          audio mode. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

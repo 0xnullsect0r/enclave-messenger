@@ -1443,6 +1443,10 @@ msgstr ""
 msgid "Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is."
 msgstr ""
 
+#: ui/app.slint
+msgid "Finding where you are…"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr ""
@@ -2003,6 +2007,10 @@ msgstr ""
 msgid "No files yet."
 msgstr ""
 
+#: enclave-app/src/shell.rs
+msgid "No maps app here opens places."
+msgstr ""
+
 #: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr ""
@@ -2204,7 +2212,15 @@ msgid "Open battery settings"
 msgstr ""
 
 #: ui/app.slint
+msgid "Open in maps"
+msgstr ""
+
+#: ui/app.slint
 msgid "Open with…"
+msgstr ""
+
+#: ui/app.slint
+msgid "Open {} in a maps app"
 msgstr ""
 
 #: ui/app.slint
@@ -3327,6 +3343,10 @@ msgstr ""
 msgid "This group's messages are kept on {}."
 msgstr ""
 
+#: ui/app.slint
+msgid "This hands {} to a maps app you pick. That app may look the place up online, and its maker may learn it."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
 msgstr ""
@@ -3548,11 +3568,19 @@ msgid "Use it"
 msgstr ""
 
 #: ui/app.slint
+msgid "Use my location"
+msgstr ""
+
+#: ui/app.slint
 msgid "Use the private route"
 msgstr ""
 
 #: ui/app.slint
 msgid "Use this server"
+msgstr ""
+
+#: ui/app.slint
+msgid "Use where the phone is, or type the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."
 msgstr ""
 
 #: ui/app.slint

@@ -245,6 +245,33 @@ pub(super) fn pick(kind: Pick, done: Picked) {
     }
 }
 
+/// One GPS fix (the activity asks for the permission first); the answer
+/// comes back as event 9 or 10, for [`super::located`].
+pub(super) fn locate() {
+    if with(|env, a| env.call_method(a, "locate", "()V", &[]).map(|_| ())).is_none() {
+        super::located(Err("No location here.".into()));
+    }
+}
+
+/// A `geo:` link in the system's chooser: the person picks the maps app.
+pub(super) fn open_map(lat: f64, lon: f64, label: &str) -> bool {
+    with(|env, a| {
+        let label = env.new_string(label)?;
+        env.call_method(
+            a,
+            "openMap",
+            "(DDLjava/lang/String;)V",
+            &[
+                JValue::Double(lat),
+                JValue::Double(lon),
+                JValue::Object(&label),
+            ],
+        )
+        .map(|_| ())
+    })
+    .is_some()
+}
+
 /// "Open with…": the activity writes the file where only its provider
 /// serves it, and asks which app opens it.
 pub(super) fn open_with(name: &str, bytes: &[u8]) -> bool {
@@ -422,7 +449,8 @@ pub(super) fn report_ended() {
 /// 2 a push token ("platform:token"), 3 a wake, 4 the activity is gone,
 /// 5 the way messages arrive changed (its number), 6 the system's call
 /// screen ("answer", "end", "mute:1", "mute:0"), 7 a link opened with the
-/// app (its text).
+/// app (its text), 8 "Open with…" failed (why), 9 a location ("lat,lon"),
+/// 10 no location (why).
 pub fn event(kind: i32, data: &str) {
     let e = match kind {
         4 => {
@@ -441,6 +469,19 @@ pub fn event(kind: i32, data: &str) {
         3 => Event::Wake,
         7 => Event::OpenLink(data.to_string()),
         8 => Event::OpenFailed(data.to_string()),
+        9 => {
+            super::located(
+                match data.split_once(',').map(|(a, b)| (a.parse(), b.parse())) {
+                    Some((Ok(lat), Ok(lon))) => Ok((lat, lon)),
+                    _ => Err("The location couldn't be read.".into()),
+                },
+            );
+            return;
+        }
+        10 => {
+            super::located(Err(data.to_string()));
+            return;
+        }
         6 => match data {
             "answer" => Event::CallAnswered,
             "end" => Event::CallEnded,

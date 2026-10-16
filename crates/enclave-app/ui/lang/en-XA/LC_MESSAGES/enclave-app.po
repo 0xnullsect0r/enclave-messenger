@@ -1445,6 +1445,10 @@ msgstr "[Fílés áré séáléd béfóré théý léávé thís dévíçé áñ
 msgid "Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is."
 msgstr "[Fílés çáñ çóñtáíñ hármfúl çóñtéñt, áñd áñóthér ápp máý ñót prótéçt ít ás Éñçlávé dóés. Ópéñ ít óñlý íf ýóú trúst whó séñt ít áñd kñów whát ít ís.··························································]"
 
+#: ui/app.slint
+msgid "Finding where you are…"
+msgstr "[Fíñdíñg whéré ýóú áré…········]"
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr "[Fírst dévíçé····]"
@@ -2005,6 +2009,10 @@ msgstr "[Ñó çámérá wás fóúñd.········]"
 msgid "No files yet."
 msgstr "[Ñó fílés ýét.·····]"
 
+#: enclave-app/src/shell.rs
+msgid "No maps app here opens places."
+msgstr "[Ñó máps ápp héré ópéñs pláçés.············]"
+
 #: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr "[Ñó mésságés fóúñd. Séárçh óñlý lóóks óñ thís dévíçé.····················]"
@@ -2206,8 +2214,16 @@ msgid "Open battery settings"
 msgstr "[Ópéñ báttérý séttíñgs········]"
 
 #: ui/app.slint
+msgid "Open in maps"
+msgstr "[Ópéñ íñ máps····]"
+
+#: ui/app.slint
 msgid "Open with…"
 msgstr "[Ópéñ wíth…····]"
+
+#: ui/app.slint
+msgid "Open {} in a maps app"
+msgstr "[Ópéñ ··{} íñ á máps ápp·····]"
 
 #: ui/app.slint
 msgid "Open-source licences"
@@ -3329,6 +3345,10 @@ msgstr "[Thís érásés ýóúr çóñvérsátíóñs áñd kéýs fróm thís 
 msgid "This group's messages are kept on {}."
 msgstr "[Thís gróúp's mésságés áré képt óñ ·············{}.]"
 
+#: ui/app.slint
+msgid "This hands {} to a maps app you pick. That app may look the place up online, and its maker may learn it."
+msgstr "[Thís háñds ····{} tó á máps ápp ýóú píçk. Thát ápp máý lóók thé pláçé úp óñlíñé, áñd íts mákér máý léárñ ít.····································]"
+
 #: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
 msgstr "[Thís íñvíté líñk wás álréádý úséd, hás éxpíréd ór wás çáñçélléd. Ásk thém fór á ñéw óñé.···································]"
@@ -3550,12 +3570,20 @@ msgid "Use it"
 msgstr "[Úsé ít··]"
 
 #: ui/app.slint
+msgid "Use my location"
+msgstr "[Úsé mý lóçátíóñ······]"
+
+#: ui/app.slint
 msgid "Use the private route"
 msgstr "[Úsé thé príváté róúté········]"
 
 #: ui/app.slint
 msgid "Use this server"
 msgstr "[Úsé thís sérvér······]"
+
+#: ui/app.slint
+msgid "Use where the phone is, or type the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."
+msgstr "[Úsé whéré thé phóñé ís, ór týpé thé çóórdíñátés. Éñçlávé dóésñ't lóók áñýthíñg úp áñd shóws ñó máp, só ñóbódý élsé léárñs thé pláçé.····················································]"
 
 #: ui/app.slint
 msgid "Use {}"

@@ -15,6 +15,10 @@ final class Native {
     static final int CALL = 6;
     static final int OPEN_LINK = 7;
     static final int OPEN_FAILED = 8;
+    /** A location, "lat,lon". */
+    static final int LOCATION = 9;
+    /** No location: why. */
+    static final int LOCATION_FAILED = 10;
 
     /** Push platforms, as the vault numbers them. */
     static final int UNIFIEDPUSH = 1;

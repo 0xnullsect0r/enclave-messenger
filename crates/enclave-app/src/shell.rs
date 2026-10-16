@@ -142,6 +142,53 @@ fn open_with(ui: &AppWindow, name: &str, bytes: &[u8]) {
 }
 
 #[cfg(desktop)]
+/// "Open in maps": hand the place to the system's maps handler (`geo:` on
+/// Linux, Apple Maps on macOS, Windows Maps), after the window's warning.
+fn open_map(lat: f64, lon: f64, label: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "linux")]
+    let (mut c, uri) = (
+        std::process::Command::new("xdg-open"),
+        format!("geo:{lat:.6},{lon:.6}"),
+    );
+    #[cfg(target_os = "macos")]
+    let (mut c, uri) = (
+        std::process::Command::new("open"),
+        format!(
+            "maps://?ll={lat:.6},{lon:.6}&q={}",
+            url_escape(if label.is_empty() { "Location" } else { label })
+        ),
+    );
+    #[cfg(windows)]
+    let (mut c, uri) = (
+        std::process::Command::new("explorer.exe"),
+        format!("bingmaps:?cp={lat:.6}~{lon:.6}&lvl=16"),
+    );
+    #[cfg(not(target_os = "macos"))]
+    let _ = label;
+    c.arg(uri).spawn().map(|_| ())
+}
+
+#[cfg(all(desktop, target_os = "macos"))]
+/// Percent-encode for a URL's query.
+fn url_escape(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Two coordinates as the window shows them, "52.520000, 13.405000".
+fn parse_coordinates(s: &str) -> Option<(f64, f64)> {
+    let (a, b) = s.split_once(',')?;
+    let (lat, lon) = (a.trim().parse::<f64>().ok()?, b.trim().parse::<f64>().ok()?);
+    ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then_some((lat, lon))
+}
+
+#[cfg(desktop)]
 /// Show a desktop notification, unless the window is in front (the person
 /// sees the message already). Shown from a thread of its own: on Linux it
 /// is a D-Bus call.
@@ -1473,6 +1520,44 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         }
         let _ = t.send(Cmd::OpenViewOnce(id.to_string(), seq));
     });
+    let w = ui.as_weak();
+    ui.on_open_map(move |coords, label| {
+        let Some(ui) = w.upgrade() else {
+            return;
+        };
+        let Some((lat, lon)) = parse_coordinates(&coords) else {
+            return;
+        };
+        #[cfg(desktop)]
+        let opened = open_map(lat, lon, &label).is_ok();
+        #[cfg(not(desktop))]
+        let opened = enclave_platform::phone::open_map(lat, lon, &label);
+        if !opened {
+            ui.set_file_note(crate::i18n::tr("No maps app here opens places.").into());
+        }
+    });
+    #[cfg(not(desktop))]
+    {
+        let w = ui.as_weak();
+        ui.on_locate(move || {
+            if let Some(ui) = w.upgrade() {
+                ui.set_locating(true);
+            }
+            let w = w.clone();
+            enclave_platform::phone::locate(move |r| {
+                let _ = w.upgrade_in_event_loop(move |ui| {
+                    ui.set_locating(false);
+                    match r {
+                        Ok((lat, lon)) => {
+                            ui.set_location_lat(format!("{lat:.6}").into());
+                            ui.set_location_lon(format!("{lon:.6}").into());
+                        }
+                        Err(e) => ui.set_location_note(crate::i18n::tr(&e).into()),
+                    }
+                });
+            });
+        });
+    }
     let t = tx.clone();
     ui.on_load_gallery(move || {
         let _ = t.send(Cmd::AllFiles);

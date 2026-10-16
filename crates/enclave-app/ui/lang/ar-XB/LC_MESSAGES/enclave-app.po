@@ -1445,6 +1445,10 @@ msgstr "‫Files are sealed before they leave this device and padded so their si
 msgid "Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is."
 msgstr "‫Files can contain harmful content, and another app may not protect it as Enclave does. Open it only if you trust who sent it and know what it is.‬"
 
+#: ui/app.slint
+msgid "Finding where you are…"
+msgstr "‫Finding where you are…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr "‫First device‬"
@@ -2005,6 +2009,10 @@ msgstr "‫No camera was found.‬"
 msgid "No files yet."
 msgstr "‫No files yet.‬"
 
+#: enclave-app/src/shell.rs
+msgid "No maps app here opens places."
+msgstr "‫No maps app here opens places.‬"
+
 #: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr "‫No messages found. Search only looks on this device.‬"
@@ -2206,8 +2214,16 @@ msgid "Open battery settings"
 msgstr "‫Open battery settings‬"
 
 #: ui/app.slint
+msgid "Open in maps"
+msgstr "‫Open in maps‬"
+
+#: ui/app.slint
 msgid "Open with…"
 msgstr "‫Open with…‬"
+
+#: ui/app.slint
+msgid "Open {} in a maps app"
+msgstr "‫Open ‬{}‫ in a maps app‬"
 
 #: ui/app.slint
 msgid "Open-source licences"
@@ -3329,6 +3345,10 @@ msgstr "‫This erases your conversations and keys from this device only. Your a
 msgid "This group's messages are kept on {}."
 msgstr "‫This group's messages are kept on ‬{}‫.‬"
 
+#: ui/app.slint
+msgid "This hands {} to a maps app you pick. That app may look the place up online, and its maker may learn it."
+msgstr "‫This hands ‬{}‫ to a maps app you pick. That app may look the place up online, and its maker may learn it.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
 msgstr "‫This invite link was already used, has expired or was cancelled. Ask them for a new one.‬"
@@ -3550,12 +3570,20 @@ msgid "Use it"
 msgstr "‫Use it‬"
 
 #: ui/app.slint
+msgid "Use my location"
+msgstr "‫Use my location‬"
+
+#: ui/app.slint
 msgid "Use the private route"
 msgstr "‫Use the private route‬"
 
 #: ui/app.slint
 msgid "Use this server"
 msgstr "‫Use this server‬"
+
+#: ui/app.slint
+msgid "Use where the phone is, or type the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."
+msgstr "‫Use where the phone is, or type the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place.‬"
 
 #: ui/app.slint
 msgid "Use {}"
