@@ -238,6 +238,10 @@ msgid "All"
 msgstr "‫All‬"
 
 #: ui/app.slint
+msgid "All conversations"
+msgstr "‫All conversations‬"
+
+#: ui/app.slint
 msgid "Also block them"
 msgstr "‫Also block them‬"
 
@@ -1377,6 +1381,10 @@ msgstr "‫Erase this device. Deleting the account is done on the device that ho
 msgid "Español"
 msgstr "‫Español‬"
 
+#: ui/app.slint
+msgid "Every file in every conversation, newest first. Nothing is downloaded until you open or save it."
+msgstr "‫Every file in every conversation, newest first. Nothing is downloaded until you open or save it.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Every message travels as a sealed unit of exactly the same size, so a server can't tell a short hello from a long letter."
 msgstr "‫Every message travels as a sealed unit of exactly the same size, so a server can't tell a short hello from a long letter.‬"
@@ -1994,6 +2002,10 @@ msgid "No camera was found."
 msgstr "‫No camera was found.‬"
 
 #: ui/app.slint
+msgid "No files yet."
+msgstr "‫No files yet.‬"
+
+#: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr "‫No messages found. Search only looks on this device.‬"
 
@@ -2356,6 +2368,10 @@ msgstr "‫Photos and files‬"
 #: ui/app.slint
 msgid "Photos and files ({})"
 msgstr "‫Photos and files (‬{}‫)‬"
+
+#: ui/app.slint
+msgid "Photos and files from every conversation"
+msgstr "‫Photos and files from every conversation‬"
 
 #: ui/app.slint
 msgid "Pick these words"
@@ -3277,6 +3293,10 @@ msgstr "‫This computer has no keyring for Enclave's keys, so they are kept in 
 msgid "This computer keeps Enclave's keys in files, so the passphrase can't be removed."
 msgstr "‫This computer keeps Enclave's keys in files, so the passphrase can't be removed.‬"
 
+#: ui/app.slint
+msgid "This conversation"
+msgstr "‫This conversation‬"
+
 #: enclave-app/src/updater.rs
 msgid "This copy of Enclave isn't an installed app. Download the newest release from the Enclave website."
 msgstr "‫This copy of Enclave isn't an installed app. Download the newest release from the Enclave website.‬"
@@ -3586,8 +3606,16 @@ msgid "Video call {}"
 msgstr "‫Video call ‬{}"
 
 #: ui/app.slint
+msgid "View"
+msgstr "‫View‬"
+
+#: ui/app.slint
 msgid "View once"
 msgstr "‫View once‬"
+
+#: ui/app.slint
+msgid "View {}"
+msgstr "‫View ‬{}"
 
 #: ui/app.slint
 msgid "Voice note"
@@ -3984,6 +4012,10 @@ msgstr "‫length unknown‬"
 #: ui/app.slint
 msgid "obfs4 … cert=… iat-mode=0"
 msgstr "‫obfs4 … cert=… iat-mode=0‬"
+
+#: ui/app.slint
+msgid "received"
+msgstr "‫received‬"
 
 #: ui/app.slint
 msgid "typing…"

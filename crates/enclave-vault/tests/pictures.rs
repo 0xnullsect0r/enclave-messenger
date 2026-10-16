@@ -417,3 +417,76 @@ async fn mediad_plays_clips() {
     let _ = media.clip_frames(bad, 360).await;
     assert!(media.thumbnail(photo(), 16).await.is_ok());
 }
+
+/// Pictures in a group get previews too (`load_group_previews`), and the
+/// gallery across all conversations lists the 1:1 and group pictures.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_previews_and_the_gallery_across_conversations() {
+    let (tx, mut rx) = enclave_vault::spawn(enclave_vault::Mode::Demo);
+    tx.send(Cmd::Create("Robin".into(), String::new())).unwrap();
+    let s = next(&mut rx, snapshot(|s| !s.requests.is_empty())).await;
+    let sam = s.requests[0].id.clone();
+    tx.send(Cmd::Accept(sam.clone())).unwrap();
+    next(
+        &mut rx,
+        snapshot(|s| s.contacts.iter().any(|c| c.id == sam && c.state == 2)),
+    )
+    .await;
+    tx.send(Cmd::Select(sam.clone())).unwrap();
+    tx.send(Cmd::SendFile(
+        sam.clone(),
+        "one.jpg".into(),
+        photo(),
+        String::new(),
+    ))
+    .unwrap();
+    next(&mut rx, |o| match o {
+        Out::Preview(p) if p.conversation == sam => Some(()),
+        _ => None,
+    })
+    .await;
+
+    tx.send(Cmd::TogglePick(sam.clone())).unwrap();
+    tx.send(Cmd::CreateGroup("Trip".into())).unwrap();
+    let s = next(
+        &mut rx,
+        snapshot(|s| s.contacts.iter().any(|r| r.kind == 1)),
+    )
+    .await;
+    let gid = s.contacts.iter().find(|r| r.kind == 1).unwrap().id.clone();
+    tx.send(Cmd::Select(gid.clone())).unwrap();
+    tx.send(Cmd::SendFile(
+        gid.clone(),
+        "two.jpg".into(),
+        photo(),
+        "From the trip".into(),
+    ))
+    .unwrap();
+    let p = next(&mut rx, |o| match o {
+        Out::Preview(p) if p.conversation == gid => Some(p),
+        _ => None,
+    })
+    .await;
+    assert_eq!((p.width, p.height), (40, 60), "upright, as in 1:1");
+
+    tx.send(Cmd::AllFiles).unwrap();
+    let rows = next(&mut rx, |o| match o {
+        Out::Gallery(rows) => Some(rows),
+        _ => None,
+    })
+    .await;
+    // (Both were sent within the same second, so their order is open.)
+    let mut files: Vec<(&str, &str, &str)> = rows
+        .iter()
+        .map(|r| (r.file.as_str(), r.conversation.as_str(), r.name.as_str()))
+        .collect();
+    files.sort();
+    assert_eq!(
+        files,
+        vec![
+            ("one.jpg", sam.as_str(), "Sam (demo)"),
+            ("two.jpg", gid.as_str(), "Trip")
+        ]
+    );
+    assert!(rows.iter().all(|r| r.picture && r.outgoing));
+}

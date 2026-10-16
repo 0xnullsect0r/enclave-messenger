@@ -14,7 +14,7 @@ Source: PLAN.md §14 (feature parity), §20 (milestones). This matrix fixes whic
 | Replies, forwarding (labelled "Forwarded"), mentions | M6 / M7 | Message IDs are local-only hashes | `02b-key-schedule.md` §7 | Done: **Reply** quotes the message above the composer and the answer carries its id (a 1:1 `Content::Text` field; in groups a rich text, `FLAG_RICH` kind 12), shown as a quote that scrolls to the original when tapped; **Forward** sends a text marked "Forwarded" to any conversation, or fetches a file and sends it again sealed afresh, so the copies aren't linked; **mentions**: the group composer's **@** lists members, and a text naming `@Name` lists those members (16 B of their root, at most 32) so their apps mark it and notify even in a muted group. Message ids are the sender's random 16 bytes, inside the encrypted content only | `replies_forwards_and_mentions` |
 | Disappearing messages (timer starts on read, per device) | M6 | Crypto-shred; monotonic timers | `14-storage.md` §3 | Done | `attachments_reactions_edits_deletes_receipts_and_timers`, `rt23_disappearing_timer_uses_monotonic` |
 | View-once | M9 | Shredded after view; screenshots still possible (copy says so) | `14-storage.md` §3 | Done: **Send a file → View once** (pictures and animations only) sets a flag on the attachment (`Content::Attachment.view_once`, protobuf field 5; the group rich attachment's last byte). The sender keeps no copy. The recipient's message holds the reference apart from ordinary attachments (`Message.once`), so previews, the gallery, saving, forwarding and the file cache never see it; **Open** (after a sheet saying a screenshot or another camera can still capture it) downloads every chunk, verifies, drops the reference before showing it in the viewer from memory, and tells our other devices (`SyncItem::Viewed`), which drop theirs. Notifications say "Sent a photo to view once" | `view_once_opens_once` |
-| Images | M6 | Re-encoded, EXIF/GPS stripped, sandboxed decode | `15-client.md` §5 | Open: a full-size viewer (bubbles show only the 560 px preview); re-encoding on export (the vault's `exportable` re-encodes only voice notes, so **Save** writes the received bytes); no test of picture previews in groups (`load_group_previews`) | `sent_pictures_lose_metadata_and_get_previews`, `jpeg_metadata_is_gone_and_orientation_applied` (partial) |
+| Images | M6 | Re-encoded, EXIF/GPS stripped, sandboxed decode | `15-client.md` §5 | Done: re-encoded before sending (EXIF, GPS, ICC and trailing data gone); previews in 1:1 and groups from accepted contacts only; a full-size viewer; re-encoded again on save | `sent_pictures_lose_metadata_and_get_previews`, `jpeg_metadata_is_gone_and_orientation_applied`, `group_previews_and_the_gallery_across_conversations` |
 | Voice notes | M6 | Opus, sandboxed decode | `15-client.md` §5 | Done | `voice_note_through_the_engine`, `played_in_pieces_and_exported_as_ogg_opus` |
 | Video | M9 | AV1 + Opus, own container. Animated pictures are built as short AV1 clips (no sound); camera video waits for platform decoders | `15-client.md` §5.3 | Open: video from a camera or a video file (the platform decoders in `enclave-platform`: AVFoundation, MediaCodec, Media Foundation, transcoded into the clip container); an Opus track in clips; 30 fps and sizes beyond 480 px; videos up to 100 MiB through the container | `clips_through_the_engine`, `mediad_plays_clips` (animated pictures only) |
 | Files (up to 100 MiB) | M9 | Never previewed; bucketed | `08-envelope.md` §9 | Done: files up to 100 MiB (`files::MAX_ATTACHMENT`), padded to size buckets and never previewed; between the window and the vault a file larger than 8 MiB goes in parts (`Cmd::Stage`/`SendStaged`, `Out::FilePart`), and backups with media the same way (up to 512 MiB); **Open with…** first warns ("Files can contain harmful content…") and then hands the file to the system: desktop through a folder only the user reads, emptied each time and at start; Android through a read-only content provider and a one-intent grant; iOS through the share sheet | `attachments_reactions_edits_deletes_receipts_and_timers`, `rt17_attachment_padded_to_bucket`, `ipc` codec round trip |
@@ -45,7 +45,7 @@ Source: PLAN.md §14 (feature parity), §20 (milestones). This matrix fixes whic
 | Contact sharing | M9 | Shares root pin and QR fields | `03-identity.md` §9 | Done | `share_a_contact` |
 | Location (coordinates only) | M9 | No map tiles fetched automatically | — | Open: reading the location from the platform on phones; handing the coordinates to a maps app the person picks (§3) | `share_a_location`, `codec_and_limits` (partial) |
 | Search | M9 | Blinded local index | `14-storage.md` §2 | Done | `the_index_follows_the_messages`, `attachments_reactions_edits_deletes_receipts_and_timers` |
-| Media gallery | M9 | Local | — | Open: a gallery across all conversations (the `gallery` sheet lists one conversation; §4); no test of the gallery | — |
+| Media gallery | M9 | Local | — | Done: per conversation, and across all conversations (§4) | `group_previews_and_the_gallery_across_conversations` |
 | Device transfer | M9 | LAN or bulk blobs; no ratchet state | `03-identity.md` §4.3 | Done | `link_a_second_device`, `history_over_the_lan` |
 | Social recovery | M9 | SLIP-0039 3-of-5, in-person release, 72 h | `03-identity.md` §8.3 | Done | `social_recovery`, `rt22_contacts_enforce_72h` |
 | Stories (24 h) | M11 | Same delivery as group messages to a per-user audience | — | Open: nothing yet: no audience model (Open question 1), content kind, 24 h expiry or UI | — |
@@ -56,14 +56,14 @@ Source: PLAN.md §14 (feature parity), §20 (milestones). This matrix fixes whic
 
 ## 2. Features explicitly excluded
 
-| Feature | Reason |
-|---|---|
-| Phone-number or email discovery | No phone numbers (fixed decision) |
-| Cloud message history on servers | Servers keep ciphertext for at most 30 days |
-| Server-side link previews | Would reveal links to a server |
-| Web client | Fixed decision |
-| Automatic contact import | Would require identifiers |
-| Analytics or telemetry | `19-ops.md` §3 |
+| Feature | Reason | Status |
+|---|---|---|
+| Phone-number or email discovery | No phone numbers (fixed decision) | Not planned |
+| Cloud message history on servers | Servers keep ciphertext for at most 30 days | Not planned |
+| Server-side link previews | Would reveal links to a server | Not planned |
+| Web client | Fixed decision | Not planned |
+| Automatic contact import | Would require identifiers | Not planned |
+| Analytics or telemetry | `19-ops.md` §3 | Not planned |
 
 ## 3. As implemented: locations
 
@@ -71,7 +71,7 @@ Source: PLAN.md §14 (feature parity), §20 (milestones). This matrix fixes whic
 
 ## 4. As implemented: media gallery
 
-Local only, in the app (`enclave-app/ui/app.slint`, sheet `gallery`): the conversation sheet offers **Photos and files (n)**, a list of every attachment in the open conversation that hasn't been deleted, with the decoded preview for pictures (from `mediad`, as in the conversation) and **Save**. It is built from the messages the vault already sends the UI, so it adds no protocol, storage or IPC. Groups have the same list (07 §7.6). Not done: a grid across all conversations.
+Local only, in the app (`enclave-app/ui/app.slint`, sheet `gallery`): the conversation sheet offers **Photos and files (n)**, a list of every attachment in the open conversation that hasn't been deleted, with the decoded preview for pictures (from `mediad`, as in the conversation) and **Save**. It is built from the messages the vault already sends the UI. Groups have the same list (07 §7.6). **All conversations** (a chip in the same sheet, and Settings → **Photos and files from every conversation**) lists every file in every conversation, newest first, with its conversation's name: the vault reads it from the sealed store on request (`Client::all_files`, `Cmd::AllFiles` → `Out::Gallery`, at most 2,000 rows); pictures open in the viewer and anything can be saved. Nothing is downloaded until it is opened or saved; stickers and view-once files are never listed.
 
 ## 5. As implemented: stickers
 

@@ -138,6 +138,17 @@ export struct MessageRow {
     view-once-ready: bool,
 }
 
+// A file in the gallery across all conversations.
+export struct GalleryRow {
+    conversation: string,
+    name: string,
+    seq: string,
+    file: string,
+    picture: bool,
+    outgoing: bool,
+    time: string,
+}
+
 // A crash report on this device (enclave-crash): which process, when, and
 // its text.
 export struct CrashRow {
@@ -1509,6 +1520,11 @@ export component AppWindow inherits Window {
     callback delete-message(string, string);
     callback set-timer(string, int);
     callback send-file(string, string, string, bool);
+    // The gallery: every file in every conversation (asked for, then
+    // shown in gallery-rows).
+    in-out property <bool> gallery-all;
+    in property <[GalleryRow]> gallery-rows;
+    callback load-gallery();
     // Open a view-once picture (conversation, seq), after the sheet that
     // says what it means.
     callback open-view-once(string, string);
@@ -3057,7 +3073,7 @@ export component AppWindow inherits Window {
             QuietButton {
                 text: @tr("Photos and files ({})", root.gallery-count);
                 outlined: true;
-                clicked => { root.sheet = Sheet.gallery; }
+                clicked => { root.gallery-all = false; root.sheet = Sheet.gallery; }
             }
         }
         if root.current.kind == 0: HorizontalLayout {
@@ -3331,9 +3347,58 @@ export component AppWindow inherits Window {
 
     if root.sheet == Sheet.gallery: SheetFrame {
         title: @tr("Photos and files");
-        close => { root.sheet = Sheet.conversation; }
-        Secondary { text: @tr("Everything sent in this conversation, newest last. Files stay sealed on this device until you save them."); }
-        VerticalLayout {
+        close => { root.sheet = root.gallery-all || root.current-id == "" ? Sheet.none : Sheet.conversation; }
+        if root.current-id != "": HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-xs;
+            Chip {
+                text: @tr("This conversation");
+                chosen: !root.gallery-all;
+                clicked => { root.gallery-all = false; }
+            }
+            Chip {
+                text: @tr("All conversations");
+                chosen: root.gallery-all;
+                clicked => { root.gallery-all = true; root.load-gallery(); }
+            }
+        }
+        Secondary { text: root.gallery-all ? @tr("Every file in every conversation, newest first. Nothing is downloaded until you open or save it.") : @tr("Everything sent in this conversation, newest last. Files stay sealed on this device until you save them."); }
+        if root.gallery-all && root.gallery-rows.length == 0: Secondary { text: @tr("No files yet."); }
+        if root.gallery-all: VerticalLayout {
+            spacing: Tokens.space-xs;
+            for g in root.gallery-rows: Rectangle {
+                height: 56px;
+                accessible-role: list-item;
+                accessible-label: (g.picture ? @tr("Photo: ") : @tr("File: ")) + g.file + ", " + g.name + ", " + g.time;
+                HorizontalLayout {
+                    spacing: Tokens.space-sm;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Body { text: g.file; overflow: elide; }
+                        Caption { text: g.name + " · " + (g.outgoing ? @tr("you sent it") : @tr("received")) + " · " + g.time; overflow: elide; }
+                    }
+                    if g.picture: VerticalLayout {
+                        alignment: center;
+                        QuietButton {
+                            text: @tr("View");
+                            accessible-label: @tr("View {}", g.file);
+                            clicked => { root.play-clip(g.conversation, g.seq); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        QuietButton {
+                            text: @tr("Save");
+                            accessible-label: @tr("Save {}", g.file);
+                            clicked => { root.save-file(g.conversation, g.seq); }
+                        }
+                    }
+                }
+            }
+        }
+        if !root.gallery-all: VerticalLayout {
             spacing: Tokens.space-xs;
             for m in root.messages: Rectangle {
                 visible: m.file != "" && !m.deleted;
@@ -3369,7 +3434,7 @@ export component AppWindow inherits Window {
                         spacing: 2px;
                         horizontal-stretch: 1;
                         Body { text: m.file; overflow: elide; }
-                        Caption { text: (m.picture ? @tr("Photo") : @tr("File")) + " · " + (m.outgoing ? @tr("you sent it") : "received") + " · " + m.time; overflow: elide; }
+                        Caption { text: (m.picture ? @tr("Photo") : @tr("File")) + " · " + (m.outgoing ? @tr("you sent it") : @tr("received")) + " · " + m.time; overflow: elide; }
                     }
                     VerticalLayout {
                         alignment: center;
@@ -3687,6 +3752,14 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.settings: SheetFrame {
         title: @tr("Settings");
         close => { root.sheet = Sheet.none; }
+        HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: @tr("Photos and files from every conversation");
+                outlined: true;
+                clicked => { root.gallery-all = true; root.load-gallery(); root.sheet = Sheet.gallery; }
+            }
+        }
         // iPhone suspends apps in the background: nothing is sent then, and
         // new messages wake Enclave through Apple's push (PC-05).
         for option[i] in root.capture-platform == 4 ? [

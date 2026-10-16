@@ -975,6 +975,21 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         ui.set_sheet(Sheet::Add);
                         let _ = ui.show();
                     }
+                    Out::Gallery(rows) => {
+                        let rows: Vec<crate::GalleryRow> = rows
+                            .into_iter()
+                            .map(|g| crate::GalleryRow {
+                                conversation: g.conversation.into(),
+                                name: g.name.into(),
+                                seq: g.seq.to_string().into(),
+                                file: g.file.into(),
+                                picture: g.picture,
+                                outgoing: g.outgoing,
+                                time: g.time.into(),
+                            })
+                            .collect();
+                        ui.set_gallery_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+                    }
                     Out::File(..)
                     | Out::FilePart(..)
                     | Out::OpenNext
@@ -1457,6 +1472,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             ui.set_sheet(Sheet::Player);
         }
         let _ = t.send(Cmd::OpenViewOnce(id.to_string(), seq));
+    });
+    let t = tx.clone();
+    ui.on_load_gallery(move || {
+        let _ = t.send(Cmd::AllFiles);
     });
     let t = tx.clone();
     ui.on_change_words(move || {

@@ -3054,6 +3054,29 @@ impl Engine {
                 let _ = self.out.send(Out::Clip(clip));
                 self.busy = false;
             }
+            Cmd::AllFiles => {
+                let rows = self
+                    .client
+                    .as_ref()
+                    .and_then(|c| c.all_files().ok())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .take(enclave_ipc::MAX_GALLERY)
+                    .map(|f| enclave_ipc::GalleryRow {
+                        conversation: match f.place {
+                            enclave_core::Place::Contact(r) => hex_id(&r),
+                            enclave_core::Place::Group(g) => group_id_str(&g),
+                        },
+                        name: f.name,
+                        seq: f.seq,
+                        picture: is_picture(&f.attachment),
+                        file: f.attachment.name,
+                        outgoing: f.outgoing,
+                        time: clock(f.at),
+                    })
+                    .collect();
+                let _ = self.out.send(Out::Gallery(rows));
+            }
             Cmd::OpenViewOnce(id, seq) => {
                 self.busy = true;
                 self.push();

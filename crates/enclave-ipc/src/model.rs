@@ -696,6 +696,8 @@ pub enum Cmd {
     /// Open a view-once picture or clip, once: it comes back as a viewer
     /// clip ([`Out::Clip`]) and is gone from here and our other devices.
     OpenViewOnce(String, u64),
+    /// List every file in every conversation ([`Out::Gallery`]).
+    AllFiles,
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -940,7 +942,31 @@ pub enum Out {
     /// The next file ([`Out::File`] or parts) is to open in another app,
     /// not to save.
     OpenNext,
+    /// Every file in every conversation, newest first ([`Cmd::AllFiles`]).
+    Gallery(Vec<GalleryRow>),
 }
+
+/// A file in the gallery across all conversations.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GalleryRow {
+    /// Its conversation's id (as in [`Snapshot::contacts`]).
+    pub conversation: String,
+    /// The conversation's name.
+    pub name: String,
+    /// The message's position.
+    pub seq: u64,
+    /// The file's name.
+    pub file: String,
+    /// A picture or animation (the viewer shows it).
+    pub picture: bool,
+    /// We sent it.
+    pub outgoing: bool,
+    /// When.
+    pub time: String,
+}
+
+/// The most rows [`Out::Gallery`] carries.
+pub const MAX_GALLERY: usize = 2000;
 
 /// PCM as 16-bit little-endian bytes.
 fn pcm_bytes(pcm: &[i16]) -> Vec<u8> {
@@ -1718,6 +1744,7 @@ impl Cmd {
             Cmd::OpenFile(c, seq) => w.u8(129).str(c).u64(*seq),
             Cmd::SendViewOnce(c, n, cap) => w.u8(130).str(c).str(n).str(cap),
             Cmd::OpenViewOnce(c, seq) => w.u8(131).str(c).u64(*seq),
+            Cmd::AllFiles => w.u8(132),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -1876,6 +1903,7 @@ impl Cmd {
             129 => Cmd::OpenFile(r.str()?, r.u64()?),
             130 => Cmd::SendViewOnce(r.str()?, r.str()?, r.str()?),
             131 => Cmd::OpenViewOnce(r.str()?, r.u64()?),
+            132 => Cmd::AllFiles,
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
@@ -2067,6 +2095,21 @@ impl Out {
                 w.0
             }
             Out::OpenNext => vec![18],
+            Out::Gallery(rows) => {
+                let mut w = Writer::default();
+                let rows = &rows[..rows.len().min(MAX_GALLERY)];
+                w.u8(19).u32(rows.len() as u32);
+                for g in rows {
+                    w.str(&g.conversation)
+                        .str(&g.name)
+                        .u64(g.seq)
+                        .str(&g.file)
+                        .bool(g.picture)
+                        .bool(g.outgoing)
+                        .str(&g.time);
+                }
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -2182,6 +2225,27 @@ impl Out {
                 Ok(o)
             }
             [18] => Ok(Out::OpenNext),
+            [19, ..] => {
+                let mut r = Reader(&b[1..]);
+                let n = r.u32()? as usize;
+                if n > MAX_GALLERY {
+                    return Err(IpcError::Malformed);
+                }
+                let mut rows = Vec::with_capacity(n);
+                for _ in 0..n {
+                    rows.push(GalleryRow {
+                        conversation: r.str()?,
+                        name: r.str()?,
+                        seq: r.u64()?,
+                        file: r.str()?,
+                        picture: r.bool()?,
+                        outgoing: r.bool()?,
+                        time: r.str()?,
+                    });
+                }
+                r.end()?;
+                Ok(Out::Gallery(rows))
+            }
             [17, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::FilePart(r.str()?, r.bytes()?, r.bool()?);

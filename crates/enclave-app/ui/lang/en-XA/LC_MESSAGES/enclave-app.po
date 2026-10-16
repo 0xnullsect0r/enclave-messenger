@@ -238,6 +238,10 @@ msgid "All"
 msgstr "[Áll·]"
 
 #: ui/app.slint
+msgid "All conversations"
+msgstr "[Áll çóñvérsátíóñs······]"
+
+#: ui/app.slint
 msgid "Also block them"
 msgstr "[Álsó blóçk thém······]"
 
@@ -1377,6 +1381,10 @@ msgstr "[Érásé thís dévíçé. Délétíñg thé áççóúñt ís dóñé 
 msgid "Español"
 msgstr "[Éspáñól··]"
 
+#: ui/app.slint
+msgid "Every file in every conversation, newest first. Nothing is downloaded until you open or save it."
+msgstr "[Évérý fílé íñ évérý çóñvérsátíóñ, ñéwést fírst. Ñóthíñg ís dówñlóádéd úñtíl ýóú ópéñ ór sávé ít.······································]"
+
 #: enclave-vault/src/engine.rs
 msgid "Every message travels as a sealed unit of exactly the same size, so a server can't tell a short hello from a long letter."
 msgstr "[Évérý mésságé trávéls ás á séáléd úñít óf éxáçtlý thé sámé sízé, só á sérvér çáñ't téll á shórt hélló fróm á lóñg léttér.················································]"
@@ -1994,6 +2002,10 @@ msgid "No camera was found."
 msgstr "[Ñó çámérá wás fóúñd.········]"
 
 #: ui/app.slint
+msgid "No files yet."
+msgstr "[Ñó fílés ýét.·····]"
+
+#: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr "[Ñó mésságés fóúñd. Séárçh óñlý lóóks óñ thís dévíçé.····················]"
 
@@ -2356,6 +2368,10 @@ msgstr "[Phótós áñd fílés······]"
 #: ui/app.slint
 msgid "Photos and files ({})"
 msgstr "[Phótós áñd fílés (·······{})]"
+
+#: ui/app.slint
+msgid "Photos and files from every conversation"
+msgstr "[Phótós áñd fílés fróm évérý çóñvérsátíóñ················]"
 
 #: ui/app.slint
 msgid "Pick these words"
@@ -3277,6 +3293,10 @@ msgstr "[Thís çómpútér hás ñó kéýríñg fór Éñçlávé's kéýs, s�
 msgid "This computer keeps Enclave's keys in files, so the passphrase can't be removed."
 msgstr "[Thís çómpútér kééps Éñçlávé's kéýs íñ fílés, só thé pássphrásé çáñ't bé rémóvéd.································]"
 
+#: ui/app.slint
+msgid "This conversation"
+msgstr "[Thís çóñvérsátíóñ······]"
+
 #: enclave-app/src/updater.rs
 msgid "This copy of Enclave isn't an installed app. Download the newest release from the Enclave website."
 msgstr "[Thís çópý óf Éñçlávé ísñ't áñ íñstálléd ápp. Dówñlóád thé ñéwést réléásé fróm thé Éñçlávé wébsíté.·······································]"
@@ -3586,8 +3606,16 @@ msgid "Video call {}"
 msgstr "[Vídéó çáll ····{}]"
 
 #: ui/app.slint
+msgid "View"
+msgstr "[Víéw·]"
+
+#: ui/app.slint
 msgid "View once"
 msgstr "[Víéw óñçé···]"
+
+#: ui/app.slint
+msgid "View {}"
+msgstr "[Víéw ··{}]"
 
 #: ui/app.slint
 msgid "Voice note"
@@ -3984,6 +4012,10 @@ msgstr "[léñgth úñkñówñ·····]"
 #: ui/app.slint
 msgid "obfs4 … cert=… iat-mode=0"
 msgstr "[óbfs4 … çért=… íát-módé=0··········]"
+
+#: ui/app.slint
+msgid "received"
+msgstr "[réçéívéd···]"
 
 #: ui/app.slint
 msgid "typing…"

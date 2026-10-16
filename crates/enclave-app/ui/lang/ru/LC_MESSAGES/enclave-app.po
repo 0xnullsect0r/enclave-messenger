@@ -238,6 +238,10 @@ msgid "All"
 msgstr ""
 
 #: ui/app.slint
+msgid "All conversations"
+msgstr ""
+
+#: ui/app.slint
 msgid "Also block them"
 msgstr ""
 
@@ -1377,6 +1381,10 @@ msgstr ""
 msgid "Español"
 msgstr ""
 
+#: ui/app.slint
+msgid "Every file in every conversation, newest first. Nothing is downloaded until you open or save it."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Every message travels as a sealed unit of exactly the same size, so a server can't tell a short hello from a long letter."
 msgstr ""
@@ -1994,6 +2002,10 @@ msgid "No camera was found."
 msgstr ""
 
 #: ui/app.slint
+msgid "No files yet."
+msgstr ""
+
+#: ui/app.slint
 msgid "No messages found. Search only looks on this device."
 msgstr ""
 
@@ -2355,6 +2367,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Photos and files ({})"
+msgstr ""
+
+#: ui/app.slint
+msgid "Photos and files from every conversation"
 msgstr ""
 
 #: ui/app.slint
@@ -3277,6 +3293,10 @@ msgstr ""
 msgid "This computer keeps Enclave's keys in files, so the passphrase can't be removed."
 msgstr ""
 
+#: ui/app.slint
+msgid "This conversation"
+msgstr ""
+
 #: enclave-app/src/updater.rs
 msgid "This copy of Enclave isn't an installed app. Download the newest release from the Enclave website."
 msgstr ""
@@ -3586,7 +3606,15 @@ msgid "Video call {}"
 msgstr ""
 
 #: ui/app.slint
+msgid "View"
+msgstr ""
+
+#: ui/app.slint
 msgid "View once"
+msgstr ""
+
+#: ui/app.slint
+msgid "View {}"
 msgstr ""
 
 #: ui/app.slint
@@ -3983,6 +4011,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "obfs4 … cert=… iat-mode=0"
+msgstr ""
+
+#: ui/app.slint
+msgid "received"
 msgstr ""
 
 #: ui/app.slint
