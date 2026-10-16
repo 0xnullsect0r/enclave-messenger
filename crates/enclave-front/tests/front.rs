@@ -168,7 +168,8 @@ async fn front_serves_descriptor_and_witness_over_enclave_tls() {
     );
     assert_eq!(get(&http, &format!("{front}/other")).await.unwrap().0, 404);
     // The page behind an invite link: the same for every link (the invite
-    // is in the fragment, never sent), no script allowed.
+    // is in the fragment, never sent); its only script is the one that puts
+    // the fragment in the "Open in Enclave" button, allowed by its hash.
     let (status, headers, body) = get(&http, &format!("{front}/i")).await.unwrap();
     assert_eq!(status, 200);
     assert!(
@@ -176,6 +177,20 @@ async fn front_serves_descriptor_and_witness_over_enclave_tls() {
             .unwrap()
             .contains("open the link again")
     );
+    assert_eq!(get(&http, &format!("{front}/call")).await.unwrap().0, 200);
+    let hash = ring::digest::digest(
+        &ring::digest::SHA256,
+        enclave_front::INVITE_SCRIPT.as_bytes(),
+    );
+    let b64 = base64_std(hash.as_ref());
+    assert!(
+        headers["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .contains(&format!("script-src 'sha256-{b64}'")),
+        "the page's script is allowed by its hash, and nothing else"
+    );
+    assert_eq!(enclave_front::INVITE_PAGE.matches("<script>").count(), 1);
     assert_eq!(headers["referrer-policy"], "no-referrer");
     assert!(
         headers["content-security-policy"]
@@ -451,4 +466,23 @@ async fn a_fresh_certificate_on_disk_is_kept() {
             .is_err()
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Standard base64, padded (CSP hashes).
+fn base64_std(b: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for c in b.chunks(3) {
+        let n = (u32::from(c[0]) << 16)
+            | (u32::from(*c.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*c.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            if i <= c.len() {
+                out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

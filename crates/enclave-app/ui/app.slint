@@ -44,6 +44,12 @@ export struct ContactRow {
     art-tint: color,
 }
 
+// A chat folder, and whether the open conversation is in it.
+export struct FolderRow {
+    name: string,
+    on: bool,
+}
+
 export struct PickRow {
     id: string,
     name: string,
@@ -203,6 +209,14 @@ component Bubble inherits HorizontalLayout {
     in property <MessageRow> msg;
     in property <length> bubble-max;
     in property <bool> selected;
+    // Jump here (a pinned message picked from the list): where it is.
+    in property <bool> jump;
+    callback jumped(length);
+    changed jump => {
+        if self.jump {
+            self.jumped(self.y);
+        }
+    }
     callback tapped();
     callback vote(int);
     callback close-poll();
@@ -602,6 +616,74 @@ component ContactItem inherits Rectangle {
 }
 
 // A labelled on/off switch filling one row.
+// One choice in a row of them (chat folders over the list).
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> chosen;
+    callback clicked();
+    min-height: Tokens.space-touch-target-min;
+    min-width: max(Tokens.space-touch-target-min, label.preferred-width + 2 * Tokens.space-m);
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: root.chosen ? Tokens.pine : Tokens.hairline;
+    background: root.chosen ? Tokens.pine : touch.has-hover ? Tokens.bubble-in : transparent;
+    accessible-role: button;
+    accessible-checkable: true;
+    accessible-checked: root.chosen;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    label := Text {
+        text: root.text;
+        font-size: Tokens.type-secondary;
+        font-weight: 600;
+        color: root.chosen ? Tokens.on-pine : Tokens.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
+            reject
+        }
+    }
+    if focus.has-focus: Rectangle {
+        x: -2px;
+        y: -2px;
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        border-radius: self.height / 2;
+        border-width: Tokens.icon-focus-ring-width;
+        border-color: Tokens.focus-ring;
+    }
+}
+
+// How many people an invite link works for (1 to 20).
+component UsesStepper inherits HorizontalLayout {
+    in-out property <int> uses: 1;
+    spacing: Tokens.space-s;
+    alignment: start;
+    Secondary {
+        text: root.uses == 1 ? @tr("Works for 1 person") : @tr("Works for {} people", root.uses);
+        vertical-alignment: center;
+    }
+    QuietButton {
+        text: "−";
+        outlined: true;
+        accessible-label: @tr("Fewer people");
+        clicked => { root.uses = max(1, root.uses - 1); }
+    }
+    QuietButton {
+        text: "+";
+        outlined: true;
+        accessible-label: @tr("More people");
+        clicked => { root.uses = min(20, root.uses + 1); }
+    }
+}
+
 component SwitchRow inherits Rectangle {
     in property <string> label;
     in property <string> detail;
@@ -1004,6 +1086,8 @@ export component AppWindow inherits Window {
     callback send-sticker(string, string, int);
     callback load-stickers();
     in property <bool> typing-setting;
+    in property <bool> receipts-setting: true;
+    callback set-receipts-setting(bool);
     in property <bool> typing;
     // In a group: who ("Ana, Ben").
     in property <string> typing-who;
@@ -1182,6 +1266,18 @@ export component AppWindow inherits Window {
     in property <int> capture-platform;
     // Linux without Landlock: the vault's files aren't confined (PC-46).
     in property <bool> sandbox-weak;
+    // The open group: only admins post.
+    in property <bool> announcement-only;
+    callback set-announcement-only(bool);
+    // Chat folders: each with whether the open conversation is in it, and
+    // the one the list shows (empty: all).
+    in property <[FolderRow]> folders;
+    in property <string> folder;
+    in-out property <string> new-folder-name;
+    callback new-folder(string);
+    callback delete-folder(string);
+    callback in-folder(string, bool);
+    callback show-folder(string);
     // Android may stop the app to save battery; and its setting.
     in property <bool> battery-restricted;
     callback open-battery-settings();
@@ -1246,7 +1342,11 @@ export component AppWindow inherits Window {
     in property <bool> removed;
     in-out property <string> delete-confirm;
     callback ask-shares();
-    callback new-group-invite(string);
+    callback new-group-invite(string, int, bool);
+    // What the next invite link allows: how many people, and (group links)
+    // whether an admin approves each join.
+    in-out property <int> invite-uses: 1;
+    in-out property <bool> invite-approve: true;
     callback stop-recovery();
     callback backup-route(bool);
     callback set-bridges(string);
@@ -1267,7 +1367,7 @@ export component AppWindow inherits Window {
     in-out property <string> app-pin-input;
     in-out property <string> emergency-pin-input;
     callback set-passphrase(string);
-    callback new-invite();
+    callback new-invite(int);
     callback cancel-invites();
     in property <int> invites;
     in property <string> unlock-error;
@@ -1287,6 +1387,12 @@ export component AppWindow inherits Window {
     callback pin(string, string, bool);
     // The open conversation's pinned messages, most recently pinned first.
     in property <[string]> pins;
+    in property <[string]> pin-seqs;
+    // The pinned messages listed, a message to jump to, and how far up from
+    // the newest the conversation is scrolled (0: at the newest).
+    in-out property <bool> pins-open;
+    in-out property <string> jump-seq;
+    in-out property <length> scroll-offset;
     callback edit-message(string, string, string);
     callback delete-message(string, string);
     callback set-timer(string, int);
@@ -1295,6 +1401,8 @@ export component AppWindow inherits Window {
     in property <int> timer;
     in-out property <string> selected-seq;
     in-out property <string> editing-seq;
+    // A message whose "Delete for everyone" waits for a second tap.
+    in-out property <string> confirm-delete-seq;
     in-out property <string> attach-path;
     in-out property <string> poll-question;
     in-out property <string> poll-a;
@@ -1814,6 +1922,23 @@ export component AppWindow inherits Window {
                     text <=> root.search-query;
                     edited => { root.search(root.search-query); }
                 }
+                if root.folders.length > 0 && root.search-query == "": Flickable {
+                    height: Tokens.space-touch-target-min;
+                    viewport-width: chips.preferred-width;
+                    chips := HorizontalLayout {
+                        spacing: Tokens.space-s;
+                        Chip {
+                            text: @tr("All");
+                            chosen: root.folder == "";
+                            clicked => { root.show-folder(""); }
+                        }
+                        for f in root.folders: Chip {
+                            text: f.name;
+                            chosen: root.folder == f.name;
+                            clicked => { root.show-folder(f.name); }
+                        }
+                    }
+                }
                 Flickable {
                     vertical-stretch: 1;
                     content-height: list.preferred-height;
@@ -1859,6 +1984,10 @@ export component AppWindow inherits Window {
                                 item: c;
                                 selected: c.id == root.current-id;
                                 clicked => { root.select(c.id); }
+                            }
+                            if root.folder != "" && root.contacts.length == 0: Caption {
+                                text: @tr("Nothing in this folder yet. Open a conversation's details to add it.");
+                                wrap: word-wrap;
                             }
                             if root.archived.length > 0: Rectangle {
                                 height: Tokens.space-touch-target-min;
@@ -2049,11 +2178,14 @@ export component AppWindow inherits Window {
                     Rectangle { y: parent.height - 1px; height: 1px; background: Tokens.hairline; }
                 }
 
-                // Pinned messages: the most recent one, and how many.
+                // Pinned messages: the most recent one, and how many; tapped,
+                // all of them, each a way to its message.
                 if root.pins.length > 0: Rectangle {
                     background: Tokens.surface;
-                    accessible-role: text;
+                    accessible-role: button;
                     accessible-label: (root.pins.length == 1 ? @tr("Pinned message: ") : @tr("{} pinned messages. Latest: ", root.pins.length)) + root.pins[0];
+                    accessible-action-default => { root.pins-open = !root.pins-open; }
+                    TouchArea { clicked => { root.pins-open = !root.pins-open; } }
                     HorizontalLayout {
                         padding-left: Tokens.space-m;
                         padding-right: Tokens.space-m;
@@ -2076,12 +2208,34 @@ export component AppWindow inherits Window {
                     }
                     Rectangle { y: parent.height - 1px; height: 1px; background: Tokens.hairline; }
                 }
+                if root.pins.length > 0 && root.pins-open: VerticalLayout {
+                    padding-left: Tokens.space-m;
+                    padding-right: Tokens.space-m;
+                    padding-bottom: Tokens.space-s;
+                    spacing: 2px;
+                    for p[i] in root.pins: Rectangle {
+                        min-height: 36px;
+                        border-radius: Tokens.radius-control;
+                        background: pin-touch.has-hover ? Tokens.surface : transparent;
+                        accessible-role: button;
+                        accessible-label: @tr("Go to pinned message: {}", p);
+                        accessible-action-default => { root.jump-seq = root.pin-seqs[i]; root.selected-seq = root.pin-seqs[i]; root.pins-open = false; }
+                        pin-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.jump-seq = root.pin-seqs[i]; root.selected-seq = root.pin-seqs[i]; root.pins-open = false; }
+                        }
+                        HorizontalLayout {
+                            padding-left: Tokens.space-s;
+                            Text { text: p; font-size: Tokens.type-secondary; color: Tokens.text; overflow: elide; wrap: no-wrap; vertical-alignment: center; }
+                        }
+                    }
+                }
 
                 // Messages.
-                Flickable {
+                flick := Flickable {
                     vertical-stretch: 1;
                     content-height: max(self.height, thread.preferred-height);
-                    content-y: min(0px, self.height - self.content-height);
+                    content-y: min(0px, self.height - self.content-height + root.scroll-offset);
                     thread := VerticalLayout {
                         alignment: end;
                         padding: Tokens.space-m;
@@ -2107,6 +2261,12 @@ export component AppWindow inherits Window {
                             add-pack => { root.add-pack(root.current-id, m.seq); }
                             play-clip => { root.play-clip(root.current-id, m.seq); }
                             playing: root.voice-playing == root.current-id + ":" + m.seq;
+                            jump: root.jump-seq == m.seq;
+                            jumped(at) => {
+                                // Its top a little below the view's.
+                                root.scroll-offset = max(0px, flick.content-height - flick.height - at + Tokens.space-l);
+                                root.jump-seq = "";
+                            }
                             can-transcribe: root.transcription == 2;
                             transcribe => { root.transcribe(root.current-id, m.seq); }
                             play-voice => {
@@ -2224,13 +2384,35 @@ export component AppWindow inherits Window {
                                     root.selected-seq = "";
                                 }
                             }
-                            if m.seq == root.selected-seq && m.outgoing && !m.deleted: QuietButton {
+                            if m.seq == root.selected-seq && m.outgoing && !m.deleted && root.confirm-delete-seq != m.seq: QuietButton {
                                 text: @tr("Delete");
                                 danger: true;
                                 accessible-label: root.current.kind == 2 ? @tr("Delete note") : @tr("Delete for everyone");
                                 clicked => {
-                                    root.delete-message(root.current-id, m.seq);
-                                    root.selected-seq = "";
+                                    if root.current.kind == 2 {
+                                        root.delete-message(root.current-id, m.seq);
+                                        root.selected-seq = "";
+                                    } else {
+                                        root.confirm-delete-seq = m.seq;
+                                    }
+                                }
+                            }
+                            // Delete for everyone is a request: said so before.
+                            if m.seq == root.selected-seq && root.confirm-delete-seq == m.seq: VerticalLayout {
+                                spacing: Tokens.space-xs;
+                                Secondary { text: @tr("Their app deletes it if it cooperates. Someone may already have copied, saved or seen it."); }
+                                HorizontalLayout {
+                                    spacing: Tokens.space-s;
+                                    QuietButton {
+                                        text: @tr("Delete for everyone");
+                                        danger: true;
+                                        clicked => {
+                                            root.delete-message(root.current-id, m.seq);
+                                            root.confirm-delete-seq = "";
+                                            root.selected-seq = "";
+                                        }
+                                    }
+                                    QuietButton { text: @tr("Cancel"); clicked => { root.confirm-delete-seq = ""; } }
                                 }
                             }
                             if m.seq == root.selected-seq && m.file != "": QuietButton {
@@ -2310,7 +2492,19 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                if root.current.state == 2 && !root.current.blocked && !(root.closed && root.current.kind == 0): Rectangle {
+                // Edits and deletes are advisory: said where they're made.
+                if root.editing-seq != "" && root.current.kind != 2: Secondary {
+                    x: Tokens.space-m;
+                    width: parent.width - 2 * Tokens.space-m;
+                    text: @tr("Your edit replaces the text for everyone and shows as edited. Their app may keep the original.");
+                }
+                if root.current.kind == 1 && root.announcement-only && !root.group-admin: Caption {
+                    x: Tokens.space-m;
+                    width: parent.width - 2 * Tokens.space-m;
+                    text: @tr("Only admins can post in this group.");
+                    wrap: word-wrap;
+                }
+                if root.current.state == 2 && !root.current.blocked && !(root.closed && root.current.kind == 0) && !(root.current.kind == 1 && root.announcement-only && !root.group-admin): Rectangle {
                     HorizontalLayout {
                         padding: Tokens.space-m;
                         spacing: Tokens.space-s;
@@ -2367,6 +2561,7 @@ export component AppWindow inherits Window {
                                         root.editing-seq = "";
                                     } else {
                                         root.send(root.current-id, root.draft);
+                                        root.scroll-offset = 0;
                                     }
                                     root.draft = "";
                                 }
@@ -2402,6 +2597,7 @@ export component AppWindow inherits Window {
                                         root.editing-seq = "";
                                     } else {
                                         root.send(root.current-id, root.draft);
+                                        root.scroll-offset = 0;
                                     }
                                     root.draft = "";
                                 }
@@ -2447,10 +2643,11 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
             }
         }
+        UsesStepper { uses <=> root.invite-uses; }
         HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
-            PrimaryButton { text: @tr("Copy invite link"); enabled: !root.busy; clicked => { root.new-invite(); } }
+            PrimaryButton { text: @tr("Copy invite link"); enabled: !root.busy; clicked => { root.new-invite(root.invite-uses); } }
             if root.my-username != "": QuietButton { text: @tr("Copy username"); clicked => { root.copy-text(root.my-username); } }
         }
         if root.invites > 0: HorizontalLayout {
@@ -2556,8 +2753,14 @@ export component AppWindow inherits Window {
                 if !root.current.archived { root.sheet = Sheet.none; }
             }
         }
+        if root.folders.length > 0: Body { text: @tr("Folders"); font-weight: 600; }
+        for f in root.folders: SwitchRow {
+            label: f.name;
+            on: f.on;
+            toggled => { root.in-folder(f.name, !f.on); }
+        }
         Caption {
-            text: @tr("These choices stay on this device. Nobody in the conversation sees them.");
+            text: @tr("These choices stay on your devices. Nobody in the conversation sees them.");
             wrap: word-wrap;
         }
         if root.gallery-count > 0: HorizontalLayout {
@@ -3282,6 +3485,43 @@ export component AppWindow inherits Window {
             wrap: word-wrap;
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
+        Body { text: @tr("Chat folders"); font-weight: 600; }
+        Secondary {
+            text: @tr("Sort conversations into folders, shown above your list. They stay on your own devices.");
+            wrap: word-wrap;
+        }
+        for f in root.folders: HorizontalLayout {
+            spacing: Tokens.space-s;
+            Body { text: f.name; vertical-alignment: center; horizontal-stretch: 1; }
+            QuietButton {
+                text: @tr("Delete");
+                danger: true;
+                accessible-label: @tr("Delete the folder {}", f.name);
+                clicked => { root.delete-folder(f.name); }
+            }
+        }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field {
+                placeholder: @tr("New folder");
+                text <=> root.new-folder-name;
+                horizontal-stretch: 1;
+                accepted => { root.new-folder(root.new-folder-name); root.new-folder-name = ""; }
+            }
+            QuietButton {
+                text: @tr("Add");
+                outlined: true;
+                clicked => { root.new-folder(root.new-folder-name); root.new-folder-name = ""; }
+            }
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
+        SwitchRow {
+            label: @tr("Read receipts");
+            detail: @tr("Let people know when you've read their messages, and see when they've read yours. Off, neither side sees them; messages still show as delivered.");
+            on: root.receipts-setting;
+            toggled => { root.set-receipts-setting(!root.receipts-setting); }
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
         SwitchRow {
             label: @tr("Typing indicators");
             detail: @tr("Show people when you're typing, and see when they are. They only replace cover traffic, so they never use more data, and some may not arrive.");
@@ -3831,6 +4071,16 @@ export component AppWindow inherits Window {
             }
         }
         if root.group-admin: SwitchRow {
+            label: @tr("Only admins can post");
+            detail: @tr("Everyone can still read, vote in polls and react.");
+            on: root.announcement-only;
+            toggled => { root.set-announcement-only(!root.announcement-only); }
+        }
+        if !root.group-admin && root.announcement-only: Caption {
+            text: @tr("Only admins can post here. You can still vote in polls and react.");
+            wrap: word-wrap;
+        }
+        if root.group-admin: SwitchRow {
             label: @tr("On the record");
             detail: root.on-record
                 ? @tr("Messages carry their sender's signature. Anyone who gets a copy can prove who wrote them.")
@@ -3852,17 +4102,26 @@ export component AppWindow inherits Window {
                 clicked => { root.server-pick-for = 2; root.chosen-server = ""; root.sheet = Sheet.servers; }
             }
         }
+        if root.group-admin: UsesStepper { uses <=> root.invite-uses; }
+        if root.group-admin: SwitchRow {
+            label: @tr("Approve each join");
+            detail: root.invite-approve
+                ? @tr("People who use the link wait until you let them in.")
+                : @tr("Anyone with the link joins straight away. Only send it to people you trust.");
+            on: root.invite-approve;
+            toggled => { root.invite-approve = !root.invite-approve; }
+        }
         if root.group-admin: HorizontalLayout {
             alignment: start;
             spacing: Tokens.space-s;
             QuietButton {
                 text: @tr("Copy invite link");
                 accessible-label: @tr("Copy a group invite link");
-                clicked => { root.new-group-invite(root.current-id); }
+                clicked => { root.new-group-invite(root.current-id, root.invite-uses, root.invite-approve); }
             }
         }
         if root.group-admin: Caption {
-            text: @tr("Each link works for one person, for 7 days. You approve them before they join, and they see only new messages.");
+            text: @tr("A link works for 7 days, until you leave the group, or until you cancel it. People who join see only new messages.");
             wrap: word-wrap;
         }
         if root.group-admin && root.addable.length > 0: Body { text: @tr("Add people"); font-weight: 600; }

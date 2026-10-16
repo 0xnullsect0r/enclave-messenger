@@ -263,7 +263,6 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/proto/grp-invite-cap` | KMAC | 256 | Group invite capability | 07 §9 |
 
 ### 3.3 Transport, push, servers
 
@@ -274,7 +273,6 @@ These labels belong to features that are specified but not in code. They are res
 
 | Label | Kind | Output | Purpose | Defined in |
 |---|---|---|---|---|
-| `enclave/v1/kt/leaf` | HASH | 512 | KT leaf value commitment | 12 §3 |
 
 ## 4. Retired draft labels
 
@@ -283,6 +281,8 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 | Retired label | Replaced by |
 |---|---|
 | `enclave/v1/net/grp-read-key`, `enclave/v1/net/grp-read-cred` | `enclave/v1/rpc/read-credential` of the mailbox's write token (`grp-write-token`): the server derives the read credential's hash from the first write, so a group mailbox is created and readable in one unit. A separate read key would need a registration request per mailbox per day (four per epoch) and protects against nobody: only members and the server ever hold the write token |
+| `enclave/v1/proto/grp-invite-cap` | `enclave/v1/invite/psk` and `enclave/v1/invite/cap` of the admin's own invite (07 §9 as implemented): a group link is its maker's contact invite bound to the group, and the greeting through it is the join request, so there is no separate group capability. First contact between members goes through group introductions (07 §9), which already carry each member's card |
+| `enclave/v1/kt/leaf` | `enclave/v1/kt/akd` (`config.rs` `hash_leaf_with_value`): akd commits to each value as `H(len‖value ‖ len‖nonce)` with a per-label nonce, then binds the epoch, all under the one akd domain; an account record's value is already `SHA3-512(manifest) ‖ SHA3-512(attestations)` (03 §8.1), so a second leaf hash would add nothing |
 | `enclave/v1/proto/invite-psk`, `enclave/v1/proto/invite-cap` | `enclave/v1/invite/psk` and `enclave/v1/invite/cap` (`eqxdh.rs` `invite_psk`, `invite_cap`): the same derivations, built under the invite namespace |
 | `enclave/v1/calls/link-dir` | WireGuard (`enclave_calls::wg`): the client↔relay hop is a WireGuard tunnel whose pre-shared key is `calls/wg-psk` for the period |
 | `enclave/v1/proto/link-cap` | None: the link rendezvous mailbox's owner secret is random (`link/owner`) and travels in the link code, so the server never sees anything derived from the link secret that keys the exchange |

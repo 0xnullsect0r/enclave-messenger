@@ -1315,6 +1315,56 @@ async fn group_invite_links() {
     assert!(ada.join_request(&nia.root()).is_none());
 }
 
+/// A group link belongs to the admin who made it: it keeps working when
+/// the group's creator leaves, lets in as many people as it says, and stops
+/// when its maker leaves.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_links_belong_to_their_admin() {
+    let net = network();
+    let mut cs = Vec::new();
+    for (name, server) in [
+        ("Ada", S1),
+        ("Mo", S2),
+        ("Jo", S1),
+        ("Kit", S2),
+        ("Nia", S1),
+    ] {
+        cs.push(
+            Client::create(memory(), Arc::new(net.clone()), server, name)
+                .await
+                .unwrap()
+                .0,
+        );
+    }
+    let [mut ada, mut mo, mut jo, mut kit, mut nia] = <[Client; 5]>::try_from(cs).ok().unwrap();
+    connect(&mut ada, &mut mo).await;
+    let gid = ada.create_group("Choir", &[mo.root()]).await.unwrap();
+    settle(&mut [&mut ada, &mut mo], 2).await;
+    ada.set_group_admin(&gid, &mo.root(), true).await.unwrap();
+    settle(&mut [&mut ada, &mut mo], 2).await;
+    let link = mo.create_group_invite(&gid, 2, false).await.unwrap();
+
+    // The creator leaves; Mo's link still lets two people in.
+    ada.leave_group(&gid).await.unwrap();
+    settle(&mut [&mut ada, &mut mo], 2).await;
+    jo.join_group(&link).await.unwrap();
+    kit.join_group(&link).await.unwrap();
+    settle(&mut [&mut mo, &mut jo, &mut kit], 3).await;
+    assert!(jo.groups().iter().any(|g| g.id == gid && !g.left));
+    assert!(kit.groups().iter().any(|g| g.id == gid && !g.left));
+    kit.send_group_text(&gid, "made it").await.unwrap();
+    let ev = settle(&mut [&mut mo, &mut jo, &mut kit], 2).await;
+    assert!(group_texts(&ev[1]).contains(&"made it".to_string()));
+
+    // Its maker leaves: the link stops working.
+    let more = mo.create_group_invite(&gid, 5, false).await.unwrap();
+    mo.leave_group(&gid).await.unwrap();
+    assert!(
+        nia.join_group(&more).await.is_err(),
+        "cancelled with Mo gone"
+    );
+}
+
 /// Polls (07 §7.5): votes reach everyone, a later vote replaces an earlier
 /// one, only the creator closes, and a close that missed a vote shows as a
 /// tally that doesn't match.
@@ -3118,4 +3168,108 @@ async fn manifest_renewed_before_it_expires() {
         .unwrap()
         .manifest_version();
     assert!(seen >= 2, "Mo took the renewed manifest ({seen})");
+}
+
+/// Read receipts, on unless turned off, both ways: with ours off we send
+/// none and show none of theirs; messages still show as delivered.
+#[tokio::test]
+async fn read_receipts_both_ways() {
+    let net = network();
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut mo, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Mo")
+        .await
+        .unwrap();
+    connect(&mut ada, &mut mo).await;
+    assert!(
+        ada.receipts_enabled() && mo.receipts_enabled(),
+        "on by default"
+    );
+    let last = |c: &Client, peer: &[u8; 64], text: &str| {
+        c.messages(peer)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.text == text)
+            .unwrap()
+    };
+    // Mo turns his off: Ada's message is read but she isn't told.
+    mo.set_receipts_enabled(false).unwrap();
+    ada.send_text(&mo.root(), "one").await.unwrap();
+    mo.sync().await.unwrap();
+    mo.mark_read(&ada.root()).await.unwrap();
+    ada.sync().await.unwrap();
+    let m = last(&ada, &mo.root(), "one");
+    assert!(!m.read, "not read");
+    // Ada turns hers off: Mo's receipts (his back on) aren't shown to her.
+    mo.set_receipts_enabled(true).unwrap();
+    ada.set_receipts_enabled(false).unwrap();
+    ada.send_text(&mo.root(), "two").await.unwrap();
+    mo.sync().await.unwrap();
+    mo.mark_read(&ada.root()).await.unwrap();
+    ada.sync().await.unwrap();
+    assert!(!last(&ada, &mo.root(), "two").read);
+    // Both on: read.
+    ada.set_receipts_enabled(true).unwrap();
+    ada.send_text(&mo.root(), "three").await.unwrap();
+    mo.sync().await.unwrap();
+    mo.mark_read(&ada.root()).await.unwrap();
+    ada.sync().await.unwrap();
+    assert!(last(&ada, &mo.root(), "three").read);
+}
+
+/// Announcement-only groups: only admins post; members still vote; a post
+/// from a member is dropped by everyone else.
+#[tokio::test]
+async fn announcement_only_group() {
+    let net = network();
+    let (mut a, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut b, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Ben")
+        .await
+        .unwrap();
+    connect(&mut a, &mut b).await;
+    let gid = a.create_group("News", &[b.root()]).await.unwrap();
+    settle(&mut [&mut b], 1).await;
+    settle(&mut [&mut a, &mut b], 3).await;
+    assert!(
+        b.set_group_announcement_only(&gid, true).await.is_err(),
+        "admins only"
+    );
+    a.set_group_announcement_only(&gid, true).await.unwrap();
+    settle(&mut [&mut b], 2).await;
+    assert!(b.group_announcement_only(&gid));
+    assert!(b.send_group_text(&gid, "may I?").await.is_err());
+    let poll = a
+        .create_poll(&gid, "Lunch?", &["Yes".into(), "No".into()])
+        .await
+        .unwrap();
+    a.send_group_text(&gid, "Office closed Friday")
+        .await
+        .unwrap();
+    settle(&mut [&mut b], 2).await;
+    assert!(
+        b.group_messages(&gid)
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "Office closed Friday")
+    );
+    b.vote(&gid, &poll, 0).await.unwrap();
+    settle(&mut [&mut a], 2).await;
+    assert_eq!(
+        a.poll(&gid, &poll).unwrap().options[0].1,
+        1,
+        "members still vote"
+    );
+    a.set_group_announcement_only(&gid, false).await.unwrap();
+    settle(&mut [&mut b], 2).await;
+    b.send_group_text(&gid, "thanks").await.unwrap();
+    settle(&mut [&mut a], 2).await;
+    assert!(
+        a.group_messages(&gid)
+            .unwrap()
+            .iter()
+            .any(|m| m.text == "thanks")
+    );
 }

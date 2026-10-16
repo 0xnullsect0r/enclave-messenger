@@ -404,7 +404,8 @@ pub(super) fn report_ended() {
 /// An event from the Java side (`Native.event`): 1 in front ("1") or not,
 /// 2 a push token ("platform:token"), 3 a wake, 4 the activity is gone,
 /// 5 the way messages arrive changed (its number), 6 the system's call
-/// screen ("answer", "end", "mute:1", "mute:0").
+/// screen ("answer", "end", "mute:1", "mute:0"), 7 a link opened with the
+/// app (its text).
 pub fn event(kind: i32, data: &str) {
     let e = match kind {
         4 => {
@@ -421,6 +422,7 @@ pub fn event(kind: i32, data: &str) {
             Event::PushToken(p.parse().unwrap_or(0), t.to_string())
         }
         3 => Event::Wake,
+        7 => Event::OpenLink(data.to_string()),
         6 => match data {
             "answer" => Event::CallAnswered,
             "end" => Event::CallEnded,

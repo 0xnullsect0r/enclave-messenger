@@ -547,6 +547,9 @@ fn packager_config(target: &str, formats: &[&str]) -> Result<serde_json::Value, 
         },
         "wix": {},
         "windows": { "allowDowngrades": false },
+        // Tapped `enclave:` links open the app with the link as its
+        // argument (docs/03-identity.md §4.2).
+        "deepLinkProtocols": [{ "schemes": ["enclave"], "name": "Enclave link" }],
     });
     if let Ok(cmd) = std::env::var("ENCLAVE_WIN_SIGN_CMD")
         && !cmd.is_empty()

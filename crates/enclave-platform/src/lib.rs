@@ -36,6 +36,8 @@ mod jvm;
 #[cfg(feature = "keystores")]
 pub mod keystore;
 pub mod mem;
+#[cfg(all(feature = "window", target_os = "macos"))]
+pub mod open_url;
 #[cfg(all(feature = "phone", any(target_os = "android", target_os = "ios")))]
 pub mod phone;
 pub mod process;

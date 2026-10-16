@@ -40,5 +40,16 @@
 	<string>Enclave uses the camera to scan a contact's code or your other device's code. Nothing it sees leaves this Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Enclave sends your message history straight to your other device on this network when you link them.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.aricummings.enclave.link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>enclave</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

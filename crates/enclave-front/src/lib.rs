@@ -5,6 +5,7 @@
 //!
 //! ```text
 //! https://<domain>/.well-known/enclave   the server's signed descriptor (public_dir/descriptor.bin)
+//! https://<domain>/i, /call            the page behind invite and call links (`INVITE_PAGE`)
 //! https://<domain>/witness/v1/…          the stack's witness, proxied to it on the internal network
 //! https://<domain>/healthz               "ok"
 //! http://<domain>/.well-known/acme-challenge/<token>   ACME HTTP-01 answers
@@ -127,6 +128,7 @@ impl Site {
             .route("/.well-known/enclave", get(descriptor))
             .route("/healthz", get(|| async { "ok" }))
             .route("/i", get(invite_page))
+            .route("/call", get(invite_page))
             .route("/witness/v1/{*rest}", any(witness))
             .route("/credgate/v1/{*rest}", any(credgate))
             .with_state(Arc::new(self))
@@ -154,7 +156,7 @@ async fn invite_page() -> Response {
             ),
             (
                 header::CONTENT_SECURITY_POLICY,
-                HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'"),
+                HeaderValue::from_static(INVITE_CSP),
             ),
         ],
         INVITE_PAGE,
@@ -162,17 +164,40 @@ async fn invite_page() -> Response {
         .into_response()
 }
 
-const INVITE_PAGE: &str = "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
-<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
-<title>An Enclave invite</title>\
-<style>body{font:17px/1.5 system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#1c2321;background:#f6f4ef}\
-h1{font-size:1.4rem}@media(prefers-color-scheme:dark){body{color:#e8e6e1;background:#141816}}</style></head><body>\
-<h1>Someone invited you to talk on Enclave</h1>\
-<p>Open this link on a phone or computer that has Enclave, or copy it into Enclave's \
-<b>Add someone</b> screen. The invite is in the part of the link after the <code>#</code>, \
-which never reached this server.</p>\
-<p>Don't have Enclave yet? Install it, then open the link again.</p>\
-</body></html>\n";
+/// The page's one script: it copies the fragment (the invite, which never
+/// reaches this server) into the "Open in Enclave" button's `enclave:`
+/// link, in the browser. Nothing else may run or load (`INVITE_CSP`).
+macro_rules! open_script {
+    () => {
+        "var h=location.hash.slice(1),k=location.pathname==='/call'?'call':'add',a=document.getElementById('open');if(h){a.href='enclave:'+k+'#'+h;a.hidden=false}"
+    };
+}
+
+/// Only the script above (by its SHA-256) and inline styles; no loads, no
+/// connections, no forms.
+pub const INVITE_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-lnE8HcVg1/AjCI9AXwq1bD+lzxkQecBcNvSfHWH3r50='; form-action 'none'; base-uri 'none'";
+
+/// The script, for checking its hash.
+pub const INVITE_SCRIPT: &str = open_script!();
+
+/// The page behind `https://<domain>/i#…` and `/call#…` links.
+pub const INVITE_PAGE: &str = concat!(
+    "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">",
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "<title>An Enclave link</title>",
+    "<style>body{font:17px/1.5 system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#1c2321;background:#f6f4ef}",
+    "h1{font-size:1.4rem}a.open{display:inline-block;padding:.6rem 1.2rem;border-radius:.5rem;background:#1f4d3f;color:#fff;font-weight:600;text-decoration:none}",
+    "@media(prefers-color-scheme:dark){body{color:#e8e6e1;background:#141816}}</style></head><body>",
+    "<h1>Someone sent you an Enclave link</h1>",
+    "<p><a class=\"open\" id=\"open\" hidden>Open in Enclave</a></p>",
+    "<p>If Enclave doesn't open, copy this whole link into Enclave's ",
+    "<b>Add someone</b> screen. What the link carries is in the part after the <code>#</code>, ",
+    "which never reached this server.</p>",
+    "<p>Don't have Enclave yet? Install it, then open the link again.</p>",
+    "<script>",
+    open_script!(),
+    "</script></body></html>\n"
+);
 
 async fn descriptor(State(site): State<Arc<Site>>) -> Response {
     match tokio::fs::read(site.public_dir.join("descriptor.bin")).await {

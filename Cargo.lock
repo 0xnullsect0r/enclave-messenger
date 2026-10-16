@@ -3217,6 +3217,7 @@ dependencies = [
  "hyper-util",
  "instant-acme",
  "rcgen 0.13.2",
+ "ring",
  "rustls",
  "serde",
  "serde_json",

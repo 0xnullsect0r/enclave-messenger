@@ -60,6 +60,9 @@ pub enum Event {
     CallEnded,
     /// The system's call screen turned the microphone off (true) or on.
     CallMuted(bool),
+    /// A link opened with the app (a tapped `enclave:` link): for the Add
+    /// screen.
+    OpenLink(String),
 }
 
 /// A call is ringing: show the system's incoming-call screen (CallKit,

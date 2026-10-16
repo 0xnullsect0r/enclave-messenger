@@ -581,6 +581,24 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     if let Some(dir) = &crashes {
         enclave_crash::install(dir, "app");
     }
+    // A link the system opened the app with (an `enclave:` link, or the
+    // https page's): to the window already open on this profile, if any.
+    let opened = args
+        .iter()
+        .skip(1)
+        .find(|a| a.starts_with("enclave:") || a.starts_with("https://"))
+        .cloned();
+    #[cfg(desktop)]
+    let profile = match &mode {
+        Mode::Server { profile, .. } => Some(profile.clone()),
+        _ => None,
+    };
+    #[cfg(desktop)]
+    if let (Some(p), Some(l)) = (&profile, &opened)
+        && crate::handoff::send(p, l)
+    {
+        std::process::exit(0);
+    }
     let single_process = args.iter().any(|a| a == "--single-process");
     // Install checks: quit once the vault's first state is shown.
     let smoke = args.iter().any(|a| a == "--smoke-exit");
@@ -591,6 +609,25 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     let lang = crate::i18n::set_language(&crate::i18n::system_language());
     let _ = slint::select_bundled_translation(lang.unwrap_or(""));
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
+    // Links opened later: from another copy of the app, or (macOS) from
+    // the system. They wait in the vault until the profile is unlocked.
+    #[cfg(desktop)]
+    if let Some(p) = &profile {
+        let t = tx.clone();
+        crate::handoff::listen(p, move |l| {
+            let _ = t.send(Cmd::OpenLink(l));
+        });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let t = tx.clone();
+        enclave_platform::open_url::on_open_url(move |l| {
+            let _ = t.send(Cmd::OpenLink(l));
+        });
+    }
+    if let Some(l) = opened {
+        let _ = tx.send(Cmd::OpenLink(l));
+    }
     // Outputs from the vault, applied on the UI thread.
     let w = ui.as_weak();
     let lan_tx = tx.clone();
@@ -814,9 +851,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         let _ = w.upgrade_in_event_loop(move |ui| {
                             ui.set_status_line(
                                 crate::i18n::tr(&if copied {
-                                    "Invite link copied. It works for one person, for 7 days, and is cleared from the clipboard after 60 seconds.".to_string()
+                                    "Invite link copied. It works for 7 days, for as many people as you chose, and is cleared from the clipboard after 60 seconds.".to_string()
                                 } else {
-                                    format!("Your invite link (it works for one person, for 7 days): {link}")
+                                    format!("Your invite link (it works for 7 days): {link}")
                                 })
                                 .into(),
                             )
@@ -836,6 +873,11 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     Out::Effect(e) => view::apply_effect(&ui, e),
                     Out::Preview(p) => view::apply_preview(&ui, p),
                     Out::Clip(c) => view::apply_clip(&ui, c),
+                    Out::OpenLink(l) => {
+                        ui.set_add_link(l.into());
+                        ui.set_sheet(Sheet::Add);
+                        let _ = ui.show();
+                    }
                     Out::File(..)
                     | Out::Invite(_)
                     | Out::Notify(_)
@@ -906,8 +948,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::SetPassphrase(p.to_string()));
     });
     let t = tx.clone();
-    ui.on_new_invite(move || {
-        let _ = t.send(Cmd::NewInvite(1));
+    ui.on_new_invite(move |uses| {
+        let _ = t.send(Cmd::NewInvite(u8::try_from(uses.clamp(1, 20)).unwrap_or(1)));
     });
     let t = tx.clone();
     let w = ui.as_weak();
@@ -1141,15 +1183,22 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         }
     });
     let t = tx.clone();
-    ui.on_new_group_invite(move |id| {
-        let _ = t.send(Cmd::NewGroupInvite(id.to_string()));
+    ui.on_new_group_invite(move |id, uses, approve| {
+        let uses = u8::try_from(uses.clamp(1, 20)).unwrap_or(1);
+        let _ = t.send(Cmd::NewGroupInvite(id.to_string(), uses, approve));
     });
     let t = tx.clone();
     ui.on_cancel_invites(move || {
         let _ = t.send(Cmd::CancelInvites);
     });
     let t = tx.clone();
+    let w = ui.as_weak();
     ui.on_select(move |id| {
+        // Another conversation opens at its newest message.
+        if let Some(ui) = w.upgrade() {
+            ui.set_scroll_offset(0.0);
+            ui.set_pins_open(false);
+        }
         let _ = t.send(Cmd::Select(id.to_string()));
     });
     let t = tx.clone();
@@ -1265,6 +1314,30 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::ChangeWords);
     });
     let t = tx.clone();
+    let f = tx.clone();
+    ui.on_new_folder(move |name| {
+        let _ = f.send(Cmd::NewFolder(name.to_string()));
+    });
+    let f = tx.clone();
+    ui.on_delete_folder(move |name| {
+        let _ = f.send(Cmd::DeleteFolder(name.to_string()));
+    });
+    let f = tx.clone();
+    ui.on_in_folder(move |name, on| {
+        let _ = f.send(Cmd::InFolder(name.to_string(), on));
+    });
+    let f = tx.clone();
+    ui.on_show_folder(move |name| {
+        let _ = f.send(Cmd::ShowFolder(name.to_string()));
+    });
+    let t3 = tx.clone();
+    ui.on_set_announcement_only(move |on| {
+        let _ = t3.send(Cmd::SetAnnouncementOnly(on));
+    });
+    let t2 = tx.clone();
+    ui.on_set_receipts_setting(move |on| {
+        let _ = t2.send(Cmd::ReceiptsSetting(on));
+    });
     ui.on_set_typing_setting(move |on| {
         let _ = t.send(Cmd::TypingSetting(on));
     });

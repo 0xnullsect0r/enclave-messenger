@@ -377,6 +377,8 @@ pub struct Snapshot {
     /// The open conversation's pinned messages (text, most recently
     /// pinned first).
     pub pins: Vec<String>,
+    /// Their messages' positions (`seq`), in the same order, to jump to.
+    pub pin_seqs: Vec<String>,
     /// Sticker packs added here.
     pub sticker_packs: Vec<StickerPackRow>,
     /// Members of the open group (other than us).
@@ -395,10 +397,20 @@ pub struct Snapshot {
     pub invites: u32,
     /// Typing indicators are on (Settings).
     pub typing_setting: bool,
+    /// Read receipts are on (Settings; on unless turned off).
+    pub receipts_setting: bool,
     /// The open conversation's contact is typing.
     pub typing: bool,
     /// In a group: who is typing ("Ana, Ben"), when someone is.
     pub typing_who: String,
+    /// The open group is announcement-only: only admins post.
+    pub announcement_only: bool,
+    /// Chat folders' names, in order.
+    pub folders: Vec<String>,
+    /// The folder the list shows (empty: all).
+    pub folder: String,
+    /// The folders the open conversation is in.
+    pub current_folders: Vec<String>,
     /// Linux without (full) Landlock: the vault couldn't confine its files
     /// (PC-46).
     pub sandbox_weak: bool,
@@ -565,9 +577,9 @@ pub enum Cmd {
     NewInvite(u8),
     /// Cancel every invite link.
     CancelInvites,
-    /// Make a group invite link (admins; joins wait for approval); it comes
-    /// back as [`Out::Invite`].
-    NewGroupInvite(String),
+    /// Make a group invite link (admins): group, how many people, whether
+    /// each join waits for approval. It comes back as [`Out::Invite`].
+    NewGroupInvite(String, u8, bool),
     /// Ask a group a question: group, question, options.
     CreatePoll(String, String, Vec<String>),
     /// Vote in the poll at a group message: group, position, option index.
@@ -611,6 +623,8 @@ pub enum Cmd {
     LoadStickers,
     /// Turn typing indicators on or off.
     TypingSetting(bool),
+    /// Read receipts on or off, both ways.
+    ReceiptsSetting(bool),
     /// The draft in a conversation changed: non-empty (typing) or not.
     Typing(String, bool),
     /// Replace the recovery words (a new root; 03 §8.2).
@@ -624,6 +638,20 @@ pub enum Cmd {
     SetBridges(String),
     /// Put the current conversation on the record (or off it).
     SetOnRecord(bool),
+    /// The open group announcement-only (only admins post), or open again.
+    SetAnnouncementOnly(bool),
+    /// A new chat folder, by name.
+    NewFolder(String),
+    /// Delete a chat folder.
+    DeleteFolder(String),
+    /// Put the open conversation in a folder (true) or take it out.
+    InFolder(String, bool),
+    /// Show only a folder's conversations in the list (empty: all).
+    ShowFolder(String),
+    /// A link opened from outside the app (a tapped `enclave:` link, an
+    /// `https://<host>/i#…` page's button): shown in the Add screen once
+    /// the profile is open ([`Out::OpenLink`]).
+    OpenLink(String),
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -851,6 +879,9 @@ pub enum Out {
     /// whether this is its first piece, and up to [`VOICE_PIECE`] samples
     /// of 48 kHz mono.
     VoiceAudio(String, bool, Vec<i16>),
+    /// Open the Add screen with this link in it (from [`Cmd::OpenLink`]):
+    /// the person still taps Add, so a link can't act on its own.
+    OpenLink(String),
 }
 
 /// PCM as 16-bit little-endian bytes.
@@ -1101,6 +1132,7 @@ impl Snapshot {
             .str(&self.share_request)
             .str(&self.share_request_words)
             .strs(&self.pins)
+            .strs(&self.pin_seqs)
             .len(self.sticker_packs.len());
         for p in &self.sticker_packs {
             w.str(&p.id).str(&p.title).u32(p.count);
@@ -1119,8 +1151,13 @@ impl Snapshot {
             .bool(self.can_lock)
             .u32(self.invites)
             .bool(self.typing_setting)
+            .bool(self.receipts_setting)
             .bool(self.typing)
             .str(&self.typing_who)
+            .bool(self.announcement_only)
+            .strs(&self.folders)
+            .str(&self.folder)
+            .strs(&self.current_folders)
             .bool(self.sandbox_weak)
             .bool(self.can_change_words)
             .bool(self.words_pending)
@@ -1360,6 +1397,7 @@ impl Snapshot {
             share_request: r.str()?,
             share_request_words: r.str()?,
             pins: r.strs()?,
+            pin_seqs: r.strs()?,
             sticker_packs: {
                 let n = r.len()?;
                 (0..n)
@@ -1392,8 +1430,13 @@ impl Snapshot {
             can_lock: r.bool()?,
             invites: r.u32()?,
             typing_setting: r.bool()?,
+            receipts_setting: r.bool()?,
             typing: r.bool()?,
             typing_who: r.str()?,
+            announcement_only: r.bool()?,
+            folders: r.strs()?,
+            folder: r.str()?,
+            current_folders: r.strs()?,
             sandbox_weak: r.bool()?,
             can_change_words: r.bool()?,
             words_pending: r.bool()?,
@@ -1549,7 +1592,7 @@ impl Cmd {
             Cmd::SetPassphrase(p) => w.u8(37).str(p),
             Cmd::NewInvite(n) => w.u8(38).u8(*n),
             Cmd::CancelInvites => w.u8(39),
-            Cmd::NewGroupInvite(g) => w.u8(40).str(g),
+            Cmd::NewGroupInvite(g, uses, approve) => w.u8(40).str(g).u8(*uses).bool(*approve),
             Cmd::CreatePoll(g, q, o) => w.u8(41).str(g).str(q).strs(o),
             Cmd::Vote(g, s, c) => w.u8(42).str(g).u64(*s).u32(*c),
             Cmd::ClosePoll(g, s) => w.u8(43).str(g).u64(*s),
@@ -1575,12 +1618,19 @@ impl Cmd {
             Cmd::AddPack(c, s) => w.u8(57).str(c).u64(*s),
             Cmd::LoadStickers => w.u8(58),
             Cmd::TypingSetting(on) => w.u8(59).bool(*on),
+            Cmd::ReceiptsSetting(on) => w.u8(118).bool(*on),
             Cmd::Typing(c, on) => w.u8(60).str(c).bool(*on),
             Cmd::ChangeWords => w.u8(61),
             Cmd::PlayClip(c, s) => w.u8(62).str(c).u64(*s),
             Cmd::BackupRoute(on) => w.u8(63).bool(*on),
             Cmd::SetBridges(b) => w.u8(64).str(b),
             Cmd::SetOnRecord(on) => w.u8(65).bool(*on),
+            Cmd::SetAnnouncementOnly(on) => w.u8(119).bool(*on),
+            Cmd::NewFolder(n) => w.u8(120).str(n),
+            Cmd::DeleteFolder(n) => w.u8(121).str(n),
+            Cmd::InFolder(n, on) => w.u8(122).str(n).bool(*on),
+            Cmd::ShowFolder(n) => w.u8(123).str(n),
+            Cmd::OpenLink(l) => w.u8(124).str(l),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -1695,7 +1745,7 @@ impl Cmd {
             37 => Cmd::SetPassphrase(r.str()?),
             38 => Cmd::NewInvite(r.u8()?),
             39 => Cmd::CancelInvites,
-            40 => Cmd::NewGroupInvite(r.str()?),
+            40 => Cmd::NewGroupInvite(r.str()?, r.u8()?, r.bool()?),
             41 => Cmd::CreatePoll(r.str()?, r.str()?, r.strs()?),
             42 => Cmd::Vote(r.str()?, r.u64()?, r.u32()?),
             43 => Cmd::ClosePoll(r.str()?, r.u64()?),
@@ -1719,12 +1769,19 @@ impl Cmd {
             57 => Cmd::AddPack(r.str()?, r.u64()?),
             58 => Cmd::LoadStickers,
             59 => Cmd::TypingSetting(r.bool()?),
+            118 => Cmd::ReceiptsSetting(r.bool()?),
             60 => Cmd::Typing(r.str()?, r.bool()?),
             61 => Cmd::ChangeWords,
             62 => Cmd::PlayClip(r.str()?, r.u64()?),
             63 => Cmd::BackupRoute(r.bool()?),
             64 => Cmd::SetBridges(r.str()?),
             65 => Cmd::SetOnRecord(r.bool()?),
+            119 => Cmd::SetAnnouncementOnly(r.bool()?),
+            120 => Cmd::NewFolder(r.str()?),
+            121 => Cmd::DeleteFolder(r.str()?),
+            122 => Cmd::InFolder(r.str()?, r.bool()?),
+            123 => Cmd::ShowFolder(r.str()?),
+            124 => Cmd::OpenLink(r.str()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
@@ -1905,6 +1962,11 @@ impl Out {
                 w.u8(15).str(key).bool(*first).bytes(&bytes);
                 w.0
             }
+            Out::OpenLink(link) => {
+                let mut w = Writer::default();
+                w.u8(16).str(link);
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -2012,6 +2074,12 @@ impl Out {
                     .map(|c| i16::from_le_bytes([c[0], c[1]]))
                     .collect();
                 Ok(Out::VoiceAudio(key, first, pcm))
+            }
+            [16, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::OpenLink(r.str()?);
+                r.end()?;
+                Ok(o)
             }
             [7, ..] => {
                 let mut r = Reader(&b[1..]);

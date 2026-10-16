@@ -197,9 +197,9 @@ Photos and files (`client/group_files.rs`) work as in 1:1 conversations (`08-env
 
 ## 9. Joining
 
-- **Invite links** carry a capability in the URL fragment: `https://<invite-host>/g#<payload>`, where the payload holds `group_id`, an admin's contact fields (as `03-identity.md` §9.2), and `grp_invite_secret`. `grp_invite_cap = KMAC256(grp_invite_secret, "", 256, "enclave/v1/proto/grp-invite-cap")`.
+- **Invite links** carry a capability in the URL fragment, holding `group_id` and an admin's contact fields with their invite (as `03-identity.md` §9.2). (The draft's separate `grp_invite_cap` is retired; see "As implemented".)
 - Links are limited-use (default 1 use for links sent to contacts), expire (default 7 days), and can be revoked by any admin. **Admin approval is on by default.**
-- Flow: the joiner sends a `JoinRequest{grp_invite_cap}` to the admin as a first-contact message (`04-eqxdh.md`). The admin (after approval, if required) posts a state update adding the joiner, starts a new epoch, and sends the joiner the state and epoch secret over their pairwise session.
+- Flow: the joiner greets the admin through the link as a first-contact message (`04-eqxdh.md`). The admin (after approval, if required) posts a state update adding the joiner, starts a new epoch, and sends the joiner the state and epoch secret over their pairwise session.
 - The joiner then establishes pairwise sessions with every member device, starting with `kem_count = 2` (group-only peers, `04-eqxdh.md` §8), using each member's group-scoped request capability so these first contacts are not shown as message requests. Joining costs about 99 × 60 KB ≈ 6 MB of manifests and bundles in bulk mode, with a progress bar.
 - **New members cannot read history from before they joined.** They receive no chain seeds from earlier epochs.
 
@@ -209,7 +209,9 @@ Photos and files (`client/group_files.rs`) work as in 1:1 conversations (`08-env
 - The admin's client turns such a greeting into `Event::JoinRequest { root, group, name }` instead of a message request. With approval (the default, and the only choice in the app) it waits: **Accept** (`approve_join`) accepts the conversation and adds them with `add_group_members`, which starts a new epoch first, so they read nothing from before; **Decline** (`decline_join`) drops them silently. Without approval, the same happens on arrival.
 - The joiner (`join_group`) greets the admin through the link and shows "Waiting to join <name>" until the group's welcome arrives. Someone who already talks to the admin can't use a link (an existing conversation carries no invite) and is told to ask to be added.
 - The app: admins get **Copy invite link** in the members sheet; join requests appear among message requests as "Asks to join <group>"; the Add field takes `enclave:join#` links. Test `group_invite_links` covers approval, no history before joining, non-admins refused, joining without approval, and declining.
-- Not done: links from non-creating admins surviving the creator leaving, choosing uses or approval in the app, and the group-scoped request capabilities for member-to-member first contact (introductions still go through the existing group-introduction path).
+- **Whose link it is**: a link belongs to the admin who made it, since it is their invite and they let people in. Any admin can make one, and it works whoever else leaves, the group's creator included; it stops when its maker leaves the group, is removed or is no longer an admin (`expire_invites` cancels its capabilities at once, so the next person is told the link was cancelled), as well as after 7 days, after its uses, or when its maker cancels it. Another admin can't cancel someone else's link; removing that admin's rights does. Test `group_links_belong_to_their_admin`.
+- **Uses and approval in the app**: the members sheet has "Works for N people" (1 to 20) and **Approve each join** (on by default; off says "Anyone with the link joins straight away. Only send it to people you trust."). The contact invite in the Share sheet has the same uses choice.
+- **Member-to-member first contact** goes through group introductions (above), which already carry each member's card, so there is no group-scoped request capability; the draft's `proto/grp-invite-cap` is retired (label registry §4).
 
 ## 10. Errors
 

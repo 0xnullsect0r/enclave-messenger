@@ -406,6 +406,7 @@ pub mod phone {
                     Event::Visible(v) => Cmd::Visible(v),
                     Event::PushToken(p, t) => Cmd::PushToken(p, t),
                     Event::Wake => Cmd::Wake,
+                    Event::OpenLink(l) => Cmd::OpenLink(l),
                     e => match call_button(&e) {
                         Some(cmd) => cmd,
                         None => return,

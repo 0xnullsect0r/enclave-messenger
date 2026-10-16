@@ -34,8 +34,9 @@ pub use client::{
     LinkCode, LinkOffer, LinkProgress, LinkingDevice, Message, Options, Reaction,
 };
 pub use client::{
-    ConvPrefs, Hit, Location, MAX_PINNED_CONVERSATIONS, MAX_PINS, MeetMatch, Place, RecoveryAlert,
-    RecoveryHold, ShareRelease, ShareRequest, words_from_shares,
+    ConvPrefs, Folder, Hit, Location, MAX_FOLDER_NAME, MAX_FOLDERS, MAX_PINNED_CONVERSATIONS,
+    MAX_PINS, MeetMatch, Place, RecoveryAlert, RecoveryHold, ShareRelease, ShareRequest,
+    words_from_shares,
 };
 pub use client::{
     HistoryServe, HostVotes, LanHistory, ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS,

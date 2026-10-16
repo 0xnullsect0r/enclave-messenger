@@ -104,6 +104,15 @@ fn get_str(r: &mut Reader<'_>, max: usize) -> enclave_proto::Result<String> {
 }
 
 impl Rich {
+    /// Something every member may post in an announcement-only group (not
+    /// a poll, file or sticker of their own).
+    pub(crate) fn is_reply(&self) -> bool {
+        !matches!(
+            self,
+            Rich::Poll { .. } | Rich::Attachment { .. } | Rich::Sticker { .. }
+        )
+    }
+
     pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
         match self {
@@ -422,7 +431,7 @@ impl Client {
             return Err(CoreError::NotAccepted);
         }
         let now = self.now();
-        self.prepare_group_send(gid, now).await?;
+        self.prepare_group_reply(gid, now).await?;
         p.votes.insert(self.account.root_public.0, choice);
         self.save_poll(gid, id, &p)?;
         let rich = Rich::Vote { poll: *id, choice };
@@ -439,7 +448,7 @@ impl Client {
             return Ok(());
         }
         let now = self.now();
-        self.prepare_group_send(gid, now).await?;
+        self.prepare_group_reply(gid, now).await?;
         let tally = tally_hash(id, &p.counts());
         p.closed = Some(tally);
         self.save_poll(gid, id, &p)?;
@@ -460,7 +469,7 @@ impl Client {
     /// Send structured content to the group.
     pub(crate) async fn post_group_rich(&mut self, gid: &[u8; 32], rich: &Rich) -> Result<()> {
         let now = self.now();
-        self.prepare_group_send(gid, now).await?;
+        self.prepare_group_reply(gid, now).await?;
         self.post_group(gid, &rich.encode(), FLAG_RICH, now).await
     }
 

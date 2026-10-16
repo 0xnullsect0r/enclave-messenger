@@ -162,6 +162,23 @@ extern "C-unwind" fn registered(_: &AnyObject, _: Sel, _: &AnyObject, token: &NS
     super::emit(super::Event::PushToken(2, hex));
 }
 
+/// A link opened with the app (an `enclave:` URL): to the Add screen.
+extern "C-unwind" fn open_url(
+    _: &AnyObject,
+    _: Sel,
+    _: &AnyObject,
+    url: &NSURL,
+    _: &AnyObject,
+) -> Bool {
+    match url.absoluteString() {
+        Some(s) => {
+            super::emit(super::Event::OpenLink(s.to_string()));
+            Bool::YES
+        }
+        None => Bool::NO,
+    }
+}
+
 /// A push arrived while the app runs: fetch now.
 extern "C-unwind" fn received(
     _: &AnyObject,
@@ -242,6 +259,15 @@ pub fn init() {
                     objc2::runtime::Imp,
                 >(received),
                 c"v@:@@@?",
+            );
+            add_method(
+                class,
+                sel!(application:openURL:options:),
+                std::mem::transmute::<
+                    extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &NSURL, &AnyObject) -> Bool,
+                    objc2::runtime::Imp,
+                >(open_url),
+                c"B@:@@@",
             );
         }
     }

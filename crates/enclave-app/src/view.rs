@@ -1,7 +1,7 @@
 //! Turns display data from the vault ([`enclave_ipc`]) into Slint models on
 //! the UI thread.
 
-use crate::{AppWindow, ContactRow, DeviceRow, MessageRow, PickRow, Screen, Sheet};
+use crate::{AppWindow, ContactRow, DeviceRow, FolderRow, MessageRow, PickRow, Screen, Sheet};
 pub use enclave_ipc::{ClipFrames, Device, Effect, Msg, Pick, Preview, Row, Snapshot};
 use slint::{
     Color, Image, Model, ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
@@ -381,6 +381,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     }
     ui.set_share_request_words(s.share_request_words.clone().into());
     ui.set_pins(strings(&s.pins));
+    ui.set_pin_seqs(strings(&s.pin_seqs));
     ui.set_sticker_packs(ModelRc::from(Rc::new(VecModel::from(
         s.sticker_packs
             .iter()
@@ -425,9 +426,21 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_lock_timeout(i32::try_from(s.lock_timeout).unwrap_or(i32::MAX));
     ui.set_invites(s.invites as i32);
     ui.set_typing_setting(s.typing_setting);
+    ui.set_receipts_setting(s.receipts_setting);
     ui.set_typing(s.typing);
     ui.set_typing_who(s.typing_who.clone().into());
     ui.set_sandbox_weak(s.sandbox_weak);
+    ui.set_announcement_only(s.announcement_only);
+    let folders: Vec<FolderRow> = s
+        .folders
+        .iter()
+        .map(|f| FolderRow {
+            name: f.into(),
+            on: s.current_folders.contains(f),
+        })
+        .collect();
+    ui.set_folders(ModelRc::from(Rc::new(VecModel::from(folders))));
+    ui.set_folder(s.folder.clone().into());
     ui.set_can_change_words(s.can_change_words);
     ui.set_removed(s.removed);
     ui.set_has_root_pin(s.has_root_pin);

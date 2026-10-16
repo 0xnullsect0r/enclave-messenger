@@ -124,6 +124,41 @@ impl Client {
             .is_some_and(|e| e.group.state.on_record)
     }
 
+    /// Whether only admins may post in group `gid`.
+    pub fn group_announcement_only(&self, gid: &[u8; 32]) -> bool {
+        self.groups
+            .get(gid)
+            .is_some_and(|e| e.group.state.admins_only)
+    }
+
+    /// Make group `gid` announcement-only (only admins post; everyone may
+    /// still vote and react), or open it again (admins only).
+    pub async fn set_group_announcement_only(&mut self, gid: &[u8; 32], on: bool) -> Result<()> {
+        let now = self.now();
+        let next = {
+            let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
+            if e.group.state.admins_only == on {
+                return Ok(());
+            }
+            let me = e.group.me;
+            if !e
+                .group
+                .state
+                .members
+                .get(me as usize)
+                .is_some_and(|m| m.admin)
+            {
+                return Err(CoreError::NotAccepted);
+            }
+            e.group.state.child(|s| s.admins_only = on)?
+        };
+        self.post_group(gid, &next.encode(), FLAG_STATE_UPDATE, now)
+            .await?;
+        let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
+        e.group.apply_state(next)?;
+        self.save_group(gid)
+    }
+
     /// Put group `gid` on the record, or take it off (admins only).
     pub async fn set_group_on_the_record(&mut self, gid: &[u8; 32], on: bool) -> Result<()> {
         let now = self.now();

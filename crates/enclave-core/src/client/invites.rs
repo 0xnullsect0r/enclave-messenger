@@ -325,10 +325,19 @@ impl Client {
         Ok(())
     }
 
-    /// Cancel links that lapsed or brought everyone they could.
+    /// Cancel links that lapsed or brought everyone they could, and group
+    /// links for groups we no longer admin (left, removed or demoted): a
+    /// link is its maker's, and works only while they can let people in.
     pub(crate) async fn expire_invites(&mut self, now: u64) -> Result<()> {
+        let admin_of: Vec<[u8; 32]> = self
+            .groups()
+            .into_iter()
+            .filter(|g| g.admin && !g.left)
+            .map(|g| g.id)
+            .collect();
         for inv in self.stored_invites()? {
-            if inv.expires <= now {
+            let orphan = inv.group.is_some_and(|(g, _)| !admin_of.contains(&g));
+            if inv.expires <= now || orphan {
                 self.drop_invite(&inv, now).await?;
             }
         }

@@ -6,6 +6,8 @@
 pub mod audio;
 pub mod camera;
 pub mod format;
+#[cfg(desktop)]
+pub mod handoff;
 pub mod i18n;
 pub mod lan;
 pub mod screen;

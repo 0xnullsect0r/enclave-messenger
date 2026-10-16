@@ -305,6 +305,11 @@ struct Engine {
     selected_group: Option<[u8; 32]>,
     /// Note to self is open.
     selected_notes: bool,
+    /// The chat folder the list shows (empty: all).
+    folder: String,
+    /// A link opened from outside the app, waiting for the profile to be
+    /// open and unlocked ([`Cmd::OpenLink`]).
+    opened_link: Option<String>,
     picked: BTreeSet<[u8; 64]>,
     link_offer: Option<enclave_core::LinkOffer>,
     link_status: String,
@@ -1023,6 +1028,8 @@ pub async fn run_with(
         selected: None,
         selected_group: None,
         selected_notes: false,
+        folder: String::new(),
+        opened_link: None,
         picked: BTreeSet::new(),
         link_offer: None,
         link_status: String::new(),
@@ -1467,6 +1474,21 @@ impl Engine {
         if phone {
             self.handle_cmd(cmd).await;
             self.apply_privacy();
+            self.deliver_link();
+            return;
+        }
+        if let Cmd::OpenLink(link) = cmd {
+            // Only what the Add screen takes; it waits for the profile and
+            // the PIN, and the person still taps Add.
+            let link = link.trim().to_string();
+            if enclave_core::open_deep_link(&link).is_ok() {
+                self.opened_link = Some(link);
+            } else if !self.pin_locked {
+                self.status =
+                    "That link isn't an Enclave invite, or it only works on its own screen.".into();
+                self.push();
+            }
+            self.deliver_link();
             return;
         }
         self.last_use = std::time::Instant::now();
@@ -1505,6 +1527,18 @@ impl Engine {
             self.bulk(false);
         }
         self.apply_privacy();
+        self.deliver_link();
+    }
+
+    /// Hand a waiting opened link to the window once there's an unlocked
+    /// profile to add it to.
+    fn deliver_link(&mut self) {
+        if self.client.is_some()
+            && !self.pin_locked
+            && let Some(l) = self.opened_link.take()
+        {
+            let _ = self.out.send(Out::OpenLink(l));
+        }
     }
 
     async fn handle_cmd(&mut self, cmd: Cmd) {
@@ -1977,11 +2011,11 @@ impl Engine {
                     self.status = "Couldn't close the poll. Check your connection.".into();
                 }
             }
-            Cmd::NewGroupInvite(id) => {
+            Cmd::NewGroupInvite(id, uses, approve) => {
                 self.busy = true;
                 self.push();
                 if let (Some(gid), Some(c)) = (self.group_of(&id), self.client.as_mut()) {
-                    match c.create_group_invite(&gid, 1, true).await {
+                    match c.create_group_invite(&gid, uses, approve).await {
                         Ok(link) => {
                             let _ = self.out.send(Out::Invite(link));
                         }
@@ -3048,6 +3082,11 @@ impl Engine {
                     let _ = c.set_setting(SCREEN_SECURITY, if on { &[] } else { &[0] });
                 }
             }
+            Cmd::ReceiptsSetting(on) => {
+                if let Some(c) = self.client.as_mut() {
+                    let _ = c.set_receipts_enabled(on);
+                }
+            }
             Cmd::TypingSetting(on) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_typing_enabled(on);
@@ -3114,6 +3153,52 @@ impl Engine {
                     tokio::spawn(async move {
                         let _ = sending.await;
                     });
+                }
+            }
+            Cmd::NewFolder(name) => {
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.new_folder(&name) {
+                        Ok(()) => String::new(),
+                        Err(CoreError::NotAccepted) => {
+                            "There's already a folder with that name.".into()
+                        }
+                        Err(CoreError::TooLong) => format!(
+                            "A folder name is 1 to {} characters, and you can have {} folders.",
+                            enclave_core::MAX_FOLDER_NAME,
+                            enclave_core::MAX_FOLDERS
+                        ),
+                        Err(_) => "Couldn't make the folder.".into(),
+                    };
+                }
+            }
+            Cmd::DeleteFolder(name) => {
+                if let Some(c) = self.client.as_mut()
+                    && c.delete_folder(&name).is_ok()
+                    && self.folder == name
+                {
+                    self.folder.clear();
+                }
+            }
+            Cmd::InFolder(name, on) => {
+                let place = match (self.selected, self.selected_group) {
+                    (Some(r), _) => Some(Place::Contact(r)),
+                    (None, Some(g)) => Some(Place::Group(g)),
+                    _ => None,
+                };
+                if let (Some(p), Some(c)) = (place, self.client.as_mut())
+                    && c.set_in_folder(&name, &p, on).is_err()
+                {
+                    self.status = "Couldn't change the folder.".into();
+                }
+            }
+            Cmd::ShowFolder(name) => self.folder = name,
+            // Taken in `handle`.
+            Cmd::OpenLink(_) => {}
+            Cmd::SetAnnouncementOnly(on) => {
+                if let (Some(g), Some(c)) = (self.selected_group, self.client.as_mut())
+                    && c.set_group_announcement_only(&g, on).await.is_err()
+                {
+                    self.status = "Couldn't change who can post. Check your connection.".into();
                 }
             }
             Cmd::SetOnRecord(on) => {
@@ -4266,6 +4351,7 @@ impl Engine {
             .collect();
         s.invites = c.invites().map(|v| v.len() as u32).unwrap_or(0);
         s.typing_setting = c.typing_enabled();
+        s.receipts_setting = c.receipts_enabled();
         s.can_change_words = c.holds_recovery_words();
         let (on, at) = c.server_backup();
         s.server_backup = on;
@@ -4514,11 +4600,15 @@ impl Engine {
                         }
                     })
                     .collect();
-                s.pins = pinned
+                let pinned_msgs: Vec<_> = pinned
                     .iter()
                     .filter_map(|id| msgs.iter().find(|m| m.id == *id && !m.deleted))
+                    .collect();
+                s.pins = pinned_msgs
+                    .iter()
                     .map(|m| pin_text(&m.text, m.attachment.is_some()))
                     .collect();
+                s.pin_seqs = pinned_msgs.iter().map(|m| m.seq.to_string()).collect();
                 let digits: String = c
                     .security_code(&ct.root)
                     .chars()
@@ -4576,6 +4666,7 @@ impl Engine {
                 s.current = Some(row.clone());
                 s.group_admin = g.admin;
                 s.on_record = g.on_record;
+                s.announcement_only = c.group_announcement_only(&g.id);
                 if let Some(v) = c.group_host_votes(&g.id) {
                     s.group_host = hex_server(&v.host);
                     s.group_next = v.next.as_ref().map(hex_server).unwrap_or_default();
@@ -4632,9 +4723,13 @@ impl Engine {
                         .collect();
                 }
                 let pinned = c.pinned_ids(&Place::Group(g.id));
-                s.pins = pinned
+                let pinned_msgs: Vec<_> = pinned
                     .iter()
                     .filter_map(|id| msgs.iter().find(|m| m.id == *id && !m.deleted))
+                    .collect();
+                s.pin_seqs = pinned_msgs.iter().map(|m| m.seq.to_string()).collect();
+                s.pins = pinned_msgs
+                    .iter()
                     .map(|m| {
                         let text = pin_text(&m.text, false);
                         if m.from.is_none() {
@@ -4756,7 +4851,35 @@ impl Engine {
         rows.push((last.map(|m| m.at).unwrap_or(0), row));
         // Pinned first, then newest first.
         rows.sort_by(|a, b| b.1.pinned.cmp(&a.1.pinned).then(b.0.cmp(&a.0)));
+        // Chat folders: their names, the one shown (the main list keeps only
+        // its conversations), and those the open one is in.
+        let folders = c.folders();
+        s.folders = folders.iter().map(|f| f.name.clone()).collect();
+        let shown = folders.iter().find(|f| f.name == self.folder).map(|f| {
+            f.places
+                .iter()
+                .map(|p| match p {
+                    Place::Contact(r) => hex_id(r),
+                    Place::Group(g) => group_id_str(g),
+                })
+                .collect::<std::collections::HashSet<_>>()
+        });
+        s.folder = if shown.is_some() {
+            self.folder.clone()
+        } else {
+            String::new()
+        };
+        let open = match (self.selected, self.selected_group) {
+            (Some(r), _) => Some(Place::Contact(r)),
+            (None, Some(g)) => Some(Place::Group(g)),
+            _ => None,
+        };
+        s.current_folders = open.map(|p| c.folders_of(&p)).unwrap_or_default();
         for (_, r) in rows {
+            if r.state != 1 && !r.archived && shown.as_ref().is_some_and(|ids| !ids.contains(&r.id))
+            {
+                continue;
+            }
             if r.state == 1 {
                 s.requests.push(r)
             } else if r.archived {

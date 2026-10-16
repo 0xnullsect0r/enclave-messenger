@@ -157,6 +157,18 @@ async fn own_devices_stay_in_step() {
     assert!(ada2.contacts().iter().any(|c| c.root == b && c.unread == 0));
     assert!(ada2.conv_prefs(&Place::Contact(b)).archived);
 
+    // Chat folders, and what's in them, are the same on both devices.
+    ada.new_folder("Work").unwrap();
+    assert!(ada.new_folder(" Work ").is_err(), "names are unique");
+    ada.set_in_folder("Work", &Place::Contact(b), true).unwrap();
+    ada.sync().await.unwrap();
+    ada2.sync().await.unwrap();
+    assert_eq!(ada2.folders_of(&Place::Contact(b)), ["Work"]);
+    ada2.delete_folder("Work").unwrap();
+    ada2.sync().await.unwrap();
+    ada.sync().await.unwrap();
+    assert!(ada.folders().is_empty());
+
     // The inbox is acknowledged only as far as both devices have read.
     ben.send_text(&ada.root(), "kept for the other")
         .await

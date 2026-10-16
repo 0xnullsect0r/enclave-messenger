@@ -198,7 +198,6 @@ bucket(dev)      = u16(KMAC256(k_bucket, device_id, 256, "enclave/v1/proto/grp-b
 gbkt(d, b)       = KMAC256(k_bucket, u32(d) ‖ u8(b), 256, "enclave/v1/net/grp-rekey-mailbox")
 state_hash_n     = SHAKE256("enclave/v1/proto/grp-state" ‖ state_hash_{n−1} ‖ SHA3-512(update_n), 32)
 grp_msg_id       = SHAKE256("enclave/v1/proto/grp-msg-id" ‖ group_id ‖ u32(epoch) ‖ u8(member) ‖ u8(device) ‖ u8(gen) ‖ u32(counter), 32)[0..8]
-grp_invite_cap   = KMAC256(grp_invite_secret, "", 256, "enclave/v1/proto/grp-invite-cap")
 tally_hash       = SHA3-512("enclave/v1/proto/poll-tally-hash" ‖ poll_id ‖ canonical_tally)
 ```
 
@@ -302,7 +301,7 @@ cosig         = CompositeSign(witness_sk, ctx = "enclave/v1/kt/cosign", head ‖
 gossip_digest = SHAKE256("enclave/v1/kt/gossip" ‖ head, 32)
 ```
 
-Reserved: `kt_leaf_value = SHA3-512("enclave/v1/kt/leaf" ‖ …)`; today the leaf value is chosen by the publisher.
+Leaf values: akd commits to each value as `H(len ‖ value ‖ len ‖ nonce)` under `enclave/v1/kt/akd`, with a per-label nonce, and binds the epoch (`enclave-kt` `config.rs`). The value is the publisher's: for an account record `SHA3-512(manifest) ‖ SHA3-512(attestations)` (03 §8.1). The draft's separate `kt/leaf` hash is retired (label registry §4). Group invite links have no capability of their own (`proto/grp-invite-cap` retired): a link is its maker's contact invite (`invite/psk`, `invite/cap`) bound to the group (07 §9).
 
 ## Open questions
 

@@ -87,6 +87,7 @@ public class EnclaveActivity extends android.app.NativeActivity {
             Fcm.start(this);
         }
         callIntent(getIntent());
+        linkIntent(getIntent());
     }
 
     @Override
@@ -94,6 +95,16 @@ public class EnclaveActivity extends android.app.NativeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         callIntent(intent);
+        linkIntent(intent);
+    }
+
+    /** Opened by a tapped enclave: link: it goes to the Add screen. */
+    private void linkIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.getData() == null) {
+            return;
+        }
+        Native.event(Native.OPEN_LINK, intent.getData().toString());
+        intent.setData(null);
     }
 
     /** Opened by a ringing call's notification: over the lock screen, answering if asked. */

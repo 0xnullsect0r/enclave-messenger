@@ -54,7 +54,7 @@ pub const HEARTBEAT_SECS: u64 = 86_400;
 /// How long a newly linked device is pointed out on every device.
 pub const NEW_DEVICE_SECS: u64 = 7 * 86_400;
 /// Settings kept the same on every device of the account.
-pub const SYNCED_SETTINGS: [&str; 2] = ["receipts", "typing"];
+pub const SYNCED_SETTINGS: [&str; 3] = ["receipts", "typing", super::folders::SETTING];
 
 const T_READ: u8 = 1;
 const T_PREFS: u8 = 2;

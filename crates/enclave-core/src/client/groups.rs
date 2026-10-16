@@ -531,12 +531,23 @@ impl Client {
     /// Check we may send to `gid` now, and rotate our sender chain first if
     /// it is due.
     pub(crate) async fn prepare_group_send(&mut self, gid: &[u8; 32], now: u64) -> Result<()> {
+        self.prepare_group_post(gid, now, false).await
+    }
+
+    /// As [`Self::prepare_group_send`] for a vote, reaction, pin, call or
+    /// the like, which every member may post in an announcement-only group.
+    pub(crate) async fn prepare_group_reply(&mut self, gid: &[u8; 32], now: u64) -> Result<()> {
+        self.prepare_group_post(gid, now, true).await
+    }
+
+    async fn prepare_group_post(&mut self, gid: &[u8; 32], now: u64, reply: bool) -> Result<()> {
         {
             let e = self.groups.get(gid).ok_or(CoreError::NotFound)?;
             if e.left {
                 return Err(CoreError::NotAccepted);
             }
-            if e.group.state.admins_only
+            if !reply
+                && e.group.state.admins_only
                 && !e
                     .group
                     .state
@@ -744,7 +755,9 @@ impl Client {
         if let Some(e) = self.groups.get_mut(gid) {
             e.left = true;
         }
-        self.save_group(gid)
+        self.save_group(gid)?;
+        // Our links to it stop working with us gone.
+        self.expire_invites(now).await
     }
 
     // ------------------------------------------------------------------
@@ -1283,6 +1296,23 @@ impl Client {
         let sender_root = *sender_root;
         if self.is_blocked(&sender_root) {
             return Ok(None); // their state updates still apply, above
+        }
+        // Announcement-only: from a member who isn't an admin only votes,
+        // reactions, pins, calls and the like, never posts.
+        let gated = self.groups.get(gid).is_some_and(|e| {
+            e.group.state.admins_only
+                && !e
+                    .group
+                    .state
+                    .members
+                    .get(msg.member as usize)
+                    .is_some_and(|m| m.admin)
+        });
+        if gated
+            && !(msg.flags & FLAG_RICH != 0
+                && super::polls::Rich::decode(&msg.content).is_ok_and(|r| r.is_reply()))
+        {
+            return Ok(None);
         }
         if msg.flags & FLAG_RICH != 0 {
             let name = {

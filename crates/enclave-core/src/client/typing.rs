@@ -41,6 +41,17 @@ pub const GROUP_TYPING_MAX_AGE: u64 = 30;
 const GROUP_TYPING: u8 = 1;
 
 impl Client {
+    /// Whether read receipts are on (on unless turned off), both ways: off,
+    /// we send none and show none; contacts still see "Delivered".
+    pub fn receipts_enabled(&self) -> bool {
+        !matches!(self.setting("receipts"), Ok(Some(v)) if v == [0])
+    }
+
+    /// Turn read receipts on or off (synced to our other devices).
+    pub fn set_receipts_enabled(&mut self, on: bool) -> Result<()> {
+        self.set_setting("receipts", &[u8::from(on)])
+    }
+
     /// Whether typing indicators are on (off unless turned on).
     pub fn typing_enabled(&self) -> bool {
         matches!(self.setting(SETTING), Ok(Some(v)) if v == [1])

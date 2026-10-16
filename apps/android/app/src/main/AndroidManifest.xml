@@ -69,6 +69,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Tapped enclave: links (invites, group and call links) open
+                 the Add screen, filled in (docs/03-identity.md §4.2). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="enclave" />
+            </intent-filter>
         </activity>
 
         <service

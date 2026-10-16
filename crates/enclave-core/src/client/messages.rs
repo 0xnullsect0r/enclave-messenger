@@ -533,8 +533,7 @@ impl Client {
         }
         // Read on our other devices too.
         self.queue_read(root, &ids)?;
-        let receipts = !matches!(self.setting("receipts"), Ok(Some(v)) if v == [0]);
-        if receipts && !ids.is_empty() && c.state == ContactState::Accepted {
+        if self.receipts_enabled() && !ids.is_empty() && c.state == ContactState::Accepted {
             for chunk in ids.chunks(crate::content::MAX_RECEIPTS) {
                 self.send_content(root, &Content::Read(chunk.to_vec()), now)
                     .await?;
@@ -773,8 +772,9 @@ impl Client {
                 }
             }
             Content::Read(ids) | Content::Delivered(ids) => {
-                // Read implies delivered.
-                let read = is_read;
+                // Read implies delivered. With our receipts off we don't
+                // show theirs either (both ways, as typing indicators).
+                let read = is_read && self.receipts_enabled();
                 for id in ids {
                     self.outbox_done(root, &id)?;
                     if let Ok(mut m) = self.find(root, &id)
