@@ -48,9 +48,10 @@ let
       programs,
       extraInstall ? "",
       nativeBuildInputs ? [ ],
+      buildInputs ? [ ],
     }:
     pkgs.stdenv.mkDerivation {
-      inherit pname version src;
+      inherit pname version src buildInputs;
       nativeBuildInputs = [
         pkgs.cargo
         pkgs.rustc
@@ -62,8 +63,6 @@ let
       dontStrip = true;
       CARGO_INCREMENTAL = "0";
       CARGO_TERM_COLOR = "never";
-      # Calls: cpal links ALSA (found by pkg-config).
-      PKG_CONFIG_PATH = lib.makeSearchPath "lib/pkgconfig" [ pkgs.alsa-lib.dev ];
       buildPhase = ''
         runHook preBuild
         export CARGO_HOME=$TMPDIR/cargo
@@ -153,6 +152,8 @@ rec {
       "enclave-tord"
     ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
+    # Found by pkg-config at build time (fontconfig, ALSA, …).
+    buildInputs = runtimeLibs;
     extraInstall = ''
       install -m755 ${nymd}/bin/enclave-nymd ${lyrebird}/bin/lyrebird $out/bin/
       # The programs start each other from their own folder; only the

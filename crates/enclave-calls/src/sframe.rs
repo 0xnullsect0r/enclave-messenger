@@ -208,7 +208,8 @@ impl Receiver {
         }
         let hdr = &packet[..hl];
         let body = &packet[hl..];
-        if e == self.current.epoch || e + 1 == self.current.epoch {
+        // Epochs come from the packet: compare without overflowing.
+        if e == self.current.epoch || e.checked_add(1) == Some(self.current.epoch) {
             let (key, win) = if e == self.current.epoch {
                 (&self.current, &mut self.window)
             } else {

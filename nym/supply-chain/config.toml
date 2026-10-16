@@ -141,6 +141,14 @@ criteria = "safe-to-deploy"
 version = "0.3.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.alsa]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.alsa-sys]]
+version = "0.4.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.amplify]]
 version = "4.9.0"
 criteria = "safe-to-deploy"
@@ -513,6 +521,10 @@ criteria = "safe-to-deploy"
 version = "0.11.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.boringtun]]
+version = "0.7.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.borsh]]
 version = "1.8.1"
 criteria = "safe-to-deploy"
@@ -761,6 +773,10 @@ criteria = "safe-to-deploy"
 version = "0.1.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.coreaudio-rs]]
+version = "0.14.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.cosmos-sdk-proto]]
 version = "0.27.0"
 criteria = "safe-to-deploy"
@@ -795,6 +811,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.countme]]
 version = "3.0.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.cpal]]
+version = "0.18.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.cpubits]]
@@ -983,6 +1003,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.dashmap]]
 version = "5.5.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.dasp_sample]]
+version = "0.11.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.data-encoding]]
@@ -1861,6 +1885,18 @@ criteria = "safe-to-deploy"
 version = "0.3.24"
 criteria = "safe-to-deploy"
 
+[[exemptions.ip_network]]
+version = "0.4.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.ip_network_table]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.ip_network_table-deps-treebitmap]]
+version = "0.5.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.ipconfig]]
 version = "0.3.4"
 criteria = "safe-to-deploy"
@@ -2175,6 +2211,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.mac-notification-sys]]
 version = "0.6.15"
+criteria = "safe-to-deploy"
+
+[[exemptions.mach2]]
+version = "0.6.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.md-5]]
@@ -2705,7 +2745,15 @@ criteria = "safe-to-deploy"
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.objc2-audio-toolbox]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.objc2-av-foundation]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-avf-audio]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
@@ -2831,10 +2879,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.openssl-probe]]
 version = "0.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.opus-decoder]]
-version = "0.1.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.opus-rs]]
@@ -3251,10 +3295,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rangemap]]
 version = "1.8.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.rav1d]]
-version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.rav1e]]
@@ -3775,6 +3815,34 @@ criteria = "safe-to-deploy"
 
 [[exemptions.softbuffer]]
 version = "0.4.8"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora-aec3]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora-agc2]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora-common-audio]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora-fft]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora-ns]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sonora-simd]]
+version = "0.2.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.sphinx-packet]]

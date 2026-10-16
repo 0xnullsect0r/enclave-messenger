@@ -27,3 +27,5 @@ nym-gateway-requests = { path = "../third_party/nym-gateway-requests" }
 nym-credential-storage = { path = "../third_party/nym-credential-storage" }
 libsqlite3-sys = { path = "../third_party/libsqlite3-sys-030" }
 i-slint-backend-android-activity = { path = "../third_party/i-slint-backend-android-activity" }
+opus-decoder = { path = "../third_party/opus-decoder" }
+rav1d = { path = "../third_party/rav1d" }

@@ -164,3 +164,18 @@ fn every_target_survives_mutated_and_random_input() {
         }
     }
 }
+
+/// Inputs the nightly fuzzer found, kept so they stay fixed.
+#[test]
+fn found_by_the_nightly_fuzzer() {
+    // calls: an SFrame header whose counter makes the epoch arithmetic
+    // overflow.
+    enclave_fuzz::run(
+        "calls",
+        &[
+            244, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 8,
+        ],
+    );
+    // media: a one-byte AV1 unit (rav1d's empty picture leaked).
+    enclave_fuzz::run("media", &[0, 0, 0, 1, 0]);
+}

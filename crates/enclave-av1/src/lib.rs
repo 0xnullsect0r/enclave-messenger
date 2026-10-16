@@ -140,17 +140,17 @@ impl Decoder {
         // SAFETY: the context is open and `pic` is a live, default Dav1dPicture
         // for dav1d to fill.
         let r = unsafe { dav1d_get_picture(self.ctx, Some(NonNull::from(&mut pic))) };
-        if r.0 == EAGAIN {
-            return Ok(None);
-        }
-        if r.0 != 0 {
-            return Err(Av1Error::Bad);
-        }
-        let frame = copy_out(&pic);
-        // SAFETY: `pic` holds a picture reference from dav1d_get_picture;
-        // this releases it, and nothing borrows it any more.
+        // rav1d writes a picture (an empty one, holding an allocation) into
+        // `pic` whatever it answers, so it is released on every path.
+        let frame = (r.0 == 0).then(|| copy_out(&pic));
+        // SAFETY: `pic` holds what dav1d_get_picture wrote; this releases
+        // it, and nothing borrows it any more.
         unsafe { dav1d_picture_unref(Some(NonNull::from(&mut pic))) };
-        frame.map(Some)
+        match frame {
+            None if r.0 == EAGAIN => Ok(None),
+            None => Err(Av1Error::Bad),
+            Some(f) => f.map(Some),
+        }
     }
 }
 
@@ -195,5 +195,19 @@ impl Drop for Decoder {
         // SAFETY: `ctx` was opened by dav1d_open; dav1d_close takes it and
         // leaves `None`.
         unsafe { dav1d_close(Some(NonNull::from(&mut self.ctx))) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Found by the nightly fuzzer (a leak of rav1d's empty picture when
+    /// it had none to give); run under valgrind or LeakSanitizer to see it.
+    #[test]
+    fn garbage_is_refused_without_leaking() {
+        let mut d = Decoder::new().unwrap_or_else(|_| unreachable!());
+        assert!(d.decode(&[0]).is_err() || d.decode(&[0]).is_ok_and(|f| f.is_empty()));
+        let _ = d.decode(&[0x12, 0, 0x0a]);
     }
 }
