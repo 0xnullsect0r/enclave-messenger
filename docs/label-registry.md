@@ -27,11 +27,11 @@ Kinds:
 | CTX-C | The `ctx` argument of a composite (Ed448 + ML-DSA-87) signature: it goes into the message representative `M'` (`02-cryptography.md` §7). |
 | CTX-M | The ML-DSA-87 context string (FIPS 204 `ctx`) used inside every composite signature. |
 | CTX-R | The FIPS 205 `ctx` of an SLH-DSA-SHAKE-256s root signature. |
-| AD | Prefix at the start of an EnclaveSeal associated-data string. Used only by reserved rows; implemented seals use the ADs listed in §4. |
-| TR | First element of a transcript. Used only by reserved rows. |
+| AD | Prefix at the start of an EnclaveSeal associated-data string. |
+| TR | First element of a transcript. |
 | INFO | The `info` string of an RFC 9497 `DeriveKeyPair` (a Privacy Pass issuer key from a seed). |
 
-Status values: **Implemented** (used by code today), **Reserved (not yet implemented)** (specified for a later milestone, not in code), **Retired** (a draft label replaced by the implementation; never reuse).
+Status values: **Implemented** (used by code today), **Reserved** (specified for a feature the code doesn't have; none at present, §3), **Retired** (a draft label replaced by the implementation; never reuse).
 
 ## 2. Implemented labels
 
@@ -48,6 +48,8 @@ Every label in this section appears in the code. "Where" names the crate, file a
 | `enclave/v1/kem/combine` | KMAC | 512 | `kem.rs` `combine` (`Suite::ThreeKem`) | EnclaveCombine output, 3-KEM suite |
 | `enclave/v1/kem2/extract` | KMAC | 512 | `kem.rs` `combine` (`Suite::TwoKem`) | EnclaveCombine extract `prk`, 2-KEM suite |
 | `enclave/v1/kem2/combine` | KMAC | 512 | `kem.rs` `combine` (`Suite::TwoKem`) | EnclaveCombine output, 2-KEM suite |
+| `enclave/v1/kem4/extract` | KMAC | 512 | `kem.rs` `combine` (`Suite::FourKem`, feature `hqc`) | EnclaveCombine extract `prk`, 4-KEM suite (with HQC-256) |
+| `enclave/v1/kem4/combine` | KMAC | 512 | `kem.rs` `combine` (`Suite::FourKem`, feature `hqc`) | EnclaveCombine output, 4-KEM suite |
 | `enclave/v1/rng/hedge` | XOF | caller's length | `rng.rs` `HedgedRng::fill` | Hedged RNG output |
 | `enclave/v1/root/keygen` | KMAC | 768 | `sig.rs` `RootSigningKey::from_recovery_secret` | SLH-DSA root seeds `SK.seed ‖ SK.prf ‖ PK.seed` from the recovery secret |
 | `enclave/v1/sig/composite` | CTX-M | — (24 B string) | `sig.rs` `CompositeSigningKey::sign`, `CompositePublic::verify`; `tests/differential.rs` | ML-DSA-87 context string inside every composite signature |
@@ -252,29 +254,9 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/calls/ticket-key` | KMAC | 960 | `enclave-calls/src/ticket.rs` `TicketSecretKey::from_seed` | A day's ticket-key X448 secret (56 B) and ML-KEM-1024 seed (64 B) from that day's chain seed; data is the day (spec: 12 §5) |
 | `enclave/v1/calls/ticket-chain` | KMAC | 256 | `enclave-calls/src/ticket.rs` `TicketSecretKey::next_seed` | Next day's ticket-key chain seed (spec: 12 §5) |
 
-## 3. Reserved labels (not yet implemented)
+## 3. Reserved labels
 
-These labels belong to features that are specified but not in code. They are reserved; the code MUST use exactly these strings when the feature is built, unless an RFC changes this file first.
-
-### 3.1 Identity, linking, conversations
-
-| Label | Kind | Output | Purpose | Defined in |
-|---|---|---|---|---|
-
-### 3.2 Groups
-
-| Label | Kind | Output | Purpose | Defined in |
-|---|---|---|---|---|
-
-### 3.3 Transport, push, servers
-
-| Label | Kind | Output | Purpose | Defined in |
-|---|---|---|---|---|
-
-### 3.4 KT, releases, storage, calls
-
-| Label | Kind | Output | Purpose | Defined in |
-|---|---|---|---|---|
+None. Every label specified so far is used by code and listed in §2. A label for a feature not yet in code goes here first, in a table `| Label | Kind | Output | Purpose | Defined in |`; the code MUST then use exactly that string, unless an RFC changes this file first, and the row moves to §2 when the code uses it. `cargo xtask done` (D2) counts any row left here.
 
 ## 4. Retired draft labels
 
@@ -359,8 +341,8 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 | `"enclave/v1/msg"` (§5) | `enclave/v1/ratchet/msg` |
 | `KMAC(hk, "tag"‖N)` (§5) | `enclave/v1/ratchet/tag` |
 | `"enclave/v1/signed-msg"` (§5) | `enclave/v1/ctx/signed-msg` |
-| `KMAC(epoch_secret, "gmbox"‖day)` (§7) | `enclave/v1/net/grp-mailbox` (reserved) |
-| `"grp-export"` (§7) | `enclave/v1/proto/grp-export` (reserved) |
+| `KMAC(epoch_secret, "gmbox"‖day)` (§7) | `enclave/v1/net/grp-mailbox` |
+| `"grp-export"` (§7) | `enclave/v1/proto/grp-export` |
 | `KMAC(inbox_seed, "inbox"‖week)` (§9.3) | `enclave/v1/net/inbox-addr` over `enclave/v1/net/inbox-addr-seed` |
 | `KMAC(read_key, day)` (§9.3) | `enclave/v1/net/read-cred` (bound to the address too); request inboxes keep the static `enclave/v1/rpc/read-credential` |
 | `KMAC(k_contact, i)` (§9.3) | `enclave/v1/tokens/write` |

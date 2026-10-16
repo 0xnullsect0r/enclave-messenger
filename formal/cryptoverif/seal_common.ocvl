@@ -1,0 +1,39 @@
+(* EnclaveSeal-v1 (crates/enclave-crypto/src/seal.rs, docs/02-cryptography.md
+   §5), shared by the seal_*.ocv models:
+
+     N = KMAC256(K, frame(r) ‖ frame(AD) ‖ SHA3-512(P), 256, "seal/nonce")
+     k_x ‖ k_a ‖ k_m ‖ n_x ‖ iv_a = KMAC256(K, N, 1088, "seal/keys")
+     C = AES-256-CTR(k_a, iv_a) ⊕ XChaCha20(k_x, n_x) ⊕ P
+     T = KMAC256(k_m, frame(AD) ‖ N ‖ C, 256, "seal/tag")
+
+   KMAC256 is a PRF on (customization string, output length, input). Its
+   uses under one K with different customization strings are therefore
+   jointly indistinguishable from independent random functions, which is
+   what two PRFs with independent keys Kn, Kk give; the models use those.
+   Messages have a fixed length (a sealed object's length is public). *)
+
+type key [large, fixed].
+type rnd [large, fixed].
+type nonce [large, fixed].
+type subkeys [large, fixed].
+type kxt [large, fixed].
+type kat [large, fixed].
+type kmt [large, fixed].
+type nxt [fixed].
+type ivt [fixed].
+type msg [fixed].
+type tagt [fixed].
+type digest [fixed].
+
+(* SHA3-512 of the plaintext: no assumption. *)
+fun H(msg): digest.
+fun nonce_in(rnd, bitstring, digest): bitstring [data].
+fun tag_in(bitstring, nonce, msg): bitstring [data].
+
+proba Pn.
+expand PRF(key, bitstring, nonce, kmac_nonce, Pn).
+proba Pk.
+expand PRF(key, nonce, subkeys, kmac_keys, Pk).
+expand random_split_5(subkeys, kxt, kat, kmt, nxt, ivt, sk_tuple).
+
+expand Xor(msg, xor, zero).

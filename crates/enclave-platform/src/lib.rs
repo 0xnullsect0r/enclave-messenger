@@ -19,6 +19,8 @@
 //!   notifications, the clipboard, screen security.
 //! - [`video`] (feature `video`): reading the person's own video files
 //!   with the platform's decoder.
+//! - [`ctgrind`] (feature `ctgrind`, tests only): Valgrind client
+//!   requests that mark secrets undefined.
 //! - `seatbelt` (macOS): each helper process confines itself.
 //! - `appcontainer` (Windows): mediad starts in an AppContainer.
 //!
@@ -31,6 +33,8 @@ pub mod appcontainer;
 pub mod backup;
 #[cfg(feature = "biometric")]
 pub mod biometric;
+#[cfg(feature = "ctgrind")]
+pub mod ctgrind;
 pub mod dit;
 pub mod fatal;
 #[cfg(all(

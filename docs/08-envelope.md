@@ -68,7 +68,7 @@ Sum: 1 + 1 + 6 + 32 + 32 = **72**.
 | 6 | `BlobGet` | unit or poll | chunk ID | unused | — | the chunk |
 | 7 | `Directory` | unit | unused (zero) | unused (zero) | API payload: `DirRequest` (§9.3) | API payload: `DirReply` |
 | 8 | `RegisterTokens` | unit | inbox address | owner secret | API payload: concatenated 32 B token hashes (ignored on create) | status only |
-| 9 | `KeyTransparency` | — | — | — | — | not implemented: always `NotFound` |
+| 9 | `KeyTransparency` | — | — | — | — | reserved: KT queries and writes ride on `Directory` (Q1), and the server answers op 9 with `NotFound` |
 | 10 | `PushRegister` | unit | inbox address | owner secret | API payload: sealed push token (empty removes it) | status only |
 | 11 | `Report` | unit | the reported account's request inbox | proof of work | API payload: `ReportBody` (`13-operators.md` §2) | status only |
 | 12 | `Status` | poll | status id of an earlier `DEFER` request | random | — | that request's reply (its op, status and payload), or `Status` with `NotFound` while it hasn't arrived |
@@ -197,7 +197,13 @@ Sum: 3,232 + 32 = **3,264**. The plaintext (3,232 B, zero-padded) is in `05-ratc
 
 ### 5.4 Notification capsule: 1,024 B
 
-Always 1,024 random bytes. Sealed notification previews (`10-push.md` §4) are not implemented; when they are, the capsule keeps this offset and size.
+Random bytes unless the recipient turned previews on (`10-push.md` §4). Then the sender seals its name and a preview under the day's notification key (the recipient's chain key `nk_d` for that contact, or the group's day key):
+
+```
+capsule = Seal(key_d, "enclave/v1/wire/ad-capsule" ‖ u32(day), u8 name_len ‖ name (≤ 64) ‖ u16 preview_len ‖ preview (≤ 600) ‖ zeros to 960)   # 960 + 64 = 1,024
+```
+
+A filled capsule and a random one look the same to the server and to Apple. The recipient's devices, and the iOS notification extension (`enclave-nse`), open it with their key table (`enclave-proto/src/notify.rs` `seal_capsule`, `open_capsule`; tests `capsules`, `previews_in_capsules`).
 
 ### 5.5 Body and content framing
 

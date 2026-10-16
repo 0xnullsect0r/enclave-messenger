@@ -24,7 +24,7 @@ bytes, or make randomness:
 
 | Area | Crates |
 |---|---|
-| Post-quantum and classical primitives | `libcrux-ml-kem`, `libcrux-ml-dsa`, `libcrux-sha3`, `libcrux-kmac`, `ml-kem`, `ml-dsa`, `slh-dsa`, `classic-mceliece-rust`, `ed448`, `ed448-goldilocks`, `x448`, `curve25519-dalek`, `x25519-dalek`, `ed25519-dalek`, `voprf`, `p256`, `p384`, `ecdsa`, `elliptic-curve`, `primeorder`, `hash2curve`, `crypto-bigint` |
+| Post-quantum and classical primitives | `libcrux-ml-kem`, `libcrux-ml-dsa`, `libcrux-sha3`, `libcrux-kmac`, `ml-kem`, `ml-dsa`, `slh-dsa`, `classic-mceliece-rust` (patched, `third_party/`), `hqc-kem`, `ed448`, `ed448-goldilocks`, `x448`, `curve25519-dalek`, `x25519-dalek`, `ed25519-dalek`, `voprf`, `p256`, `p384`, `ecdsa`, `elliptic-curve`, `primeorder`, `hash2curve`, `crypto-bigint` |
 | Symmetric and hashing | `aes`, `aead`, `chacha20`, `chacha20poly1305`, `poly1305`, `polyval`, `universal-hash`, `ctr`, `cipher`, `crypto_secretbox`, `sha2`, `sha3`, `shake`, `cshake`, `keccak`, `blake2`, `hmac`, `hkdf`, `pbkdf2`, `argon2`, `digest`, `crypto-common`, `signature` |
 | Randomness and secrets | `rand`, `rand_core`, `rand_chacha`, `getrandom`, `rdrand`, `zeroize`, `zeroize_derive` |
 | WireGuard | `boringtun` (the call links) |

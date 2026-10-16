@@ -12,7 +12,7 @@ Sizes are from the FIPS and RFC documents (PLAN Appendix A) and are asserted by 
 
 | Role | Primitive | Sizes (B) | Used for |
 |---|---|---|---|
-| Account root | SLH-DSA-SHAKE-256s (FIPS 205), pure mode, hedged | pk 64, sig 29,792 | Account manifest (other root records are not implemented yet) |
+| Account root | SLH-DSA-SHAKE-256s (FIPS 205), pure mode, hedged | pk 64, sig 29,792 | Account manifest (`manifest.rs`), recovery-word migration (`migration.rs`), server move (`server_move.rs`), account tombstone (`tombstone.rs`), all in `enclave-proto` (tests `sign_verify_and_tamper`, `signed_by_the_root_and_nothing_else`, `only_the_root_signs_its_end`) |
 | Device signature | Composite Ed448 + ML-DSA-87 (§7). Both components MUST verify. | pk 2,649 (57 + 2,592); sig 4,741 (114 + 4,627); seed 89 (57 + 32) | Signed prekeys, OPK batch roots, last-resort prekeys, the On-the-record EQXDH transcript, KT heads, witness cosignatures |
 | Handshake KEM | X448 (RFC 7748) + ML-KEM-1024 (FIPS 203) + Classic McEliece-8192128 | X448 pk/ss 56; ML-KEM ek 1,568, dk 3,168, ct 1,568, ss 32; McE pk 1,357,824, sk 14,120, ct 208, ss 32 | EQXDH |
 | Device auth KEM | ML-KEM-1024 static key per device | ek 1,568 | PQ authentication of a device |
@@ -24,7 +24,9 @@ Sizes are from the FIPS and RFC documents (PLAN Appendix A) and are asserted by 
 | Password KDF | Argon2id (RFC 9106) | — | Optional app passphrase |
 | Anti-spam | Equihash⟨60,3⟩ over BLAKE2b (§10) | proof 32 | Request-inbox writes, OPK claims, blob uploads |
 | KT privacy VRF | akd's ECVRF over Ed25519 | — | Username enumeration resistance only (classical) |
-| Reserved (not yet implemented) | Privacy Pass (RFC 9578), TLS SecP384r1MLKEM1024, HQC-256 suite | — | See §11 and `09-transport.md` §8 |
+| Anonymous tokens | Privacy Pass (RFC 9578) type 0x0001: VOPRF over P-384 with SHA-384 (RFC 9497) | — | Credential gate, blob uploads, relay tickets (§11; `enclave-tokens::privpass`, test `rfc9497_p384_voprf_vectors`) |
+| TLS key exchange | SecP384r1MLKEM1024 (0x11ED), TLS 1.3, `TLS_AES_256_GCM_SHA384` only | — | Enclave's TLS connections (`enclave-tls`, `09-transport.md` §8; test `hybrid_handshake_carries_data`) |
+| Fourth KEM, behind a flag | HQC-256 (FIPS 207 initial public draft) | pk 7,237, sk 7,333, ct 14,421, ss 32 | The four-KEM EnclaveCombine suite 0x04 (§5.1), behind enclave-crypto's `hqc` feature and used by no protocol until FIPS 207 is final (External Gate G12) (`enclave_crypto::hqc`, RustCrypto `hqc-kem`; tests `hqc256_known_answers` against the official vectors, `four_kem_suite_is_separate`) |
 | Not used | AEGIS-256, HKDF, HMAC, AES-GCM (outside TLS), compression before encryption | — | — |
 
 HKDF-SHA3 is not used: it rests on the same Keccak assumption as KMAC and adds a second construction to review.
@@ -41,6 +43,7 @@ There is no negotiation in v1. The implementation uses these identifiers:
 | Wire unit and poll object | suite `u16` | 1 (`SUITE_V1`) | X448 + ML-KEM-1024 server sealing with EnclaveSeal-v1 |
 | EnclaveCombine (§5) | suite ID `u8` | 0x02 | 2-KEM suite (X448 + ML-KEM-1024) |
 | EnclaveCombine (§5) | suite ID `u8` | 0x03 | 3-KEM suite (X448 + ML-KEM-1024 + McEliece-8192128) |
+| EnclaveCombine (§5) | suite ID `u8` | 0x04 | 4-KEM suite (adds HQC-256), feature `hqc` only |
 | Stored envelope header (`enclave-proto`) | version `u8` | 1 | Envelope format v1 |
 | Manifest | format `u16` | 1 | Manifest format v1 |
 
@@ -207,7 +210,7 @@ Rules:
 
 **Rollback residual.** If a sender's state is rolled back and it reuses a header key and counter, the lookup tag repeats; the nonce still differs unless the sealed body is also identical, because the body hash is part of the nonce material and the body is sealed with a fresh hedged nonce under a fresh key. The EQXDH identity key `k_id` is fresh per initiation.
 
-The M0 draft specified a "detached-nonce" form `SealDN(K, N, AD, P)` with a caller-supplied nonce. It is not implemented; `seal_compact` replaces it for the ratchet and EQXDH. `11-calls.md` still refers to SealDN for SFrame; calls are not implemented, and that call site will be specified against `seal_compact` when they are.
+The M0 draft specified a "detached-nonce" form `SealDN(K, N, AD, P)` with a caller-supplied nonce. `seal_compact` replaced it for the ratchet, EQXDH and the two call sites in calls. In SFrame (`enclave-calls/src/sframe.rs`) the key and 32 B salt come from `KMAC256(base, u64(KID), 512, "enclave/v1/calls/sframe-key")` for each 5 s epoch, its nonce material is the salt with the frame counter XORed into the last 8 bytes, and its AD is `"enclave/v1/calls/ad-sframe" ‖ header ‖ metadata`. The counter starts at 0 under each epoch's key and goes up with every frame, and call state is never stored, so a rollback can't repeat a nonce (`11-calls.md` §5, which still writes it as SealDN). Test `sframe_epochs_reordering_replay_and_tamper`. The relay↔relay link (`enclave-relay`, RFC 0007) seals each datagram under its direction's key for the 120 s epoch, with nonce material `u32 epoch ‖ u64 counter` and the 28 B datagram header as AD (test `relay_links_turn_post_quantum_each_epoch`).
 
 ### 4.6 Properties and argument
 
@@ -219,7 +222,7 @@ The M0 draft specified a "detached-nonce" form `SealDN(K, N, AD, P)` with a call
 | Nonce misuse resistance | `N` depends on fresh randomness `r`, `AD`, and `SHA3-512(P)`. Keystream reuse under one `K` requires `r`, `AD` and `P` all to repeat, in which case the outputs are identical and nothing new leaks. The compact form's argument is in §4.5. |
 | Multi-key | Each seal derives fresh subkeys from `(K, N)`; a 256-bit `N` makes subkey collisions negligible. |
 
-The computational proof is an M10 deliverable (`20-assurance.md` §2).
+CryptoVerif proves IND-CPA if either cipher is secure (`formal/cryptoverif/seal_ind_cpa_xchacha.ocv`, `seal_ind_cpa_aes.ocv`), INT-CTXT from KMAC256 as a PRF and SUF-CMA MAC (`seal_int_ctxt.ocv`), and key commitment (`seal_commit.ocv`); `cargo xtask cryptoverif` runs them (CI job `cryptoverif`, `20-assurance.md` §2).
 
 ### 4.7 Limits
 
@@ -248,6 +251,7 @@ EnclaveCombine (`kem::combine`) turns the shared secrets of several KEMs (X448 t
 |---|---|---|---|---|---|
 | `Suite::TwoKem` | 0x02 | `"ENCL" ‖ 0x02` | `enclave/v1/kem2/extract` | `enclave/v1/kem2/combine` | EQXDH without McEliece, sealed requests |
 | `Suite::ThreeKem` | 0x03 | `"ENCL" ‖ 0x03` | `enclave/v1/kem/extract` | `enclave/v1/kem/combine` | EQXDH with the vault key |
+| `Suite::FourKem` (feature `hqc`) | 0x04 | `"ENCL" ‖ 0x04` | `enclave/v1/kem4/extract` | `enclave/v1/kem4/combine` | Reserved: X448 + ML-KEM-1024 + McEliece + HQC-256, for EQXDH once FIPS 207 is final (EQXDH refuses it until then) |
 
 The suite key is the 5-byte ASCII `ENCL` followed by the suite ID byte. The two suites use different labels and different suite keys, so a 2-KEM output is never related to a 3-KEM output (RT-07).
 
@@ -274,6 +278,8 @@ Rules:
 This is PLAN §2.3's `prk = KMAC256(suite_label, ss_x448‖ss_mlkem‖ss_mce‖psk_or_zero, 512, …)` and `ss = KMAC256(prk, SHA3-512(all pks‖all cts‖transcript‖psk_flag‖suite), 512, …)`, with framing added and the public keys, ciphertexts and transcript items merged into one ordered list.
 
 Using the public suite key as the KMAC key in the extract step is the SP 800-56C one-step construction with a public salt. The secret inputs are all in the message.
+
+CryptoVerif proves the output secret when any one of X448, ML-KEM-1024 or McEliece is secure, or when the PSK is secret (`formal/cryptoverif/combine_x448.ocv`, `combine_mlkem.ocv`, `combine_mceliece.ocv`, `combine_psk.ocv`; the extract step a random oracle, the combine step a PRF).
 
 ### 5.3 Tests
 
@@ -429,8 +435,7 @@ Implemented:
 - **Locked memory**: secret key bytes (`SealKey`, `X448Secret`, `MlKemSecret`, `McElieceSecret`, the composite seed and expanded keys, the root key, the recovery secret, the hedge) live in `enclave_platform::mem` slots in `mlock`ed (`VirtualLock`) pages, kept out of Linux core dumps and zeroized when freed; small secrets share pages. Locking is best effort and counted (`mem::stats`). McEliece decapsulation's working copy of the key is locked and zeroized too (it was a plain heap copy).
 - **No `Debug` on secrets**: a compile-time probe asserts that the secret types above, `HedgedRng`, `AccountKeys`, `DeviceKeys`, `RecoverySecret`, ratchet sessions and group state don't implement `Debug` (`tests/hygiene.rs` in `enclave-crypto` and `enclave-proto`).
 - `#![forbid(unsafe_code)]` in every crate except `enclave-platform` (DIT and locked memory; every block has a SAFETY comment), `enclave-sandbox`, `enclave-nse` and the declared `enclave-av1` exception.
-
-Required but not yet implemented: ctgrind constant-time testing (`20-assurance.md` §1, Q2); dudect runs today (`tests/dudect.rs`).
+- **Constant-time tests** (`20-assurance.md` §1, RT-15): ctgrind marks secret bytes undefined to Valgrind's Memcheck (`enclave_platform::ctgrind`), which then reports any branch or address that depends on them. `tests/ctgrind.rs` covers ML-KEM and McEliece decapsulation (`rt15_ctgrind_mlkem_decap`, `rt15_ctgrind_mceliece_decap`), the X448 ladder (`x448_ladder_is_constant_time`), sealing (`seal_is_constant_time_in_the_key`) and MAC comparison (`mac_compare_is_constant_time`); Ed448 key expansion and signing (`ed448_sign::ctgrind::ed448_signing_is_constant_time`) and Privacy Pass token verification (`enclave-tokens`, `token_verification_is_constant_time`) run under the same command; with a control that must be reported (`control_a_secret_branch_is_reported`); `cargo xtask ctgrind` runs them under Memcheck (CI job `ctgrind`). dudect timing runs too (`tests/dudect.rs`: `rt15_dudect_mac_compare`, `mlkem_decapsulation_hides_invalid_ciphertexts`, and a leaky control; `cargo xtask dudect`).
 
 ## 13. Libraries and backends
 
@@ -439,7 +444,7 @@ Required but not yet implemented: ctgrind constant-time testing (`20-assurance.m
 | ML-KEM-1024 | `libcrux-ml-kem` 0.0.10 (formally verified) | RustCrypto `ml-kem` |
 | ML-DSA-87 | `libcrux-ml-dsa` 0.0.10 | RustCrypto `ml-dsa` |
 | SLH-DSA-SHAKE-256s | RustCrypto `slh-dsa` 0.2 | `fips205` |
-| Ed448 | `ed448-goldilocks` | OpenSSL (system) |
+| Ed448 | Signing: RFC 8032 §5.2 on `fiat-crypto`'s p448 field arithmetic (`ed448_sign.rs`: complete twisted-Edwards addition, a 448-bit double-and-add-always base multiplication with masked selects, and scalar reduction mod ℓ with masked subtractions), because `ed448-goldilocks` 0.14.0-pre.15's signing branches on the secret scalar (found by ctgrind). Verification: `ed448-goldilocks` (public inputs only) | RFC 8032 §7.4 vectors; `ed448-goldilocks` on random keys and messages (same public keys and signatures); OpenSSL (system) |
 | X448 | RFC 7748's Montgomery ladder (`x448_ladder.rs`) on `fiat-crypto`'s formally verified p448 field arithmetic, with fiat's constant-time select for the swap; 1.8× faster than the `x448` crate, which is every server request's main cost | RFC 7748 vectors (both single ones, 1 and 1,000 iterations), the `x448` crate on random inputs, OpenSSL (system) |
 | McEliece-8192128 | `classic-mceliece-rust` 3.1 (safe Rust) | — (round-trip and implicit-rejection tests only) |
 | XChaCha20, AES-256, CTR, SHA3, cSHAKE | RustCrypto `chacha20`, `aes`, `ctr`, `sha3`, `cshake` | — |

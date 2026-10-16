@@ -77,7 +77,7 @@ Today the desktop app runs as **four** processes: the Slint UI (`enclave`), the 
 
 ### 3.2 Current gap
 
-Slint's Android backend has no AccessKit wiring today. The project will fund or build, and upstream, the `accesskit_android` and `accesskit_ios` integration.
+Closed. iOS uses Slint's winit backend, whose `accessibility` feature links `accesskit_ios` (PC-16). Slint's Android backend had no AccessKit wiring, so Enclave's patched copy (`third_party/i-slint-backend-android-activity`, offered upstream) carries Slint's own AccessKit bridge from the winit backend and serves it through `accesskit_android`'s `InjectingAdapter` on the activity's decor view: the tree is built on Slint's thread, and TalkBack's requests reach it through the backend's event queue (PC-28). The release's emulator job checks the welcome screen's controls are in the accessibility tree; the scripted TalkBack and VoiceOver runs are in `release-checklist.md`.
 
 ### 3.3 Fallback
 

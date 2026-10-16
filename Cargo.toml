@@ -77,6 +77,79 @@ codegen-units = 1
 panic = "abort"
 overflow-checks = true
 
+# Constant time (`docs/02-cryptography.md` §12, RT-15): the cryptographic
+# crates are written for wrapping arithmetic, and an overflow check is a
+# branch on the values it checks. On secrets those branches are never
+# taken but still depend on the secret, which ctgrind
+# (`crates/enclave-crypto/tests/ctgrind.rs`) reports; so these crates,
+# and enclave-crypto (where fiat-crypto's field arithmetic is inlined),
+# are built without them.
+[profile.release.package.enclave-crypto]
+overflow-checks = false
+
+[profile.release.package.classic-mceliece-rust]
+overflow-checks = false
+
+[profile.release.package.fiat-crypto]
+overflow-checks = false
+
+[profile.release.package.libcrux-ml-kem]
+overflow-checks = false
+
+[profile.release.package.libcrux-ml-dsa]
+overflow-checks = false
+
+[profile.release.package.libcrux-sha3]
+overflow-checks = false
+
+[profile.release.package.libcrux-intrinsics]
+overflow-checks = false
+
+[profile.release.package.libcrux-secrets]
+overflow-checks = false
+
+[profile.release.package.ed448-goldilocks]
+overflow-checks = false
+
+[profile.release.package.crypto-bigint]
+overflow-checks = false
+
+[profile.release.package.chacha20]
+overflow-checks = false
+
+[profile.release.package.aes]
+overflow-checks = false
+
+[profile.release.package.ctr]
+overflow-checks = false
+
+[profile.release.package.sha3]
+overflow-checks = false
+
+[profile.release.package.keccak]
+overflow-checks = false
+
+[profile.release.package.subtle]
+overflow-checks = false
+
+[profile.release.package.slh-dsa]
+overflow-checks = false
+
+[profile.release.package.curve25519-dalek]
+overflow-checks = false
+
+[profile.release.package.x25519-dalek]
+overflow-checks = false
+
+[profile.release.package.cshake]
+overflow-checks = false
+
+[profile.release.package.argon2]
+overflow-checks = false
+
+[profile.release.package.blake2]
+overflow-checks = false
+
 [profile.test]
 opt-level = 2
 
@@ -105,6 +178,7 @@ overflow-checks = false
 # Upstream crates built with a small change (third_party/PATCHES.md).
 [patch.crates-io]
 ptrs = { path = "third_party/ptrs" }
+classic-mceliece-rust = { path = "third_party/classic-mceliece-rust" }
 i-slint-backend-android-activity = { path = "third_party/i-slint-backend-android-activity" }
 rav1d = { path = "third_party/rav1d" }
 candle-core = { path = "third_party/candle-core" }

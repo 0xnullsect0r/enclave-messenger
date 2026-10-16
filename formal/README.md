@@ -34,9 +34,24 @@ The same discipline in Tamarin (`formal/tamarin/`): each lemma is preceded by `/
 | `tamarin/root_migration.spthy` | Changing the recovery words: a contact moves to a new root only if the person migrated on one of their devices (the record must arrive in a session from a listed device), with or without the old root's signature | holds; following a record on signatures alone is attacked |
 | `tamarin/tokens.spthy` | Privacy Pass tokens: every accepted token was issued, and none is accepted twice | holds; without the spent set a token is spent twice |
 
+## CryptoVerif
+
+Computational proofs of the two constructions everything else rests on (`formal/cryptoverif/`), in CryptoVerif's oracle language: each model ends with an `EXPECTED` block saying all its queries are proved, and `cargo xtask cryptoverif` runs every model and fails unless CryptoVerif proves them all (CI builds the pinned CryptoVerif 2.13 release, job `cryptoverif`; locally, set `CRYPTOVERIF` to the binary, whose `default.cvl` sits next to it). A model `seal_….ocv` reads `seal_common.ocvl`, and `combine_….ocv` reads `combine_common.ocvl`; those hold the construction as the code computes it (`crates/enclave-crypto/src/seal.rs`, `kem.rs`). The bounds CryptoVerif prints are the reductions: the adversary's advantage against the construction is at most the sum of its advantages against the named assumptions plus the collision terms.
+
+| Model | What it proves | Assumptions |
+|---|---|---|
+| `cryptoverif/seal_ind_cpa_xchacha.ocv` | EnclaveSeal is IND-CPA (left-or-right, many messages, the adversary picks the associated data) | KMAC256 a PRF; XChaCha20 a PRF from key and nonce to keystream; nothing about AES-256 |
+| `cryptoverif/seal_ind_cpa_aes.ocv` | The same | KMAC256 a PRF; AES-256-CTR a PRF; nothing about XChaCha20 |
+| `cryptoverif/seal_int_ctxt.ocv` | EnclaveSeal is INT-CTXT: nothing opens that wasn't sealed with the key, under any nonce or associated data the adversary picks. With IND-CPA, IND-CCA (Bellare–Namprempre) | KMAC256 a PRF (nonce, subkeys) and a SUF-CMA MAC (tag); nothing about either cipher |
+| `cryptoverif/seal_commit.ocv` | EnclaveSeal is key-committing: no two different keys open one sealed object, even with both keys and both associated data chosen by the adversary | KMAC256 a random oracle (a collision of the subkey or tag derivation is what breaks it) |
+| `cryptoverif/combine_x448.ocv`, `combine_mlkem.ocv`, `combine_mceliece.ocv` | EnclaveCombine's key is indistinguishable from random when that one input's shared secret is (its KEM is secure), with every other secret and the transcript chosen by the adversary | the extract step a random oracle (KMAC256 under the public suite key is cSHAKE256, a sponge); the combine step a PRF keyed by `prk` |
+| `cryptoverif/combine_psk.ocv` | With a PSK the adversary doesn't know, each session's key is indistinguishable from random although all three KEMs are broken; one PSK serves many sessions | as above; one-session secrecy, since equal inputs give equal keys |
+
+Each model was also run with its assumption removed (no secure cipher; no honest input), and CryptoVerif then fails to prove it, so the proofs depend on what they claim to. The models fix messages at one length (a sealed object's length is public) and treat KMAC256 under one key with different customization strings as independent PRFs (KMAC256 is a PRF on the string, length and input together). They cover the three-KEM suite; the two-KEM suite has the same structure with one input fewer.
+
 ## What the models abstract
 
-- **Primitives are ideal.** KEMs open only with the secret key, KMAC256 is a random oracle, EnclaveSeal is authenticated encryption, X448 is Diffie–Hellman with the usual exponent equation. Computational proofs of EnclaveCombine and EnclaveSeal (CryptoVerif or EasyCrypt) are separate work and not done.
+- **Primitives are ideal** in the ProVerif and Tamarin models. KEMs open only with the secret key, KMAC256 is a random oracle, EnclaveSeal is authenticated encryption, X448 is Diffie–Hellman with the usual exponent equation. The CryptoVerif proofs above are what justify treating EnclaveSeal and EnclaveCombine that way.
 - **Prekey signatures** are replaced by an authenticated public channel for Bob's keys; the composite and SLH-DSA signatures on them are not modelled.
 - **Identity sealing** in EQXDH stage 1 hides who initiates; ProVerif's secrecy queries don't express that property, so the model omits it.
 - **The ratchet** is reduced to one post-compromise step, not the full Lockstep state machine, its skipped keys or its counters. Replay protection is not modelled anywhere.
@@ -46,3 +61,7 @@ The same discipline in Tamarin (`formal/tamarin/`): each lemma is preceded by `/
 The models are written from the specification and checked by hand against the code; nothing extracts them from the Rust source, so they can drift. A change to EQXDH, the ratchet's PQ step or group authentication must update the matching model.
 
 Tamarin abstractions, beyond those above: blinding is left out of the token model (it gives unlinkability, an equivalence property, not unforgeability); the group model has three members and one removal; the pending-root model reads the 72-hour wait as "a device the person still has looks before any contact's wait ends"; the linking model reduces the four phrases to an exact comparison.
+
+## hax
+
+`hax/extract.sh` translates the Ed448 signer (`enclave-crypto/src/ed448_sign.rs`) and the X448 ladder (`x448_ladder.rs`) to F* with hax 0.4.2, run through its Nix flake in CI job `hax` (experimental: it reports and keeps the F* as an artifact, but doesn't gate). Boundary: extraction only. The F* refers to `fiat-crypto`'s field functions and the SHAKE256 crate as opaque, so nothing is proved about the arithmetic here; `fiat-crypto`'s own Coq proofs cover the field, and the RFC 8032 vectors, the differential test against `ed448-goldilocks` and ctgrind cover the rest (`docs/02-cryptography.md` §12–§13).

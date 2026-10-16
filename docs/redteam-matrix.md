@@ -140,7 +140,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 - **Fix:** `subtle` for comparisons. dudect and ctgrind/secret-poisoning tests. ARM DIT bit. Hardware AES or bitsliced (fixslice) fallback. `mlock`. Core dumps disabled.
 - **Residual:** Physical, power, and EM side channels.
 - **Spec:** `02-cryptography.md` §12.
-- **Tests:** `rt15_dudect_mac_compare` (CI, M1); `rt15_ctgrind_mlkem_decap` (CI, M1); `rt15_ctgrind_mceliece_decap` (CI, M1); `rt15_dit_bit_set_during_crypto` (Unit, M1).
+- **Tests:** `rt15_dudect_mac_compare` (CI, M1); `rt15_ctgrind_mlkem_decap` (CI, M1); `rt15_ctgrind_mceliece_decap` (CI, M1); `rt15_dit_bit_set_during_crypto` (Unit, M1). Also under ctgrind: the X448 ladder, sealing, MAC compare, token verification and Ed448 signing.
 - **Milestone:** M1.
 
 ### RT-16 iOS push timing

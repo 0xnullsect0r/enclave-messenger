@@ -4,7 +4,7 @@ Status: Draft (M0, reconciled with the M1–M5 code) · Normative
 
 Source: PLAN.md §2.4, with derivations from §3 to §13. This document lists every long-lived key and every derivation in Enclave. If a key or derivation is not listed here, implementations MUST NOT create it; add it here (and to `label-registry.md`) first. Notation is in `00-overview.md` §6; primitives are in `02-cryptography.md`. Where this document and the code disagree, the code is normative.
 
-All KMAC calls are written `KMAC256(K, X, L, S)` with `L` in bits. `frame(x) = u64(len(x)) ‖ x` (`02-cryptography.md` §2.3). "Random" means from `HedgedRng.fill` (`02-cryptography.md` §6). Sections marked **reserved** are specified but not implemented; their labels are in `label-registry.md` §3.
+All KMAC calls are written `KMAC256(K, X, L, S)` with `L` in bits. `frame(x) = u64(len(x)) ‖ x` (`02-cryptography.md` §2.3). "Random" means from `HedgedRng.fill` (`02-cryptography.md` §6). Every label below is used by code and listed in `label-registry.md` §2, whose "Where" column names each one's file; no label is reserved for later (`label-registry.md` §3 is empty). Where a formula here and the code differ, the code is normative (§8 notes the group exporter).
 
 ## 1. Key inventory
 
@@ -30,7 +30,7 @@ All KMAC calls are written `KMAC256(K, X, L, S)` with `L` in bits. `frame(x) = u
 | Device secret (storage) | 32 B random | Profile | Until crypto-erase | `enclave-store` (keystore) |
 | Local master key | 32 B | Profile | Derived at unlock | `enclave-store` |
 | Shred keys and keyring wrap key | 32 B each | Per conversation per day; per keyring generation | Until shredded; one generation | `enclave-store` `shred.rs` |
-| Notification key chain, group secrets, blob secrets, link secrets, call secrets, push relay keys, relay ticket keys | — | — | — | Reserved (§8–§12) |
+| Notification key chain, group secrets, blob secrets, link secrets, call secrets, push relay keys, relay ticket keys | — | — | — | §7–§12 (`enclave-proto` `notify.rs`, `group.rs`; `enclave-core` `files.rs`, `client/link.rs`; `enclave-calls`; `enclave-push-relay`) |
 
 ## 2. Account keys
 
@@ -173,11 +173,11 @@ body_key       = HedgedRng.fill("envelope/body-key", 32)                        
 
 A 1:1 conversation's id is `conv_id = ID256("enclave/v1/proto/conv-id", lo ‖ hi)` over the two root hashes, the lower first, so both sides compute the same one (`otr::conv_id`); On-the-record signatures cover it. Message ids are 16 random bytes chosen by the sender (`core/msg-id`), and meeting again replaces the sessions with new bonded ones, so the draft's `proto/msg-id` and `proto/bond-reroot` derivations are retired (`label-registry.md` §4).
 
-Reserved: the notification key chain `nk_d = KMAC256(nk_{d−1}, u32(d), 256, "enclave/v1/proto/notify-key")`.
+The notification key chain is `nk_d = KMAC256(nk_{d−1}, u32(d), 256, "enclave/v1/proto/notify-key")` (`enclave-proto/src/notify.rs` `step`; `10-push.md` §4).
 
-## 8. Groups (reserved)
+## 8. Groups
 
-The M0 derivations are kept for M7 with their reserved labels (`label-registry.md` §3.2):
+The labels are those the code uses (`enclave-proto` `group.rs`, `labels.rs`; `07-groups.md`; `label-registry.md` §2 names each one's file):
 
 ```
 gmbox(d)         = KMAC256(epoch_secret, u32(d), 256, "enclave/v1/net/grp-mailbox")
@@ -201,7 +201,7 @@ grp_msg_id       = SHAKE256("enclave/v1/proto/grp-msg-id" ‖ group_id ‖ u32(e
 tally_hash       = SHA3-512("enclave/v1/proto/poll-tally-hash" ‖ poll_id ‖ canonical_tally)
 ```
 
-`P ‖ RK` in `K_exp` assumed the M0 draft's PQ epoch secrets and root-key snapshots, which the implemented ratchet does not keep (`05-ratchet.md`). The exporter must be re-specified against the implemented ratchet before M7.
+`K_exp` as written is the M0 draft's, over PQ epoch secrets and root-key snapshots the implemented ratchet doesn't keep (`05-ratchet.md`). As implemented, `K_exp = KMAC256(pq_root, frame(group_id ‖ u32(epoch) ‖ u8(member) ‖ u8(device) ‖ u8(generation)), 256, "enclave/v1/proto/grp-export")`, where `pq_root` is the newest PQ root of the peer's sending direction (`Session::export_for_peer`, `export_from_peer`; `07-groups.md` §5.3).
 
 ## 9. Blobs
 
@@ -256,7 +256,9 @@ package key    = derive_key(ss_link, "package", "enclave/v1/proto/link-keys")
 
 The rendezvous mailbox's owner secret is random (`link/owner`) and in the code; the draft's `link_cap` derivation is retired (`label-registry.md` §4).
 
-## 12. Calls (reserved)
+## 12. Calls
+
+The labels are those the code uses (`enclave-calls`, `11-calls.md`; `label-registry.md` §2 names each one's file):
 
 ```
 ss_call     = EnclaveCombine(TwoKem, [X448(…)], [ss_mlkem], [… , "enclave/v1/calls/transcript", call_id, conv_id])
@@ -289,7 +291,7 @@ shred_key     = HedgedRng.fill("store/shred-key", 32)                      # per
 wrap_key_g    = HedgedRng.fill("store/shred-wrap", 32)                     # per keyring generation, in the keystore
 ```
 
-Reserved: search keys and tokens (`enclave/v1/store/search-key`, `enclave/v1/store/search-token`) and the root wrap (`enclave/v1/store/root-wrap`).
+Also in this layer: search keys and tokens (`enclave/v1/store/search-key`, `enclave/v1/store/search-token`; `enclave-core/src/client/search_index.rs`, `14-storage.md` §2.4) and the root wrap (`enclave/v1/store/root-wrap`; `enclave-core/src/client/root_wrap.rs`, `14-storage.md` §1.3).
 
 ## 14. Key transparency
 

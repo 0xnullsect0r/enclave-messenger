@@ -78,8 +78,11 @@ Both kinds fit with room to spare (83 B for kind 0). PLAN's "about 3.26 KB" is e
 ### 4.3 Capsule
 
 ```
-capsule = 1,024 random bytes (sealed previews not implemented)
+plaintext = name len 1 + name ≤ 64 + preview len 2 + preview ≤ 600 = ≤ 667, zero-padded to 960
+capsule   = 960 + seal 64                                        = 1,024
 ```
+
+Random bytes when previews are off. With them on, the sealed capsule (`enclave-proto/src/notify.rs` `seal_capsule`, `08-envelope.md` §5.4) is the same 1,024 B, with 293 B to spare.
 
 ### 4.4 Content
 
@@ -87,8 +90,10 @@ capsule = 1,024 random bytes (sealed previews not implemented)
 fixed      = header 16 + slots 800 + PQ slot 3,264 + capsule 1,024 = 5,104   (body offset)
 body       = 14,336 − 5,104                                          = 9,232
 content    = body − seal 64 − length 8                               = 9,160
-on record  = 9,160 − composite signature 4,741                       = 4,419  (not implemented)
+on record  = 9,160 − composite signature 4,741                       = 4,419
 ```
+
+On the record (`enclave-core/src/client/record.rs`, `05-ratchet.md` §9), personal content goes as `Content::Signed`: kind 1 ‖ counter 8 ‖ u32 length ‖ signature 4,741 ‖ u32 length ‖ content ‖ token count 1 ‖ 32 B per write token, so the framing takes 18 B and the tokens of the 4,419. Content that doesn't fit goes on as continuation parts (`client/parts.rs`, `08-envelope.md` §5.6). Test `rt07_mode_switch_requires_authenticated_event`.
 
 Both match PLAN §8 (9,160 and "≈4,419"): PLAN's 72 B body overhead is now 64 B of seal plus the 8 B content length.
 

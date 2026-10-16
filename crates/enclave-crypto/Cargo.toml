@@ -32,8 +32,16 @@ subtle = "2.6.1"
 getrandom = "0.4.3"
 rand_core_06 = { package = "rand_core", version = "0.6", features = ["getrandom"] }
 thiserror = "2"
+# HQC-256 (FIPS 207 draft), behind `hqc` until the standard is final.
+hqc-kem = { version = "=0.1.0-rc.0", default-features = false, features = ["kgen", "ecap", "dcap"], optional = true }
+
+[features]
+# HQC-256 and the four-KEM EnclaveCombine suite (External Gate G12).
+hqc = ["dep:hqc-kem"]
 
 [dev-dependencies]
+# Secret poisoning under Valgrind (`tests/ctgrind.rs`).
+enclave-platform = { path = "../enclave-platform", features = ["ctgrind"] }
 # Oracle for `x448_ladder.rs`.
 x448 = "0.14.0-pre.12"
 hex = "0.4"

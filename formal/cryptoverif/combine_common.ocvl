@@ -1,0 +1,26 @@
+(* EnclaveCombine (crates/enclave-crypto/src/kem.rs `combine`,
+   docs/02-cryptography.md §4), three-KEM suite:
+
+     prk = KMAC256("ENCL" ‖ 0x03, frame(ss_x448) ‖ frame(ss_mlkem)
+                   ‖ frame(ss_mceliece) ‖ frame(psk or 32 zero bytes),
+                   512, "kem/extract")
+     TH  = SHA3-512(public keys, ciphertexts, transcript ‖ psk flag ‖ suite)
+     key = KMAC256(prk, TH, 512, "kem/combine")
+
+   The extract step is keyed by a public constant, so it is modelled as a
+   random oracle (KMAC256 is cSHAKE256, a sponge, indifferentiable from
+   one); the adversary may query it. The combine step is a PRF keyed by
+   prk. A KEM that is secure gives a shared secret indistinguishable from
+   random given its ciphertext, so an honest secret is a fresh random
+   value; a broken KEM's secret, and TH, are the adversary's to choose.
+   The two-KEM suite is the same with one input fewer and other labels. *)
+
+type hashkey [large, fixed].
+type ss [large, fixed].
+type prkt [large, fixed].
+type outt [large, fixed].
+type digest [fixed].
+
+expand ROM_hash_large_4(hashkey, ss, ss, ss, ss, prkt, kmac_extract, extract_oracle, qH).
+proba Pc.
+expand PRF(prkt, digest, outt, kmac_combine, Pc).

@@ -129,11 +129,12 @@ fn control_early_exit_comparison_is_flagged() {
     );
 }
 
-/// EnclaveSeal checks the tag before any keystream exists; where in the tag
-/// a forgery differs must not show in the time to reject it.
+/// RT-15: the MAC compare. EnclaveSeal checks the tag before any keystream
+/// exists; where in the tag a forgery differs must not show in the time
+/// to reject it.
 #[test]
 #[ignore = "timing test; run with `cargo xtask dudect`"]
-fn seal_rejects_forgeries_in_constant_time() {
+fn rt15_dudect_mac_compare() {
     let mut rng = HedgedRng::new().unwrap();
     let key = seal::SealKey::from_bytes([7; 32]);
     let sealed = seal::seal(&key, b"ad", &[0x42; 1024], &mut rng).unwrap();

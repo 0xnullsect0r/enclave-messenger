@@ -22,6 +22,9 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
+[policy.classic-mceliece-rust]
+audit-as-crates-io = true
+
 [policy.i-slint-backend-android-activity]
 audit-as-crates-io = true
 
@@ -47,6 +50,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.accesskit]]
 version = "0.24.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.accesskit_android]]
+version = "0.7.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.accesskit_atspi_common]]

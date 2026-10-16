@@ -67,7 +67,7 @@ Work that code alone cannot finish. Each is made ready so that it needs one acti
 | G9 | WCAG audit and moderated usability sessions | Scripts and builds | Auditor and five participants | open |
 | G10 | Human translations for 14 locales | Weblate project, message catalogs | Translators | open |
 | G11 | OSS-Fuzz acceptance | Integration | OSS-Fuzz maintainers | open |
-| G12 | FIPS 207 (HQC) final | Draft-based implementation behind a flag | NIST | open |
+| G12 | FIPS 207 (HQC) final | Draft-based implementation behind a flag (`enclave_crypto::hqc`, feature `hqc`, suite 0x04, official KATs) | NIST | prepared |
 | G13 | Post-quantum Sphinx in nym-sdk | Adapter behind a feature | Nym | open |
 | G14 | Licence grant for equix/hashx (LGPL-3.0-only) | Not needed: the proof of work is Enclave's own Equihash⟨60,3⟩ over BLAKE2b (ADR 0004) | — | resolved |
 | G15 | Human `cargo vet` audits of the crypto, randomness, TLS, parser and Tor crates | `supply-chain/` (imports from six organisations; every other crate exempted at its locked version; CI job `cargo-vet`), the list of crates to audit in `supply-chain/README.md` | Reviewers who read each crate and run `cargo vet certify` | prepared |

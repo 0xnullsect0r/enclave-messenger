@@ -1,0 +1,27 @@
+(* EnclaveCombine: with a pre-shared key the adversary doesn't know, each
+   key is indistinguishable from random even when all three KEMs are
+   broken (the adversary picks every shared secret and the transcript).
+   One PSK serves many sessions (an invite's), so two sessions with the
+   same secrets and transcript get the same key: the claim is for each
+   session's key (one-session secrecy), as for any deterministic combiner.
+   Run: cryptoverif -lib combine_common combine_psk.ocv *)
+
+param qS.
+
+query secret key [cv_onesession].
+
+process
+  Ostart() :=
+    hk <-R hashkey;
+    psk <-R ss;
+    return();
+    (run extract_oracle(hk) |
+     foreach i <= qS do
+     Osession(a: ss, b: ss, c: ss, th: digest) :=
+       prk <- kmac_extract(hk, a, b, c, psk);
+       key: outt <- kmac_combine(prk, th);
+       return())
+
+(* EXPECTED
+All queries proved.
+END *)

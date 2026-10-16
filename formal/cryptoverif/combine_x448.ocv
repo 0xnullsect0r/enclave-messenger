@@ -1,0 +1,23 @@
+(* EnclaveCombine: the key is indistinguishable from random when X448 is
+   secure, whatever the other inputs are (combine_common.ocvl).
+   Run: cryptoverif -lib combine_common combine_x448.ocv *)
+
+param qS.
+
+query secret key.
+
+process
+  Ostart() :=
+    hk <-R hashkey;
+    return();
+    (run extract_oracle(hk) |
+     foreach i <= qS do
+     Osession(a: ss, b: ss, c: ss, th: digest) :=
+       s <-R ss;
+       prk <- kmac_extract(hk, s, a, b, c);
+       key: outt <- kmac_combine(prk, th);
+       return())
+
+(* EXPECTED
+All queries proved.
+END *)

@@ -38,6 +38,10 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --release
+      - name: HQC-256 behind its feature (External Gate G12)
+        run: |
+          cargo clippy -p enclave-crypto -p enclave-proto --features enclave-crypto/hqc --all-targets -- -D warnings
+          cargo test --release -p enclave-crypto --features hqc --lib --test hqc
       - name: mediad as WebAssembly matches native (iOS's sandbox)
         run: |
           rustup target add wasm32-wasip1
@@ -101,6 +105,12 @@ jobs:
       - run: cargo vet --locked
       - run: cargo vet --locked
         working-directory: nym
+      # RT-14: crates that hold keys or parse untrusted input must be
+      # audited, not exempted. Needs the human audits (External Gate G15),
+      # so it reports here and must pass before 1.0 (release checklist).
+      - name: Crypto and parser crates audited (report until G15)
+        continue-on-error: true
+        run: cargo test -p xtask -- --ignored --exact supply::tests::rt14_cargo_vet_complete_for_crypto_and_parsers
 
   deny-ios:
     name: cargo-deny (iOS licences)
@@ -123,12 +133,27 @@ jobs:
   repro:
     name: reproducible builds
     runs-on: ubuntu-24.04
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Two clean builds of each binary must be byte-identical
-        run: |
-          cargo xtask repro enclave-relay
-          cargo xtask repro enclave-server
+      - name: UI build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev libxkbcommon-dev libasound2-dev libpipewire-0.3-dev
+      # Two clean release builds of every client program (RT-13) and every
+      # server program (RT-28) must be byte-identical.
+      - run: cargo test -p xtask -- --ignored --exact repro_tests::rt13_reproducible_build_diff_empty
+      - run: rm -rf target/repro-a target/repro-b
+      - run: cargo test -p xtask -- --ignored --exact repro_tests::rt28_server_build_reproducible
+
+  ctgrind:
+    name: constant time under Valgrind (ctgrind)
+    runs-on: ubuntu-24.04
+    # RT-15: secret keys poisoned for Memcheck while ML-KEM and McEliece
+    # decapsulate (crates/enclave-crypto/tests/ctgrind.rs).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
+      - run: cargo xtask ctgrind
 
   proverif:
     name: formal models (ProVerif)
@@ -166,6 +191,47 @@ jobs:
           echo "TAMARIN=$PWD/tamarin/tamarin-prover" >> "$GITHUB_ENV"
       - name: Every lemma gives its expected result
         run: cargo xtask tamarin
+
+  cryptoverif:
+    name: formal proofs (CryptoVerif)
+    runs-on: ubuntu-24.04
+    # Computational proofs of EnclaveSeal (IND-CPA if either cipher is
+    # secure, INT-CTXT) and EnclaveCombine (secret if any one input is).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install CryptoVerif 2.13
+        run: |
+          sudo apt-get update && sudo apt-get install -y ocaml-nox
+          curl -sSfL -o cv.tgz https://bblanche.gitlabpages.inria.fr/CryptoVerif/cryptoverif2.13.tar.gz
+          echo "e6edb422a065bd7d59a452110c1b200104b74d87418eb3e5113a3ff18ec538f5  cv.tgz" | sha256sum -c
+          tar xzf cv.tgz && (cd cryptoverif2.13 && ./build)
+          echo "CRYPTOVERIF=$PWD/cryptoverif2.13/cryptoverif" >> "$GITHUB_ENV"
+      - name: Every model's queries are proved
+        run: cargo xtask cryptoverif
+
+  hax:
+    name: code extraction (hax, F*)
+    runs-on: ubuntu-24.04
+    # Experimental, as docs/20-assurance.md §2 says: reported, not required.
+    continue-on-error: true
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Nix
+        run: |
+          curl -sSfL https://releases.nixos.org/nix/nix-2.28.3/install | sh -s -- --no-daemon
+          echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          mkdir -p ~/.config/nix
+          echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+      - name: Extract the Ed448 signer and the X448 ladder to F*
+        # hax 0.4.2 (cargo-hax-v0.4.2), pinned by commit.
+        run: HAX="nix run github:cryspen/hax/5ccf89dd2e996c9f88f2267eaa2a64739c4ca41a --" formal/hax/extract.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: hax-fstar
+          path: crates/enclave-crypto/proofs/fstar/extraction
+          if-no-files-found: ignore
 
   postgres:
     name: server state on PostgreSQL

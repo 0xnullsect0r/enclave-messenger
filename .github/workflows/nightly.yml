@@ -7,6 +7,10 @@ name: Nightly
 #
 # transcribe: voice-note transcription with the real speech model.
 #
+# dudect: the constant-time timing tests (RT-15), on a quiet runner.
+#
+# shape: the traffic-shape scenarios (`cargo xtask shape`, RT-01, RT-12).
+#
 # call-quality: call audio under packet loss, scored with PESQ.
 #
 # flathub: the Flathub submission (packaging/flatpak/flathub.sh, External
@@ -74,6 +78,22 @@ jobs:
           name: flathub-manifest
           path: flathub/
 
+  dudect:
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'push'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - run: cargo xtask dudect
+
+  shape:
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'push'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - run: cargo xtask shape
+
   fuzz:
     # Coverage-guided fuzzing of every parser (fuzz/, docs/20-assurance.md):
     # ten minutes a target each night; a crash fails the job and its input
@@ -84,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [wire, proto, rpc, content, calls, server, relay, group_open, ipc, media, net]
+        target: [wire, proto, rpc, content, calls, server, relay, group_open, ipc, update, media, net]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Nightly toolchain and cargo-fuzz

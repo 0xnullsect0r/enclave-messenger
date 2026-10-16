@@ -1,7 +1,9 @@
 //! Supply-chain checks (`docs/19-ops.md` §2, RT-14) that run as tests:
 //! every crate with a build script is one `deny.toml` (and `nym/deny.toml`)
 //! names, so a dependency that starts running code at build time fails CI
-//! until someone looks at it and adds it, with a reason.
+//! until someone looks at it and adds it, with a reason; and every crate
+//! that holds keys, parses untrusted bytes or makes randomness is covered
+//! by a `cargo vet` audit, not an exemption.
 
 #[cfg(test)]
 mod tests {
@@ -118,5 +120,80 @@ mod tests {
                 deny.display()
             );
         }
+    }
+
+    /// The crates `supply-chain/README.md` says must be audited, by name
+    /// (a `name-*` entry stands for every crate with that prefix), and
+    /// whether the row is for the `nym/` workspace only.
+    fn must_audit(root: &Path) -> Vec<(String, bool)> {
+        let text = std::fs::read_to_string(root.join("supply-chain/README.md")).unwrap_or_default();
+        let start = text
+            .find("## What still needs a human audit")
+            .unwrap_or(text.len());
+        let section = &text[start..];
+        let section = &section[..section[3..].find("\n## ").map_or(section.len(), |i| i + 3)];
+        let mut out = Vec::new();
+        for row in section.lines().filter(|l| l.starts_with('|')) {
+            let cells: Vec<&str> = row.trim_matches('|').split('|').collect();
+            let (Some(area), Some(crates)) = (cells.first(), cells.get(1)) else {
+                continue;
+            };
+            let nym_only = area.contains("nym/");
+            for (i, part) in crates.split('`').enumerate() {
+                if i % 2 == 1 && !part.contains(' ') && !part.contains('/') {
+                    out.push((part.to_string(), nym_only));
+                }
+            }
+        }
+        out
+    }
+
+    /// The crates a `cargo vet` config exempts from audit.
+    fn exempted(config: &Path) -> BTreeSet<String> {
+        std::fs::read_to_string(config)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| l.strip_prefix("[[exemptions."))
+            .filter_map(|l| l.strip_suffix("]]"))
+            .map(|n| n.trim_matches('"').to_string())
+            .collect()
+    }
+
+    /// RT-14: no crate that holds keys, parses untrusted input or makes
+    /// randomness rides on an exemption. Audits are a person's statement
+    /// that they read the code (External Gate G15), so this fails until
+    /// those audits exist; it must pass before 1.0 (`docs/release-checklist.md`).
+    #[test]
+    #[ignore = "External Gate G15: needs the human audits; must pass before 1.0"]
+    fn rt14_cargo_vet_complete_for_crypto_and_parsers() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let list = must_audit(&root);
+        assert!(list.len() > 50, "the README's list went missing");
+        let main = exempted(&root.join("supply-chain/config.toml"));
+        let nym = exempted(&root.join("nym/supply-chain/config.toml"));
+        let mut open = Vec::new();
+        for (name, nym_only) in &list {
+            let sets: Vec<&BTreeSet<String>> = if *nym_only {
+                vec![&nym]
+            } else {
+                vec![&main, &nym]
+            };
+            for set in sets {
+                let hit: Vec<&String> = match name.strip_suffix('*') {
+                    Some(prefix) => set.iter().filter(|c| c.starts_with(prefix)).collect(),
+                    None => set.iter().filter(|c| *c == name).collect(),
+                };
+                for c in hit {
+                    if !open.contains(c) {
+                        open.push(c.clone());
+                    }
+                }
+            }
+        }
+        assert!(
+            open.is_empty(),
+            "{} crates that hold keys or parse untrusted input are exempted, not audited: {open:?}",
+            open.len()
+        );
     }
 }

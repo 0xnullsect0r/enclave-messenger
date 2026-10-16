@@ -27,6 +27,9 @@ dbg_macro = "deny"
 todo = "deny"
 
 [features]
+# Valgrind client requests for the constant-time tests (`ctgrind`): only
+# enclave-crypto's dev-dependency turns it on.
+ctgrind = []
 # The platform keystores (`keystore`): the vault turns this on; the crypto
 # crate, which also depends on this one, doesn't.
 keystores = ["dep:security-framework", "dep:oo7", "dep:pollster", "dep:jni", "dep:ndk-context"]

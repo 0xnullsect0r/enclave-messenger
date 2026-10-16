@@ -1,0 +1,45 @@
+(* EnclaveSeal is INT-CTXT: no one without K makes a sealed object that
+   opens, other than those sealed with K, assuming only that KMAC256 is a
+   PRF (subkeys and nonce) and a SUF-CMA MAC (the tag). Neither cipher
+   needs any property. With IND-CPA (seal_ind_cpa_*.ocv) this gives
+   IND-CCA (Bellare and Namprempre).
+   Run: cryptoverif -lib seal_common seal_int_ctxt.ocv *)
+
+param qE, qD.
+
+fun xchacha(kxt, nxt): msg.
+fun aes_ctr(kat, ivt): msg.
+proba Pmac.
+expand SUF_CMA_det_mac(kmt, bitstring, tagt, kmac_tag, check_tag, Pmac).
+
+event forged.
+query event(forged) ==> false.
+
+process
+  Ostart() :=
+    Kn <-R key;
+    Kk <-R key;
+    return();
+    ((foreach i <= qE do
+      Oenc(p: msg, ad: bitstring) :=
+        r <-R rnd;
+        n: nonce <- kmac_nonce(Kn, nonce_in(r, ad, H(p)));
+        let sk_tuple(k_x: kxt, k_a: kat, k_m: kmt, n_x: nxt, iv_a: ivt) = kmac_keys(Kk, n) in
+        c: msg <- xor(xor(p, xchacha(k_x, n_x)), aes_ctr(k_a, iv_a));
+        t: tagt <- kmac_tag(tag_in(ad, n, c), k_m);
+        return(n, c, t))
+     |
+     (foreach j <= qD do
+      Odec(n': nonce, c': msg, t': tagt, ad': bitstring) :=
+        let sk_tuple(k_x': kxt, k_a': kat, k_m': kmt, n_x': nxt, iv_a': ivt) = kmac_keys(Kk, n') in
+        if check_tag(tag_in(ad', n', c'), k_m', t') then
+          find u <= qE suchthat defined(n[u], c[u], t[u], ad[u]) &&
+              n' = n[u] && c' = c[u] && t' = t[u] && ad' = ad[u] then
+            return(xor(xor(c', xchacha(k_x', n_x')), aes_ctr(k_a', iv_a')))
+          else
+            event forged;
+            return(xor(xor(c', xchacha(k_x', n_x')), aes_ctr(k_a', iv_a')))))
+
+(* EXPECTED
+All queries proved.
+END *)

@@ -1,0 +1,32 @@
+(* EnclaveSeal is key-committing: no one finds two different keys under
+   which one sealed object N ‖ C ‖ T opens, even choosing both keys and
+   both associated data. Opening under K checks
+   T = KMAC256(k_m, frame(AD) ‖ N ‖ C, 256, "seal/tag") with k_m bytes
+   64..96 of KMAC256(K, N, 1088, "seal/keys"); both KMAC256 uses are random
+   oracles here (a collision of either is what the property rests on).
+   Run: cryptoverif -lib seal_common seal_commit.ocv *)
+
+type hashkey [large, fixed].
+type tagl [large, fixed].
+expand ROM_hash_large_2(hashkey, key, nonce, kmt, kdf_km, kdf_oracle, qH1).
+expand ROM_hash_large_2(hashkey, kmt, bitstring, tagl, kmac_tag, tag_oracle, qH2).
+
+event opens_under_both.
+query event(opens_under_both) ==> false.
+
+process
+  Ostart() :=
+    hk1 <-R hashkey;
+    hk2 <-R hashkey;
+    return();
+    (run kdf_oracle(hk1) | run tag_oracle(hk2) |
+     Ocommit(k1: key, k2: key, n: nonce, ad1: bitstring, ad2: bitstring, c: msg) :=
+       if k1 <> k2 then
+       if kmac_tag(hk2, kdf_km(hk1, k1, n), tag_in(ad1, n, c))
+          = kmac_tag(hk2, kdf_km(hk1, k2, n), tag_in(ad2, n, c)) then
+       event opens_under_both;
+       return())
+
+(* EXPECTED
+All queries proved.
+END *)

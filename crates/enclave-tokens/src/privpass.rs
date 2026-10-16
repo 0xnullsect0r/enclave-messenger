@@ -446,3 +446,48 @@ mod tests {
         assert!(Token::decode(&[0; TOKEN_LEN]).is_err());
     }
 }
+
+/// Token verification under Valgrind (RT-15, `cargo xtask ctgrind`): the
+/// issuer's secret key is poisoned, and Memcheck must see no branch or
+/// address that depends on it while a token is checked.
+#[cfg(test)]
+mod ctgrind {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use enclave_platform::ctgrind;
+    use std::hint::black_box;
+
+    #[test]
+    #[ignore = "run under Valgrind with `cargo xtask ctgrind`"]
+    fn token_verification_is_constant_time() {
+        assert!(
+            ctgrind::on_valgrind(),
+            "run under Valgrind: cargo xtask ctgrind"
+        );
+        let mut rng = HedgedRng::new().unwrap();
+        let seed = black_box([0x51u8; 32]);
+        let digest = blob_challenge(&[3; 16]).digest().unwrap();
+        // A token from the key, before anything is poisoned.
+        let key = IssuerKey::derive(&seed, 7).unwrap();
+        let (req, pending) = Pending::begin(key.public(), digest, &mut rng).unwrap();
+        let token = pending.finish(&key.issue(&req, &mut rng).unwrap()).unwrap();
+        let mut forged = Token::decode(&token.encode()).unwrap();
+        forged.authenticator[0] ^= 1;
+        // The key again, from a poisoned seed: its scalar is secret; its
+        // public half is public (it is published).
+        ctgrind::poison(&seed);
+        let key = IssuerKey::derive(&seed, 7).unwrap();
+        ctgrind::unpoison(&seed);
+        ctgrind::unpoison(&key.public.0);
+        let mut answers = [0u8; 2];
+        let before = ctgrind::errors();
+        for (i, t) in [&token, &forged].into_iter().enumerate() {
+            answers[i] = u8::from(key.verify(t, &digest));
+        }
+        // The answers are what may depend on the key: looked at only now.
+        ctgrind::unpoison(black_box(&answers));
+        let n = ctgrind::errors() - before;
+        assert_eq!(n, 0, "token verification depends on the issuer key");
+        assert_eq!(answers, [1, 0]);
+    }
+}

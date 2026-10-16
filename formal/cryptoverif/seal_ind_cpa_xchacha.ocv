@@ -1,0 +1,33 @@
+(* EnclaveSeal is IND-CPA if XChaCha20 is a secure stream cipher (a PRF
+   from its key and nonce to the keystream), whatever AES-256 is.
+   Run: cryptoverif -lib seal_common seal_ind_cpa_xchacha.ocv *)
+
+param qE.
+
+proba Px.
+expand PRF(kxt, nxt, msg, xchacha, Px).
+(* AES-256-CTR: no assumption. *)
+fun aes_ctr(kat, ivt): msg.
+(* The tag: no assumption is needed for secrecy. *)
+fun kmac_tag(kmt, bitstring): tagt.
+
+query secret b [cv_bit].
+
+process
+  Ostart() :=
+    Kn <-R key;
+    Kk <-R key;
+    b <-R bool;
+    return();
+    foreach i <= qE do
+    Oenc(m0: msg, m1: msg, ad: bitstring) :=
+      p <- if_fun(b, m1, m0);
+      r <-R rnd;
+      n <- kmac_nonce(Kn, nonce_in(r, ad, H(p)));
+      let sk_tuple(k_x: kxt, k_a: kat, k_m: kmt, n_x: nxt, iv_a: ivt) = kmac_keys(Kk, n) in
+      c <- xor(xor(p, xchacha(k_x, n_x)), aes_ctr(k_a, iv_a));
+      return(n, c, kmac_tag(k_m, tag_in(ad, n, c)))
+
+(* EXPECTED
+All queries proved.
+END *)

@@ -45,7 +45,7 @@ pub const PROGRAMS: [&str; 7] = [
 ];
 
 /// The main workspace's packages behind the first five.
-const PACKAGES: [&str; 5] = [
+pub(crate) const PACKAGES: [&str; 5] = [
     "enclave-app",
     "enclave-vault",
     "enclave-netd",

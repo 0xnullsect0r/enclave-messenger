@@ -435,11 +435,19 @@ jobs:
           arch: x86_64
           target: google_apis
           script: |
-            adb install -r dist/Enclave-${{ needs.prepare.outputs.version }}-android.apk
+            # -g: grant the runtime permissions (the notification prompt would
+            # cover the window).
+            adb install -r -g dist/Enclave-${{ needs.prepare.outputs.version }}-android.apk
             adb shell am start -W -n com.aricummings.enclave/.EnclaveActivity
             sleep 20
             adb shell pidof com.aricummings.enclave
-            adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | grep -q com.aricummings.enclave
+            # uiautomator reads the accessibility tree TalkBack reads (PC-28):
+            # the first dump turns accessibility on and the app sends its tree,
+            # so the second has the welcome screen's controls in it.
+            adb shell uiautomator dump /sdcard/ui.xml > /dev/null; sleep 3
+            adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml > ui.xml
+            grep -q com.aricummings.enclave ui.xml || { cat ui.xml; exit 1; }
+            grep -q 'Get started' ui.xml || { cat ui.xml; exit 1; }
             adb uninstall com.aricummings.enclave
 
   ios:

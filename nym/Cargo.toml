@@ -21,6 +21,7 @@ missing_docs = "deny"
 
 # third_party/PATCHES.md
 [patch.crates-io]
+classic-mceliece-rust = { path = "../third_party/classic-mceliece-rust" }
 nym-client-core = { path = "../third_party/nym-client-core" }
 nym-gateway-client = { path = "../third_party/nym-gateway-client" }
 nym-gateway-requests = { path = "../third_party/nym-gateway-requests" }
