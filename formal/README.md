@@ -19,10 +19,11 @@ Symbolic (Dolev–Yao) models in ProVerif. Each query is preceded by the result 
 
 ## Tamarin
 
-The same discipline in Tamarin (`formal/tamarin/`): each lemma is preceded by `/* expect: verified */` or `/* expect: falsified */`, and `cargo xtask tamarin` proves every model and checks every lemma by name; a model whose wellformedness checks warn fails too. CI runs it with the pinned Tamarin 1.10.0 release and Ubuntu's Maude (job `tamarin`); locally, set `TAMARIN` to the binary. Each model has sanity lemmas (`exists-trace`) showing the attack its main lemma rules out is found when the defence is removed, and that the protocol runs at all.
+The same discipline in Tamarin (`formal/tamarin/`): each lemma is preceded by `/* expect: verified */` or `/* expect: falsified */`, and `cargo xtask tamarin` proves every model and checks every lemma by name; a model whose wellformedness checks warn fails too. CI runs it with the pinned Tamarin 1.10.0 and Maude 3.5 releases (job `tamarin`; Maude 3.2, Ubuntu's, can't unify the DH models); locally, set `TAMARIN` to the binary. Each model has sanity lemmas (`exists-trace`) showing the attack its main lemma rules out is found when the defence is removed, and that the protocol runs at all.
 
 | Model | What it shows | Result |
 |---|---|---|
+| `tamarin/eqxdh.spthy` | EQXDH against a classical active attacker, with long-term keys that can leak: the session key is secret unless a party's secrets leaked before the session (so forward secrecy); Bob accepts only a key Alice derived for him, once, and Alice only Bob's reply key, once (injective agreement) | 3 lemmas hold; secrecy fails, as it must, once Bob's keys leak first |
 | `tamarin/eqxdh_quantum.spthy` | PLAN D12's "all KEMs broken, optical exchange not recorded" lemma: every private key, exponent and KEM secret is the attacker's; a session with a PSK from an in-person scan stays secret | holds; broken without a PSK |
 | `tamarin/braid.spthy` | The braid: a session that started on two KEMs is secure after the McEliece step, against an attacker that breaks X448 and ML-KEM | holds; the two-KEM key is broken before it |
 | `tamarin/lockstep.spthy` | Lockstep post-compromise security against a quantum attacker: after the root key leaks, one ML-KEM step it sees but doesn't alter heals the session | heals; an X448-only step doesn't |

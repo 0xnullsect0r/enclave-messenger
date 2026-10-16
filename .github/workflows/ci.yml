@@ -152,14 +152,17 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The pinned Tamarin release (checked against its SHA-256) and
-      # Ubuntu's Maude.
-      - name: Install Tamarin 1.10.0
+      # The pinned Tamarin and Maude releases, checked against their
+      # SHA-256 (Ubuntu's Maude 3.2 can't unify the DH models).
+      - name: Install Tamarin 1.10.0 and Maude 3.5
         run: |
-          sudo apt-get update && sudo apt-get install -y maude
           curl -sSfL -o tamarin.tgz https://github.com/tamarin-prover/tamarin-prover/releases/download/1.10.0/tamarin-prover-1.10.0-linux64-ubuntu.tar.gz
+          curl -sSfL -o maude.zip https://github.com/maude-lang/Maude/releases/download/Maude3.5/Maude-3.5-linux-x86_64.zip
           echo "538fe055b65f419aac4710015948f0e6a2253d2f61958c136e2d2bd67981028c  tamarin.tgz" | sha256sum -c
-          mkdir tamarin && tar xzf tamarin.tgz -C tamarin
+          echo "e74cb8cf91b2d8b45440b54ef037180b581279358facf49f656e5b126eb7d1d3  maude.zip" | sha256sum -c
+          mkdir tamarin maude && tar xzf tamarin.tgz -C tamarin && unzip -q maude.zip -d maude
+          chmod +x maude/maude
+          echo "$PWD/maude" >> "$GITHUB_PATH"
           echo "TAMARIN=$PWD/tamarin/tamarin-prover" >> "$GITHUB_ENV"
       - name: Every lemma gives its expected result
         run: cargo xtask tamarin

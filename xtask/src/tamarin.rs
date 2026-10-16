@@ -4,8 +4,8 @@
 //!
 //! A model fails if any lemma differs, has no expectation, or isn't
 //! decided, and if Tamarin's wellformedness checks warn (its results
-//! "might be wrong"). Set `TAMARIN` to the binary; Maude must be on the
-//! path.
+//! "might be wrong"). Set `TAMARIN` to the binary; Maude (3.2.1 or
+//! later: 3.2 can't unify the DH models) must be on the path.
 
 use std::fs;
 use std::path::PathBuf;
@@ -93,6 +93,9 @@ pub fn tamarin() -> ExitCode {
         let want = expectations(&fs::read_to_string(m).unwrap_or_default());
         let out = match std::process::Command::new(&bin)
             .arg("--prove")
+            // The default 5 s is too short for EQXDH's derivation checks,
+            // and a timed-out check counts as a failed one.
+            .arg("--derivcheck-timeout=300")
             .arg(m)
             // Tamarin prints Unicode; without a UTF-8 locale it stops.
             .env("LANG", "C.UTF-8")

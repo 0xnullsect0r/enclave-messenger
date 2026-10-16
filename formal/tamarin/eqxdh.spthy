@@ -1,0 +1,131 @@
+/*
+ * EQXDH v1 (docs/04-eqxdh.md) against a classical active attacker.
+ *
+ * Alice initiates to Bob with an ephemeral X448 key: the session key
+ * combines DH(ika, spk), DH(ek, ikb), DH(ek, spk), DH(ek, opk), an ML-KEM
+ * encapsulation to the one-time PQ prekey, McEliece to Bob's vault key and
+ * ML-KEM to Bob's device auth key, bound to the transcript
+ * (EnclaveCombine), and the first message's body is sealed under it, so
+ * Bob accepts only if it opens. Bob's reply encapsulates to Alice's
+ * device auth key and mixes that in; Alice accepts only after key
+ * confirmation.
+ *
+ * Abstractions: prekeys arrive on an authenticated channel (their
+ * signatures are not modelled); identity sealing is omitted; KEMs are
+ * ideal and open by pattern matching. Long-term secrets can leak
+ * (`Reveal_*`); one-time prekeys are deleted after use and never leak.
+ *
+ * Lemmas: the key stays secret while neither party's long-term secrets
+ * leak before the session ends (forward secrecy: leaks afterwards don't
+ * matter); Bob accepts only a key Alice derived for him, once (injective
+ * agreement); Alice accepts only Bob's reply key, once.
+ *
+ * `cargo xtask tamarin` checks each lemma against the result noted
+ * before it (expect: verified / falsified).
+ */
+theory EQXDH
+begin
+
+builtins: diffie-hellman, hashing
+
+functions: kpk/1, encaps/2, decaps/2, combine/9, mix/2, confirm/1, seal/2, unseal/2
+equations:
+  decaps(sk, encaps(k, kpk(sk))) = k,
+  unseal(k, seal(k, m)) = m
+
+rule Alice_Keys:
+    [ Fr(~ika), Fr(~autha) ]
+  --[ OnlyOnce('alice') ]->
+    [ !AliceLtk(~ika, ~autha), Out(<'g'^~ika, kpk(~autha)>) ]
+
+rule Bob_Keys:
+    [ Fr(~ikb), Fr(~spk), Fr(~vault), Fr(~authb) ]
+  --[ OnlyOnce('bob') ]->
+    [ !BobLtk(~ikb, ~spk, ~vault, ~authb),
+      Out(<'g'^~ikb, 'g'^~spk, kpk(~vault), kpk(~authb)>) ]
+
+/* One-time prekeys (X448 and ML-KEM), each used once and then deleted. */
+rule Bob_OneTime:
+    [ Fr(~opk), Fr(~pq) ]
+  -->
+    [ OneTimeA(~opk, ~pq), OneTimeB(~opk, ~pq), Out(<'g'^~opk, kpk(~pq)>) ]
+
+rule Reveal_Alice:
+    [ !AliceLtk(~ika, ~autha) ] --[ RevealA() ]-> [ Out(<~ika, ~autha>) ]
+
+rule Reveal_Bob:
+    [ !BobLtk(~ikb, ~spk, ~vault, ~authb) ] --[ RevealB() ]-> [ Out(<~ikb, ~spk, ~vault, ~authb>) ]
+
+rule Alice_Send:
+    let ekp = 'g'^~ek
+        ct1 = encaps(~k1, kpk(~pq))
+        ct2 = encaps(~k2, kpk(~vault))
+        ct3 = encaps(~k3, kpk(~authb))
+        tr = h(<'g'^~ika, 'g'^~ikb, 'g'^~spk, 'g'^~opk, kpk(~pq), kpk(~vault), kpk(~authb),
+                kpk(~autha), ekp, ct1, ct2, ct3>)
+        sk = combine(('g'^~spk)^~ika, ('g'^~ikb)^~ek, ('g'^~spk)^~ek, ('g'^~opk)^~ek,
+                     ~k1, ~k2, ~k3, 'nopsk', tr)
+    in
+    [ !AliceLtk(~ika, ~autha), !BobLtk(~ikb, ~spk, ~vault, ~authb), OneTimeA(~opk, ~pq),
+      Fr(~ek), Fr(~k1), Fr(~k2), Fr(~k3), Fr(~m) ]
+  --[ AliceSends(sk) ]->
+    [ Out(<ekp, ct1, ct2, ct3, seal(sk, ~m)>), AliceWaits(~autha, sk) ]
+
+rule Bob_Accept:
+    let ct1 = encaps(k1, kpk(~pq))
+        ct2 = encaps(k2, kpk(~vault))
+        ct3 = encaps(k3, kpk(~authb))
+        tr = h(<'g'^~ika, 'g'^~ikb, 'g'^~spk, 'g'^~opk, kpk(~pq), kpk(~vault), kpk(~authb),
+                kpk(~autha), ekp, ct1, ct2, ct3>)
+        sk = combine(('g'^~ika)^~spk, ekp^~ikb, ekp^~spk, ekp^~opk, k1, k2, k3, 'nopsk', tr)
+        sk2 = mix(sk, ~k4)
+    in
+    [ !AliceLtk(~ika, ~autha), !BobLtk(~ikb, ~spk, ~vault, ~authb), OneTimeB(~opk, ~pq),
+      In(<ekp, ct1, ct2, ct3, seal(sk, m)>), Fr(~k4) ]
+  --[ BobAccepts(sk), BobReplies(sk2), Secret(sk2) ]->
+    [ Out(<encaps(~k4, kpk(~autha)), confirm(sk2)>) ]
+
+rule Alice_Accept:
+    let sk2 = mix(sk, k4) in
+    [ AliceWaits(~autha, sk), In(<encaps(k4, kpk(~autha)), confirm(sk2)>) ]
+  --[ AliceAccepts(sk2), Secret(sk2) ]->
+    [ ]
+
+/* expect: verified */
+lemma key_secret_with_forward_secrecy:
+  "All k #i. Secret(k) @ i ==>
+     not (Ex #j. K(k) @ j)
+     | (Ex #r. RevealA() @ r & r < i)
+     | (Ex #r. RevealB() @ r & r < i)"
+
+/* expect: verified */
+lemma bob_injective_agreement:
+  "All k #i. BobAccepts(k) @ i ==>
+     (Ex #j. AliceSends(k) @ j & j < i & not (Ex #i2. BobAccepts(k) @ i2 & not (#i2 = #i)))
+     | (Ex #r. RevealA() @ r & r < i)
+     | (Ex #r. RevealB() @ r & r < i)"
+
+/* expect: verified */
+lemma alice_injective_agreement:
+  "All k #i. AliceAccepts(k) @ i ==>
+     (Ex #j. BobReplies(k) @ j & j < i & not (Ex #i2. AliceAccepts(k) @ i2 & not (#i2 = #i)))
+     | (Ex #r. RevealA() @ r & r < i)
+     | (Ex #r. RevealB() @ r & r < i)"
+
+/* Sanity: once Bob's secrets leak before the session, the attacker can
+   pose as Bob, so the secrecy lemma needs its condition. */
+/* expect: verified */
+lemma reveal_bob_breaks_secrecy:
+  exists-trace
+  "Ex k #i #j #r. Secret(k) @ i & K(k) @ j & RevealB() @ r & r < i"
+
+/* Sanity: the protocol runs to the end. */
+/* expect: verified */
+lemma executable:
+  exists-trace
+  "Ex k #i. AliceAccepts(k) @ i & not (Ex #r. RevealA() @ r) & not (Ex #r. RevealB() @ r)"
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x) @ i & OnlyOnce(x) @ j ==> #i = #j"
+
+end
