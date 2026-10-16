@@ -198,6 +198,7 @@ services:
       - server-data:/var/lib/enclave/server
       - public:/var/lib/enclave/public
       - backups:/var/lib/enclave/backups
+      - updates:/var/lib/enclave/updates:ro
     networks: [backend, egress]
     healthcheck:
       test: ["CMD", "/usr/local/bin/enclave-server", "healthcheck", "--config", "/etc/enclave/server.toml"]
@@ -264,6 +265,8 @@ services:
       - ./config/front.toml:/etc/enclave/front.toml:ro
       - front-data:/var/lib/enclave/front
       - public:/var/lib/enclave/public:ro
+      # The release update bundle, fetched for the server to relay.
+      - updates:/var/lib/enclave/updates
     networks: [backend, edge]
     depends_on: [witness]
     healthcheck:
@@ -451,6 +454,7 @@ volumes:
   witness-keys:
   witness-data:
   front-data:
+  updates:
   relay-keys:
   relay-data:
   push-keys:

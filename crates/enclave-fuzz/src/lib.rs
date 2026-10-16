@@ -128,7 +128,7 @@ fn relay(d: &[u8]) {
         }
         if let (Some(relay), Ok(from)) = (r.as_mut(), "192.0.2.1:5000".parse()) {
             let _ = relay.handle(from, d, 1_790_000_000);
-            let _ = relay.issue_ticket(d, 1_790_000_000, |_| true);
+            let _ = relay.issue_ticket(d, 1_790_000_000);
         }
     });
 }
