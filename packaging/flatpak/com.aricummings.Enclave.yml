@@ -33,7 +33,7 @@ modules:
   - name: enclave
     buildsystem: simple
     build-commands:
-      - install -d /app/lib/enclave-messenger /app/bin
+      - install -d /app/lib/enclave-messenger /app/bin /app/share
       - install -m755 enclave enclave-vault enclave-netd enclave-mediad enclave-tord enclave-nymd lyrebird /app/lib/enclave-messenger/
       # The programs start each other from their own folder, which a
       # symbolic link resolves to.

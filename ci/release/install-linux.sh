@@ -9,8 +9,9 @@ KIND=$1 V=$2 DIST=$(cd "$3" && pwd)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 P=${V/-/\~}
 # What the window loads at run time, for the AppImage (the packages
-# declare them).
-DEB_GUI=(libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-egl1 libegl1 libgl1 libx11-6 libx11-xcb1 libxcursor1 libxi6 libxrandr2 libfontconfig1)
+# declare them): AppImages leave these to the system, ALSA included (call
+# audio), as every desktop has them.
+DEB_GUI=(libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-egl1 libegl1 libgl1 libx11-6 libx11-xcb1 libxcursor1 libxi6 libxrandr2 libfontconfig1 libasound2t64 fonts-dejavu-core)
 
 gone() { # PATH: uninstalling removed it
   if test -e "$1"; then

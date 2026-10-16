@@ -208,6 +208,9 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;28.2.13676358" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          # Slint's Android backend compiles its Java against this.
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          echo "ANDROID_JAR=$ANDROID_HOME/platforms/android-36/android.jar" >> "$GITHUB_ENV"
           rustup target add aarch64-linux-android aarch64-apple-ios
           cargo install --locked cargo-ndk@4.1.2
       # What only phones compile (enclave-platform's phone module, the
