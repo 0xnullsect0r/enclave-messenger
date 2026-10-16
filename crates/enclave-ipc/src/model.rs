@@ -644,7 +644,8 @@ pub enum Cmd {
     /// traffic profile (`docs/09-transport.md` §6), unless Maximum.
     Visible(bool),
     /// The phone's push token for this app (platform: 1 UnifiedPush
-    /// endpoint, 2 APNs device token in hex, 3 FCM token), to register
+    /// endpoint, 2 APNs device token in hex, 3 FCM token, 4 PushKit VoIP
+    /// token in hex for calls), to register
     /// with the home server sealed to the push relay; an empty token
     /// removes it (`docs/10-push.md` §2).
     PushToken(u8, String),

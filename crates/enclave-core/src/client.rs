@@ -2374,6 +2374,18 @@ impl Client {
     }
 
     async fn send_content(&mut self, root: &[u8; 64], content: &Content, now: u64) -> Result<()> {
+        self.send_content_flagged(root, content, now, 0).await
+    }
+
+    /// [`Client::send_content`] with extra request flags on its (first)
+    /// write (`FLAG_CALL` for a call's offer).
+    pub(crate) async fn send_content_flagged(
+        &mut self,
+        root: &[u8; 64],
+        content: &Content,
+        now: u64,
+        flags: u8,
+    ) -> Result<()> {
         if content.is_personal() {
             self.require_not_held()?;
             self.require_current()?;
@@ -2387,8 +2399,11 @@ impl Client {
             Some(p) => p,
             None => vec![content.clone()],
         };
-        for c in &units {
-            let (server, h, env) = self.seal_content(root, c, false)?;
+        for (i, c) in units.iter().enumerate() {
+            let (server, mut h, env) = self.seal_content(root, c, false)?;
+            if i == 0 {
+                h.flags |= flags;
+            }
             self.rpc.write(&server, h, &env, now, &mut self.rng).await?;
         }
         Ok(())

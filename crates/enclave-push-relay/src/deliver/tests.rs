@@ -178,7 +178,10 @@ async fn apns_over_http2_with_a_provider_token() {
         roots,
     )
     .unwrap();
-    assert_eq!(d.platforms(), [Platform::UnifiedPush, Platform::Apns]);
+    assert_eq!(
+        d.platforms(),
+        [Platform::UnifiedPush, Platform::Apns, Platform::ApnsVoip]
+    );
     let capsule = vec![0x5a; 1024];
     d.deliver(&delivery(Platform::Apns, &[0xab, 0x01], capsule.clone()))
         .await
@@ -186,8 +189,20 @@ async fn apns_over_http2_with_a_provider_token() {
     d.deliver(&delivery(Platform::Apns, &[0xcd], Vec::new()))
         .await
         .unwrap();
+    // A call: a VoIP push to the app's VoIP topic, good for a minute.
+    d.deliver(&delivery(Platform::ApnsVoip, &[0xef], capsule.clone()))
+        .await
+        .unwrap();
     let seen = seen.lock().unwrap().clone();
-    assert_eq!(seen.len(), 2);
+    assert_eq!(seen.len(), 3);
+    let voip = &seen[2];
+    assert_eq!(voip.path, "/3/device/ef");
+    assert_eq!(header(voip, "apns-topic"), "com.aricummings.enclave.voip");
+    assert_eq!(header(voip, "apns-push-type"), "voip");
+    assert_ne!(header(voip, "apns-expiration"), "0");
+    let vb: serde_json::Value = serde_json::from_slice(&voip.body).unwrap();
+    assert!(vb["aps"].get("alert").is_none());
+    assert_eq!(b64_decode(vb["c"].as_str().unwrap()).unwrap(), capsule);
     assert_eq!(*connections.lock().unwrap(), 1, "the connection is kept");
     let s = &seen[0];
     assert_eq!(

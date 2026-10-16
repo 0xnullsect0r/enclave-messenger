@@ -524,6 +524,16 @@ fn hex16(b: &[u8; 16]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
+/// Bytes from hex (any even length).
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len() / 2)
+        .map(|i| u8::from_str_radix(s.get(2 * i..2 * i + 2)?, 16).ok())
+        .collect()
+}
+
 fn unhex16(s: &str) -> Option<[u8; 16]> {
     let mut out = [0u8; 16];
     if s.len() != 32 {
@@ -1693,7 +1703,16 @@ impl Engine {
             }
             Cmd::PushToken(platform, token) => {
                 if let Some(c) = self.client.as_mut() {
-                    let result = if token.is_empty() {
+                    // APNs tokens come as hex; the relay takes their bytes.
+                    let bytes = match platform {
+                        2 | 4 => unhex(&token).unwrap_or_default(),
+                        _ => token.as_bytes().to_vec(),
+                    };
+                    let result = if platform == 4 {
+                        // A PushKit VoIP token: call wakes only.
+                        c.register_call_push(enclave_core::PushPlatform::ApnsVoip, &bytes)
+                            .await
+                    } else if token.is_empty() {
                         c.unregister_push().await
                     } else {
                         let platform = match platform {
@@ -1704,8 +1723,7 @@ impl Engine {
                         // FCM wakes carry nothing, so Poisson dummy wakes
                         // hide when real ones come (`docs/10-push.md` §5).
                         let dummies = platform == enclave_core::PushPlatform::Fcm;
-                        c.register_push_listed(platform, token.as_bytes(), dummies)
-                            .await
+                        c.register_push_listed(platform, &bytes, dummies).await
                     };
                     if let Err(e) = result {
                         eprintln!("enclave-vault: push registration: {e}");

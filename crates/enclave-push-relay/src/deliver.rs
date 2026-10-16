@@ -331,6 +331,7 @@ impl Deliverer {
         let mut v = vec![Platform::UnifiedPush];
         if self.apns.is_some() {
             v.push(Platform::Apns);
+            v.push(Platform::ApnsVoip);
         }
         if self.fcm.is_some() {
             v.push(Platform::Fcm);
@@ -343,6 +344,7 @@ impl Deliverer {
         let r = match d.platform {
             Platform::UnifiedPush => self.unified_push(d).await,
             Platform::Apns => self.apns(d).await,
+            Platform::ApnsVoip => self.apns_voip(d).await,
             Platform::Fcm => self.fcm(d).await,
         };
         let c = if r.is_ok() {
@@ -425,6 +427,39 @@ impl Deliverer {
             if let Ok(mut t) = self.apns_token.lock() {
                 *t = None;
             }
+        }
+        ok(r)
+    }
+
+    /// A call: a VoIP push, which wakes the app itself (not the
+    /// notification extension) to report the call to CallKit. Only
+    /// worth anything for a minute: a call that has rung out isn't
+    /// delivered late.
+    async fn apns_voip(&self, d: &Delivery) -> Result<()> {
+        let now = unix_now();
+        let token = self.apns_token(now)?;
+        let (cfg, _) = self.apns.as_ref().ok_or(DeliverError::NotConfigured)?;
+        let device: String = d.token.iter().map(|b| format!("{b:02x}")).collect();
+        let url = format!("{}/3/device/{device}", cfg.endpoint.trim_end_matches('/'));
+        let mut body = serde_json::json!({ "aps": {} });
+        if !d.capsule.is_empty() {
+            body["c"] = serde_json::Value::String(b64(&d.capsule, false));
+        }
+        let headers = [
+            ("authorization", format!("bearer {token}")),
+            ("apns-topic", format!("{}.voip", cfg.topic)),
+            ("apns-push-type", "voip".into()),
+            ("apns-priority", "10".into()),
+            ("apns-expiration", (now + 60).to_string()),
+            ("content-type", "application/json".into()),
+        ];
+        let r = self
+            .request(&url, "POST", &headers, body.to_string().into_bytes())
+            .await?;
+        if r.0 == 403
+            && let Ok(mut t) = self.apns_token.lock()
+        {
+            *t = None;
         }
         ok(r)
     }

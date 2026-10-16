@@ -744,6 +744,7 @@ impl Server {
                 t.del(db::INBOXES, mb)?;
                 t.del(db::PUSH, mb)?;
                 t.del(db::PUSH_DUMMY, mb)?;
+                t.del(db::PUSH_CALL, mb)?;
                 for table in [db::ENVELOPES, db::HINTS, db::TOKENS, db::READ_CREDS] {
                     t.remove_where(table, mb, |_, _| true)?;
                 }
@@ -1219,6 +1220,7 @@ impl Server {
                     t.del(db::INBOXES, &mb)?;
                     t.del(db::PUSH, &mb)?;
                     t.del(db::PUSH_DUMMY, &mb)?;
+                    t.del(db::PUSH_CALL, &mb)?;
                     for table in [db::ENVELOPES, db::HINTS, db::TOKENS, db::READ_CREDS] {
                         t.remove_where(table, &mb, |_, _| true)?;
                     }
@@ -1306,6 +1308,24 @@ impl Server {
         }
         let owner = api::credential_hash(&h.token);
         let mb = h.mailbox;
+        if h.flags & api::FLAG_PUSH_CALL != 0 {
+            return self
+                .tx(|t| {
+                    let Some(ib) = get_inbox(t, &mb)? else {
+                        return Ok(Status::NotFound);
+                    };
+                    if ib.owner != owner || ib.group || ib.request {
+                        return Ok(Status::Denied);
+                    }
+                    if sealed.is_empty() {
+                        t.del(db::PUSH_CALL, &mb)?;
+                    } else {
+                        t.put(db::PUSH_CALL, &mb, sealed)?;
+                    }
+                    Ok(Status::Ok)
+                })
+                .unwrap_or_else(|s| s);
+        }
         let old = self.db.read(|r| r.get(db::PUSH, &mb)).ok().flatten();
         let dummies = h.flags & api::FLAG_PUSH_DUMMIES != 0 && !sealed.is_empty();
         let gap = self.dummy_gap();
@@ -1619,8 +1639,44 @@ impl Server {
             self.token_log.1.push(th);
             self.stats.tokens_burned += 1;
             self.stored(&mb, env, now);
+            if h.flags & api::FLAG_CALL != 0 {
+                self.call_wake(&mb, env, now);
+            }
         }
         status
+    }
+
+    /// A call is starting: wake the inbox's call token now, not in the
+    /// next window (a call that rings a minute late has rung out).
+    fn call_wake(&mut self, mailbox: &[u8; 32], env: &[u8], now: u64) {
+        let Some(sealed) = self
+            .db
+            .read(|r| r.get(db::PUSH_CALL, mailbox))
+            .ok()
+            .flatten()
+        else {
+            return;
+        };
+        let id = sha3_512(&[&sealed[..], &now.to_be_bytes()].concat());
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&id[..32]);
+        let capsule = enclave_proto::envelope::capsule_of(env)
+            .map(<[u8]>::to_vec)
+            .unwrap_or_else(|| {
+                let mut r = vec![0u8; enclave_wire::CAPSULE_LEN];
+                let _ = self.rng.fill("server/push-capsule", &mut r);
+                r
+            });
+        self.wakes.insert(
+            key,
+            Wake {
+                window: now / PUSH_WINDOW_SECS,
+                release: now,
+                sealed,
+                capsule,
+                sent: false,
+            },
+        );
     }
 
     fn write_group(&mut self, h: &RequestHeader, env: &[u8], now: u64) -> Status {

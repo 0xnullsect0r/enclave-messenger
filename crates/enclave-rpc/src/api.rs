@@ -60,6 +60,15 @@ pub const FLAG_REQUEST_INBOX: u8 = 0x02;
 /// wakes (Poisson, mean [`DUMMY_WAKE_MEAN_SECS`]), indistinguishable from
 /// real ones (`docs/10-push.md` §5).
 pub const FLAG_PUSH_DUMMIES: u8 = 0x01;
+/// Request flag on `PushRegister` for the account inbox: the sealed token
+/// is for calls (an iOS PushKit VoIP token), woken by [`FLAG_CALL`]
+/// writes only (`docs/10-push.md` §5).
+pub const FLAG_PUSH_CALL: u8 = 0x02;
+/// Request flag on `Write`: this envelope starts a call. The server wakes
+/// the inbox's call token at once, if it has one (and its ordinary token
+/// as for any write). Disclosed: the server learns a call is starting,
+/// which the platform's call push needs (`docs/11-calls.md` §2).
+pub const FLAG_CALL: u8 = 0x02;
 /// Mean time between dummy wakes.
 pub const DUMMY_WAKE_MEAN_SECS: u64 = 3600;
 /// Most member devices with a push registration on one group mailbox.

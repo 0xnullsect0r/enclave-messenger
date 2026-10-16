@@ -21,7 +21,15 @@ impl Client {
         self.require_not_held()?;
         self.require_current()?;
         let now = self.now();
-        self.send_content(root, &Content::Call(message.to_vec()), now)
+        // An offer wakes the other side's call token (iOS PushKit) at
+        // once; the server learns that a call is starting, as the
+        // platform's call push needs (`docs/11-calls.md` §2).
+        let flags = if message.first() == Some(&1) {
+            enclave_rpc::api::FLAG_CALL
+        } else {
+            0
+        };
+        self.send_content_flagged(root, &Content::Call(message.to_vec()), now, flags)
             .await
     }
 

@@ -100,6 +100,9 @@ pub enum Platform {
     Apns = 2,
     /// Firebase Cloud Messaging.
     Fcm = 3,
+    /// An incoming call on iOS: a PushKit VoIP push through APNs, which
+    /// the app must report to CallKit (`docs/10-push.md` §5, PC-02).
+    ApnsVoip = 4,
 }
 
 impl Platform {
@@ -108,6 +111,7 @@ impl Platform {
             1 => Some(Self::UnifiedPush),
             2 => Some(Self::Apns),
             3 => Some(Self::Fcm),
+            4 => Some(Self::ApnsVoip),
             _ => None,
         }
     }

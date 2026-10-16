@@ -81,6 +81,8 @@ pub const PUSH: Bytes = TableDefinition::new("push");
 /// Group mailbox ‖ member device's id (8) → that device's sealed push
 /// token (`10-push.md` §3).
 pub const PUSH_GROUP: Bytes = TableDefinition::new("push-group");
+/// Inbox → its sealed call token (`FLAG_PUSH_CALL`).
+pub const PUSH_CALL: Bytes = TableDefinition::new("push-call");
 /// Inbox → empty: its owner asked for dummy wakes too.
 pub const PUSH_DUMMY: Bytes = TableDefinition::new("push-dummy");
 /// Usernames: name → `root ‖ last claim time`.
@@ -294,7 +296,7 @@ impl Db {
 type Rows = Vec<(Vec<u8>, Vec<u8>)>;
 
 /// Every table, for snapshots.
-const ALL: [Bytes; 29] = [
+const ALL: [Bytes; 30] = [
     INBOXES,
     READ_CREDS,
     HINTS,
@@ -320,6 +322,7 @@ const ALL: [Bytes; 29] = [
     PUSH,
     PUSH_GROUP,
     PUSH_DUMMY,
+    PUSH_CALL,
     USERNAMES,
     NAMES_BY_ROOT,
     REPORTS,

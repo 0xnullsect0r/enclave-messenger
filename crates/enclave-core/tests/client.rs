@@ -2266,8 +2266,29 @@ async fn push_wakes() {
     );
     assert!(due(&net).is_empty(), "sent once");
 
+    // Calls (iOS): a separate VoIP token, woken at once by an offer and
+    // by nothing else.
+    bob.register_call_push_with(&public, Platform::ApnsVoip, &[0xef, 0x01])
+        .await
+        .unwrap();
+    alice.send_text(&bob.root(), "no call").await.unwrap();
+    assert!(due(&net).is_empty(), "a message waits for its window");
+    alice.send_call(&bob.root(), &[1, 9, 9]).await.unwrap();
+    let wakes = due(&net);
+    assert_eq!(wakes.len(), 1, "the offer wakes the call token now");
+    let d = relay.wake(&wakes[0], net.now()).unwrap();
+    assert_eq!(
+        (d.platform, d.token.as_slice()),
+        (Platform::ApnsVoip, &[0xef, 0x01][..])
+    );
+    alice.send_call(&bob.root(), &[6; 17]).await.unwrap();
+    assert!(due(&net).is_empty(), "hanging up wakes no call");
+    net.advance(3 * enclave_server::PUSH_WINDOW_SECS);
+    let _ = due(&net);
+
     bob.unregister_push().await.unwrap();
     alice.send_text(&bob.root(), "three").await.unwrap();
+    alice.send_call(&bob.root(), &[1, 9, 9]).await.unwrap();
     net.advance(3 * enclave_server::PUSH_WINDOW_SECS);
     assert!(due(&net).is_empty());
 }

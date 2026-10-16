@@ -14,6 +14,8 @@ use enclave_wire::{Op, RequestHeader};
 
 /// Setting holding the sealed push token last registered (empty: none).
 const KEY_PUSH: &str = "push-sealed";
+/// Setting holding the sealed call token (iOS PushKit) last registered.
+const KEY_PUSH_CALL: &str = "push-call-sealed";
 
 /// The plain registration, kept to seal afresh for each group mailbox:
 /// `relay key ‖ u8 platform ‖ u8 dummies ‖ token`.
@@ -97,8 +99,63 @@ impl Client {
         self.send_push_registration(&sealed).await
     }
 
+    /// Ask for call wakes (an iOS PushKit VoIP token, `Platform::ApnsVoip`)
+    /// with the listed push relay's key: offers written with `FLAG_CALL`
+    /// wake it at once (`docs/10-push.md` §5). An empty token removes it.
+    pub async fn register_call_push(&mut self, platform: Platform, token: &[u8]) -> Result<()> {
+        if token.is_empty() {
+            return self.send_call_registration(&[]).await;
+        }
+        let relay = self
+            .listed_relay_key(self.now())
+            .ok_or(CoreError::NotFound)?;
+        self.register_call_push_with(&relay, platform, token).await
+    }
+
+    /// [`Client::register_call_push`] with the relay's key given.
+    pub async fn register_call_push_with(
+        &mut self,
+        relay: &RelayPublic,
+        platform: Platform,
+        token: &[u8],
+    ) -> Result<()> {
+        if self.maximum() {
+            return Err(CoreError::MaximumPrivacy);
+        }
+        let sealed =
+            seal_token(relay, platform, token, 0, &mut self.rng).map_err(|_| CoreError::TooLong)?;
+        self.send_call_registration(&sealed).await
+    }
+
+    async fn send_call_registration(&mut self, sealed: &[u8]) -> Result<()> {
+        let now = self.now();
+        self.set_setting(KEY_PUSH_CALL, sealed)?;
+        for week in self.profile.live_weeks(self.inbox_now(now)) {
+            self.push_call_at(week, sealed, now).await?;
+        }
+        Ok(())
+    }
+
+    async fn push_call_at(&mut self, week: u32, sealed: &[u8], now: u64) -> Result<()> {
+        let payload = api::frame(sealed, &mut self.rng)?;
+        let h = RequestHeader {
+            op: Op::PushRegister,
+            flags: api::FLAG_PUSH_CALL,
+            mailbox: self.profile.addr(week),
+            token: self.profile.owner(week),
+        };
+        let server = self.profile.server;
+        self.rpc
+            .call_ok(&server, h, &payload, now, &mut self.rng)
+            .await?;
+        Ok(())
+    }
+
     /// Stop wakes: the servers forget the sealed tokens.
     pub async fn unregister_push(&mut self) -> Result<()> {
+        if self.setting(KEY_PUSH_CALL)?.is_some_and(|s| !s.is_empty()) {
+            let _ = self.register_call_push(Platform::ApnsVoip, &[]).await;
+        }
         self.set_setting(KEY_PUSH_PLAIN, &[])?;
         let now = self.now();
         // Our registrations on today's group mailboxes go too.
@@ -128,6 +185,7 @@ impl Client {
             1 => Platform::UnifiedPush,
             2 => Platform::Apns,
             3 => Platform::Fcm,
+            4 => Platform::ApnsVoip,
             _ => return None,
         };
         let dummies = *b.get(5 + n)? == 1;
@@ -219,6 +277,9 @@ impl Client {
 
     /// Give the address of `week` the push registration, if there is one.
     pub(crate) async fn reapply_push(&mut self, week: u32, now: u64) -> Result<()> {
+        if let Some(sealed) = self.setting(KEY_PUSH_CALL)?.filter(|s| !s.is_empty()) {
+            self.push_call_at(week, &sealed, now).await?;
+        }
         match self.setting(KEY_PUSH)? {
             Some(sealed) if !sealed.is_empty() => self.push_at(week, &sealed, now).await,
             _ => Ok(()),
