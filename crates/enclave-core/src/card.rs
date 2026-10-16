@@ -13,6 +13,10 @@ pub const ADD_PREFIX: &str = "enclave:add#";
 pub const LINK_PREFIX: &str = "enclave:link#";
 /// Path and fragment mark of an `https://` contact link (§9.2).
 pub const HTTPS_PATH: &str = "/i#";
+/// A call link (`docs/11-calls.md` §8.2).
+pub const CALL_PREFIX: &str = "enclave:call#";
+/// The path of a call link to share where `enclave:` links don't open.
+pub const CALL_PATH: &str = "/call#";
 
 /// Whether `s` looks like a domain an invite link can name.
 fn is_domain(s: &str) -> bool {
@@ -241,6 +245,35 @@ pub enum DeepLink {
     Contact(Box<ContactCard>),
     /// A group invite link (`enclave:join#…`), for the Add screen.
     Join(String),
+    /// A call link (`enclave:call#…` or `https://<host>/call#…`): its
+    /// payload (`enclave_calls::link::CallLink`).
+    Call(Vec<u8>),
+}
+
+/// A call link's text: `https://<domain>/call#…` when there is a domain,
+/// else `enclave:call#…`.
+pub fn call_link_text(payload: &[u8], domain: &str) -> String {
+    if is_domain(domain) {
+        format!("https://{domain}{CALL_PATH}{}", b64url_encode(payload))
+    } else {
+        format!("{CALL_PREFIX}{}", b64url_encode(payload))
+    }
+}
+
+/// A call link's payload, if `s` is one.
+pub fn call_link_payload(s: &str) -> Option<Vec<u8>> {
+    let s = s.trim();
+    let body = match s.strip_prefix(CALL_PREFIX) {
+        Some(b) => b,
+        None => {
+            let (host, body) = s.strip_prefix("https://")?.split_once(CALL_PATH)?;
+            if !is_domain(host) {
+                return None;
+            }
+            body
+        }
+    };
+    b64url_decode(body)
 }
 
 /// Route a deep link (`03-identity.md` §4.2, RT-09). A device-link code is
@@ -257,6 +290,9 @@ pub fn open_deep_link(uri: &str) -> Result<DeepLink, LinkError> {
     if s.starts_with(crate::client::JOIN_PREFIX) {
         crate::client::JoinLink::parse(s)?;
         return Ok(DeepLink::Join(s.to_string()));
+    }
+    if let Some(p) = call_link_payload(s) {
+        return Ok(DeepLink::Call(p));
     }
     ContactCard::from_link(s).map(|c| DeepLink::Contact(Box::new(c)))
 }
@@ -376,6 +412,12 @@ mod tests {
         // The https form (§9.2): the same card after `/i#`.
         let web = invited.to_share_link();
         assert!(web.starts_with("https://a.example/i#"), "{web}");
+        // Call links, both forms.
+        for d in ["a.example", ""] {
+            let t = call_link_text(&[1, 2, 3], d);
+            assert_eq!(call_link_payload(&t), Some(vec![1, 2, 3]), "{t}");
+        }
+        assert_eq!(call_link_payload("https://bad_host/call#AQID"), None);
         assert_eq!(ContactCard::from_link(&web).unwrap(), invited);
         for not in [
             "https://a.example/x#AAAA",

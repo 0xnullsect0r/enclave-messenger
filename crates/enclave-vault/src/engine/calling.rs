@@ -127,7 +127,7 @@ impl Engine {
     }
 
     /// Our end at `relay`, set up in the background.
-    fn open_leg(&self, id: [u8; 16], relay: ListedRelay) {
+    pub(super) fn open_leg(&self, id: [u8; 16], relay: ListedRelay) {
         let transport = std::sync::Arc::clone(&self.transport);
         let tx = self.call_tx.clone();
         tokio::spawn(async move {
@@ -341,9 +341,13 @@ impl Engine {
 
     pub(super) async fn answer_call(&mut self, direct: bool) {
         if self.call.is_none()
-            && let Some(g) = self.group_call.as_ref().filter(|g| !g.joined)
+            && let Some(gid) = self
+                .group_call
+                .as_ref()
+                .filter(|g| !g.joined)
+                .and_then(|g| g.gid)
         {
-            let conv = super::group_id_str(&g.gid);
+            let conv = super::group_id_str(&gid);
             self.join_group_call(&conv).await;
             return;
         }
@@ -470,6 +474,9 @@ impl Engine {
 
     pub(super) async fn end_call(&mut self) {
         let Some(call) = self.call.as_ref() else {
+            if self.leave_lobby() {
+                return;
+            }
             if self.group_call.as_ref().is_some_and(|g| g.joined) {
                 self.leave_group_call("").await;
             } else {
@@ -768,6 +775,10 @@ impl Engine {
 
     /// What a leg or a running call reported.
     pub(super) async fn on_call_event(&mut self, ev: CallEvent) {
+        if self.is_lobby_event(&ev) {
+            self.on_lobby_event(ev).await;
+            return;
+        }
         if self.is_group_event(&ev) {
             self.on_group_call_event(ev).await;
             return;
@@ -857,6 +868,7 @@ impl Engine {
     pub(super) async fn call_upkeep(&mut self) {
         self.standby_upkeep().await;
         self.group_call_upkeep().await;
+        self.call_link_upkeep();
         if self
             .call_ended
             .as_ref()
@@ -891,6 +903,9 @@ impl Engine {
         let Some(call) = self.call.as_ref() else {
             if let Some(g) = self.group_call.as_ref() {
                 return self.group_call_view(g);
+            }
+            if let Some(v) = self.waiting_view() {
+                return v;
             }
             return self
                 .call_ended

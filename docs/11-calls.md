@@ -95,7 +95,7 @@ PSK schedule:
 - **In the app**: the call screen can shrink to a tile over the app (picture in picture: the other person's picture, or who and for how long, with hang up); tapping it brings the call back. A call that rings or ends always takes the whole window.
 - **The system's call screens** (`enclave_platform::phone::report_*_call`, driven from the vault's snapshots in `enclave-app`'s `vault::phone`, so they work with no window open): on iOS, CallKit and PushKit (`phone/ios/calls.rs`): a call's offer is sent with `FLAG_CALL`, so the home server wakes the callee at once through the push relay as an APNs VoIP push (`apns-push-type: voip`, topic `<bundle>.voip`, 60 s expiry), which is reported to CallKit before anything else (PC-02) as "Enclave" and named once the offer is in; a push whose offer never comes stops ringing after 30 s. The PushKit token is registered as its own push token (platform 4, `FLAG_PUSH_CALL`). On Android, a self-managed `ConnectionService` (`apps/android/.../Calls.java`): the system gives the call its audio mode and holds other calling apps, a ringing call is a full-screen call notification (CallStyle, the ringtone), and the background service keeps the microphone (`phoneCall` and `microphone` foreground types) while a call is on. Both keep calls out of the phone's call history; with notification previews off the system's screens say "Enclave", not the caller. Answer, decline, hang up and mute there come back as commands; an answer given before the offer arrived is applied when it does. The window's own ringing notice is not shown on phones.
 
-Not implemented yet: group calls, call links, screen share and the Maximum-privacy tunnel (C-f).
+Not implemented yet: screen share (C-f).
 
 ## 4. Direct mode (opt-in per call)
 
@@ -197,6 +197,21 @@ The starter draws the call id and the 64-byte call secret and picks its own rela
 **Engine and window.** "Call the group" starts a call (a line "You started a call" in the group); members' devices ring for 60 s (`Join` or `Decline`) and the group shows "Join call" while the call goes on. Leaving sends `Left`; whoever leaves last also sends `End`; a call no one has said anything about for 6 h is forgotten. The call screen is a grid of tiles (a picture or initials, the name, a raised hand, a passing reaction), with Mute, Camera, Raise hand, five reactions and Leave. Limits: 64 participants (`MAX_PARTICIPANTS`). Tests: `a_group_call_through_an_sfu_relay` (three relays in three families, four people, two on one relay, one joining late: everyone hears the others mixed, the one camera reaches the others, the hand and the reaction arrive), `group_call_signalling_reaches_the_members`, `a_late_receiver_starts_at_the_senders_epoch`, and the relay's and mediad's unit tests.
 
 **Cameras.** No simulcast: every camera sends the lowest tier (320 × 240 at 15 fps, 300 kbit/s on the wire), and the fixed downlink carries eight of them, so at most 8 cameras are on at once (`MAX_CAMERAS`). A camera already on stays on; one being turned on while eight others send pictures waits, padding as with the camera off, and the call screen says "Up to 8 cameras can be on at once. Yours comes on when one goes off." Two turned on at the same moment can make nine for a while; the SFU's queue then drops the oldest pictures (never voices) and decoders ask for key frames. This replaces PLAN's 32 video tiles, which the 2.5 Mbps budget can't carry at any useful picture size.
+
+### 8.2 Call links, as implemented
+
+In a group call, **Invite with a link** makes a link (`enclave_calls::link::CallLink`), shared as `https://<home server domain>/call#<payload>` (or `enclave:call#…` without a domain) and opened by pasting or scanning it in Add:
+
+```text
+1 ‖ flags (bit 0 video, bit 1 open) ‖ link secret (64) ‖ SFU relay id (16) ‖ created (u64 ms)
+  [‖ call id (16) ‖ call secret (64) ‖ started (u64 ms)]          open links only
+```
+
+- **Let anyone in** (an open link) carries the call's secret: whoever has the link joins at once.
+- **Ask me first** (a lobby link) carries only the link secret. `call_link_cap = KMAC256(link_secret, "", 256, "enclave/v1/calls/link-cap")`; its first 16 bytes are the lobby's id, and the lobby is a session at the call's SFU keyed like a call, `CallKeys::group(lobby id, link secret)`: constant-rate audio-sized packets that carry nothing but lobby messages, in fragments (`run_lobby`). A knocker makes one-time X448 and ML-KEM-1024 keys and sends `'K' ‖ x448 ‖ ml-kem ‖ name` every 5 s; their id in the lobby is `participant(x448 key)`, so a knock can't be sent in someone else's name. The host sees "*Name* is asking to join" with **Let in** and **Turn away**. Letting in sends `'A' ‖ id ‖ host x448 ‖ ML-KEM ciphertext ‖ seal(call id ‖ call secret ‖ started)`, sealed with `KMAC256(combine(X448, ML-KEM; lobby id, both sides' keys, ciphertext), lobby id, 256, "enclave/v1/calls/link-admit")`: everyone in the lobby hears the admission, only its knocker can open it. Turning away sends `'D' ‖ id`. An answer is repeated if the same knocker knocks again; a knocker gives up after 10 minutes. Up to 16 people wait at once.
+- **Guests** join the call as members do (their relay, the SFU), with no group: every participant announces its name on the audio stream every 10 s (`'N' ‖ name`, up to 64 bytes); a name is shown for anyone who isn't a member of the group, marked "(guest)", and members are always shown by the name the group knows. The link and its lobby last while its maker is in the call.
+
+Tests: `a_guest_is_let_in_from_a_call_links_lobby` (two relays: the host in the call and the lobby at the SFU, a guest and an eavesdropper with the same link in the lobby from the other relay; the guest knocks, is let in, joins and is heard by name; the eavesdropper can't open the admission), `links_round_trip`, `only_the_admitted_knocker_opens_the_call`.
 
 ## 9. Call check
 

@@ -17,6 +17,7 @@
 //!   address to the other).
 //! * [`group`]: group calls' signalling, carried in the group's own
 //!   messages.
+//! * [`link`]: call links and their lobby.
 //! * [`route`]: choosing the two relays of a call from distinct operator
 //!   families.
 //!
@@ -26,6 +27,7 @@
 
 pub mod direct;
 pub mod group;
+pub mod link;
 pub mod message;
 pub mod relay;
 pub mod route;
@@ -53,6 +55,10 @@ pub mod labels {
     pub const CHECK_WORDS: &str = "enclave/v1/calls/check-words";
     /// A group call participant's id from the call secret and their root.
     pub const PARTICIPANT: &str = "enclave/v1/calls/participant";
+    /// A call link's capability (the lobby's id) from its secret.
+    pub const LINK_CAP: &str = "enclave/v1/calls/link-cap";
+    /// The key sealing a lobby admission (and its AD).
+    pub const LINK_ADMIT: &str = "enclave/v1/calls/link-admit";
     /// Direct-mode tunnel PSK.
     pub const DIRECT_PSK: &str = "enclave/v1/calls/direct-psk";
     /// Relay-ticket transcript prefix.

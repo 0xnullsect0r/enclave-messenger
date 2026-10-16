@@ -241,6 +241,10 @@ msgstr "[Áñýóñé whó çólléçts éñóúgh óf thésé çáñ táké óv
 msgid "Anyone who knows it can send you a message request. Choosing a new one retires this one."
 msgstr "[Áñýóñé whó kñóws ít çáñ séñd ýóú á mésságé réqúést. Çhóósíñg á ñéw óñé rétírés thís óñé.···································]"
 
+#: ui/app.slint
+msgid "Anyone with the link can ask to join. Share it only with people you'd let in."
+msgstr "[Áñýóñé wíth thé líñk çáñ ásk tó jóíñ. Sháré ít óñlý wíth péóplé ýóú'd lét íñ.······························]"
+
 #: enclave-vault/src/engine.rs
 msgid "App PIN set."
 msgstr "[Ápp PÍÑ sét.····]"
@@ -272,6 +276,10 @@ msgstr "[Ásk á qúéstíóñ·····]"
 #: enclave-vault/src/engine.rs
 msgid "Ask for history now"
 msgstr "[Ásk fór hístórý ñów·······]"
+
+#: ui/app.slint
+msgid "Ask me first"
+msgstr "[Ásk mé fírst····]"
 
 #: enclave-vault/src/engine.rs
 msgid "Asked for your message history. Confirm on the device you linked from to send it now."
@@ -368,6 +376,10 @@ msgstr "[Çáll díréçtlý·····]"
 #: ui/app.slint
 msgid "Call directly anyway"
 msgstr "[Çáll díréçtlý áñýwáý········]"
+
+#: ui/app.slint
+msgid "Call link"
+msgstr "[Çáll líñk···]"
 
 #: ui/app.slint
 msgid "Call the group"
@@ -610,6 +622,10 @@ msgid "Copy a group invite link"
 msgstr "[Çópý á gróúp íñvíté líñk·········]"
 
 #: ui/app.slint
+msgid "Copy call link"
+msgstr "[Çópý çáll líñk·····]"
+
+#: ui/app.slint
 msgid "Copy code"
 msgstr "[Çópý çódé···]"
 
@@ -721,7 +737,7 @@ msgstr "[Çóúldñ't dówñlóád thé fílé. Çhéçk ýóúr çóññéçtí
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr "[Çóúldñ't édít thát mésságé. Édíts wórk fór 24 hóúrs.····················]"
 
-#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
+#: enclave-vault/src/engine/call_links.rs enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr "[Çóúldñ't fíñd á príváté róúté ríght ñów. Trý ágáíñ látér.······················]"
 
@@ -757,6 +773,10 @@ msgstr "[Çóúldñ't ópéñ thát fílé.·········]"
 msgid "Couldn't open that file: {}"
 msgstr "[Çóúldñ't ópéñ thát fílé: ··········{}]"
 
+#: enclave-vault/src/engine/call_links.rs
+msgid "Couldn't open the link's waiting room right now."
+msgstr "[Çóúldñ't ópéñ thé líñk's wáítíñg róóm ríght ñów.···················]"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't open your profile: {}"
 msgstr "[Çóúldñ't ópéñ ýóúr prófílé: ···········{}]"
@@ -768,6 +788,10 @@ msgstr "[Çóúldñ't píñ thát mésságé. Çhéçk ýóúr çóññéçtíó
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
 msgstr "[Çóúldñ't réáçh thát sérvér. Trý ágáíñ íñ á móméñt.····················]"
+
+#: enclave-vault/src/engine/call_links.rs
+msgid "Couldn't reach the call's waiting room."
+msgstr "[Çóúldñ't réáçh thé çáll's wáítíñg róóm.···············]"
 
 #: enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't reach the group to call. Try again."
@@ -1418,6 +1442,10 @@ msgid "Invite link copied. It works for one person, for 7 days, and is cleared f
 msgstr "[Íñvíté líñk çópíéd. Ít wórks fór óñé pérsóñ, fór 7 dáýs, áñd ís çléáréd fróm thé çlípbóárd áftér 60 séçóñds.···········································]"
 
 #: ui/app.slint
+msgid "Invite with a link"
+msgstr "[Íñvíté wíth á líñk·······]"
+
+#: ui/app.slint
 msgid "It can't get new messages any more. Erase it to remove your conversations from it."
 msgstr "[Ít çáñ't gét ñéw mésságés áñý móré. Érásé ít tó rémóvé ýóúr çóñvérsátíóñs fróm ít.································]"
 
@@ -1488,6 +1516,14 @@ msgstr "[Léávé ··{}?]"
 #: ui/app.slint
 msgid "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."
 msgstr "[Léávíñg óút sóméóñé whó hólds á sháré ñów çháñgés ýóúr réçóvérý wórds, só théír sháré stóps wórkíñg. Ýóú'll bé shówñ thé ñéw wórds.····················································]"
+
+#: ui/app.slint
+msgid "Let anyone in"
+msgstr "[Lét áñýóñé íñ·····]"
+
+#: ui/app.slint
+msgid "Let in"
+msgstr "[Lét íñ··]"
 
 #: ui/app.slint
 msgid "Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."
@@ -2593,6 +2629,10 @@ msgstr "[Thát çáll hás éñdéd.········]"
 msgid "That call is full."
 msgstr "[Thát çáll ís fúll.·······]"
 
+#: enclave-vault/src/engine/call_links.rs
+msgid "That call link isn't complete. Ask for it again."
+msgstr "[Thát çáll líñk ísñ't çómplété. Ásk fór ít ágáíñ.···················]"
+
 #: enclave-vault/src/engine.rs
 msgid "That code didn't work. Check that the new device is still showing it."
 msgstr "[Thát çódé dídñ't wórk. Çhéçk thát thé ñéw dévíçé ís stíll shówíñg ít.···························]"
@@ -2700,6 +2740,10 @@ msgstr "[Thé gróúp móvés fróm thé ñéxt dáý óñçé móré tháñ há
 #: enclave-vault/src/engine.rs
 msgid "The group moves to that server tomorrow."
 msgstr "[Thé gróúp móvés tó thát sérvér tómórrów.················]"
+
+#: enclave-vault/src/engine/call_links.rs
+msgid "The host didn't let you in."
+msgstr "[Thé hóst dídñ't lét ýóú íñ.··········]"
 
 #: enclave-app/src/audio.rs
 msgid "The microphone gives {} samples, which Enclave can't read."
@@ -2938,6 +2982,10 @@ msgid "Try the \"Check code\" button above. With a real person you'd compare tho
 msgstr "[Trý thé \"Çhéçk çódé\" búttóñ ábóvé. Wíth á réál pérsóñ ýóú'd çómpáré thósé ñúmbérs fáçé tó fáçé ór óñ á çáll.···········································]"
 
 #: ui/app.slint
+msgid "Turn away"
+msgstr "[Túrñ áwáý···]"
+
+#: ui/app.slint
 msgid "Turn off"
 msgstr "[Túrñ óff···]"
 
@@ -3133,6 +3181,10 @@ msgstr "[Wáítíñg fór bóth çódés········]"
 msgid "Waiting for others to join…"
 msgstr "[Wáítíñg fór óthérs tó jóíñ…··········]"
 
+#: enclave-vault/src/engine/call_links.rs
+msgid "Waiting for the host to let you in…"
+msgstr "[Wáítíñg fór thé hóst tó lét ýóú íñ…··············]"
+
 #: ui/app.slint
 msgid "Waiting for them to accept"
 msgstr "[Wáítíñg fór thém tó áççépt··········]"
@@ -3285,7 +3337,7 @@ msgstr "[Ýóú'll stóp géttíñg íts mésságés. Sóméóñé wóúld háv�
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr "[Ýóú'll týpé ít éáçh tímé Éñçlávé stárts. Ñóbódý çáñ rését ít; íf ýóú fórgét ít, ýóúr réçóvérý wórds bríñg ýóúr áççóúñt báçk.·················································]"
 
-#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
+#: enclave-vault/src/engine/call_links.rs enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "You're already in a call."
 msgstr "[Ýóú'ré álréádý íñ á çáll.··········]"
 
@@ -3516,6 +3568,10 @@ msgstr "[{} géts théír çódé áñd çáñ séñd thém á réqúést. Ñób
 #: ui/app.slint
 msgid "{} invite links haven't been used yet."
 msgstr "[{} íñvíté líñks hávéñ't bééñ úséd ýét.··············]"
+
+#: ui/app.slint
+msgid "{} is asking to join"
+msgstr "[{} ís áskíñg tó jóíñ·······]"
 
 #: ui/app.slint
 msgid "{} is typing"

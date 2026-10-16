@@ -512,6 +512,10 @@ pub enum FromCall {
     /// A group call: our camera waits (true) while eight others are on,
     /// or goes on again.
     CamerasFull(bool),
+    /// A lobby: a whole message from someone in it.
+    Lobby(u32, Vec<u8>),
+    /// A group call: the name someone announced.
+    Name(u32, String),
 }
 
 /// Frames that arrived, by sequence number, and which to play next.
@@ -962,12 +966,18 @@ pub struct GroupPlan {
     pub codec: CallCodec,
     /// A video call: its codec and tier.
     pub video: Option<(crate::media::VideoCodec, usize)>,
+    /// The name we announce (others show it for someone not in their
+    /// group: a guest from a call link).
+    pub name: String,
 }
 
 /// Control messages on a group call's audio stream.
 const HAND_UP: &[u8] = b"H1";
 const HAND_DOWN: &[u8] = b"H0";
 const REACT: u8 = b'R';
+const NAME: u8 = b'N';
+/// Most bytes of an announced name.
+pub const MAX_NAME: usize = 64;
 /// Most bytes of a reaction.
 pub const MAX_REACTION: usize = 32;
 /// A sender silent this long drops out of the mix.
@@ -1260,6 +1270,9 @@ async fn group_loop(
                             let news = match c.as_slice() {
                                 HAND_UP => Some(FromCall::Hand(from, true)),
                                 HAND_DOWN => Some(FromCall::Hand(from, false)),
+                                [NAME, n @ ..] if n.len() <= MAX_NAME => {
+                                    String::from_utf8(n.to_vec()).ok().map(|n| FromCall::Name(from, n))
+                                }
                                 [REACT, r @ ..] if r.len() <= MAX_REACTION => {
                                     String::from_utf8(r.to_vec()).ok().map(|r| FromCall::React(from, r))
                                 }
@@ -1310,6 +1323,14 @@ async fn group_loop(
                 if !joined && started.elapsed() > CONNECT_LIMIT {
                     return "Couldn't connect the call.".into();
                 }
+                // Our name every 10 s.
+                if ticks % 500 == 2 && !plan.name.is_empty() {
+                    let mut n = plan.name.clone();
+                    while n.len() > MAX_NAME {
+                        n.pop();
+                    }
+                    said.push_back([&[NAME][..], n.as_bytes()].concat());
+                }
                 // One frame up: a hand or reaction first, then our voice
                 // or padding.
                 if let Some(c) = said.pop_front() {
@@ -1348,6 +1369,123 @@ async fn group_loop(
             }
         }
     }
+}
+
+/// A call link's lobby (`docs/11-calls.md` §8.2): a session at the call's
+/// SFU, like a group call's, that carries only lobby messages.
+pub struct LobbyPlan {
+    /// The lobby's id (events about it carry it).
+    pub id: [u8; 16],
+    /// Its keys (`CallLink::lobby_keys`).
+    pub keys: CallKeys,
+    /// Our id in it.
+    pub me: u32,
+    /// The SFU relay.
+    pub sfu: SocketAddr,
+    /// When the link was made (Unix ms).
+    pub started_ms: u64,
+}
+
+/// Run a lobby until the engine drops `send` or the link fails: each
+/// message given goes out in fragments of the audio packets' size, at the
+/// audio rate (padding otherwise); each whole message heard comes back as
+/// [`FromCall::Lobby`].
+pub async fn run_lobby(
+    mut leg: Leg,
+    plan: LobbyPlan,
+    mut send: mpsc::UnboundedReceiver<Vec<u8>>,
+    events: mpsc::UnboundedSender<CallEvent>,
+) {
+    use enclave_calls::sframe::{Receiver, Sender, parse_header};
+    let id = plan.id;
+    let mut sender = Sender::new(plan.me, &plan.keys.sframe_base(plan.me, 0));
+    let mut receivers: std::collections::HashMap<u32, Receiver> = Default::default();
+    let mut parts: std::collections::HashMap<u32, enclave_calls::shape::Reassembler> =
+        Default::default();
+    let mut join = enclave_calls::relay::join_payload(&plan.keys.rendezvous(), plan.sfu);
+    join[0] = enclave_calls::relay::P_JOIN_GROUP;
+    let join = control(join);
+    let keepalive = control(vec![P_KEEPALIVE]);
+    let mut shaper = Shaper::new(Stream::Audio);
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+    let (mut ticks, mut joined) = (0u64, false);
+    let started = tokio::time::Instant::now();
+    let why: String = loop {
+        tokio::select! {
+            m = send.recv() => match m {
+                Some(m) => {
+                    if shaper.push_video_frame(&m).is_err() {
+                        eprintln!("enclave-vault: lobby message too long");
+                    }
+                }
+                None => break String::new(),
+            },
+            d = leg.dg.recv.recv() => {
+                let Some(d) = d else { break "The call's connection closed.".into() };
+                let Ok(got) = leg.link.receive(unix_now(), &d) else { continue };
+                if !send_all(&leg.dg, got.send) {
+                    break "The call's connection closed.".into();
+                }
+                let Some(p) = got.payload else { continue };
+                if p.first() != Some(&enclave_calls::relay::P_BUNDLE) {
+                    continue;
+                }
+                if !joined {
+                    joined = true;
+                    let _ = events.send(CallEvent::Media(id, FromCall::Connected));
+                }
+                for packet in enclave_calls::relay::unbundle(&p) {
+                    let Ok((kid, _, _)) = parse_header(packet) else { continue };
+                    let (from, epoch) = ((kid >> 32) as u32, kid as u32);
+                    if from == plan.me
+                        || (!receivers.contains_key(&from)
+                            && receivers.len() >= enclave_calls::group::MAX_PARTICIPANTS)
+                    {
+                        continue;
+                    }
+                    let rx = receivers
+                        .entry(from)
+                        .or_insert_with(|| Receiver::at_epoch(from, &plan.keys.sframe_base(from, 0), epoch));
+                    let Ok(pt) = rx.unprotect(packet, AUDIO_AD) else { continue };
+                    if let Ok(Inner::Media(frag)) = decode_plaintext(&pt)
+                        && let Some(m) = parts.entry(from).or_default().push(&frag)
+                    {
+                        let _ = events.send(CallEvent::Media(id, FromCall::Lobby(from, m)));
+                    }
+                }
+            }
+            _ = tick.tick() => {
+                ticks += 1;
+                let now = unix_now();
+                if ticks % 50 == 1 {
+                    let mut dgs = match leg.link.tick(now) {
+                        Ok(d) => d,
+                        Err(_) => break "The call's ticket ran out.".into(),
+                    };
+                    let c = if joined { &keepalive } else { &join };
+                    dgs.extend(leg.link.send(now, c).unwrap_or_default());
+                    if !send_all(&leg.dg, dgs) {
+                        break "The call's connection closed.".into();
+                    }
+                }
+                if !joined && started.elapsed() > CONNECT_LIMIT {
+                    break "Couldn't connect the call.".into();
+                }
+                let pt = shaper.next_plaintext();
+                let elapsed = unix_ms().saturating_sub(plan.started_ms);
+                if let Ok(packet) = sender.protect(elapsed, AUDIO_AD, &pt) {
+                    let payload = [&[P_MEDIA][..], &packet].concat();
+                    if let Ok(dgs) = leg.link.send(now, &payload)
+                        && !send_all(&leg.dg, dgs)
+                    {
+                        break "The call's connection closed.".into();
+                    }
+                }
+            }
+        }
+    };
+    let _ = events.send(CallEvent::Media(id, FromCall::Dropped(why)));
 }
 
 /// The relays to pick from, as `enclave_calls::route` takes them.

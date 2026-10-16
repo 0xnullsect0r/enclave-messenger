@@ -244,6 +244,18 @@ fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
     ui.on_react_call(move |emoji| {
         let _ = t.send(Cmd::CallReact(emoji.to_string()));
     });
+    let t = tx.clone();
+    ui.on_create_call_link(move |lobby| {
+        let _ = t.send(Cmd::CreateCallLink(lobby));
+    });
+    let t = tx.clone();
+    ui.on_admit_call(move |who| {
+        let _ = t.send(Cmd::AdmitToCall(u32::from_ne_bytes(who.to_ne_bytes())));
+    });
+    let t = tx.clone();
+    ui.on_refuse_call(move |who| {
+        let _ = t.send(Cmd::RefuseFromCall(u32::from_ne_bytes(who.to_ne_bytes())));
+    });
     #[cfg(desktop)]
     {
         use crate::updater::{self, Install};

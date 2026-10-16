@@ -27,6 +27,8 @@ const REACTION_SHOWN: Duration = Duration::from_secs(5);
 const KNOWN_FOR: Duration = Duration::from_secs(6 * 3600);
 /// What the window says when no private route exists.
 const NO_ROUTE: &str = "Couldn't find a private route right now. Try again later.";
+/// What a call joined from a link is called.
+pub(super) const LINK_CALL: &str = "Call";
 
 /// A group call someone started, as far as we know.
 pub(super) struct Known {
@@ -50,7 +52,8 @@ struct Heard {
 /// The group call we ring for or are in.
 pub(super) struct GroupCall {
     pub(super) id: [u8; 16],
-    pub(super) gid: [u8; 32],
+    /// The group (none: we joined from a call link).
+    pub(super) gid: Option<[u8; 32]>,
     pub(super) video: bool,
     /// We joined (else it rings).
     pub(super) joined: bool,
@@ -61,16 +64,62 @@ pub(super) struct GroupCall {
     pub(super) hand: bool,
     /// Our camera waits for a free place.
     cameras_full: bool,
-    keys: CallKeys,
-    secret: Zeroizing<[u8; 64]>,
-    me: u32,
-    sfu: Option<std::net::SocketAddr>,
-    started_ms: u64,
+    pub(super) keys: CallKeys,
+    pub(super) secret: Zeroizing<[u8; 64]>,
+    pub(super) me: u32,
+    pub(super) sfu: Option<std::net::SocketAddr>,
+    /// The SFU relay's id.
+    pub(super) sfu_id: [u8; 16],
+    pub(super) started_ms: u64,
+    /// The call link we made for it, and its lobby.
+    pub(super) link: Option<super::call_links::HostedLink>,
+    /// Names people announced (shown for anyone not in the group).
+    names: HashMap<u32, String>,
     leg: Option<Leg>,
     pub(super) tx: Option<mpsc::UnboundedSender<ToCall>>,
     heard: BTreeMap<u32, Heard>,
     created: Instant,
     connected_at: u64,
+}
+
+impl GroupCall {
+    /// A call joined from a link (no group): joined at once.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn guest(
+        id: [u8; 16],
+        me: u32,
+        keys: CallKeys,
+        secret: Zeroizing<[u8; 64]>,
+        video: bool,
+        sfu: std::net::SocketAddr,
+        sfu_id: [u8; 16],
+        started_ms: u64,
+    ) -> Self {
+        Self {
+            id,
+            gid: None,
+            video,
+            joined: true,
+            live: false,
+            muted: false,
+            camera: video,
+            hand: false,
+            cameras_full: false,
+            keys,
+            secret,
+            me,
+            sfu: Some(sfu),
+            sfu_id,
+            started_ms,
+            link: None,
+            names: HashMap::new(),
+            leg: None,
+            tx: None,
+            heard: BTreeMap::new(),
+            created: Instant::now(),
+            connected_at: 0,
+        }
+    }
 }
 
 fn unix_ms() -> u64 {
@@ -90,7 +139,7 @@ impl Engine {
     }
 
     /// Our relay for a group call: one outside our home's operator family.
-    fn group_relay(&self) -> Option<ListedRelay> {
+    pub(super) fn group_relay(&self) -> Option<ListedRelay> {
         let c = self.client.as_ref()?;
         let home = self.family_of(&c.home_server());
         let relays = self.relays();
@@ -190,7 +239,7 @@ impl Engine {
         );
         self.group_call = Some(GroupCall {
             id,
-            gid,
+            gid: Some(gid),
             video,
             joined: true,
             live: false,
@@ -202,7 +251,10 @@ impl Engine {
             keys,
             secret: Zeroizing::new(*secret_copy),
             sfu: relay.addr.parse().ok(),
+            sfu_id: sfu,
             started_ms,
+            link: None,
+            names: HashMap::new(),
             leg: None,
             tx: None,
             heard: BTreeMap::new(),
@@ -246,7 +298,7 @@ impl Engine {
             self.status = "That call is full.".into();
             return;
         }
-        let (id, video, started_ms) = (k.id, k.video, k.started_ms);
+        let (id, video, started_ms, sfu_id) = (k.id, k.video, k.started_ms, k.sfu);
         let keys = CallKeys::group(id, &k.secret);
         let secret = k.secret.clone();
         let sfu = self
@@ -266,7 +318,7 @@ impl Engine {
         }
         self.group_call = Some(GroupCall {
             id,
-            gid,
+            gid: Some(gid),
             video,
             joined: true,
             live: false,
@@ -278,7 +330,10 @@ impl Engine {
             keys,
             secret,
             sfu: Some(sfu),
+            sfu_id,
             started_ms,
+            link: None,
+            names: HashMap::new(),
             leg: None,
             tx: None,
             heard: BTreeMap::new(),
@@ -298,19 +353,19 @@ impl Engine {
             return;
         }
         let me = self.client.as_ref().map(enclave_core::Client::root);
-        let last = match (self.group_calls.get_mut(&g.gid), me) {
-            (Some(k), Some(me)) if k.id == g.id => {
-                k.in_call.remove(&me);
-                k.in_call.is_empty()
+        if let Some(gid) = g.gid {
+            let last = match (self.group_calls.get_mut(&gid), me) {
+                (Some(k), Some(me)) if k.id == g.id => {
+                    k.in_call.remove(&me);
+                    k.in_call.is_empty()
+                }
+                _ => true,
+            };
+            self.group_signal(&gid, &GroupCallMessage::Left(g.id)).await;
+            if last {
+                self.group_signal(&gid, &GroupCallMessage::End(g.id)).await;
+                self.group_calls.remove(&gid);
             }
-            _ => true,
-        };
-        self.group_signal(&g.gid, &GroupCallMessage::Left(g.id))
-            .await;
-        if last {
-            self.group_signal(&g.gid, &GroupCallMessage::End(g.id))
-                .await;
-            self.group_calls.remove(&g.gid);
         }
         let line = if g.live {
             let secs = self.transport.now().saturating_sub(g.connected_at);
@@ -323,12 +378,17 @@ impl Engine {
         } else {
             String::new()
         };
-        if !line.is_empty() {
-            self.group_line(&g.gid, &line);
+        if !line.is_empty()
+            && let Some(gid) = g.gid
+        {
+            self.group_line(&gid, &line);
         }
-        let name = self.group_name(&g.gid);
+        let (conversation, name) = match g.gid {
+            Some(gid) => (group_id_str(&gid), self.group_name(&gid)),
+            None => (String::new(), LINK_CALL.into()),
+        };
         self.ended(
-            group_id_str(&g.gid),
+            conversation,
             name,
             g.video,
             if note.is_empty() { &line } else { note },
@@ -404,7 +464,7 @@ impl Engine {
                 let keys = CallKeys::group(call_id, &secret);
                 self.group_call = Some(GroupCall {
                     id: call_id,
-                    gid,
+                    gid: Some(gid),
                     video,
                     joined: false,
                     live: false,
@@ -416,7 +476,10 @@ impl Engine {
                     keys,
                     secret,
                     sfu: None,
+                    sfu_id: sfu,
                     started_ms,
+                    link: None,
+                    names: HashMap::new(),
                     leg: None,
                     tx: None,
                     heard: BTreeMap::new(),
@@ -498,6 +561,11 @@ impl Engine {
         } else {
             None
         };
+        let name = self
+            .client
+            .as_ref()
+            .map(|c| c.card().name)
+            .unwrap_or_default();
         let Some(g) = self.group_call.as_mut() else {
             return;
         };
@@ -520,6 +588,7 @@ impl Engine {
             started_ms: g.started_ms,
             codec,
             video,
+            name,
         };
         tokio::spawn(calls::run_group(
             leg,
@@ -568,6 +637,11 @@ impl Engine {
             CallEvent::Media(_, FromCall::Hand(who, up)) => {
                 if let Some(g) = self.group_call.as_mut() {
                     g.heard.entry(who).or_default().hand = up;
+                }
+            }
+            CallEvent::Media(_, FromCall::Name(who, n)) => {
+                if let Some(g) = self.group_call.as_mut() {
+                    g.names.insert(who, n);
                 }
             }
             CallEvent::Media(_, FromCall::CamerasFull(full)) => {
@@ -625,7 +699,7 @@ impl Engine {
                 self.group_call = None;
             }
         }
-        let current = self.group_call.as_ref().map(|g| g.gid);
+        let current = self.group_call.as_ref().and_then(|g| g.gid);
         self.group_calls
             .retain(|gid, k| Some(*gid) == current || k.since.elapsed() < KNOWN_FOR);
     }
@@ -633,7 +707,11 @@ impl Engine {
     /// Groups with a call going on that we aren't in (they show a Join
     /// button).
     pub(super) fn live_groups(&self) -> Vec<String> {
-        let current = self.group_call.as_ref().filter(|g| g.joined).map(|g| g.gid);
+        let current = self
+            .group_call
+            .as_ref()
+            .filter(|g| g.joined)
+            .and_then(|g| g.gid);
         self.group_calls
             .keys()
             .filter(|gid| Some(**gid) != current)
@@ -646,9 +724,9 @@ impl Engine {
         let (name, members) = self
             .client
             .as_ref()
-            .and_then(|c| c.groups().into_iter().find(|i| i.id == g.gid))
+            .and_then(|c| c.groups().into_iter().find(|i| Some(i.id) == g.gid))
             .map(|i| (i.name, i.members))
-            .unwrap_or_default();
+            .unwrap_or_else(|| (LINK_CALL.into(), Vec::new()));
         let names: HashMap<u32, String> = members
             .into_iter()
             .map(|(root, n)| (g.keys.participant(&root), n))
@@ -660,7 +738,7 @@ impl Engine {
                 (true, false) => 3,
                 (true, true) => 4,
             },
-            conversation: group_id_str(&g.gid),
+            conversation: g.gid.as_ref().map(group_id_str).unwrap_or_default(),
             name,
             video: g.video,
             muted: g.muted,
@@ -671,14 +749,26 @@ impl Engine {
             group: true,
             hand: g.hand,
             cameras_full: g.cameras_full,
+            link: g.link.as_ref().map(|l| l.text.clone()).unwrap_or_default(),
+            knocks: g
+                .link
+                .as_ref()
+                .map(super::call_links::HostedLink::knocks)
+                .unwrap_or_default(),
             peers: g
                 .heard
                 .iter()
                 .map(|(id, h)| CallPeer {
                     id: *id,
-                    // Someone not (or no longer) in the group: a member of
-                    // another device's view, shown without a name.
-                    name: names.get(id).cloned().unwrap_or_else(|| "Someone".into()),
+                    // Someone not in the group (a guest from a call link):
+                    // the name they gave, marked as theirs.
+                    name: names
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_else(|| match g.names.get(id) {
+                            Some(n) => format!("{n} (guest)"),
+                            None => "Someone".into(),
+                        }),
                     hand: h.hand,
                     reaction: h
                         .reaction

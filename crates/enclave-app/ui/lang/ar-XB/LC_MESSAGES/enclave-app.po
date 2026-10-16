@@ -241,6 +241,10 @@ msgstr "‫Anyone who collects enough of these can take over their account. Neve
 msgid "Anyone who knows it can send you a message request. Choosing a new one retires this one."
 msgstr "‫Anyone who knows it can send you a message request. Choosing a new one retires this one.‬"
 
+#: ui/app.slint
+msgid "Anyone with the link can ask to join. Share it only with people you'd let in."
+msgstr "‫Anyone with the link can ask to join. Share it only with people you'd let in.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "App PIN set."
 msgstr "‫App PIN set.‬"
@@ -272,6 +276,10 @@ msgstr "‫Ask a question‬"
 #: enclave-vault/src/engine.rs
 msgid "Ask for history now"
 msgstr "‫Ask for history now‬"
+
+#: ui/app.slint
+msgid "Ask me first"
+msgstr "‫Ask me first‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Asked for your message history. Confirm on the device you linked from to send it now."
@@ -368,6 +376,10 @@ msgstr "‫Call directly‬"
 #: ui/app.slint
 msgid "Call directly anyway"
 msgstr "‫Call directly anyway‬"
+
+#: ui/app.slint
+msgid "Call link"
+msgstr "‫Call link‬"
 
 #: ui/app.slint
 msgid "Call the group"
@@ -610,6 +622,10 @@ msgid "Copy a group invite link"
 msgstr "‫Copy a group invite link‬"
 
 #: ui/app.slint
+msgid "Copy call link"
+msgstr "‫Copy call link‬"
+
+#: ui/app.slint
 msgid "Copy code"
 msgstr "‫Copy code‬"
 
@@ -721,7 +737,7 @@ msgstr "‫Couldn't download the file. Check your connection.‬"
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr "‫Couldn't edit that message. Edits work for 24 hours.‬"
 
-#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
+#: enclave-vault/src/engine/call_links.rs enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr "‫Couldn't find a private route right now. Try again later.‬"
 
@@ -757,6 +773,10 @@ msgstr "‫Couldn't open that file.‬"
 msgid "Couldn't open that file: {}"
 msgstr "‫Couldn't open that file: ‬{}"
 
+#: enclave-vault/src/engine/call_links.rs
+msgid "Couldn't open the link's waiting room right now."
+msgstr "‫Couldn't open the link's waiting room right now.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't open your profile: {}"
 msgstr "‫Couldn't open your profile: ‬{}"
@@ -768,6 +788,10 @@ msgstr "‫Couldn't pin that message. Check your connection.‬"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
 msgstr "‫Couldn't reach that server. Try again in a moment.‬"
+
+#: enclave-vault/src/engine/call_links.rs
+msgid "Couldn't reach the call's waiting room."
+msgstr "‫Couldn't reach the call's waiting room.‬"
 
 #: enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't reach the group to call. Try again."
@@ -1418,6 +1442,10 @@ msgid "Invite link copied. It works for one person, for 7 days, and is cleared f
 msgstr "‫Invite link copied. It works for one person, for 7 days, and is cleared from the clipboard after 60 seconds.‬"
 
 #: ui/app.slint
+msgid "Invite with a link"
+msgstr "‫Invite with a link‬"
+
+#: ui/app.slint
 msgid "It can't get new messages any more. Erase it to remove your conversations from it."
 msgstr "‫It can't get new messages any more. Erase it to remove your conversations from it.‬"
 
@@ -1488,6 +1516,14 @@ msgstr "‫Leave ‬{}‫?‬"
 #: ui/app.slint
 msgid "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."
 msgstr "‫Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words.‬"
+
+#: ui/app.slint
+msgid "Let anyone in"
+msgstr "‫Let anyone in‬"
+
+#: ui/app.slint
+msgid "Let in"
+msgstr "‫Let in‬"
 
 #: ui/app.slint
 msgid "Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."
@@ -2593,6 +2629,10 @@ msgstr "‫That call has ended.‬"
 msgid "That call is full."
 msgstr "‫That call is full.‬"
 
+#: enclave-vault/src/engine/call_links.rs
+msgid "That call link isn't complete. Ask for it again."
+msgstr "‫That call link isn't complete. Ask for it again.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "That code didn't work. Check that the new device is still showing it."
 msgstr "‫That code didn't work. Check that the new device is still showing it.‬"
@@ -2700,6 +2740,10 @@ msgstr "‫The group moves from the next day once more than half of its admins v
 #: enclave-vault/src/engine.rs
 msgid "The group moves to that server tomorrow."
 msgstr "‫The group moves to that server tomorrow.‬"
+
+#: enclave-vault/src/engine/call_links.rs
+msgid "The host didn't let you in."
+msgstr "‫The host didn't let you in.‬"
 
 #: enclave-app/src/audio.rs
 msgid "The microphone gives {} samples, which Enclave can't read."
@@ -2938,6 +2982,10 @@ msgid "Try the \"Check code\" button above. With a real person you'd compare tho
 msgstr "‫Try the \"Check code\" button above. With a real person you'd compare those numbers face to face or on a call.‬"
 
 #: ui/app.slint
+msgid "Turn away"
+msgstr "‫Turn away‬"
+
+#: ui/app.slint
 msgid "Turn off"
 msgstr "‫Turn off‬"
 
@@ -3133,6 +3181,10 @@ msgstr "‫Waiting for both codes‬"
 msgid "Waiting for others to join…"
 msgstr "‫Waiting for others to join…‬"
 
+#: enclave-vault/src/engine/call_links.rs
+msgid "Waiting for the host to let you in…"
+msgstr "‫Waiting for the host to let you in…‬"
+
 #: ui/app.slint
 msgid "Waiting for them to accept"
 msgstr "‫Waiting for them to accept‬"
@@ -3285,7 +3337,7 @@ msgstr "‫You'll stop getting its messages. Someone would have to add you again
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr "‫You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.‬"
 
-#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
+#: enclave-vault/src/engine/call_links.rs enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "You're already in a call."
 msgstr "‫You're already in a call.‬"
 
@@ -3516,6 +3568,10 @@ msgstr "{}‫ gets their code and can send them a request. Nobody is told who sh
 #: ui/app.slint
 msgid "{} invite links haven't been used yet."
 msgstr "{}‫ invite links haven't been used yet.‬"
+
+#: ui/app.slint
+msgid "{} is asking to join"
+msgstr "{}‫ is asking to join‬"
 
 #: ui/app.slint
 msgid "{} is typing"

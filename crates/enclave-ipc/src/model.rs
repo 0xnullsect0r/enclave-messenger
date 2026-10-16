@@ -207,6 +207,10 @@ pub struct CallView {
     pub peers: Vec<CallPeer>,
     /// Groups with a call going on that we aren't in (they show Join).
     pub live_groups: Vec<String>,
+    /// The call link we made for this call (to copy and share).
+    pub link: String,
+    /// The link asks us first: who is waiting in its lobby.
+    pub knocks: Vec<CallPeer>,
 }
 
 /// Someone in a group call.
@@ -715,6 +719,13 @@ pub enum Cmd {
     CallHand(bool),
     /// A reaction in a group call (an emoji).
     CallReact(String),
+    /// Make a link to the group call we're in: true asks us before letting
+    /// each person in (a lobby), false lets anyone with it in.
+    CreateCallLink(bool),
+    /// Let someone waiting in the call link's lobby in.
+    AdmitToCall(u32),
+    /// Turn someone waiting in the lobby away.
+    RefuseFromCall(u32),
 }
 
 /// Most people a group call shows.
@@ -1127,7 +1138,11 @@ impl Snapshot {
         for p in &self.call.peers {
             w.u32(p.id).str(&p.name).bool(p.hand).str(&p.reaction);
         }
-        w.strs(&self.call.live_groups);
+        w.strs(&self.call.live_groups).str(&self.call.link);
+        w.u32(self.call.knocks.len() as u32);
+        for p in &self.call.knocks {
+            w.u32(p.id).str(&p.name);
+        }
         w.0
     }
 
@@ -1412,6 +1427,22 @@ impl Snapshot {
                         .collect::<Result<_>>()?
                 },
                 live_groups: r.strs()?,
+                link: r.str()?,
+                knocks: {
+                    let n = r.u32()? as usize;
+                    if n > MAX_CALL_PEERS {
+                        return Err(IpcError::Malformed);
+                    }
+                    (0..n)
+                        .map(|_| {
+                            Ok(CallPeer {
+                                id: r.u32()?,
+                                name: r.str()?,
+                                ..Default::default()
+                            })
+                        })
+                        .collect::<Result<_>>()?
+                },
             },
         };
         r.end()?;
@@ -1554,6 +1585,9 @@ impl Cmd {
             Cmd::JoinGroupCall(c) => w.u8(108).str(c),
             Cmd::CallHand(up) => w.u8(109).bool(*up),
             Cmd::CallReact(e) => w.u8(110).str(e),
+            Cmd::CreateCallLink(lobby) => w.u8(111).bool(*lobby),
+            Cmd::AdmitToCall(id) => w.u8(112).u32(*id),
+            Cmd::RefuseFromCall(id) => w.u8(113).u32(*id),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1707,6 +1741,9 @@ impl Cmd {
             108 => Cmd::JoinGroupCall(r.str()?),
             109 => Cmd::CallHand(r.bool()?),
             110 => Cmd::CallReact(r.str()?),
+            111 => Cmd::CreateCallLink(r.bool()?),
+            112 => Cmd::AdmitToCall(r.u32()?),
+            113 => Cmd::RefuseFromCall(r.u32()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };

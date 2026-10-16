@@ -471,6 +471,7 @@ async fn a_group_call_through_an_sfu_relay() {
             started_ms,
             codec: helpers.open_call().await.unwrap(),
             video,
+            name: names[i].into(),
         };
         tokio::spawn(calls::run_group(leg, plan, rx, out_tx, ev_tx));
         sides.push((tx, out_rx, ev_rx));
@@ -575,5 +576,209 @@ async fn a_group_call_through_an_sfu_relay() {
     assert!(rb.lock().await.stats().to_peer > 100);
     assert!(rc.lock().await.stats().to_peer > 100);
     drop(txs);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A call link with a lobby (`docs/11-calls.md` §8.2): a guest on another
+/// relay knocks in the lobby at the call's SFU; the host lets them in with
+/// the call's secret sealed to their one-time keys; the guest then joins
+/// the call itself, and the host hears them and learns the name they gave.
+/// Someone else in the lobby, with the same link, can't open the admission.
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn a_guest_is_let_in_from_a_call_links_lobby() {
+    use enclave_calls::link::{self, CallLink, CallSecret, Knocker, LobbyMessage};
+    use enclave_calls::signal::CallKeys;
+    let dir = std::env::temp_dir().join(format!("enclave-lobby-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, _) = relay(&dir.join("b"), "beta").await;
+    {
+        let d = rb.lock().await.descriptor().clone();
+        ra.lock().await.add_peer(&d).unwrap();
+        let d = ra.lock().await.descriptor().clone();
+        rb.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let mut rng = HedgedRng::new().unwrap();
+    let ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    };
+    let call = CallSecret {
+        call_id: [8; 16],
+        secret: zeroize::Zeroizing::new([2; 64]),
+        started_ms: ms(),
+    };
+    let sfu_id = enclave_federation::relay_id(&la.identity);
+    let link = CallLink::new(&call, sfu_id, false, true, ms(), &mut rng).unwrap();
+    let link = CallLink::decode(&link.encode()).unwrap();
+    assert!(link.open.is_none(), "a lobby link carries no call secret");
+    let lobby = link.lobby_keys();
+    let lobby_id = [9u8; 16];
+    let helpers = Helpers::in_process();
+
+    // The host: in the call (on the SFU) and in the lobby.
+    let keys = CallKeys::group(call.call_id, &call.secret);
+    let host_pid = keys.participant(b"host");
+    let (host_tx, host_rx) = mpsc::unbounded_channel();
+    let (host_out, _host_out_rx) = mpsc::unbounded_channel();
+    let (host_ev, mut host_events) = mpsc::unbounded_channel();
+    tokio::spawn(calls::run_group(
+        calls::open_leg(&t, &la).await.unwrap(),
+        calls::GroupPlan {
+            id: call.call_id,
+            keys: CallKeys::group(call.call_id, &call.secret),
+            me: host_pid,
+            sfu: aa,
+            started_ms: call.started_ms,
+            codec: helpers.open_call().await.unwrap(),
+            video: None,
+            name: "Ada".into(),
+        },
+        host_rx,
+        host_out,
+        host_ev.clone(),
+    ));
+    let (host_lobby_tx, host_lobby_rx) = mpsc::unbounded_channel();
+    tokio::spawn(calls::run_lobby(
+        calls::open_leg(&t, &la).await.unwrap(),
+        calls::LobbyPlan {
+            id: lobby_id,
+            keys: link.lobby_keys(),
+            me: lobby.participant(b"host"),
+            sfu: aa,
+            started_ms: link.created_ms,
+        },
+        host_lobby_rx,
+        host_ev,
+    ));
+
+    // The guest, and an eavesdropper with the link, both in the lobby from
+    // the other relay.
+    let ana = Knocker::new(&mut rng).unwrap();
+    let eve = Knocker::new(&mut rng).unwrap();
+    let mut lobbies = Vec::new();
+    for k in [&ana, &eve] {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (ev_tx, ev_rx) = mpsc::unbounded_channel();
+        tokio::spawn(calls::run_lobby(
+            calls::open_leg(&t, &lb).await.unwrap(),
+            calls::LobbyPlan {
+                id: lobby_id,
+                keys: link.lobby_keys(),
+                me: k.id(&link),
+                sfu: aa,
+                started_ms: link.created_ms,
+            },
+            rx,
+            ev_tx,
+        ));
+        lobbies.push((tx, ev_rx));
+    }
+    let (eve_tx, mut eve_events) = lobbies.pop().unwrap();
+    let (ana_tx, mut ana_events) = lobbies.pop().unwrap();
+    let _eve_tx = eve_tx;
+
+    // Ana knocks until the host's admission reaches her.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    let mut admitted = None;
+    let mut knocked_at = tokio::time::Instant::now() - Duration::from_secs(10);
+    let mut eve_saw_admission = None;
+    while admitted.is_none() {
+        assert!(tokio::time::Instant::now() < deadline, "Ana was never let in");
+        if knocked_at.elapsed() > Duration::from_secs(2) {
+            ana_tx.send(ana.knock("Ana").encode()).unwrap();
+            knocked_at = tokio::time::Instant::now();
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        while let Ok(e) = host_events.try_recv() {
+            if let CallEvent::Media(id, FromCall::Lobby(from, m)) = e {
+                assert_eq!(id, lobby_id);
+                let m = LobbyMessage::decode(&m).unwrap();
+                assert_eq!(link::knocker_id(&link, &m), Some(from));
+                let (to, admit) = link::admit(&link, &m, &call, &mut rng).unwrap();
+                assert_eq!(to, ana.id(&link));
+                host_lobby_tx.send(admit.encode()).unwrap();
+            }
+        }
+        while let Ok(e) = eve_events.try_recv() {
+            if let CallEvent::Media(_, FromCall::Lobby(_, m)) = e {
+                let m = LobbyMessage::decode(&m).unwrap();
+                if matches!(m, LobbyMessage::Admit { .. }) {
+                    eve_saw_admission = Some(m);
+                }
+            }
+        }
+        while let Ok(e) = ana_events.try_recv() {
+            if let CallEvent::Media(_, FromCall::Lobby(_, m)) = e {
+                let m = LobbyMessage::decode(&m).unwrap();
+                if let Ok(c) = ana.open(&link, &m) {
+                    admitted = Some(c);
+                }
+            }
+        }
+    }
+    let got = admitted.unwrap();
+    assert!(got == call);
+    // Eve heard the admission go by and can't open it.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    while let Ok(e) = eve_events.try_recv() {
+        if let CallEvent::Media(_, FromCall::Lobby(_, m)) = e
+            && let Ok(m) = LobbyMessage::decode(&m)
+            && matches!(m, LobbyMessage::Admit { .. })
+        {
+            eve_saw_admission = Some(m);
+        }
+    }
+    let seen = eve_saw_admission.expect("the lobby carried the admission to everyone in it");
+    assert!(eve.open(&link, &seen).is_err());
+
+    // Ana joins the call from the other relay, as a guest.
+    let ana_pid = keys.participant(b"ana");
+    let (ana_call_tx, ana_call_rx) = mpsc::unbounded_channel();
+    let (ana_out, _ana_out_rx) = mpsc::unbounded_channel();
+    let (ana_ev, mut ana_call_events) = mpsc::unbounded_channel();
+    tokio::spawn(calls::run_group(
+        calls::open_leg(&t, &lb).await.unwrap(),
+        calls::GroupPlan {
+            id: got.call_id,
+            keys: CallKeys::group(got.call_id, &got.secret),
+            me: ana_pid,
+            sfu: aa,
+            started_ms: got.started_ms,
+            codec: helpers.open_call().await.unwrap(),
+            video: None,
+            name: "Ana".into(),
+        },
+        ana_call_rx,
+        ana_out,
+        ana_ev,
+    ));
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    for f in 0..600 {
+        tick.tick().await;
+        ana_call_tx.send(ToCall::Mic(tone(f))).unwrap();
+        host_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+    }
+    let (mut heard_ana, mut named) = (false, false);
+    while let Ok(e) = host_events.try_recv() {
+        match e {
+            CallEvent::Media(_, FromCall::Heard(p)) if p == ana_pid => heard_ana = true,
+            CallEvent::Media(_, FromCall::Name(p, n)) if p == ana_pid => named = n == "Ana",
+            _ => {}
+        }
+    }
+    assert!(heard_ana, "the host heard Ana");
+    assert!(named, "and her name");
+    let mut heard_host = false;
+    while let Ok(e) = ana_call_events.try_recv() {
+        if let CallEvent::Media(_, FromCall::Heard(p)) = e {
+            heard_host |= p == host_pid;
+        }
+    }
+    assert!(heard_host, "Ana heard the host");
+    drop((host_tx, ana_call_tx, host_lobby_tx, ana_tx));
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -688,6 +688,44 @@ component CallButton inherits VerticalLayout {
     }
 }
 
+// A small rounded button on the call screen's dark background.
+component CallPill inherits Rectangle {
+    in property <string> text;
+    in property <color> tint: #ffffff26;
+    in property <color> ink: #ffffff;
+    callback clicked();
+    height: 36px;
+    min-width: label.preferred-width + 2 * Tokens.space-m;
+    border-radius: self.height / 2;
+    background: touch.pressed ? root.tint.darker(20%) : touch.has-hover ? root.tint.darker(8%) : root.tint;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    label := Text {
+        text: root.text;
+        color: root.ink;
+        font-size: Tokens.type-caption;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    focus := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
+            reject
+        }
+    }
+    if focus.has-focus: Rectangle {
+        border-radius: parent.border-radius;
+        border-width: Tokens.icon-focus-ring-width;
+        border-color: Tokens.focus-ring;
+    }
+}
+
 // A group call's people, as a grid of tiles: a picture or initials, the
 // name, a raised hand, a passing reaction.
 component CallGrid inherits Rectangle {
@@ -861,6 +899,14 @@ export component AppWindow inherits Window {
     callback join-group-call(string);
     callback hand-call(bool);
     callback react-call(string);
+    // A call link for the group call: ours to share, who waits in its
+    // lobby, and the choice of kind while it's being made.
+    in property <string> call-link;
+    in property <[CallPeerTile]> call-knocks;
+    in-out property <bool> call-link-choosing;
+    callback create-call-link(bool);
+    callback admit-call(int);
+    callback refuse-call(int);
     // The pre-call sheet: a video call, and the unchecked-contact warning
     // already shown.
     in-out property <bool> call-route-video;
@@ -4122,6 +4168,76 @@ export component AppWindow inherits Window {
                 font-size: Tokens.type-caption;
                 horizontal-alignment: center;
                 wrap: word-wrap;
+            }
+            for k in root.call-knocks: HorizontalLayout {
+                alignment: center;
+                spacing: Tokens.space-s;
+                Text {
+                    text: @tr("{} is asking to join", k.name);
+                    color: #ffffff;
+                    font-size: Tokens.type-body;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                CallPill {
+                    text: @tr("Let in");
+                    tint: #1f6f50;
+                    clicked => { root.admit-call(k.id); }
+                }
+                CallPill {
+                    text: @tr("Turn away");
+                    clicked => { root.refuse-call(k.id); }
+                }
+            }
+            if root.call-group && root.call-state == 4 && root.call-link != "": VerticalLayout {
+                spacing: Tokens.space-xs;
+                Text {
+                    text: root.call-link;
+                    color: #ffffffbf;
+                    font-family: "Atkinson Hyperlegible Mono";
+                    font-size: Tokens.type-caption;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                    accessible-label: @tr("Call link");
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    CallPill {
+                        text: @tr("Copy call link");
+                        clicked => { root.copy-text(root.call-link); }
+                    }
+                }
+            }
+            if root.call-group && root.call-state == 4 && root.call-link == "" && !root.call-link-choosing: HorizontalLayout {
+                alignment: center;
+                CallPill {
+                    text: @tr("Invite with a link");
+                    clicked => { root.call-link-choosing = true; }
+                }
+            }
+            if root.call-group && root.call-state == 4 && root.call-link == "" && root.call-link-choosing: VerticalLayout {
+                spacing: Tokens.space-xs;
+                Text {
+                    text: @tr("Anyone with the link can ask to join. Share it only with people you'd let in.");
+                    color: #ffffffbf;
+                    font-size: Tokens.type-caption;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Tokens.space-s;
+                    CallPill {
+                        text: @tr("Ask me first");
+                        tint: #ffffff;
+                        ink: #101914;
+                        clicked => { root.call-link-choosing = false; root.create-call-link(true); }
+                    }
+                    CallPill {
+                        text: @tr("Let anyone in");
+                        clicked => { root.call-link-choosing = false; root.create-call-link(false); }
+                    }
+                }
             }
             if root.call-group && root.call-cameras-full && root.call-camera: Text {
                 text: @tr("Up to 8 cameras can be on at once. Yours comes on when one goes off.");

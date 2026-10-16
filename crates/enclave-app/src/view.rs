@@ -657,6 +657,19 @@ fn apply_call(ui: &AppWindow, s: &Snapshot) {
         })
         .collect();
     ui.set_call_peers(ModelRc::from(Rc::new(VecModel::from(tiles))));
+    ui.set_call_link(c.link.clone().into());
+    let knocks: Vec<crate::CallPeerTile> = c
+        .knocks
+        .iter()
+        .map(|k| crate::CallPeerTile {
+            id: i32::from_ne_bytes(k.id.to_ne_bytes()),
+            name: k.name.clone().into(),
+            initials: initials(&k.name).into(),
+            tint: tint(k.id as usize),
+            ..Default::default()
+        })
+        .collect();
+    ui.set_call_knocks(ModelRc::from(Rc::new(VecModel::from(knocks))));
     ui.set_call_words(c.words.clone().into());
     ui.set_call_note(crate::i18n::tr(&c.error).into());
     let now = std::time::SystemTime::now()

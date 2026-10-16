@@ -138,6 +138,12 @@ fn snapshot() -> Snapshot {
                 reaction: "👏".into(),
             }],
             live_groups: vec!["g01".into()],
+            link: "enclave:call#AQ".into(),
+            knocks: vec![enclave_ipc::CallPeer {
+                id: 3,
+                name: "Ana".into(),
+                ..Default::default()
+            }],
         },
         new_device: "a new device, 30 Sep 14:02".into(),
         joining: vec!["Book club".into()],
@@ -297,6 +303,9 @@ fn cmds() -> Vec<Cmd> {
         Cmd::JoinGroupCall("g01".into()),
         Cmd::CallHand(true),
         Cmd::CallReact("👏".into()),
+        Cmd::CreateCallLink(true),
+        Cmd::AdmitToCall(3),
+        Cmd::RefuseFromCall(4),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),

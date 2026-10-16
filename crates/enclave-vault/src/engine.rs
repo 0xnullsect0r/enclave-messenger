@@ -15,6 +15,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+mod call_links;
 mod calling;
 mod group_calling;
 use std::time::Duration;
@@ -414,6 +415,8 @@ struct Engine {
     /// our groups.
     group_call: Option<group_calling::GroupCall>,
     group_calls: HashMap<[u8; 32], group_calling::Known>,
+    /// Waiting in a call link's lobby.
+    call_waiting: Option<call_links::Waiting>,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -1076,6 +1079,7 @@ pub async fn run_with(
         standby_opening: false,
         group_call: None,
         group_calls: HashMap::new(),
+        call_waiting: None,
         out,
     };
     e.load_list();
@@ -1933,6 +1937,12 @@ impl Engine {
                     }
                 }
                 self.busy = false;
+            }
+            Cmd::Add(link, _) if enclave_core::card::call_link_payload(&link).is_some() => {
+                self.add_error.clear();
+                if let Some(p) = enclave_core::card::call_link_payload(&link) {
+                    self.join_call_link(&p);
+                }
             }
             Cmd::Add(link, _) if link.trim().starts_with(enclave_core::client::JOIN_PREFIX) => {
                 self.add_error.clear();
@@ -2956,6 +2966,9 @@ impl Engine {
             Cmd::JoinGroupCall(conversation) => self.join_group_call(&conversation).await,
             Cmd::CallHand(up) => self.call_hand(up),
             Cmd::CallReact(emoji) => self.call_react(emoji),
+            Cmd::CreateCallLink(lobby) => self.create_call_link(lobby),
+            Cmd::AdmitToCall(who) => self.admit_to_call(who),
+            Cmd::RefuseFromCall(who) => self.refuse_from_call(who),
             Cmd::CheckUpdates => {
                 self.update_day = 0;
                 if self.client.is_some() {
