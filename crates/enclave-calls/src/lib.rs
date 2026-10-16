@@ -15,6 +15,8 @@
 //! * [`relay`]: the datagrams between a client and its relay.
 //! * [`direct`]: direct mode's candidates (opt-in; shows each side's
 //!   address to the other).
+//! * [`group`]: group calls' signalling, carried in the group's own
+//!   messages.
 //! * [`route`]: choosing the two relays of a call from distinct operator
 //!   families.
 //!
@@ -23,6 +25,7 @@
 #![deny(missing_docs)]
 
 pub mod direct;
+pub mod group;
 pub mod message;
 pub mod relay;
 pub mod route;
@@ -48,6 +51,8 @@ pub mod labels {
     pub const AD_SFRAME: &str = "enclave/v1/calls/ad-sframe";
     /// Two-word call check.
     pub const CHECK_WORDS: &str = "enclave/v1/calls/check-words";
+    /// A group call participant's id from the call secret and their root.
+    pub const PARTICIPANT: &str = "enclave/v1/calls/participant";
     /// Direct-mode tunnel PSK.
     pub const DIRECT_PSK: &str = "enclave/v1/calls/direct-psk";
     /// Relay-ticket transcript prefix.

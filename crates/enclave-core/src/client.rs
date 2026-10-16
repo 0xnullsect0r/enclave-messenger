@@ -415,6 +415,15 @@ pub enum Event {
         /// The message.
         message: Vec<u8>,
     },
+    /// Group call signalling from a member (or another device of ours).
+    GroupCall {
+        /// The group.
+        group_id: [u8; 32],
+        /// The member's root.
+        from: [u8; 64],
+        /// The message (`enclave_calls::group::GroupCallMessage`).
+        message: Vec<u8>,
+    },
 }
 
 /// The profile schema this version writes (`Store::schema`): 1 the wrapped

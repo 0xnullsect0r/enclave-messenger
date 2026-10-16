@@ -626,6 +626,37 @@ fn apply_call(ui: &AppWindow, s: &Snapshot) {
     ui.set_call_camera(c.camera);
     ui.set_call_direct_asked(c.direct_asked);
     ui.set_call_direct(c.direct);
+    ui.set_call_group(c.group);
+    ui.set_call_hand(c.hand);
+    ui.set_call_cameras_full(c.cameras_full);
+    ui.set_current_call_live(
+        c.live_groups
+            .iter()
+            .any(|g| s.current.as_ref().is_some_and(|r| &r.id == g)),
+    );
+    // Pictures come between snapshots (`Out::CallTile`): kept per person.
+    let old = ui.get_call_peers();
+    let tiles: Vec<crate::CallPeerTile> = c
+        .peers
+        .iter()
+        .map(|p| {
+            let id = i32::from_ne_bytes(p.id.to_ne_bytes());
+            let before = (0..old.row_count())
+                .filter_map(|i| old.row_data(i))
+                .find(|t| t.id == id);
+            crate::CallPeerTile {
+                id,
+                name: p.name.clone().into(),
+                initials: initials(&p.name).into(),
+                tint: tint(p.id as usize),
+                hand: p.hand,
+                reaction: p.reaction.clone().into(),
+                has_picture: before.as_ref().is_some_and(|t| t.has_picture),
+                picture: before.map(|t| t.picture).unwrap_or_default(),
+            }
+        })
+        .collect();
+    ui.set_call_peers(ModelRc::from(Rc::new(VecModel::from(tiles))));
     ui.set_call_words(c.words.clone().into());
     ui.set_call_note(crate::i18n::tr(&c.error).into());
     let now = std::time::SystemTime::now()

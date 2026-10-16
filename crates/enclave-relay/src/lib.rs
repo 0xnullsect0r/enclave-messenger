@@ -66,7 +66,17 @@ struct Session {
     client: Option<SocketAddr>,
     rendezvous: Option<[u8; 16]>,
     peer: Option<SocketAddr>,
+    /// In a group call: the downlink goes in fixed-rate bundles from
+    /// these queues (voices before pictures).
+    group: bool,
+    audio: std::collections::VecDeque<Vec<u8>>,
+    video: std::collections::VecDeque<Vec<u8>>,
 }
+
+/// Most packets a group session's queue holds (the oldest go first).
+const GROUP_QUEUE: usize = 128;
+/// Packets up to this long are voices (audio is 160 bytes, video 1,200).
+const AUDIO_MAX: usize = 400;
 
 /// One epoch's keys of a relay link (epoch 0: the static X448 exchange
 /// alone, until the first post-quantum exchange).
@@ -136,6 +146,9 @@ pub struct Relay {
     tickets: Vec<TicketSecretKey>,
     sessions: HashMap<[u8; 16], Session>,
     rendezvous: HashMap<[u8; 16], [u8; 16]>,
+    /// Peer relays that sent us media for a rendezvous: a group call's SFU
+    /// sends each one's packets on to the others.
+    remotes: HashMap<[u8; 16], std::collections::HashSet<SocketAddr>>,
     peers: HashMap<SocketAddr, Peer>,
     spent: Box<dyn Spent + Send>,
     stats: Stats,
@@ -209,6 +222,7 @@ impl Relay {
             tickets,
             sessions: HashMap::new(),
             rendezvous: HashMap::new(),
+            remotes: HashMap::new(),
             peers: HashMap::new(),
             spent,
             stats: Stats::default(),
@@ -518,6 +532,9 @@ impl Relay {
                 client: None,
                 rendezvous: None,
                 peer: None,
+                group: false,
+                audio: Default::default(),
+                video: Default::default(),
             },
         );
         Ok(reply)
@@ -635,29 +652,44 @@ impl Relay {
             return Ok(out);
         };
         let routed = match pt.first() {
-            Some(&P_JOIN) => {
+            Some(&kind @ (P_JOIN | P_JOIN_GROUP)) => {
                 let (rv, peer) = decode_join(&pt[1..])?;
                 if !self.peers.contains_key(&peer) && peer != self.desc.addr {
                     return Err(CallError::UnknownKey);
                 }
                 s.rendezvous = Some(rv);
                 s.peer = Some(peer);
+                s.group = kind == P_JOIN_GROUP;
                 self.rendezvous.insert(rv, sid);
                 Ok(Vec::new())
             }
             Some(&P_MEDIA) => {
-                let (rv, peer) = (
+                let (rv, peer, group) = (
                     s.rendezvous.ok_or(CallError::UnknownKey)?,
                     s.peer.ok_or(CallError::UnknownKey)?,
+                    s.group,
                 );
                 if peer == self.desc.addr {
-                    // Both legs on this relay (only when families allow it).
-                    return self.deliver(&rv, Some(sid), &pt[1..], now);
+                    // Both legs on this relay (only when families allow it),
+                    // or this relay is the group call's SFU: the others here,
+                    // and every relay that sent us the call's media.
+                    let mut out = self.deliver(&rv, Some(sid), &pt[1..], now);
+                    out.extend(self.fan_out(&rv, None, &pt[1..])?);
+                    return if out.is_empty() && !group {
+                        Err(CallError::UnknownKey)
+                    } else {
+                        Ok(out)
+                    };
                 }
                 let p = self.peers.get_mut(&peer).ok_or(CallError::UnknownKey)?;
                 let d = p.seal(p.sending, &rv, &pt[1..])?;
                 self.stats.to_peer += 1;
-                Ok(vec![(peer, d)])
+                let mut out = vec![(peer, d)];
+                // In a group call, others in it on this relay too.
+                if group {
+                    out.extend(self.deliver(&rv, Some(sid), &pt[1..], now));
+                }
+                Ok(out)
             }
             Some(&P_KEEPALIVE) => Ok(Vec::new()),
             _ => Err(CallError::Malformed),
@@ -683,19 +715,79 @@ impl Relay {
         if rv == [0; 16] && packet.is_empty() {
             return Ok(out);
         }
-        out.extend(self.deliver(&rv, None, &packet, now)?);
+        self.remotes.entry(rv).or_default().insert(from);
+        let local = self.deliver(&rv, None, &packet, now);
+        let fanned = self.fan_out(&rv, Some(from), &packet)?;
+        if local.is_empty() && fanned.is_empty() {
+            return Err(CallError::UnknownKey);
+        }
+        out.extend(local);
+        out.extend(fanned);
         Ok(out)
     }
 
+    /// A group call's SFU: the packet to every other relay that sent media
+    /// for this rendezvous (none in a call between two people).
+    fn fan_out(
+        &mut self,
+        rv: &[u8; 16],
+        not: Option<SocketAddr>,
+        packet: &[u8],
+    ) -> Result<Vec<(SocketAddr, Vec<u8>)>, CallError> {
+        let targets: Vec<SocketAddr> = self
+            .remotes
+            .get(rv)
+            .map(|r| r.iter().copied().filter(|a| Some(*a) != not).collect())
+            .unwrap_or_default();
+        let mut out = Vec::new();
+        for to in targets {
+            if let Some(p) = self.peers.get_mut(&to) {
+                out.push((to, p.seal(p.sending, rv, packet)?));
+                self.stats.to_peer += 1;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Every [`BUNDLE_INTERVAL_US`]: one bundle to each group session (its
+    /// queued packets, or padding), so its downlink is the same whatever
+    /// the call carries.
+    pub fn group_tick(&mut self) -> Vec<(SocketAddr, Vec<u8>)> {
+        let mut out = Vec::new();
+        let sids: Vec<[u8; 16]> = self
+            .sessions
+            .iter()
+            .filter(|(_, s)| s.group && s.client.is_some() && s.rendezvous.is_some())
+            .map(|(sid, _)| *sid)
+            .collect();
+        for sid in sids {
+            let Some(s) = self.sessions.get_mut(&sid) else {
+                continue;
+            };
+            let Some(addr) = s.client else { continue };
+            let b = bundle(&mut [&mut s.audio, &mut s.video]);
+            if let Ok(dgs) = self.links.send(&sid, &b) {
+                out.extend(dgs.into_iter().map(|d| (addr, d)));
+            }
+        }
+        out
+    }
+
+    /// Whether any session is in a group call (the bundle timer runs).
+    pub fn has_group_sessions(&self) -> bool {
+        self.sessions.values().any(|s| s.group)
+    }
+
+    /// The local legs of this rendezvous other than the sender: sent at
+    /// once, or (group calls) queued for the next bundle.
     fn deliver(
         &mut self,
         rv: &[u8; 16],
         not: Option<[u8; 16]>,
         packet: &[u8],
         now: u64,
-    ) -> Result<Vec<(SocketAddr, Vec<u8>)>, CallError> {
+    ) -> Vec<(SocketAddr, Vec<u8>)> {
         let mut out = Vec::new();
-        // The local leg(s) of this rendezvous other than the sender.
         let targets: Vec<[u8; 16]> = self
             .sessions
             .iter()
@@ -704,17 +796,29 @@ impl Relay {
             .collect();
         let _ = now;
         for sid in targets {
-            let s = self.sessions.get(&sid).ok_or(CallError::UnknownKey)?;
-            let Some(addr) = s.client else { continue };
-            for dg in self.links.send(&sid, &[&[P_MEDIA][..], packet].concat())? {
-                out.push((addr, dg));
+            let Some(s) = self.sessions.get_mut(&sid) else {
+                continue;
+            };
+            if s.group {
+                let q = if packet.len() <= AUDIO_MAX {
+                    &mut s.audio
+                } else {
+                    &mut s.video
+                };
+                if q.len() >= GROUP_QUEUE {
+                    q.pop_front();
+                }
+                q.push_back(packet.to_vec());
+                self.stats.to_client += 1;
+                continue;
             }
-            self.stats.to_client += 1;
+            let Some(addr) = s.client else { continue };
+            if let Ok(dgs) = self.links.send(&sid, &[&[P_MEDIA][..], packet].concat()) {
+                out.extend(dgs.into_iter().map(|d| (addr, d)));
+                self.stats.to_client += 1;
+            }
         }
-        if out.is_empty() {
-            return Err(CallError::UnknownKey);
-        }
-        Ok(out)
+        out
     }
 }
 
@@ -861,6 +965,8 @@ pub async fn serve(relay: Arc<Mutex<Relay>>, socket: tokio::net::UdpSocket) -> s
             .unwrap_or(0)
     };
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    let mut bundles = tokio::time::interval(std::time::Duration::from_micros(BUNDLE_INTERVAL_US));
+    bundles.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         let out = tokio::select! {
             got = socket.recv_from(&mut buf) => {
@@ -868,6 +974,10 @@ pub async fn serve(relay: Arc<Mutex<Relay>>, socket: tokio::net::UdpSocket) -> s
                 relay.lock().await.handle(from, &buf[..n], now())
             }
             _ = tick.tick() => relay.lock().await.peer_upkeep(now()),
+            _ = bundles.tick() => {
+                let mut r = relay.lock().await;
+                if r.has_group_sessions() { r.group_tick() } else { Vec::new() }
+            }
         };
         for (to, dg) in out {
             socket.send_to(&dg, to).await?;

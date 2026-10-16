@@ -266,6 +266,22 @@ pub const CALLER: u32 = 0;
 pub const CALLEE: u32 = 1;
 
 impl CallKeys {
+    /// A group call's keys, from the secret its starter sent the group
+    /// (`crate::group`).
+    pub fn group(call_id: [u8; 16], secret: &[u8; 64]) -> Self {
+        Self {
+            call_id,
+            secret: Zeroizing::new(*secret),
+        }
+    }
+
+    /// A group participant's id in the call: from the call's secret and
+    /// their root, so only members know who is who.
+    pub fn participant(&self, root: &[u8]) -> u32 {
+        let id: [u8; 4] = kmac256(&self.secret[..], root, labels::PARTICIPANT);
+        u32::from_be_bytes(id)
+    }
+
     /// `base_{p,0}` for participant `p` at join generation `gen`.
     pub fn sframe_base(&self, participant: u32, join_gen: u32) -> Zeroizing<[u8; 32]> {
         let mut w = Writer::new();

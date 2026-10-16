@@ -224,6 +224,26 @@ fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
     ui.on_camera_call(move |on| {
         let _ = t.send(Cmd::CallCamera(on));
     });
+    let t = tx.clone();
+    ui.on_start_group_call(move |conversation, video| {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        enclave_platform::phone::ask_microphone();
+        let _ = t.send(Cmd::StartGroupCall(conversation.to_string(), video));
+    });
+    let t = tx.clone();
+    ui.on_join_group_call(move |conversation| {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        enclave_platform::phone::ask_microphone();
+        let _ = t.send(Cmd::JoinGroupCall(conversation.to_string()));
+    });
+    let t = tx.clone();
+    ui.on_hand_call(move |up| {
+        let _ = t.send(Cmd::CallHand(up));
+    });
+    let t = tx.clone();
+    ui.on_react_call(move |emoji| {
+        let _ = t.send(Cmd::CallReact(emoji.to_string()));
+    });
     #[cfg(desktop)]
     {
         use crate::updater::{self, Install};
@@ -528,6 +548,25 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         });
                         continue;
                     }
+                    Out::CallTile(who, width, height, rgba) => {
+                        let _ = w.upgrade_in_event_loop(move |ui| {
+                            use slint::Model;
+                            let id = i32::from_ne_bytes(who.to_ne_bytes());
+                            let peers = ui.get_call_peers();
+                            if let Some(i) = (0..peers.row_count())
+                                .find(|i| peers.row_data(*i).is_some_and(|t| t.id == id))
+                                && let Some(mut t) = peers.row_data(i)
+                            {
+                                let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                    &rgba, width, height,
+                                );
+                                t.picture = slint::Image::from_rgba8(buf);
+                                t.has_picture = true;
+                                peers.set_row_data(i, t);
+                            }
+                        });
+                        continue;
+                    }
                     Out::Snapshot(s) => {
                         let c = &s.call;
                         let film = matches!(c.state, 3 | 4) && c.camera && c.video_width > 0;
@@ -646,7 +685,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     | Out::LanFetch(..)
                     | Out::UpdateBundle(_)
                     | Out::CallAudio(_)
-                    | Out::CallVideo(..) => {}
+                    | Out::CallVideo(..)
+                    | Out::CallTile(..) => {}
                 });
             }
         })

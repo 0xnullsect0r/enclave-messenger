@@ -475,6 +475,10 @@ pub enum ToCall {
     /// the direct link (the relays carry the call until it is up, and again
     /// if it fails).
     Direct(Box<DirectPath>),
+    /// A group call: raise (true) or lower our hand.
+    Hand(bool),
+    /// A group call: a reaction everyone sees for a moment.
+    React(String),
 }
 
 /// What call work in the background tells the engine.
@@ -499,6 +503,15 @@ pub enum FromCall {
     Dropped(String),
     /// The media goes directly (true) or through the relays again.
     Direct(bool),
+    /// A group call: someone's media arrived for the first time.
+    Heard(u32),
+    /// A group call: someone raised (true) or lowered their hand.
+    Hand(u32, bool),
+    /// A group call: someone's reaction.
+    React(u32, String),
+    /// A group call: our camera waits (true) while eight others are on,
+    /// or goes on again.
+    CamerasFull(bool),
 }
 
 /// Frames that arrived, by sequence number, and which to play next.
@@ -813,6 +826,8 @@ async fn media_loop(
                     p.tick();
                     direct = Some(*p);
                 }
+                // Group calls only.
+                Some(ToCall::Hand(_) | ToCall::React(_)) => {}
                 // The engine hung up.
                 None => return String::new(),
             },
@@ -923,6 +938,410 @@ async fn media_loop(
                 // One frame down.
                 if let Some((how, bytes)) = jitter.pop()
                     && let Ok(pcm) = plan.codec.decode(how, &bytes).await
+                {
+                    let _ = out.send(Out::CallAudio(pcm));
+                }
+            }
+        }
+    }
+}
+
+/// A group call (`docs/11-calls.md` §8), besides its leg.
+pub struct GroupPlan {
+    /// Call id.
+    pub id: [u8; 16],
+    /// The call's keys (`CallKeys::group`).
+    pub keys: CallKeys,
+    /// Our participant id.
+    pub me: u32,
+    /// The SFU relay (our leg's relay forwards there; it may be the same).
+    pub sfu: SocketAddr,
+    /// When the call started (Unix ms): SFrame epochs count from here.
+    pub started_ms: u64,
+    /// The call's audio in mediad.
+    pub codec: CallCodec,
+    /// A video call: its codec and tier.
+    pub video: Option<(crate::media::VideoCodec, usize)>,
+}
+
+/// Control messages on a group call's audio stream.
+const HAND_UP: &[u8] = b"H1";
+const HAND_DOWN: &[u8] = b"H0";
+const REACT: u8 = b'R';
+/// Most bytes of a reaction.
+pub const MAX_REACTION: usize = 32;
+/// A sender silent this long drops out of the mix.
+const GROUP_QUIET: Duration = Duration::from_secs(3);
+
+fn unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// A group call's video: frames encoded on a task, and each other
+/// participant's units decoded by their own decoder.
+struct GroupVideo {
+    shaper: Shaper,
+    reassemblers: std::collections::HashMap<u32, enclave_calls::shape::Reassembler>,
+    frames: mpsc::Sender<Vec<u8>>,
+    units: mpsc::Sender<(u32, Vec<u8>)>,
+    encoded: mpsc::UnboundedReceiver<Vec<Vec<u8>>>,
+    key: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    asked: Option<tokio::time::Instant>,
+    camera: bool,
+    tick: tokio::time::Interval,
+    /// When each other participant's last picture arrived.
+    filming: std::collections::HashMap<u32, tokio::time::Instant>,
+    /// When our last frame went to the encoder.
+    filmed: Option<tokio::time::Instant>,
+    /// Our camera waits for a free place (told to the engine on change).
+    full: bool,
+}
+
+/// Most cameras on at once in a group call: the 2.5 Mbit/s downlink (§8)
+/// carries eight 300 kbit/s pictures.
+pub const MAX_CAMERAS: usize = 8;
+
+impl GroupVideo {
+    fn start(
+        codec: crate::media::VideoCodec,
+        tier: usize,
+        out: mpsc::UnboundedSender<Out>,
+    ) -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let stream = Stream::Video(tier);
+        let (frames, mut frame_rx) = mpsc::channel::<Vec<u8>>(2);
+        let (units, mut unit_rx) = mpsc::channel::<(u32, Vec<u8>)>(64);
+        let (enc_tx, encoded) = mpsc::unbounded_channel();
+        let key = std::sync::Arc::new(AtomicBool::new(true));
+        let lost = std::sync::Arc::new(AtomicBool::new(false));
+        let (k, l) = (std::sync::Arc::clone(&key), std::sync::Arc::clone(&lost));
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    f = frame_rx.recv() => {
+                        let Some(f) = f else { return };
+                        let key = k.swap(false, Ordering::SeqCst);
+                        match codec.encode(f, key).await {
+                            Ok(u) if !u.is_empty() => {
+                                if enc_tx.send(u).is_err() {
+                                    return;
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(_) => k.store(true, Ordering::SeqCst),
+                        }
+                    }
+                    u = unit_rx.recv() => {
+                        let Some((from, u)) = u else { return };
+                        match codec.decode_from(from, u).await {
+                            Ok(Some(img)) => {
+                                let _ = out.send(Out::CallTile(from, img.width, img.height, img.pixels));
+                            }
+                            Ok(None) => {}
+                            Err(_) => l.store(true, Ordering::SeqCst),
+                        }
+                    }
+                }
+            }
+        });
+        let mut tick = tokio::time::interval(Duration::from_micros(stream.interval_us()));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+        Self {
+            shaper: Shaper::new(stream),
+            reassemblers: std::collections::HashMap::new(),
+            frames,
+            units,
+            encoded,
+            key,
+            lost,
+            asked: None,
+            camera: true,
+            tick,
+            filming: std::collections::HashMap::new(),
+            filmed: None,
+            full: false,
+        }
+    }
+
+    /// Whether a frame from our camera may go: a camera already on stays
+    /// on; one coming on waits while eight others are.
+    fn may_film(&mut self) -> bool {
+        let now = tokio::time::Instant::now();
+        self.filming
+            .retain(|_, at| now.duration_since(*at) < GROUP_QUIET);
+        let on = self
+            .filmed
+            .is_some_and(|at| now.duration_since(at) < Duration::from_secs(1));
+        let ok = on || self.filming.len() < MAX_CAMERAS;
+        if ok {
+            self.filmed = Some(now);
+        }
+        ok
+    }
+
+    fn next_plaintext(&mut self) -> Vec<u8> {
+        use std::sync::atomic::Ordering;
+        let limit = (1_000_000 / self.shaper.stream().interval_us().max(1) / 2) as usize;
+        while let Ok(units) = self.encoded.try_recv() {
+            if self.shaper.backlog() > limit {
+                self.key.store(true, Ordering::SeqCst);
+                continue;
+            }
+            for u in units {
+                let _ = self.shaper.push_video_frame(&u);
+            }
+        }
+        if self.lost.swap(false, Ordering::SeqCst)
+            && self.asked.is_none_or(|a| a.elapsed() > KEY_ASK_EVERY)
+        {
+            self.asked = Some(tokio::time::Instant::now());
+            let _ = self.shaper.push_control(KEY_PLEASE);
+        }
+        self.shaper.next_plaintext()
+    }
+
+    fn arrived(&mut self, from: u32, pt: &[u8]) {
+        use std::sync::atomic::Ordering;
+        match decode_plaintext(pt) {
+            Ok(Inner::Media(frag)) => {
+                self.filming.insert(from, tokio::time::Instant::now());
+                let r = self.reassemblers.entry(from).or_default();
+                if let Some(unit) = r.push(&frag)
+                    && self.units.try_send((from, unit)).is_err()
+                {
+                    self.lost.store(true, Ordering::SeqCst);
+                }
+            }
+            Ok(Inner::Control(c)) if c == KEY_PLEASE => self.key.store(true, Ordering::SeqCst),
+            _ => {}
+        }
+    }
+}
+
+/// Run a group call until the engine drops `cmds` or the link fails.
+pub async fn run_group(
+    mut leg: Leg,
+    plan: GroupPlan,
+    mut cmds: mpsc::UnboundedReceiver<ToCall>,
+    out: mpsc::UnboundedSender<Out>,
+    events: mpsc::UnboundedSender<CallEvent>,
+) {
+    let mut plan = plan;
+    let video = plan.video.take();
+    let why = group_loop(&mut leg, &plan, video, &mut cmds, &out, &events).await;
+    let _ = events.send(CallEvent::Media(plan.id, FromCall::Dropped(why)));
+}
+
+async fn group_loop(
+    leg: &mut Leg,
+    plan: &GroupPlan,
+    video_codec: Option<(crate::media::VideoCodec, usize)>,
+    cmds: &mut mpsc::UnboundedReceiver<ToCall>,
+    out: &mpsc::UnboundedSender<Out>,
+    events: &mpsc::UnboundedSender<CallEvent>,
+) -> String {
+    use enclave_calls::sframe::{Receiver, Sender, parse_header};
+    use std::collections::HashMap;
+    let id = plan.id;
+    let mut sender = Sender::new(plan.me, &plan.keys.sframe_base(plan.me, 0));
+    let mut receivers: HashMap<u32, Receiver> = HashMap::new();
+    let mut jitters: HashMap<u32, (Jitter, tokio::time::Instant)> = HashMap::new();
+    let mut join = enclave_calls::relay::join_payload(&plan.keys.rendezvous(), plan.sfu);
+    join[0] = enclave_calls::relay::P_JOIN_GROUP;
+    let join = control(join);
+    let keepalive = control(vec![P_KEEPALIVE]);
+    let mut shaper = Shaper::new(Stream::Audio);
+    let mut mic: VecDeque<Vec<i16>> = VecDeque::new();
+    let mut muted = false;
+    let mut said: VecDeque<Vec<u8>> = VecDeque::new();
+    let mut seq: u32 = 0;
+    let mut joined = false;
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+    let mut ticks: u64 = 0;
+    let started = tokio::time::Instant::now();
+    let video_len = video_codec
+        .as_ref()
+        .map_or(0, |(_, t)| Stream::Video(*t).packet_len());
+    let mut video = video_codec.map(|(codec, tier)| GroupVideo::start(codec, tier, out.clone()));
+    let elapsed = || unix_ms().saturating_sub(plan.started_ms);
+    loop {
+        tokio::select! {
+            cmd = cmds.recv() => match cmd {
+                Some(ToCall::Mic(pcm)) => {
+                    mic.push_back(pcm);
+                    while mic.len() > MIC_QUEUE {
+                        mic.pop_front();
+                    }
+                }
+                Some(ToCall::Mute(on)) => muted = on,
+                Some(ToCall::Camera(on)) => {
+                    if let Some(v) = video.as_mut() {
+                        v.camera = on;
+                    }
+                }
+                Some(ToCall::Frame(rgba)) => {
+                    if let Some(v) = video.as_mut().filter(|v| v.camera) {
+                        let ok = v.may_film();
+                        if ok {
+                            let _ = v.frames.try_send(rgba);
+                        }
+                        if v.full == ok {
+                            v.full = !ok;
+                            let _ = events.send(CallEvent::Media(id, FromCall::CamerasFull(!ok)));
+                        }
+                    }
+                }
+                Some(ToCall::Hand(up)) => said.push_back(if up { HAND_UP } else { HAND_DOWN }.to_vec()),
+                Some(ToCall::React(r)) if r.len() <= MAX_REACTION => {
+                    said.push_back([&[REACT][..], r.as_bytes()].concat());
+                }
+                Some(ToCall::React(_) | ToCall::Direct(_)) => {}
+                None => return String::new(),
+            },
+            d = leg.dg.recv.recv() => {
+                let Some(d) = d else { return "The call's connection closed.".into() };
+                let Ok(got) = leg.link.receive(unix_now(), &d) else { continue };
+                if !send_all(&leg.dg, got.send) {
+                    return "The call's connection closed.".into();
+                }
+                let Some(p) = got.payload else { continue };
+                if p.first() != Some(&enclave_calls::relay::P_BUNDLE) {
+                    continue;
+                }
+                if !joined {
+                    joined = true;
+                    let _ = events.send(CallEvent::Media(id, FromCall::Connected));
+                }
+                for packet in enclave_calls::relay::unbundle(&p) {
+                    let Ok((kid, _, _)) = parse_header(packet) else { continue };
+                    let (from, epoch) = ((kid >> 32) as u32, kid as u32);
+                    if from == plan.me {
+                        continue;
+                    }
+                    let fresh = !receivers.contains_key(&from);
+                    if fresh && receivers.len() >= enclave_calls::group::MAX_PARTICIPANTS {
+                        continue;
+                    }
+                    let rx = receivers
+                        .entry(from)
+                        .or_insert_with(|| Receiver::at_epoch(from, &plan.keys.sframe_base(from, 0), epoch));
+                    if video_len > 0 && packet.len() == video_len {
+                        if let Some(v) = video.as_mut()
+                            && let Ok(pt) = rx.unprotect(packet, VIDEO_AD)
+                        {
+                            v.arrived(from, &pt);
+                        }
+                        continue;
+                    }
+                    let Ok(pt) = rx.unprotect(packet, AUDIO_AD) else {
+                        if fresh {
+                            receivers.remove(&from);
+                        }
+                        continue;
+                    };
+                    if fresh {
+                        let _ = events.send(CallEvent::Media(id, FromCall::Heard(from)));
+                    }
+                    match decode_plaintext(&pt) {
+                        Ok(Inner::Media(f)) if f.len() > 4 => {
+                            let s = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
+                            let j = jitters
+                                .entry(from)
+                                .or_insert_with(|| (Jitter::default(), tokio::time::Instant::now()));
+                            j.0.push(s, f[4..].to_vec());
+                            j.1 = tokio::time::Instant::now();
+                        }
+                        Ok(Inner::Control(c)) => {
+                            let news = match c.as_slice() {
+                                HAND_UP => Some(FromCall::Hand(from, true)),
+                                HAND_DOWN => Some(FromCall::Hand(from, false)),
+                                [REACT, r @ ..] if r.len() <= MAX_REACTION => {
+                                    String::from_utf8(r.to_vec()).ok().map(|r| FromCall::React(from, r))
+                                }
+                                _ => None,
+                            };
+                            if let Some(n) = news {
+                                let _ = events.send(CallEvent::Media(id, n));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ = async {
+                match video.as_mut() {
+                    Some(v) => {
+                        v.tick.tick().await;
+                    }
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                let Some(v) = video.as_mut() else { continue };
+                let pt = v.next_plaintext();
+                if let Ok(packet) = sender.protect(elapsed(), VIDEO_AD, &pt) {
+                    let payload = [&[P_MEDIA][..], &packet].concat();
+                    if let Ok(dgs) = leg.link.send(unix_now(), &payload)
+                        && !send_all(&leg.dg, dgs)
+                    {
+                        return "The call's connection closed.".into();
+                    }
+                }
+            }
+            _ = tick.tick() => {
+                ticks += 1;
+                let now = unix_now();
+                if ticks % 50 == 1 {
+                    let mut dgs = match leg.link.tick(now) {
+                        Ok(d) => d,
+                        Err(_) => return "The call's ticket ran out.".into(),
+                    };
+                    // The join each second until the SFU's bundles come.
+                    let c = if joined { &keepalive } else { &join };
+                    dgs.extend(leg.link.send(now, c).unwrap_or_default());
+                    if !send_all(&leg.dg, dgs) {
+                        return "The call's connection closed.".into();
+                    }
+                }
+                if !joined && started.elapsed() > CONNECT_LIMIT {
+                    return "Couldn't connect the call.".into();
+                }
+                // One frame up: a hand or reaction first, then our voice
+                // or padding.
+                if let Some(c) = said.pop_front() {
+                    let _ = shaper.push_control(&c);
+                } else {
+                    let frame = mic.pop_front();
+                    if !muted && let Some(pcm) = frame
+                        && let Ok(opus) = plan.codec.encode(&pcm).await
+                    {
+                        let mut f = seq.to_be_bytes().to_vec();
+                        f.extend_from_slice(&opus);
+                        let _ = shaper.push_frame(&f);
+                    }
+                }
+                seq = seq.wrapping_add(1);
+                let pt = shaper.next_plaintext();
+                if let Ok(packet) = sender.protect(elapsed(), AUDIO_AD, &pt) {
+                    let payload = [&[P_MEDIA][..], &packet].concat();
+                    if let Ok(dgs) = leg.link.send(now, &payload)
+                        && !send_all(&leg.dg, dgs)
+                    {
+                        return "The call's connection closed.".into();
+                    }
+                }
+                // One mixed frame down: everyone heard lately.
+                jitters.retain(|_, (_, at)| at.elapsed() < GROUP_QUIET);
+                let frames: Vec<(u32, CallDecode, Vec<u8>)> = jitters
+                    .iter_mut()
+                    .filter_map(|(who, (j, _))| j.pop().map(|(how, b)| (*who, how, b)))
+                    .collect();
+                if !frames.is_empty()
+                    && let Ok(pcm) = plan.codec.mix(&frames).await
                 {
                     let _ = out.send(Out::CallAudio(pcm));
                 }

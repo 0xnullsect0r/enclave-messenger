@@ -141,6 +141,18 @@ export struct StickerPackRow {
     count: int,
 }
 
+// Someone in a group call: their tile (their picture once it comes).
+export struct CallPeerTile {
+    id: int,
+    name: string,
+    initials: string,
+    tint: color,
+    hand: bool,
+    reaction: string,
+    has-picture: bool,
+    picture: image,
+}
+
 // One sticker in the picker; its picture comes as a preview.
 export struct StickerCell {
     pack: string,
@@ -676,6 +688,84 @@ component CallButton inherits VerticalLayout {
     }
 }
 
+// A group call's people, as a grid of tiles: a picture or initials, the
+// name, a raised hand, a passing reaction.
+component CallGrid inherits Rectangle {
+    in property <[CallPeerTile]> peers;
+    property <int> n: root.peers.length;
+    property <int> cols: root.n <= 1 ? 1 : root.n <= 4 ? 2 : root.n <= 9 ? 3 : root.n <= 16 ? 4 : 6;
+    property <int> rows: Math.max(1, Math.ceil(root.n / root.cols));
+    property <length> gap: Tokens.space-s;
+    property <length> cell-w: (root.width - (root.cols - 1) * root.gap) / root.cols;
+    property <length> cell-h: Math.min(root.cell-w * 3 / 4, (root.height - (root.rows - 1) * root.gap) / root.rows);
+    for p[i] in root.peers: Rectangle {
+        x: Math.mod(i, root.cols) * (root.cell-w + root.gap);
+        y: Math.floor(i / root.cols) * (root.cell-h + root.gap);
+        width: root.cell-w;
+        height: root.cell-h;
+        border-radius: Tokens.radius-control;
+        clip: true;
+        background: #1b2a22;
+        accessible-role: groupbox;
+        accessible-label: p.hand ? @tr("{}, hand raised", p.name) : p.name;
+        if p.has-picture: Image {
+            width: 100%;
+            height: 100%;
+            source: p.picture;
+            image-fit: cover;
+            accessible-role: image;
+            accessible-label: @tr("{}'s video", p.name);
+        }
+        if !p.has-picture: Avatar {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 - 8px;
+            initials: p.initials;
+            tint: p.tint;
+            size: Math.min(parent.height / 2, 88px);
+        }
+        Rectangle {
+            x: 0;
+            y: parent.height - self.height;
+            height: 28px;
+            background: #00000073;
+            Text {
+                x: Tokens.space-s;
+                width: parent.width - 2 * Tokens.space-s;
+                text: p.name;
+                color: #ffffff;
+                font-size: Tokens.type-caption;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        if p.hand: Rectangle {
+            x: Tokens.space-s;
+            y: Tokens.space-s;
+            width: 32px;
+            height: 32px;
+            border-radius: self.width / 2;
+            background: Tokens.saffron;
+            Path {
+                width: 20px;
+                height: 20px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.hand;
+                stroke: #101914;
+                stroke-width: 1.75px;
+            }
+        }
+        if p.reaction != "": Text {
+            x: parent.width - self.width - Tokens.space-s;
+            y: Tokens.space-xs;
+            text: p.reaction;
+            font-size: 32px;
+            accessible-role: text;
+            accessible-label: @tr("{} reacted {}", p.name, p.reaction);
+        }
+    }
+}
+
 component SheetFrame inherits Rectangle {
     in property <string> title;
     in property <length> max-card-width: 520px;
@@ -760,6 +850,17 @@ export component AppWindow inherits Window {
     // goes directly now.
     in property <bool> call-direct-asked;
     in property <bool> call-direct;
+    // A group call: who is heard in it, our raised hand, and whether the
+    // open group has a call going on we could join.
+    in property <bool> call-group;
+    in property <bool> call-hand;
+    in property <bool> call-cameras-full;
+    in-out property <[CallPeerTile]> call-peers;
+    in property <bool> current-call-live;
+    callback start-group-call(string, bool);
+    callback join-group-call(string);
+    callback hand-call(bool);
+    callback react-call(string);
     // The pre-call sheet: a video call, and the unchecked-contact warning
     // already shown.
     in-out property <bool> call-route-video;
@@ -1714,6 +1815,29 @@ export component AppWindow inherits Window {
                                 icon: Icons.more;
                                 label: @tr("Conversation settings");
                                 clicked => { root.open-sheet(Sheet.conversation); }
+                            }
+                        }
+                        if root.current.kind == 1 && root.current-call-live && root.call-state == 0: VerticalLayout {
+                            alignment: center;
+                            QuietButton {
+                                text: @tr("Join call");
+                                clicked => { root.join-group-call(root.current-id); }
+                            }
+                        }
+                        if root.current.kind == 1 && !root.current-call-live && root.call-state == 0: VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.phone;
+                                label: @tr("Call the group");
+                                clicked => { root.start-group-call(root.current-id, false); }
+                            }
+                        }
+                        if root.wide && root.current.kind == 1 && !root.current-call-live && root.call-state == 0: VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.video;
+                                label: @tr("Video call the group");
+                                clicked => { root.start-group-call(root.current-id, true); }
                             }
                         }
                         if root.current.kind == 1: VerticalLayout {
@@ -3937,9 +4061,14 @@ export component AppWindow inherits Window {
             alignment: center;
             padding: Tokens.space-xl;
             spacing: Tokens.space-m;
-            HorizontalLayout {
+            if !(root.call-group && (root.call-state == 3 || root.call-state == 4)): HorizontalLayout {
                 alignment: center;
                 Avatar { initials: root.call-initials; tint: root.call-tint; size: 112px; }
+            }
+            if root.call-group && (root.call-state == 3 || root.call-state == 4) && root.call-peers.length > 0: CallGrid {
+                min-height: 200px;
+                vertical-stretch: 1;
+                peers: root.call-peers;
             }
             Text {
                 text: root.call-name;
@@ -3953,6 +4082,7 @@ export component AppWindow inherits Window {
                 text: root.call-state == 1 ? (root.call-note != "" ? root.call-note : @tr("Calling…"))
                     : root.call-state == 2 ? (root.call-video ? @tr("Incoming video call") : @tr("Incoming call"))
                     : root.call-state == 3 ? @tr("Connecting…")
+                    : root.call-state == 4 && root.call-group && root.call-peers.length == 0 ? @tr("Waiting for others to join…")
                     : root.call-state == 4 ? (Math.floor(root.call-elapsed / 60) + ":" + (Math.mod(root.call-elapsed, 60) < 10 ? "0" : "") + Math.mod(root.call-elapsed, 60))
                     : root.call-note;
                 color: #ffffffbf;
@@ -3981,7 +4111,9 @@ export component AppWindow inherits Window {
                 }
             }
             if root.call-state != 5: Text {
-                text: root.call-state == 2 && root.call-direct-asked
+                text: root.call-group
+                    ? @tr("Group call: voices and pictures are sealed for the group; the relays pass them on without being able to read them.")
+                    : root.call-state == 2 && root.call-direct-asked
                     ? @tr("{} asked for a direct call: clearer, but answering directly shows your internet address to them.", root.call-name)
                     : root.call-direct
                     ? @tr("Direct: you and {} can see each other's internet address.", root.call-name)
@@ -3990,6 +4122,31 @@ export component AppWindow inherits Window {
                 font-size: Tokens.type-caption;
                 horizontal-alignment: center;
                 wrap: word-wrap;
+            }
+            if root.call-group && root.call-cameras-full && root.call-camera: Text {
+                text: @tr("Up to 8 cameras can be on at once. Yours comes on when one goes off.");
+                color: Tokens.saffron;
+                font-size: Tokens.type-caption;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            if root.call-group && root.call-state == 4: HorizontalLayout {
+                alignment: center;
+                spacing: Tokens.space-s;
+                for r in ["👍", "👏", "😂", "❤️", "🎉"]: Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: self.width / 2;
+                    background: react.pressed ? #ffffff40 : react.has-hover ? #ffffff26 : #ffffff14;
+                    accessible-role: button;
+                    accessible-label: @tr("React {}", r);
+                    accessible-action-default => { root.react-call(r); }
+                    Text { text: r; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
+                    react := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.react-call(r); }
+                    }
+                }
             }
             HorizontalLayout {
                 alignment: center;
@@ -4004,7 +4161,7 @@ export component AppWindow inherits Window {
                 }
                 if root.call-state == 2: CallButton {
                     icon: root.call-video ? Icons.video : Icons.phone;
-                    label: root.call-direct-asked ? @tr("Answer privately") : @tr("Answer");
+                    label: root.call-group ? @tr("Join") : root.call-direct-asked ? @tr("Answer privately") : @tr("Answer");
                     tint: #1f6f50;
                     ink: #ffffff;
                     clicked => { root.answer-call(); }
@@ -4030,9 +4187,16 @@ export component AppWindow inherits Window {
                     ink: root.call-camera ? #ffffff : #101914;
                     clicked => { root.camera-call(!root.call-camera); }
                 }
+                if root.call-group && (root.call-state == 3 || root.call-state == 4): CallButton {
+                    icon: Icons.hand;
+                    label: root.call-hand ? @tr("Lower hand") : @tr("Raise hand");
+                    tint: root.call-hand ? Tokens.saffron : #ffffff26;
+                    ink: root.call-hand ? #101914 : #ffffff;
+                    clicked => { root.hand-call(!root.call-hand); }
+                }
                 if root.call-state == 1 || root.call-state == 3 || root.call-state == 4: CallButton {
                     icon: Icons.phone;
-                    label: @tr("Hang up");
+                    label: root.call-group ? @tr("Leave") : @tr("Hang up");
                     tint: #b3261e;
                     ink: #ffffff;
                     clicked => { root.end-call(); }

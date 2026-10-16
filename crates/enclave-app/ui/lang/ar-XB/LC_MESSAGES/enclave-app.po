@@ -370,6 +370,10 @@ msgid "Call directly anyway"
 msgstr "‫Call directly anyway‬"
 
 #: ui/app.slint
+msgid "Call the group"
+msgstr "‫Call the group‬"
+
+#: ui/app.slint
 msgid "Call with {}"
 msgstr "‫Call with ‬{}"
 
@@ -717,7 +721,7 @@ msgstr "‫Couldn't download the file. Check your connection.‬"
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr "‫Couldn't edit that message. Edits work for 24 hours.‬"
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr "‫Couldn't find a private route right now. Try again later.‬"
 
@@ -764,6 +768,10 @@ msgstr "‫Couldn't pin that message. Check your connection.‬"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
 msgstr "‫Couldn't reach that server. Try again in a moment.‬"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Couldn't reach the group to call. Try again."
+msgstr "‫Couldn't reach the group to call. Try again.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach the group's server. Try again in a moment."
@@ -901,7 +909,7 @@ msgstr "‫Couldn't share your recovery. Choose at least two people you talk to,
 msgid "Couldn't start linking. Try again."
 msgstr "‫Couldn't start linking. Try again.‬"
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't start the call's audio."
 msgstr "‫Couldn't start the call's audio.‬"
 
@@ -1281,9 +1289,21 @@ msgstr "‫Google's push service wakes Enclave when something arrives. Google le
 msgid "Group"
 msgstr "‫Group‬"
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Group call"
+msgstr "‫Group call‬"
+
+#: ui/app.slint
+msgid "Group call: voices and pictures are sealed for the group; the relays pass them on without being able to read them."
+msgstr "‫Group call: voices and pictures are sealed for the group; the relays pass them on without being able to read them.‬"
+
 #: ui/app.slint
 msgid "Group name"
 msgstr "‫Group name‬"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Group video call"
+msgstr "‫Group video call‬"
 
 #: ui/app.slint
 msgid "Group {}: {}"
@@ -1418,6 +1438,14 @@ msgid "Italiano"
 msgstr "‫Italiano‬"
 
 #: ui/app.slint
+msgid "Join"
+msgstr "‫Join‬"
+
+#: ui/app.slint
+msgid "Join call"
+msgstr "‫Join call‬"
+
+#: ui/app.slint
 msgid "Keep a backup on my server"
 msgstr "‫Keep a backup on my server‬"
 
@@ -1516,6 +1544,10 @@ msgstr "‫Longitude, like 13.4050‬"
 #: ui/app.slint
 msgid "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."
 msgstr "‫Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same.‬"
+
+#: ui/app.slint
+msgid "Lower hand"
+msgstr "‫Lower hand‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Made the pack {} with {} stickers."
@@ -2078,6 +2110,10 @@ msgid "Question"
 msgstr "‫Question‬"
 
 #: ui/app.slint
+msgid "Raise hand"
+msgstr "‫Raise hand‬"
+
+#: ui/app.slint
 msgid "React {}"
 msgstr "‫React ‬{}"
 
@@ -2549,6 +2585,14 @@ msgstr "‫Telling your contacts and groups about your new words. This finishes 
 msgid "That PIN isn't right."
 msgstr "‫That PIN isn't right.‬"
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "That call has ended."
+msgstr "‫That call has ended.‬"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "That call is full."
+msgstr "‫That call is full.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "That code didn't work. Check that the new device is still showing it."
 msgstr "‫That code didn't work. Check that the new device is still showing it.‬"
@@ -2962,6 +3006,10 @@ msgid "Up to 10, as you see them. This chat is off the record, so the operator c
 msgstr "‫Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them.‬"
 
 #: ui/app.slint
+msgid "Up to 8 cameras can be on at once. Yours comes on when one goes off."
+msgstr "‫Up to 8 cameras can be on at once. Yours comes on when one goes off.‬"
+
+#: ui/app.slint
 msgid "Update"
 msgstr "‫Update‬"
 
@@ -3054,6 +3102,10 @@ msgid "Video call"
 msgstr "‫Video call‬"
 
 #: ui/app.slint
+msgid "Video call the group"
+msgstr "‫Video call the group‬"
+
+#: ui/app.slint
 msgid "Video call {}"
 msgstr "‫Video call ‬{}"
 
@@ -3076,6 +3128,10 @@ msgstr "‫Vote to move the group‬"
 #: ui/controls.slint
 msgid "Waiting for both codes"
 msgstr "‫Waiting for both codes‬"
+
+#: ui/app.slint
+msgid "Waiting for others to join…"
+msgstr "‫Waiting for others to join…‬"
 
 #: ui/app.slint
 msgid "Waiting for them to accept"
@@ -3213,6 +3269,14 @@ msgstr "‫You need your backup file, and either your 24 recovery words or enoug
 msgid "You restored your account without one of your other devices, so contacts wait until {} before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then."
 msgstr "‫You restored your account without one of your other devices, so contacts wait until ‬{}‫ before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then.‬"
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "You started a call"
+msgstr "‫You started a call‬"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "You started a video call"
+msgstr "‫You started a video call‬"
+
 #: ui/app.slint
 msgid "You'll stop getting its messages. Someone would have to add you again."
 msgstr "‫You'll stop getting its messages. Someone would have to add you again.‬"
@@ -3221,7 +3285,7 @@ msgstr "‫You'll stop getting its messages. Someone would have to add you again
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr "‫You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.‬"
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "You're already in a call."
 msgstr "‫You're already in a call.‬"
 
@@ -3466,6 +3530,10 @@ msgid "{} pinned messages. Latest: "
 msgstr "{}‫ pinned messages. Latest: ‬"
 
 #: ui/app.slint
+msgid "{} reacted {}"
+msgstr "{}‫ reacted ‬{}"
+
+#: ui/app.slint
 msgid "{} wants to talk"
 msgstr "{}‫ wants to talk‬"
 
@@ -3484,6 +3552,10 @@ msgstr "{}‫'s phone should show the same three words. If it does, you scanned 
 #: ui/app.slint
 msgid "{}'s video"
 msgstr "{}‫'s video‬"
+
+#: ui/app.slint
+msgid "{}, hand raised"
+msgstr "{}‫, hand raised‬"
 
 #: ui/app.slint
 msgid "{}, run by {}"

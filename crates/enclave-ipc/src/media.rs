@@ -56,6 +56,14 @@ pub enum MediaOp {
     VideoDecode(u32),
     /// End a call's video.
     VideoClose(u32),
+    /// A group call's next 20 ms ([`MediaOut::Raw`], PCM as above): each
+    /// other participant's frame, decoded by its own decoder, mixed. The
+    /// bytes are `count ‖ (u32 sender ‖ u8 how ‖ u16 len ‖ frame)…`, `how`
+    /// as [`CallDecode`].
+    CallMix(u32),
+    /// Decode one temporal unit from one participant of a group call (its
+    /// own decoder), as [`MediaOp::VideoDecode`].
+    VideoDecodeFrom(u32, u32),
 }
 
 /// How [`MediaOp::CallDecode`] uses its bytes.
@@ -168,6 +176,8 @@ impl MediaRequest {
             MediaOp::VideoEncode(n, key) => w.u8(15).u32(n).bool(key),
             MediaOp::VideoDecode(n) => w.u8(16).u32(n),
             MediaOp::VideoClose(n) => w.u8(17).u32(n),
+            MediaOp::CallMix(n) => w.u8(18).u32(n),
+            MediaOp::VideoDecodeFrom(n, sender) => w.u8(19).u32(n).u32(sender),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -212,6 +222,11 @@ impl MediaRequest {
             }
             16 => MediaOp::VideoDecode(r.u32()?),
             17 => MediaOp::VideoClose(r.u32()?),
+            18 => MediaOp::CallMix(r.u32()?),
+            19 => {
+                let n = r.u32()?;
+                MediaOp::VideoDecodeFrom(n, r.u32()?)
+            }
             _ => return Err(IpcError::Malformed),
         };
         let bytes = r.bytes()?;

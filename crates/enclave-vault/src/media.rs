@@ -173,15 +173,17 @@ pub struct VideoCodec {
 enum VideoAt {
     Helper(Arc<Proc>),
     #[cfg(feature = "demo")]
-    Here(
-        Arc<
-            std::sync::Mutex<(
-                enclave_media::callvideo::VideoEncoder,
-                enclave_media::callvideo::VideoDecoder,
-            )>,
-        >,
-    ),
+    Here(Arc<std::sync::Mutex<HereVideo>>),
 }
+
+/// The demo's in-process video codecs: the encoder, the other person's
+/// decoder, and a group call's decoders by participant.
+#[cfg(feature = "demo")]
+type HereVideo = (
+    enclave_media::callvideo::VideoEncoder,
+    enclave_media::callvideo::VideoDecoder,
+    std::collections::HashMap<u32, enclave_media::callvideo::VideoDecoder>,
+);
 
 impl VideoCodec {
     /// Encode a camera frame (RGBA at the tier's size): the temporal units.
@@ -235,6 +237,42 @@ impl VideoCodec {
                 .1
                 .decode(&unit)
                 .map_err(|e| e.to_string()),
+        }
+    }
+}
+
+impl VideoCodec {
+    /// Decode a temporal unit from one participant of a group call (its
+    /// own decoder).
+    pub async fn decode_from(&self, sender: u32, unit: Vec<u8>) -> Result<Option<Rgba>, String> {
+        match &self.at {
+            VideoAt::Helper(p) => match p
+                .call(MediaOp::VideoDecodeFrom(self.n, sender), unit)
+                .await?
+            {
+                MediaOut::Rgba {
+                    width,
+                    height,
+                    pixels,
+                } => Ok(Some(Rgba {
+                    width,
+                    height,
+                    pixels,
+                })),
+                MediaOut::Raw(_) => Ok(None),
+                _ => Err("unexpected reply".into()),
+            },
+            #[cfg(feature = "demo")]
+            VideoAt::Here(c) => {
+                let mut c = c.lock().map_err(|_| "poisoned".to_string())?;
+                let d = match c.2.entry(sender) {
+                    std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+                    std::collections::hash_map::Entry::Vacant(e) => e.insert(
+                        enclave_media::callvideo::VideoDecoder::new().map_err(|e| e.to_string())?,
+                    ),
+                };
+                d.decode(&unit).map_err(|e| e.to_string())
+            }
         }
     }
 }
@@ -303,6 +341,55 @@ impl CallCodec {
                 a.lock()
                     .map_err(|_| "poisoned".to_string())?
                     .decode(what)
+                    .map_err(|e| e.to_string())
+            }
+        }
+    }
+}
+
+impl CallCodec {
+    /// A group call's next 20 ms: each other participant's frame decoded
+    /// by its own decoder, mixed.
+    pub async fn mix(&self, frames: &[(u32, CallDecode, Vec<u8>)]) -> Result<Vec<i16>, String> {
+        match &self.at {
+            CallAt::Helper(p) => {
+                let mut b = vec![frames.len().min(255) as u8];
+                for (sender, how, f) in frames.iter().take(255) {
+                    b.extend_from_slice(&sender.to_be_bytes());
+                    b.push(match how {
+                        CallDecode::Packet => 0,
+                        CallDecode::Recover => 1,
+                        CallDecode::Lost => 2,
+                    });
+                    b.extend_from_slice(&(f.len() as u16).to_be_bytes());
+                    b.extend_from_slice(f);
+                }
+                match p.call(MediaOp::CallMix(self.n), b).await? {
+                    MediaOut::Raw(b) if b.len() == enclave_media::call::FRAME * 2 => Ok(b
+                        .chunks_exact(2)
+                        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                        .collect()),
+                    _ => Err("unexpected reply".into()),
+                }
+            }
+            CallAt::Here(a) => {
+                use enclave_media::call::Decode;
+                let what: Vec<(u32, Decode<'_>)> = frames
+                    .iter()
+                    .map(|(s, how, b)| {
+                        (
+                            *s,
+                            match how {
+                                CallDecode::Packet => Decode::Packet(b),
+                                CallDecode::Recover => Decode::Recover(b),
+                                CallDecode::Lost => Decode::Lost,
+                            },
+                        )
+                    })
+                    .collect();
+                a.lock()
+                    .map_err(|_| "poisoned".to_string())?
+                    .mix(&what)
                     .map_err(|e| e.to_string())
             }
         }
@@ -391,6 +478,7 @@ impl Media {
                 let codec = (
                     VideoEncoder::new(usize::from(tier)).map_err(|e| e.to_string())?,
                     VideoDecoder::new().map_err(|e| e.to_string())?,
+                    std::collections::HashMap::new(),
                 );
                 return Ok(VideoCodec {
                     n,
@@ -661,7 +749,9 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         | MediaOp::VideoOpen(..)
         | MediaOp::VideoEncode(..)
         | MediaOp::VideoDecode(_)
-        | MediaOp::VideoClose(_) => {
+        | MediaOp::VideoClose(_)
+        | MediaOp::CallMix(_)
+        | MediaOp::VideoDecodeFrom(..) => {
             return Err("calls go through Media::open_call and open_video".into());
         }
     }

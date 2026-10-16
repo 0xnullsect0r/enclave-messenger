@@ -59,4 +59,26 @@ impl Client {
         self.put_message(root, &m)?;
         Ok(m)
     }
+
+    /// Send group call signalling to the group's members (and our other
+    /// devices).
+    pub async fn send_group_call(&mut self, gid: &[u8; 32], message: &[u8]) -> Result<()> {
+        self.require_not_held()?;
+        self.require_current()?;
+        let rich = super::polls::Rich::Call {
+            message: message.to_vec(),
+        };
+        self.post_group_rich(gid, &rich).await
+    }
+
+    /// Write a group call's line into the group ("Group call, 12:40"):
+    /// this device's own record.
+    pub fn add_group_call_line(&mut self, gid: &[u8; 32], text: &str) -> Result<()> {
+        let id = self.rng.array("core/msg-id")?;
+        let now = self.now();
+        let mut m = self.store_group_message(gid, id, None, text, now)?;
+        m.notice = true;
+        m.delivered = true;
+        self.put_group_message(gid, &m)
+    }
 }

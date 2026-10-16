@@ -197,6 +197,29 @@ pub struct CallView {
     pub direct_asked: bool,
     /// The media goes directly now, not through the relays.
     pub direct: bool,
+    /// A group call (`conversation` is the group; `name` its name).
+    pub group: bool,
+    /// Our hand is raised (a group call).
+    pub hand: bool,
+    /// Our camera waits: eight others are on (a group call).
+    pub cameras_full: bool,
+    /// The others heard in a group call.
+    pub peers: Vec<CallPeer>,
+    /// Groups with a call going on that we aren't in (they show Join).
+    pub live_groups: Vec<String>,
+}
+
+/// Someone in a group call.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CallPeer {
+    /// Their id in the call ([`Out::CallTile`] names it).
+    pub id: u32,
+    /// Their name.
+    pub name: String,
+    /// Their hand is raised.
+    pub hand: bool,
+    /// Their reaction, while it shows.
+    pub reaction: String,
 }
 
 /// Everything the window shows.
@@ -684,7 +707,18 @@ pub enum Cmd {
     CallCamera(bool),
     /// A camera frame: width, height (the call's video size), RGBA.
     CallFrame(u32, u32, Vec<u8>),
+    /// Start a call in a group (conversation id), with video or not.
+    StartGroupCall(String, bool),
+    /// Join the call going on in a group.
+    JoinGroupCall(String),
+    /// Raise (true) or lower our hand in a group call.
+    CallHand(bool),
+    /// A reaction in a group call (an emoji).
+    CallReact(String),
 }
+
+/// Most people a group call shows.
+pub const MAX_CALL_PEERS: usize = 64;
 
 /// Most samples in one [`Cmd::CallMic`] or [`Out::CallAudio`] (20 ms).
 pub const CALL_FRAME: usize = 960;
@@ -763,6 +797,9 @@ pub enum Out {
     CallAudio(Vec<i16>),
     /// The other person's newest picture: width, height, RGBA.
     CallVideo(u32, u32, Vec<u8>),
+    /// A group call: one participant's newest picture (participant id,
+    /// width, height, RGBA).
+    CallTile(u32, u32, u32, Vec<u8>),
 }
 
 /// PCM as 16-bit little-endian bytes.
@@ -1082,7 +1119,15 @@ impl Snapshot {
             .str(&self.call.words)
             .str(&self.call.error)
             .bool(self.call.direct_asked)
-            .bool(self.call.direct);
+            .bool(self.call.direct)
+            .bool(self.call.group)
+            .bool(self.call.hand)
+            .bool(self.call.cameras_full)
+            .u32(self.call.peers.len() as u32);
+        for p in &self.call.peers {
+            w.u32(p.id).str(&p.name).bool(p.hand).str(&p.reaction);
+        }
+        w.strs(&self.call.live_groups);
         w.0
     }
 
@@ -1347,6 +1392,26 @@ impl Snapshot {
                 error: r.str()?,
                 direct_asked: r.bool()?,
                 direct: r.bool()?,
+                group: r.bool()?,
+                hand: r.bool()?,
+                cameras_full: r.bool()?,
+                peers: {
+                    let n = r.u32()? as usize;
+                    if n > MAX_CALL_PEERS {
+                        return Err(IpcError::Malformed);
+                    }
+                    (0..n)
+                        .map(|_| {
+                            Ok(CallPeer {
+                                id: r.u32()?,
+                                name: r.str()?,
+                                hand: r.bool()?,
+                                reaction: r.str()?,
+                            })
+                        })
+                        .collect::<Result<_>>()?
+                },
+                live_groups: r.strs()?,
             },
         };
         r.end()?;
@@ -1485,6 +1550,10 @@ impl Cmd {
             Cmd::CallMic(pcm) => w.u8(103).bytes(&pcm_bytes(pcm)),
             Cmd::CallCamera(on) => w.u8(104).bool(*on),
             Cmd::CallFrame(width, height, rgba) => w.u8(105).u32(*width).u32(*height).bytes(rgba),
+            Cmd::StartGroupCall(c, video) => w.u8(107).str(c).bool(*video),
+            Cmd::JoinGroupCall(c) => w.u8(108).str(c),
+            Cmd::CallHand(up) => w.u8(109).bool(*up),
+            Cmd::CallReact(e) => w.u8(110).str(e),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1634,6 +1703,10 @@ impl Cmd {
                 }
                 Cmd::CallFrame(width, height, rgba)
             }
+            107 => Cmd::StartGroupCall(r.str()?, r.bool()?),
+            108 => Cmd::JoinGroupCall(r.str()?),
+            109 => Cmd::CallHand(r.bool()?),
+            110 => Cmd::CallReact(r.str()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1716,6 +1789,11 @@ impl Out {
             Out::CallVideo(width, height, rgba) => {
                 let mut w = Writer::default();
                 w.u8(13).u32(*width).u32(*height).bytes(rgba);
+                w.0
+            }
+            Out::CallTile(who, width, height, rgba) => {
+                let mut w = Writer::default();
+                w.u8(14).u32(*who).u32(*width).u32(*height).bytes(rgba);
                 w.0
             }
             Out::Effect(e) => vec![
@@ -1802,6 +1880,16 @@ impl Out {
                 }
                 r.end()?;
                 Ok(Out::CallVideo(width, height, rgba))
+            }
+            [14, ..] => {
+                let mut r = Reader(&b[1..]);
+                let (who, width, height) = (r.u32()?, r.u32()?, r.u32()?);
+                let rgba = r.bytes()?;
+                if crate::rgba_len(width, height) != Some(rgba.len()) {
+                    return Err(IpcError::Malformed);
+                }
+                r.end()?;
+                Ok(Out::CallTile(who, width, height, rgba))
             }
             [7, ..] => {
                 let mut r = Reader(&b[1..]);

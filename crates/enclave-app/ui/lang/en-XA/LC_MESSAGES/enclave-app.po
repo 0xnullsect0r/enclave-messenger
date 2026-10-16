@@ -370,6 +370,10 @@ msgid "Call directly anyway"
 msgstr "[Çáll díréçtlý áñýwáý········]"
 
 #: ui/app.slint
+msgid "Call the group"
+msgstr "[Çáll thé gróúp·····]"
+
+#: ui/app.slint
 msgid "Call with {}"
 msgstr "[Çáll wíth ····{}]"
 
@@ -717,7 +721,7 @@ msgstr "[Çóúldñ't dówñlóád thé fílé. Çhéçk ýóúr çóññéçtí
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr "[Çóúldñ't édít thát mésságé. Édíts wórk fór 24 hóúrs.····················]"
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr "[Çóúldñ't fíñd á príváté róúté ríght ñów. Trý ágáíñ látér.······················]"
 
@@ -764,6 +768,10 @@ msgstr "[Çóúldñ't píñ thát mésságé. Çhéçk ýóúr çóññéçtíó
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
 msgstr "[Çóúldñ't réáçh thát sérvér. Trý ágáíñ íñ á móméñt.····················]"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Couldn't reach the group to call. Try again."
+msgstr "[Çóúldñ't réáçh thé gróúp tó çáll. Trý ágáíñ.·················]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach the group's server. Try again in a moment."
@@ -901,7 +909,7 @@ msgstr "[Çóúldñ't sháré ýóúr réçóvérý. Çhóósé át léást twó
 msgid "Couldn't start linking. Try again."
 msgstr "[Çóúldñ't stárt líñkíñg. Trý ágáíñ.·············]"
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't start the call's audio."
 msgstr "[Çóúldñ't stárt thé çáll's áúdíó.············]"
 
@@ -1281,9 +1289,21 @@ msgstr "[Góóglé's púsh sérvíçé wákés Éñçlávé whéñ sóméthíñg
 msgid "Group"
 msgstr "[Gróúp··]"
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Group call"
+msgstr "[Gróúp çáll····]"
+
+#: ui/app.slint
+msgid "Group call: voices and pictures are sealed for the group; the relays pass them on without being able to read them."
+msgstr "[Gróúp çáll: vóíçés áñd píçtúrés áré séáléd fór thé gróúp; thé réláýs páss thém óñ wíthóút béíñg áblé tó réád thém.·············································]"
+
 #: ui/app.slint
 msgid "Group name"
 msgstr "[Gróúp ñámé····]"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Group video call"
+msgstr "[Gróúp vídéó çáll······]"
 
 #: ui/app.slint
 msgid "Group {}: {}"
@@ -1418,6 +1438,14 @@ msgid "Italiano"
 msgstr "[Ítálíáñó···]"
 
 #: ui/app.slint
+msgid "Join"
+msgstr "[Jóíñ·]"
+
+#: ui/app.slint
+msgid "Join call"
+msgstr "[Jóíñ çáll···]"
+
+#: ui/app.slint
 msgid "Keep a backup on my server"
 msgstr "[Kéép á báçkúp óñ mý sérvér··········]"
 
@@ -1516,6 +1544,10 @@ msgstr "[Lóñgítúdé, líké 13.4050·········]"
 #: ui/app.slint
 msgid "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."
 msgstr "[Lóst á dévíçé, ór wórríéd sóméóñé sáw sóméthíñg? Thís gívés ýóúr áççóúñt ñéw kéýs, ñéw íñbóxés áñd ñéw dévíçé kéýs, áñd stárts frésh prótéçtíóñ wíth évérý çóñtáçt áñd gróúp. Ýóúr séçúrítý çódé áñd çóñvérsátíóñs stáý thé sámé.··························································································]"
+
+#: ui/app.slint
+msgid "Lower hand"
+msgstr "[Lówér háñd····]"
 
 #: enclave-vault/src/engine.rs
 msgid "Made the pack {} with {} stickers."
@@ -2078,6 +2110,10 @@ msgid "Question"
 msgstr "[Qúéstíóñ···]"
 
 #: ui/app.slint
+msgid "Raise hand"
+msgstr "[Ráísé háñd····]"
+
+#: ui/app.slint
 msgid "React {}"
 msgstr "[Réáçt ··{}]"
 
@@ -2549,6 +2585,14 @@ msgstr "[Téllíñg ýóúr çóñtáçts áñd gróúps ábóút ýóúr ñéw 
 msgid "That PIN isn't right."
 msgstr "[Thát PÍÑ ísñ't ríght.········]"
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "That call has ended."
+msgstr "[Thát çáll hás éñdéd.········]"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "That call is full."
+msgstr "[Thát çáll ís fúll.·······]"
+
 #: enclave-vault/src/engine.rs
 msgid "That code didn't work. Check that the new device is still showing it."
 msgstr "[Thát çódé dídñ't wórk. Çhéçk thát thé ñéw dévíçé ís stíll shówíñg ít.···························]"
@@ -2962,6 +3006,10 @@ msgid "Up to 10, as you see them. This chat is off the record, so the operator c
 msgstr "[Úp tó 10, ás ýóú séé thém. Thís çhát ís óff thé réçórd, só thé ópérátór çáñ't çóñfírm whó wróté thém.········································]"
 
 #: ui/app.slint
+msgid "Up to 8 cameras can be on at once. Yours comes on when one goes off."
+msgstr "[Úp tó 8 çámérás çáñ bé óñ át óñçé. Ýóúrs çómés óñ whéñ óñé góés óff.···························]"
+
+#: ui/app.slint
 msgid "Update"
 msgstr "[Úpdáté··]"
 
@@ -3054,6 +3102,10 @@ msgid "Video call"
 msgstr "[Vídéó çáll····]"
 
 #: ui/app.slint
+msgid "Video call the group"
+msgstr "[Vídéó çáll thé gróúp········]"
+
+#: ui/app.slint
 msgid "Video call {}"
 msgstr "[Vídéó çáll ····{}]"
 
@@ -3076,6 +3128,10 @@ msgstr "[Vóté tó móvé thé gróúp········]"
 #: ui/controls.slint
 msgid "Waiting for both codes"
 msgstr "[Wáítíñg fór bóth çódés········]"
+
+#: ui/app.slint
+msgid "Waiting for others to join…"
+msgstr "[Wáítíñg fór óthérs tó jóíñ…··········]"
 
 #: ui/app.slint
 msgid "Waiting for them to accept"
@@ -3213,6 +3269,14 @@ msgstr "[Ýóú ñééd ýóúr báçkúp fílé, áñd éíthér ýóúr 24 ré
 msgid "You restored your account without one of your other devices, so contacts wait until {} before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then."
 msgstr "[Ýóú réstóréd ýóúr áççóúñt wíthóút óñé óf ýóúr óthér dévíçés, só çóñtáçts wáít úñtíl ·································{} béfóré áççéptíñg ít. Áppróvé ít fróm áñóthér dévíçé tó skíp thé wáít. Ýóú çáñ réád, bút ñót séñd, úñtíl théñ.············································]"
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "You started a call"
+msgstr "[Ýóú stártéd á çáll·······]"
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "You started a video call"
+msgstr "[Ýóú stártéd á vídéó çáll·········]"
+
 #: ui/app.slint
 msgid "You'll stop getting its messages. Someone would have to add you again."
 msgstr "[Ýóú'll stóp géttíñg íts mésságés. Sóméóñé wóúld hávé tó ádd ýóú ágáíñ.····························]"
@@ -3221,7 +3285,7 @@ msgstr "[Ýóú'll stóp géttíñg íts mésságés. Sóméóñé wóúld háv�
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr "[Ýóú'll týpé ít éáçh tímé Éñçlávé stárts. Ñóbódý çáñ rését ít; íf ýóú fórgét ít, ýóúr réçóvérý wórds bríñg ýóúr áççóúñt báçk.·················································]"
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "You're already in a call."
 msgstr "[Ýóú'ré álréádý íñ á çáll.··········]"
 
@@ -3466,6 +3530,10 @@ msgid "{} pinned messages. Latest: "
 msgstr "[{} píññéd mésságés. Látést: ··········]"
 
 #: ui/app.slint
+msgid "{} reacted {}"
+msgstr "[{} réáçtéd ···{}]"
+
+#: ui/app.slint
 msgid "{} wants to talk"
 msgstr "[{} wáñts tó tálk·····]"
 
@@ -3484,6 +3552,10 @@ msgstr "[{}'s phóñé shóúld shów thé sámé thréé wórds. Íf ít dóés
 #: ui/app.slint
 msgid "{}'s video"
 msgstr "[{}'s vídéó···]"
+
+#: ui/app.slint
+msgid "{}, hand raised"
+msgstr "[{}, háñd ráíséd·····]"
 
 #: ui/app.slint
 msgid "{}, run by {}"

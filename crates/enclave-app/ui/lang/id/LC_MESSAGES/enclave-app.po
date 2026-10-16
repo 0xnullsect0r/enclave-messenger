@@ -370,6 +370,10 @@ msgid "Call directly anyway"
 msgstr ""
 
 #: ui/app.slint
+msgid "Call the group"
+msgstr ""
+
+#: ui/app.slint
 msgid "Call with {}"
 msgstr ""
 
@@ -717,7 +721,7 @@ msgstr ""
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr ""
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't find a private route right now. Try again later."
 msgstr ""
 
@@ -763,6 +767,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
+msgstr ""
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Couldn't reach the group to call. Try again."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -901,7 +909,7 @@ msgstr ""
 msgid "Couldn't start linking. Try again."
 msgstr ""
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't start the call's audio."
 msgstr ""
 
@@ -1281,8 +1289,20 @@ msgstr ""
 msgid "Group"
 msgstr ""
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Group call"
+msgstr ""
+
+#: ui/app.slint
+msgid "Group call: voices and pictures are sealed for the group; the relays pass them on without being able to read them."
+msgstr ""
+
 #: ui/app.slint
 msgid "Group name"
+msgstr ""
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "Group video call"
 msgstr ""
 
 #: ui/app.slint
@@ -1418,6 +1438,14 @@ msgid "Italiano"
 msgstr ""
 
 #: ui/app.slint
+msgid "Join"
+msgstr ""
+
+#: ui/app.slint
+msgid "Join call"
+msgstr ""
+
+#: ui/app.slint
 msgid "Keep a backup on my server"
 msgstr ""
 
@@ -1515,6 +1543,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."
+msgstr ""
+
+#: ui/app.slint
+msgid "Lower hand"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -2078,6 +2110,10 @@ msgid "Question"
 msgstr ""
 
 #: ui/app.slint
+msgid "Raise hand"
+msgstr ""
+
+#: ui/app.slint
 msgid "React {}"
 msgstr ""
 
@@ -2549,6 +2585,14 @@ msgstr ""
 msgid "That PIN isn't right."
 msgstr ""
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "That call has ended."
+msgstr ""
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "That call is full."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "That code didn't work. Check that the new device is still showing it."
 msgstr ""
@@ -2962,6 +3006,10 @@ msgid "Up to 10, as you see them. This chat is off the record, so the operator c
 msgstr ""
 
 #: ui/app.slint
+msgid "Up to 8 cameras can be on at once. Yours comes on when one goes off."
+msgstr ""
+
+#: ui/app.slint
 msgid "Update"
 msgstr ""
 
@@ -3054,6 +3102,10 @@ msgid "Video call"
 msgstr ""
 
 #: ui/app.slint
+msgid "Video call the group"
+msgstr ""
+
+#: ui/app.slint
 msgid "Video call {}"
 msgstr ""
 
@@ -3075,6 +3127,10 @@ msgstr ""
 
 #: ui/controls.slint
 msgid "Waiting for both codes"
+msgstr ""
+
+#: ui/app.slint
+msgid "Waiting for others to join…"
 msgstr ""
 
 #: ui/app.slint
@@ -3213,6 +3269,14 @@ msgstr ""
 msgid "You restored your account without one of your other devices, so contacts wait until {} before accepting it. Approve it from another device to skip the wait. You can read, but not send, until then."
 msgstr ""
 
+#: enclave-vault/src/engine/group_calling.rs
+msgid "You started a call"
+msgstr ""
+
+#: enclave-vault/src/engine/group_calling.rs
+msgid "You started a video call"
+msgstr ""
+
 #: ui/app.slint
 msgid "You'll stop getting its messages. Someone would have to add you again."
 msgstr ""
@@ -3221,7 +3285,7 @@ msgstr ""
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr ""
 
-#: enclave-vault/src/engine/calling.rs
+#: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "You're already in a call."
 msgstr ""
 
@@ -3466,6 +3530,10 @@ msgid "{} pinned messages. Latest: "
 msgstr ""
 
 #: ui/app.slint
+msgid "{} reacted {}"
+msgstr ""
+
+#: ui/app.slint
 msgid "{} wants to talk"
 msgstr ""
 
@@ -3483,6 +3551,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "{}'s video"
+msgstr ""
+
+#: ui/app.slint
+msgid "{}, hand raised"
 msgstr ""
 
 #: ui/app.slint

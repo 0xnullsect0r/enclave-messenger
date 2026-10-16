@@ -166,12 +166,37 @@ As implemented (`enclave_vault::calls::Standby`, the engine's `standby_upkeep`):
 
 ## 8. Group calls
 
-- An SFU in the host's relay forwards only SFrame frames and simulcast layers, in fixed-rate slots. It never holds media keys.
+- An SFU in the host's relay forwards only SFrame frames, in fixed-rate slots. It never holds media keys. (Simulcast layers were dropped: the downlink is a fixed budget, so the SFU has nothing to adapt per receiver; see §8.1.)
 - Audio is forwarded to all participants at CBR. There is no dominant-speaker detection.
 - Each receiver has a fixed 2.5 Mbps downlink budget; the SFU fills unused budget with padding.
-- **Limits:** 32 video tiles or 64 audio participants.
+- **Limits:** 64 participants; 8 cameras on at once (eight 300 kbit/s pictures fill the 2.5 Mbps budget; §8.1).
 - **Call links:** `https://<invite-host>/call#<payload>` with a capability `call_link_cap = KMAC256(call_link_secret, "", 256, "enclave/v1/calls/link-cap")` and an optional lobby.
 - Raise hand, reactions, picture-in-picture. Screen share on desktop in M8, on mobile after 1.0.
+
+### 8.1 As implemented
+
+**Signalling** (`enclave_calls::group::GroupCallMessage`) rides in the group's own messages (core `Rich::Call`, rich kind 11), so it is end-to-end encrypted to exactly the members, and comes out of a sync as `Event::GroupCall`:
+
+```text
+1 ‖ call_id ‖ secret (64) ‖ sfu relay id (16) ‖ u8 video ‖ u64 started (Unix ms)   Start
+2 ‖ call_id                                                                          Joined
+3 ‖ call_id                                                                          Left
+4 ‖ call_id                                                                          End (the last one in)
+```
+
+The starter draws the call id and the 64-byte call secret and picks its own relay (one outside its home server's family) as the call's **SFU**. The keys are `CallKeys::group(call_id, secret)`: the rendezvous and every participant's SFrame base come from the secret as in §2 and §5. A participant's id is `KMAC256(secret, root, 32, "enclave/v1/calls/participant")` — the upper half of its SFrame KID — so members can name a tile and no one else can. SFrame epochs count from the start time, so someone joining late begins at the sender's epoch (`Receiver::at_epoch`) instead of ratcheting from zero within `MAX_EPOCH_JUMP`.
+
+**Media path.** Everyone opens a leg (ticket, WireGuard) to a relay of their own choosing and joins with `P_JOIN_GROUP ‖ rendezvous ‖ SFU address`. A relay that isn't the SFU sends each packet on its peer link to the SFU and also to any other member on itself; the SFU delivers to its own members and sends each packet on to every other relay that sent it the call's media (never back to the one it came from). Relays only ever see SFrame packets: no keys, no names.
+
+**Constant downlink.** A group session's downlink is a `P_BUNDLE` every 4 ms — 1,300 bytes, ≈ 2.6 Mbit/s with WireGuard's overhead, the §8 budget — packed from two queues, voices first, then pictures, padded to its length whatever the call carries (`enclave_calls::relay::bundle`). A queue keeps at most 128 packets and drops the oldest. The uplink is the 1:1 call's: one 160-byte audio packet each 20 ms and, in a video call, video packets at the tier's fixed rate.
+
+**Mixing.** The vault keeps a jitter buffer per sender heard in the last 3 s; every 20 ms it hands mediad one frame from each (`CallMix`), which decodes each sender with its own Opus decoder (packet loss concealment per sender), sums them with saturation, and feeds the mix to the echo canceller's far end. Video units go to a decoder per sender (`VideoDecodeFrom`); each picture comes to the window as `Out::CallTile(participant, w, h, rgba)`.
+
+**Hands and reactions** are control payloads on the audio stream (`H1`/`H0`, `R` ‖ emoji of up to 32 bytes), so they cost no extra packets; a reaction shows for 5 s.
+
+**Engine and window.** "Call the group" starts a call (a line "You started a call" in the group); members' devices ring for 60 s (`Join` or `Decline`) and the group shows "Join call" while the call goes on. Leaving sends `Left`; whoever leaves last also sends `End`; a call no one has said anything about for 6 h is forgotten. The call screen is a grid of tiles (a picture or initials, the name, a raised hand, a passing reaction), with Mute, Camera, Raise hand, five reactions and Leave. Limits: 64 participants (`MAX_PARTICIPANTS`). Tests: `a_group_call_through_an_sfu_relay` (three relays in three families, four people, two on one relay, one joining late: everyone hears the others mixed, the one camera reaches the others, the hand and the reaction arrive), `group_call_signalling_reaches_the_members`, `a_late_receiver_starts_at_the_senders_epoch`, and the relay's and mediad's unit tests.
+
+**Cameras.** No simulcast: every camera sends the lowest tier (320 × 240 at 15 fps, 300 kbit/s on the wire), and the fixed downlink carries eight of them, so at most 8 cameras are on at once (`MAX_CAMERAS`). A camera already on stays on; one being turned on while eight others send pictures waits, padding as with the camera off, and the call screen says "Up to 8 cameras can be on at once. Yours comes on when one goes off." Two turned on at the same moment can make nine for a while; the SFU's queue then drops the oldest pictures (never voices) and decoders ask for key frames. This replaces PLAN's 32 video tiles, which the 2.5 Mbps budget can't carry at any useful picture size.
 
 ## 9. Call check
 

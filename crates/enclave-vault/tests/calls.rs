@@ -412,3 +412,168 @@ async fn a_standby_tunnel_carries_the_call_that_takes_it() {
     drop((a_tx, b_tx, rb));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A group call (`docs/11-calls.md` §8): three relays in different
+/// families, the first the call's SFU; four people, two of them on the same
+/// relay; one joins late (epochs count from the start). Everyone hears the
+/// others mixed, sees the one picture sent, and the raised hand and the
+/// reaction reach the others.
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn a_group_call_through_an_sfu_relay() {
+    use enclave_calls::signal::CallKeys;
+    let dir = std::env::temp_dir().join(format!("enclave-group-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, _) = relay(&dir.join("b"), "beta").await;
+    let (lc, rc, _) = relay(&dir.join("c"), "gamma").await;
+    for (x, y) in [(&ra, &rb), (&ra, &rc), (&rb, &rc)] {
+        let d = y.lock().await.descriptor().clone();
+        x.lock().await.add_peer(&d).unwrap();
+        let d = x.lock().await.descriptor().clone();
+        y.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let id = [7u8; 16];
+    let secret = [9u8; 64];
+    // Started half a minute ago: six SFrame epochs in.
+    let started_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        - 30_000;
+    let keys = CallKeys::group(id, &secret);
+    let names = ["ada", "ben", "cyrus", "dana"];
+    let pid: Vec<u32> = names
+        .iter()
+        .map(|n| keys.participant(n.as_bytes()))
+        .collect();
+    let helpers = Helpers::in_process();
+    let mut sides = Vec::new();
+    for (i, relay) in [&la, &lb, &lc, &lb].into_iter().enumerate() {
+        if i == 3 {
+            // Dana joins late.
+            tokio::time::sleep(Duration::from_millis(800)).await;
+        }
+        let leg = calls::open_leg(&t, relay).await.unwrap();
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let (ev_tx, ev_rx) = mpsc::unbounded_channel();
+        let video = if i < 2 {
+            Some((helpers.open_video(0).await.unwrap(), 0))
+        } else {
+            None
+        };
+        let plan = calls::GroupPlan {
+            id,
+            keys: CallKeys::group(id, &secret),
+            me: pid[i],
+            sfu: aa,
+            started_ms,
+            codec: helpers.open_call().await.unwrap(),
+            video,
+        };
+        tokio::spawn(calls::run_group(leg, plan, rx, out_tx, ev_tx));
+        sides.push((tx, out_rx, ev_rx));
+    }
+    let txs: Vec<_> = sides.iter().map(|s| s.0.clone()).collect();
+    let tier = enclave_media::callvideo::tier(0);
+    // Ada talks and films for 4 s; the others send silence. Ben raises his
+    // hand; Dana reacts.
+    let talk = tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_millis(20));
+        for f in 0..200 {
+            tick.tick().await;
+            txs[0].send(ToCall::Mic(tone(f))).unwrap();
+            for tx in &txs[1..] {
+                tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+            }
+            if f % 3 == 0 {
+                let n = f as u32;
+                let mut px = Vec::with_capacity((tier.width * tier.height * 4) as usize);
+                for y in 0..tier.height {
+                    for x in 0..tier.width {
+                        px.extend_from_slice(&[
+                            ((x + n * 8) % 256) as u8,
+                            (y % 256) as u8,
+                            90,
+                            255,
+                        ]);
+                    }
+                }
+                txs[0].send(ToCall::Frame(px)).unwrap();
+            }
+            if f == 100 {
+                txs[1].send(ToCall::Hand(true)).unwrap();
+                txs[3].send(ToCall::React("👏".into())).unwrap();
+            }
+        }
+        txs
+    });
+    let txs = talk.await.unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    for (i, (_, out, ev)) in sides.iter_mut().enumerate() {
+        let mut heard = std::collections::BTreeSet::new();
+        let (mut connected, mut hand, mut react) = (false, false, false);
+        while let Ok(e) = ev.try_recv() {
+            match e {
+                CallEvent::Media(_, FromCall::Connected) => connected = true,
+                CallEvent::Media(_, FromCall::Heard(p)) => {
+                    heard.insert(p);
+                }
+                CallEvent::Media(_, FromCall::Hand(p, true)) => hand |= p == pid[1],
+                CallEvent::Media(_, FromCall::React(p, r)) => react |= p == pid[3] && r == "👏",
+                CallEvent::Media(_, FromCall::Dropped(why)) => {
+                    panic!("{}: dropped: {why}", names[i])
+                }
+                _ => {}
+            }
+        }
+        assert!(connected, "{} connected", names[i]);
+        let others: std::collections::BTreeSet<u32> = pid
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .map(|(_, p)| *p)
+            .collect();
+        assert_eq!(heard, others, "{} heard everyone else", names[i]);
+        if i != 1 {
+            assert!(hand, "{} saw Ben's hand", names[i]);
+        }
+        if i != 3 {
+            assert!(react, "{} saw Dana's reaction", names[i]);
+        }
+        let (mut loud, mut tiles) = (0, 0);
+        while let Ok(o) = out.try_recv() {
+            match o {
+                Out::CallAudio(pcm) => {
+                    let e: f64 =
+                        pcm.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / pcm.len() as f64;
+                    if e > 1e5 {
+                        loud += 1;
+                    }
+                }
+                Out::CallTile(who, w, h, px) => {
+                    assert_eq!(who, pid[0], "only Ada films");
+                    assert_eq!((w, h), (tier.width, tier.height));
+                    assert_eq!(px.len(), (w * h * 4) as usize);
+                    tiles += 1;
+                }
+                _ => {}
+            }
+        }
+        if i != 0 {
+            assert!(loud > 60, "{} heard Ada in {loud} frames", names[i]);
+        }
+        // Only Ben has a video decoder besides Ada (a video participant).
+        if i == 1 {
+            assert!(tiles >= 3, "Ben saw {tiles} of Ada's pictures");
+        }
+    }
+    // The SFU sent the call on to both other relays; Ben and Dana's relay
+    // sent each of them the other's media itself too.
+    assert!(ra.lock().await.stats().to_peer > 100);
+    assert!(rb.lock().await.stats().to_peer > 100);
+    assert!(rc.lock().await.stats().to_peer > 100);
+    drop(txs);
+    let _ = std::fs::remove_dir_all(&dir);
+}

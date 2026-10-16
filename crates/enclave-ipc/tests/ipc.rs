@@ -128,6 +128,16 @@ fn snapshot() -> Snapshot {
             error: String::new(),
             direct_asked: true,
             direct: true,
+            group: true,
+            hand: true,
+            cameras_full: true,
+            peers: vec![enclave_ipc::CallPeer {
+                id: 7,
+                name: "Priya".into(),
+                hand: true,
+                reaction: "👏".into(),
+            }],
+            live_groups: vec!["g01".into()],
         },
         new_device: "a new device, 30 Sep 14:02".into(),
         joining: vec!["Book club".into()],
@@ -283,6 +293,10 @@ fn cmds() -> Vec<Cmd> {
         Cmd::CallMic(vec![-3; 960]),
         Cmd::CallCamera(false),
         Cmd::CallFrame(2, 2, vec![9; 16]),
+        Cmd::StartGroupCall("g01".into(), true),
+        Cmd::JoinGroupCall("g01".into()),
+        Cmd::CallHand(true),
+        Cmd::CallReact("👏".into()),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
@@ -351,6 +365,7 @@ fn round_trips() {
         Out::UpdateBundle(b"ENCLUPD1".to_vec()),
         Out::CallAudio(vec![7; 960]),
         Out::CallVideo(2, 1, vec![3; 8]),
+        Out::CallTile(9, 1, 2, vec![4; 8]),
         Out::Notify(enclave_ipc::Notice {
             conversation: "ab".into(),
             title: "Priya".into(),
@@ -570,6 +585,16 @@ fn media_messages_round_trip_and_check_sizes() {
             id: 17,
             op: MediaOp::CallClose(4),
             bytes: Vec::new(),
+        },
+        MediaRequest {
+            id: 18,
+            op: MediaOp::CallMix(4),
+            bytes: vec![1, 0, 0, 0, 7, 0, 0, 2, 9, 9],
+        },
+        MediaRequest {
+            id: 19,
+            op: MediaOp::VideoDecodeFrom(4, 7),
+            bytes: vec![3; 40],
         },
     ] {
         assert_eq!(MediaRequest::decode(&r.encode()).unwrap(), r);

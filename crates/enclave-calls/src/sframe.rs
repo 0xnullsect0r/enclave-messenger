@@ -199,6 +199,27 @@ impl Receiver {
         }
     }
 
+    /// Start from the sender's `base_{p,0}`, already at `epoch` (a group
+    /// call joined late: epochs count from the call's start).
+    pub fn at_epoch(participant: u32, base0: &[u8; 32], epoch: u32) -> Self {
+        let mut base = Zeroizing::new(*base0);
+        for e in 1..=epoch {
+            ratchet(&mut base, e);
+        }
+        let current = epoch_key(&base, participant, epoch);
+        Self {
+            participant,
+            base,
+            current,
+            window: Window {
+                top: 0,
+                bits: 0,
+                any: false,
+            },
+            previous: None,
+        }
+    }
+
     /// Verify and decrypt one packet.
     pub fn unprotect(&mut self, packet: &[u8], metadata: &[u8]) -> Result<Vec<u8>> {
         let (k, ctr, hl) = parse_header(packet)?;
@@ -283,6 +304,18 @@ mod tests {
         // KID in 1 extra byte, CTR short.
         assert_eq!(parse_header(&[0x81, 0xAB]).unwrap(), (0xAB, 1, 2));
         assert!(parse_header(&[0xF8, 1, 2]).is_err(), "truncated");
+    }
+
+    #[test]
+    fn a_late_receiver_starts_at_the_senders_epoch() {
+        let base = [9u8; 32];
+        let mut tx = Sender::new(3, &base);
+        // Ten minutes into the call (120 epochs, past MAX_EPOCH_JUMP).
+        let p = tx.protect(600_000, b"audio", b"hello").unwrap();
+        let mut late = Receiver::at_epoch(3, &base, 120);
+        assert_eq!(late.unprotect(&p, b"audio").unwrap(), b"hello");
+        let mut fresh = Receiver::new(3, &base);
+        assert!(fresh.unprotect(&p, b"audio").is_err());
     }
 
     #[test]

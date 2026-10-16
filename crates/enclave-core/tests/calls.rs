@@ -126,3 +126,71 @@ async fn an_offer_and_its_answer_give_both_sides_the_same_keys() {
             .all(|m| m.text == "hi" || m.notice)
     );
 }
+
+/// Group call signalling (`docs/11-calls.md` §8) rides in the group's own
+/// messages: members get it as `Event::GroupCall`, never as a message, and
+/// the call's line is each device's own.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_call_signalling_reaches_the_members() {
+    use enclave_calls::group::GroupCallMessage;
+    let net = LocalTransport::new();
+    net.add_server(enclave_server::Config {
+        id: S1,
+        effort_request: 4,
+        effort_claim: 1,
+        blob_tokens_per_day: 64,
+        effort_username: 1,
+        ..Default::default()
+    })
+    .unwrap();
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut ben, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ben")
+        .await
+        .unwrap();
+    let a = ada.root();
+    ada.add_contact(&ben.card(), "hi").await.unwrap();
+    ben.sync().await.unwrap();
+    ben.accept(&a).await.unwrap();
+    ada.sync().await.unwrap();
+    let gid = ada.create_group("Trip", &[ben.root()]).await.unwrap();
+    for _ in 0..3 {
+        ben.sync().await.unwrap();
+        ada.sync().await.unwrap();
+    }
+    let start = GroupCallMessage::Start {
+        call_id: [5; 16],
+        secret: zeroize::Zeroizing::new([6; 64]),
+        sfu: [7; 16],
+        video: false,
+        started_ms: 1_790_000_000_000,
+    };
+    ada.send_group_call(&gid, &start.encode()).await.unwrap();
+    ada.add_group_call_line(&gid, "You started a call").unwrap();
+    let mut got = Vec::new();
+    for _ in 0..3 {
+        for e in ben.sync().await.unwrap() {
+            if let Event::GroupCall {
+                group_id,
+                from,
+                message,
+            } = e
+            {
+                got.push((group_id, from, GroupCallMessage::decode(&message).unwrap()));
+            }
+        }
+    }
+    assert_eq!(got.len(), 1);
+    assert_eq!((got[0].0, got[0].1), (gid, a));
+    assert!(got[0].2 == start);
+    // Signalling never shows as a message; the line is Ada's own.
+    assert!(
+        ben.group_messages(&gid)
+            .unwrap()
+            .iter()
+            .all(|m| !m.text.contains("call"))
+    );
+    let line = ada.group_messages(&gid).unwrap().pop().unwrap();
+    assert!(line.notice && line.text == "You started a call");
+}

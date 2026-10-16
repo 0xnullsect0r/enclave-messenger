@@ -86,7 +86,7 @@ fn duration_text(secs: u64) -> String {
 
 impl Engine {
     /// Relays in the server list (the profile's, else the build's).
-    fn relays(&self) -> Vec<ListedRelay> {
+    pub(super) fn relays(&self) -> Vec<ListedRelay> {
         match self
             .client
             .as_ref()
@@ -98,7 +98,7 @@ impl Engine {
     }
 
     /// A server's operator family ("" when it isn't listed).
-    fn family_of(&self, server: &[u8; 16]) -> String {
+    pub(super) fn family_of(&self, server: &[u8; 16]) -> String {
         self.servers()
             .iter()
             .find(|s| &s.id() == server)
@@ -106,7 +106,7 @@ impl Engine {
             .unwrap_or_default()
     }
 
-    fn relay_by_id(&self, id: &[u8]) -> Option<ListedRelay> {
+    pub(super) fn relay_by_id(&self, id: &[u8]) -> Option<ListedRelay> {
         self.relays()
             .into_iter()
             .find(|r| enclave_federation::relay_id(&r.identity)[..] == *id)
@@ -139,7 +139,7 @@ impl Engine {
     /// Our end at `relay` for call `id`: the standby tunnel's leg when it
     /// goes to that relay (Maximum privacy: the call starts unseen), else
     /// a new one.
-    fn leg_for(&mut self, id: [u8; 16], relay: ListedRelay) {
+    pub(super) fn leg_for(&mut self, id: [u8; 16], relay: ListedRelay) {
         match self.call_standby.take() {
             Some(s) if s.relay.identity == relay.identity => {
                 let tx = self.call_tx.clone();
@@ -172,6 +172,7 @@ impl Engine {
     async fn standby_upkeep(&mut self) {
         let wanted = self.visible
             && self.call.is_none()
+            && self.group_call.is_none()
             && self
                 .client
                 .as_ref()
@@ -179,7 +180,7 @@ impl Engine {
         if !wanted {
             // Dropping it stops the padding (a call took it already, or
             // Maximum privacy is off, or the app left the front).
-            if self.call.is_none() {
+            if self.call.is_none() && self.group_call.is_none() {
                 self.call_standby = None;
             }
             return;
@@ -252,7 +253,7 @@ impl Engine {
     }
 
     pub(super) async fn start_call(&mut self, conversation: &str, video: bool, direct: bool) {
-        if self.call.is_some() {
+        if self.call.is_some() || self.group_call.as_ref().is_some_and(|g| g.joined) {
             self.status = "You're already in a call.".into();
             return;
         }
@@ -339,6 +340,13 @@ impl Engine {
     }
 
     pub(super) async fn answer_call(&mut self, direct: bool) {
+        if self.call.is_none()
+            && let Some(g) = self.group_call.as_ref().filter(|g| !g.joined)
+        {
+            let conv = super::group_id_str(&g.gid);
+            self.join_group_call(&conv).await;
+            return;
+        }
         let Some(call) = self.call.as_mut() else {
             return;
         };
@@ -449,6 +457,7 @@ impl Engine {
 
     pub(super) async fn decline_call(&mut self) {
         let Some(call) = self.call.as_ref() else {
+            self.decline_group_call();
             return;
         };
         if call.phase != Phase::Ringing {
@@ -461,6 +470,11 @@ impl Engine {
 
     pub(super) async fn end_call(&mut self) {
         let Some(call) = self.call.as_ref() else {
+            if self.group_call.as_ref().is_some_and(|g| g.joined) {
+                self.leave_group_call("").await;
+            } else {
+                self.decline_group_call();
+            }
             return;
         };
         let (root, id) = (call.root, call.id);
@@ -475,6 +489,12 @@ impl Engine {
     }
 
     pub(super) fn call_mute(&mut self, on: bool) {
+        if let Some(g) = self.group_call.as_mut().filter(|g| g.joined) {
+            g.muted = on;
+            if let Some(tx) = &g.tx {
+                let _ = tx.send(ToCall::Mute(on));
+            }
+        }
         if let Some(call) = self.call.as_mut() {
             call.muted = on;
             if let Some(tx) = &call.tx {
@@ -484,6 +504,12 @@ impl Engine {
     }
 
     pub(super) fn call_camera(&mut self, on: bool) {
+        if let Some(g) = self.group_call.as_mut().filter(|g| g.joined && g.video) {
+            g.camera = on;
+            if let Some(tx) = &g.tx {
+                let _ = tx.send(ToCall::Camera(on));
+            }
+        }
         if let Some(call) = self.call.as_mut().filter(|c| c.video) {
             call.camera = on;
             if let Some(tx) = &call.tx {
@@ -498,18 +524,25 @@ impl Engine {
         if (width, height) != (t.width, t.height) {
             return;
         }
+        let group = self
+            .group_call
+            .as_ref()
+            .filter(|g| g.camera)
+            .and_then(|g| g.tx.as_ref());
         if let Some(tx) = self
             .call
             .as_ref()
             .filter(|c| c.camera)
             .and_then(|c| c.tx.as_ref())
+            .or(group)
         {
             let _ = tx.send(ToCall::Frame(rgba));
         }
     }
 
     pub(super) fn call_mic(&mut self, pcm: Vec<i16>) {
-        if let Some(tx) = self.call.as_ref().and_then(|c| c.tx.as_ref()) {
+        let group = self.group_call.as_ref().and_then(|g| g.tx.as_ref());
+        if let Some(tx) = self.call.as_ref().and_then(|c| c.tx.as_ref()).or(group) {
             let _ = tx.send(ToCall::Mic(pcm));
         }
     }
@@ -532,7 +565,7 @@ impl Engine {
                     }
                     return;
                 }
-                if self.call.is_some() {
+                if self.call.is_some() || self.group_call.as_ref().is_some_and(|g| g.joined) {
                     self.signal(&from, &CallMessage::Busy(o.call_id)).await;
                     if let Some(c) = self.client.as_mut() {
                         let _ = c.add_call_line(&from, false, "Missed call (you were in a call)");
@@ -541,6 +574,8 @@ impl Engine {
                 }
                 let video = matches!(o.media, Media::Video(_));
                 let id = o.call_id;
+                // A group call that only rang gives way.
+                self.group_call = None;
                 self.call = Some(Call {
                     id,
                     root: from,
@@ -733,6 +768,10 @@ impl Engine {
 
     /// What a leg or a running call reported.
     pub(super) async fn on_call_event(&mut self, ev: CallEvent) {
+        if self.is_group_event(&ev) {
+            self.on_group_call_event(ev).await;
+            return;
+        }
         let current = |e: &Self, id: &[u8; 16]| e.call.as_ref().is_some_and(|c| &c.id == id);
         match ev {
             CallEvent::Leg(id, Ok(leg)) if id == STANDBY => {
@@ -817,6 +856,7 @@ impl Engine {
     /// Every tick: unanswered calls time out; the ended notice goes.
     pub(super) async fn call_upkeep(&mut self) {
         self.standby_upkeep().await;
+        self.group_call_upkeep().await;
         if self
             .call_ended
             .as_ref()
@@ -842,7 +882,16 @@ impl Engine {
 
     /// The call as the window shows it.
     pub(super) fn call_view(&self) -> CallView {
+        let mut v = self.one_call_view();
+        v.live_groups = self.live_groups();
+        v
+    }
+
+    fn one_call_view(&self) -> CallView {
         let Some(call) = self.call.as_ref() else {
+            if let Some(g) = self.group_call.as_ref() {
+                return self.group_call_view(g);
+            }
             return self
                 .call_ended
                 .as_ref()
@@ -890,6 +939,7 @@ impl Engine {
                     .as_ref()
                     .is_some_and(|o| o.route == Route::Direct),
             direct: call.on_direct,
+            ..Default::default()
         }
     }
 }

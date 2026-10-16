@@ -40,6 +40,58 @@ pub const P_JOIN: u8 = 0x10;
 pub const P_MEDIA: u8 = 0x11;
 /// Link payload: keepalive.
 pub const P_KEEPALIVE: u8 = 0x12;
+/// Link payload: join a group call's rendezvous (as [`P_JOIN`]); the
+/// relay then sends this session its downlink in [`P_BUNDLE`]s.
+pub const P_JOIN_GROUP: u8 = 0x13;
+/// Link payload (relay → client, group calls): packets bundled into one
+/// fixed-size payload, `P_BUNDLE ‖ count ‖ (u16 len ‖ packet)… ‖ zeros`.
+pub const P_BUNDLE: u8 = 0x14;
+/// Bytes of a bundle payload: room for one video packet with its framing.
+pub const BUNDLE_LEN: usize = 1300;
+/// Microseconds between a group session's bundles: about 2.5 Mbit/s
+/// downlink, whatever the call carries (`docs/11-calls.md` §8).
+pub const BUNDLE_INTERVAL_US: u64 = 4_000;
+
+/// Relay helper: as many queued packets as fit, bundled and padded to
+/// [`BUNDLE_LEN`], from the first queue before the next (audio before
+/// video: past the downlink budget, pictures wait, voices don't).
+pub fn bundle(queues: &mut [&mut std::collections::VecDeque<Vec<u8>>]) -> Vec<u8> {
+    let mut v = vec![P_BUNDLE, 0];
+    for queue in queues.iter_mut() {
+        while let Some(p) = queue.front() {
+            if v.len() + 2 + p.len() > BUNDLE_LEN || v[1] == u8::MAX {
+                break;
+            }
+            let Some(p) = queue.pop_front() else { break };
+            v.extend_from_slice(&(p.len() as u16).to_be_bytes());
+            v.extend_from_slice(&p);
+            v[1] += 1;
+        }
+    }
+    v.resize(BUNDLE_LEN, 0);
+    v
+}
+
+/// Client helper: the packets in a bundle.
+pub fn unbundle(b: &[u8]) -> Vec<&[u8]> {
+    let mut out = Vec::new();
+    let [P_BUNDLE, count, rest @ ..] = b else {
+        return out;
+    };
+    let mut at = 0;
+    for _ in 0..*count {
+        let Some(len) = rest.get(at..at + 2) else {
+            break;
+        };
+        let len = usize::from(u16::from_be_bytes([len[0], len[1]]));
+        let Some(p) = rest.get(at + 2..at + 2 + len) else {
+            break;
+        };
+        out.push(p);
+        at += 2 + len;
+    }
+    out
+}
 
 /// Encode a join payload: rendezvous id and the peer relay's address.
 pub fn join_payload(rendezvous: &[u8; 16], peer: SocketAddr) -> Vec<u8> {
@@ -141,6 +193,26 @@ pub fn reflected(dg: &[u8]) -> Option<([u8; 8], SocketAddr)> {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn bundles_have_one_size_and_carry_what_fits() {
+        use std::collections::VecDeque;
+        let mut audio: VecDeque<Vec<u8>> = [vec![1u8; 160], vec![3u8; 160]].into_iter().collect();
+        let mut video: VecDeque<Vec<u8>> = [vec![2u8; 1200]].into_iter().collect();
+        let a = bundle(&mut [&mut audio, &mut video]);
+        assert_eq!(a.len(), BUNDLE_LEN);
+        assert_eq!(
+            unbundle(&a),
+            vec![&[1u8; 160][..], &[3u8; 160][..]],
+            "voices first"
+        );
+        let b = bundle(&mut [&mut audio, &mut video]);
+        assert_eq!(unbundle(&b), vec![&[2u8; 1200][..]]);
+        let empty = bundle(&mut [&mut audio, &mut video]);
+        assert_eq!(empty.len(), BUNDLE_LEN);
+        assert!(unbundle(&empty).is_empty());
+        assert!(unbundle(&[P_BUNDLE, 9, 0, 200]).is_empty());
+    }
 
     #[test]
     fn reflect_answers_with_the_address_and_never_more_than_it_was_sent() {

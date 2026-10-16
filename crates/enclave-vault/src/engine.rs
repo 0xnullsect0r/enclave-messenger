@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 mod calling;
+mod group_calling;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -409,6 +410,10 @@ struct Engine {
     /// Maximum privacy's standby call tunnel, and whether one is opening.
     call_standby: Option<crate::calls::Standby>,
     standby_opening: bool,
+    /// The group call we ring for or are in, and the calls going on in
+    /// our groups.
+    group_call: Option<group_calling::GroupCall>,
+    group_calls: HashMap<[u8; 32], group_calling::Known>,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -1069,6 +1074,8 @@ pub async fn run_with(
         listed_relays: Vec::new(),
         call_standby: None,
         standby_opening: false,
+        group_call: None,
+        group_calls: HashMap::new(),
         out,
     };
     e.load_list();
@@ -2943,6 +2950,12 @@ impl Engine {
             Cmd::CallMic(pcm) => self.call_mic(pcm),
             Cmd::CallCamera(on) => self.call_camera(on),
             Cmd::CallFrame(width, height, rgba) => self.call_frame(width, height, rgba),
+            Cmd::StartGroupCall(conversation, video) => {
+                self.start_group_call(&conversation, video).await
+            }
+            Cmd::JoinGroupCall(conversation) => self.join_group_call(&conversation).await,
+            Cmd::CallHand(up) => self.call_hand(up),
+            Cmd::CallReact(emoji) => self.call_react(emoji),
             Cmd::CheckUpdates => {
                 self.update_day = 0;
                 if self.client.is_some() {
@@ -3501,6 +3514,7 @@ impl Engine {
             eprintln!("enclave-vault: mixnet tickets: {e}");
         }
         let mut call_messages: Vec<([u8; 64], Vec<u8>)> = Vec::new();
+        let mut group_call_messages: Vec<([u8; 32], [u8; 64], Vec<u8>)> = Vec::new();
         if let Some(c) = self.client.as_mut() {
             let result = if shaped {
                 c.sync_round_every(round, period).await
@@ -3521,6 +3535,14 @@ impl Engine {
                     }
                     call_messages.extend(events.iter().filter_map(|e| match e {
                         Event::Call { from, message } => Some((*from, message.clone())),
+                        _ => None,
+                    }));
+                    group_call_messages.extend(events.iter().filter_map(|e| match e {
+                        Event::GroupCall {
+                            group_id,
+                            from,
+                            message,
+                        } => Some((*group_id, *from, message.clone())),
                         _ => None,
                     }));
                     if let Some(Event::UsernameProblem { address }) = events
@@ -3654,6 +3676,9 @@ impl Engine {
         }
         for (from, message) in call_messages {
             self.on_call_message(from, &message).await;
+        }
+        for (gid, from, message) in group_call_messages {
+            self.on_group_call_message(gid, from, &message).await;
         }
         #[cfg(target_os = "ios")]
         self.share_notify_table();

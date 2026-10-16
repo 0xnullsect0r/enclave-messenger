@@ -40,7 +40,12 @@ pub struct CallAudio {
     enc: opus_rs::OpusEncoder,
     dec: opus_decoder::OpusDecoder,
     apm: AudioProcessing,
+    /// A group call's decoders, one per other participant.
+    decoders: std::collections::HashMap<u32, opus_decoder::OpusDecoder>,
 }
+
+/// Most other participants one group call decodes.
+pub const MAX_SENDERS: usize = 64;
 
 impl CallAudio {
     /// A fresh call.
@@ -62,7 +67,12 @@ impl CallAudio {
             .capture_config(StreamConfig::new(RATE, 1))
             .render_config(StreamConfig::new(RATE, 1))
             .build();
-        Ok(Self { enc, dec, apm })
+        Ok(Self {
+            enc,
+            dec,
+            apm,
+            decoders: std::collections::HashMap::new(),
+        })
     }
 
     /// The microphone's next 20 ms ([`FRAME`] samples; shorter is padded
@@ -117,6 +127,51 @@ impl CallAudio {
     }
 }
 
+impl CallAudio {
+    /// A group call's next 20 ms: each sender's frame decoded by that
+    /// sender's own decoder, mixed (clipped at full scale), and played as
+    /// the echo canceller's reference.
+    pub fn mix(&mut self, frames: &[(u32, Decode<'_>)]) -> Result<Vec<i16>> {
+        let mut sum = vec![0i32; FRAME];
+        for (sender, what) in frames {
+            if !self.decoders.contains_key(sender) {
+                if self.decoders.len() >= MAX_SENDERS {
+                    continue;
+                }
+                let d = opus_decoder::OpusDecoder::new(RATE, 1).map_err(|_| MediaError::Encode)?;
+                self.decoders.insert(*sender, d);
+            }
+            let Some(dec) = self.decoders.get_mut(sender) else {
+                continue;
+            };
+            let (packet, fec): (&[u8], bool) = match what {
+                Decode::Packet(p) => (p, false),
+                Decode::Recover(p) => (p, true),
+                Decode::Lost => (&[], false),
+            };
+            if packet.len() > MAX_PACKET {
+                continue;
+            }
+            let mut pcm = vec![0i16; FRAME];
+            // A damaged frame from one person leaves the others' voices.
+            if dec.decode(packet, &mut pcm, fec).is_ok_and(|n| n == FRAME) {
+                for (s, p) in sum.iter_mut().zip(pcm) {
+                    *s += i32::from(p);
+                }
+            }
+        }
+        let mixed: Vec<i16> = sum
+            .into_iter()
+            .map(|s| s.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16)
+            .collect();
+        let mut ignored = vec![0i16; HALF];
+        for half in mixed.chunks(HALF) {
+            let _ = self.apm.process_render_i16(half, &mut ignored);
+        }
+        Ok(mixed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -133,6 +188,46 @@ mod tests {
 
     fn energy(pcm: &[i16]) -> f64 {
         pcm.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / pcm.len() as f64
+    }
+
+    #[test]
+    fn group_frames_are_decoded_per_sender_and_mixed() {
+        let (mut a, mut b, mut me) = (
+            CallAudio::new().unwrap(),
+            CallAudio::new().unwrap(),
+            CallAudio::new().unwrap(),
+        );
+        // Each sender decoded on its own, for comparison.
+        let (mut only_a, mut only_b) = (CallAudio::new().unwrap(), CallAudio::new().unwrap());
+        let mut heard = 0;
+        for f in 0..40 {
+            let pa = a.encode(&tone(f, 440.0)).unwrap();
+            let pb = b.encode(&tone(f, 660.0)).unwrap();
+            let mixed = me
+                .mix(&[(7, Decode::Packet(&pa)), (9, Decode::Packet(&pb))])
+                .unwrap();
+            let (da, db) = (
+                only_a.decode(Decode::Packet(&pa)).unwrap(),
+                only_b.decode(Decode::Packet(&pb)).unwrap(),
+            );
+            let expect: Vec<i16> = da
+                .iter()
+                .zip(&db)
+                .map(|(x, y)| (i32::from(*x) + i32::from(*y)).clamp(-32768, 32767) as i16)
+                .collect();
+            assert_eq!(mixed, expect, "frame {f}: the sum of both voices");
+            if energy(&da) > 1e5 && energy(&db) > 1e5 {
+                heard += 1;
+            }
+        }
+        assert!(heard > 20, "both voices came through ({heard} frames)");
+        // A lost frame from one sender, garbage from another: still a frame.
+        assert_eq!(
+            me.mix(&[(7, Decode::Lost), (9, Decode::Packet(&[0xff; 50]))])
+                .unwrap()
+                .len(),
+            FRAME
+        );
     }
 
     #[test]

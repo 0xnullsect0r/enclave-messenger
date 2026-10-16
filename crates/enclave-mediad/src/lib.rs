@@ -30,6 +30,8 @@ struct Calls {
             enclave_media::callvideo::VideoDecoder,
         ),
     >,
+    /// A group call's video decoders, one per other participant.
+    from: std::collections::HashMap<(u32, u32), enclave_media::callvideo::VideoDecoder>,
 }
 
 /// Most calls at once.
@@ -44,6 +46,29 @@ fn bytes_pcm(b: &[u8]) -> Vec<i16> {
     b.chunks_exact(2)
         .map(|c| i16::from_le_bytes([c[0], c[1]]))
         .collect()
+}
+
+/// A [`MediaOp::CallMix`]'s frames: `count ‖ (u32 sender ‖ u8 how ‖ u16
+/// len ‖ frame)…`.
+fn mix_frames(b: &[u8]) -> Option<Vec<(u32, enclave_ipc::media::CallDecode, &[u8])>> {
+    use enclave_ipc::media::CallDecode;
+    let (&count, mut rest) = b.split_first()?;
+    let mut out = Vec::new();
+    for _ in 0..count {
+        let (head, more) = rest.split_at_checked(7)?;
+        let sender = u32::from_be_bytes(head[..4].try_into().ok()?);
+        let how = match head[4] {
+            0 => CallDecode::Packet,
+            1 => CallDecode::Recover,
+            2 => CallDecode::Lost,
+            _ => return None,
+        };
+        let len = usize::from(u16::from_be_bytes([head[5], head[6]]));
+        let (frame, more) = more.split_at_checked(len)?;
+        out.push((sender, how, frame));
+        rest = more;
+    }
+    rest.is_empty().then_some(out)
 }
 
 fn call_op(op: MediaOp, bytes: &[u8], calls: &mut Calls) -> enclave_media::Result<MediaOut> {
@@ -91,7 +116,48 @@ fn call_op(op: MediaOp, bytes: &[u8], calls: &mut Calls) -> enclave_media::Resul
         }
         MediaOp::VideoClose(n) => {
             calls.video.remove(&n);
+            calls.from.retain(|(c, _), _| *c != n);
             Ok(MediaOut::Raw(Vec::new()))
+        }
+        MediaOp::VideoDecodeFrom(n, sender) => {
+            use enclave_media::callvideo::VideoDecoder;
+            if !calls.video.contains_key(&n) {
+                return Err(missing);
+            }
+            if !calls.from.contains_key(&(n, sender)) {
+                let count = calls.from.keys().filter(|(c, _)| *c == n).count();
+                if count >= enclave_media::call::MAX_SENDERS {
+                    return Err(MediaError::TooLarge);
+                }
+                calls.from.insert((n, sender), VideoDecoder::new()?);
+            }
+            let dec = calls.from.get_mut(&(n, sender)).ok_or(missing)?;
+            Ok(match dec.decode(bytes)? {
+                Some(img) => MediaOut::Rgba {
+                    width: img.width,
+                    height: img.height,
+                    pixels: img.pixels,
+                },
+                None => MediaOut::Raw(Vec::new()),
+            })
+        }
+        MediaOp::CallMix(n) => {
+            let c = calls.audio.get_mut(&n).ok_or(missing)?;
+            let frames = mix_frames(bytes).ok_or(MediaError::Damaged)?;
+            let what: Vec<(u32, Decode<'_>)> = frames
+                .iter()
+                .map(|(s, how, b)| {
+                    (
+                        *s,
+                        match how {
+                            CallDecode::Packet => Decode::Packet(b),
+                            CallDecode::Recover => Decode::Recover(b),
+                            CallDecode::Lost => Decode::Lost,
+                        },
+                    )
+                })
+                .collect();
+            c.mix(&what).map(|pcm| MediaOut::Raw(pcm_bytes(&pcm)))
         }
         MediaOp::CallEncode(n) => {
             if bytes.len() > FRAME * 2 {
@@ -126,7 +192,9 @@ fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
         | MediaOp::VideoOpen(..)
         | MediaOp::VideoEncode(..)
         | MediaOp::VideoDecode(_)
-        | MediaOp::VideoClose(_) => call_op(req.op, &req.bytes, calls),
+        | MediaOp::VideoClose(_)
+        | MediaOp::CallMix(_)
+        | MediaOp::VideoDecodeFrom(..) => call_op(req.op, &req.bytes, calls),
         MediaOp::Sanitize => enclave_media::sanitize(&req.bytes).map(|s| MediaOut::Sanitized {
             png: s.format == enclave_media::Format::Png,
             width: s.width,

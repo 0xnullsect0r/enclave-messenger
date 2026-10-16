@@ -38,6 +38,9 @@ const K_DELETE: u8 = 7;
 const K_ATTACHMENT: u8 = 8;
 const K_STICKER: u8 = 9;
 const K_HOST_VOTE: u8 = 10;
+const K_CALL: u8 = 11;
+/// Most bytes of a group call message (`enclave_calls::group`).
+const MAX_CALL: usize = 256;
 
 pub(crate) enum Rich {
     Poll {
@@ -88,6 +91,11 @@ pub(crate) enum Rich {
     /// (`group_hosts.rs`).
     HostVote {
         host: [u8; 16],
+    },
+    /// Group call signalling (`enclave_calls::group`; the vault runs the
+    /// call).
+    Call {
+        message: Vec<u8>,
     },
 }
 
@@ -146,6 +154,9 @@ impl Rich {
             Rich::HostVote { host } => {
                 w.u8(K_HOST_VOTE).fixed(host);
             }
+            Rich::Call { message } => {
+                w.u8(K_CALL).bytes(message);
+            }
         }
         w.finish()
     }
@@ -197,6 +208,9 @@ impl Rich {
                 caption: get_str(&mut r, MAX_TEXT)?,
             },
             K_HOST_VOTE => Rich::HostVote { host: r.array()? },
+            K_CALL => Rich::Call {
+                message: r.bytes(MAX_CALL)?.to_vec(),
+            },
             K_PIN => Rich::Pin {
                 id: r.array()?,
                 on: match r.u8()? {
@@ -552,6 +566,11 @@ impl Client {
                 self.on_host_vote(gid, from, host, now)?;
                 Ok(None)
             }
+            Rich::Call { message } => Ok(Some(Event::GroupCall {
+                group_id: *gid,
+                from: *from,
+                message,
+            })),
         }
     }
 }
