@@ -441,6 +441,12 @@ impl Transport for ShapedTransport {
         self.inner.open_udp(remote).await
     }
 
+    async fn open_udp_any(
+        &self,
+    ) -> Result<(crate::transport::Datagrams, Option<std::net::SocketAddr>)> {
+        self.inner.open_udp_any().await
+    }
+
     // Outside the shape: Tor carries these, not the mixnet.
     async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
         self.inner.fetch(method, url, body).await

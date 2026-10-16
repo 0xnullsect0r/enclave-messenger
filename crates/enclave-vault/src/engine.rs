@@ -2927,8 +2927,11 @@ impl Engine {
                     let _ = c.history_lan_failed(&offer.attachment);
                 }
             }
-            Cmd::StartCall(conversation, video) => self.start_call(&conversation, video).await,
-            Cmd::AnswerCall => self.answer_call().await,
+            Cmd::StartCall(conversation, video, direct) => {
+                self.start_call(&conversation, video, direct).await
+            }
+            Cmd::AnswerCall => self.answer_call(false).await,
+            Cmd::AnswerCallDirect => self.answer_call(true).await,
             Cmd::DeclineCall => self.decline_call().await,
             Cmd::EndCall => self.end_call().await,
             Cmd::CallMute(on) => self.call_mute(on),

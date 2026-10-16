@@ -511,6 +511,14 @@ fn main() -> Result<(), slint::PlatformError> {
         view::apply(&ui, &data);
         shot("05-conversation", desktop);
         shot("05-conversation-phone", phone);
+        // Before a call: the private route, or direct with a warning.
+        ui.set_call_route_video(false);
+        ui.set_call_route_warned(false);
+        ui.set_sheet(Sheet::CallRoute);
+        shot("59-call-route-phone", phone);
+        ui.set_call_route_warned(true);
+        shot("59-call-route-unchecked-phone", phone);
+        ui.set_sheet(Sheet::None);
 
         // A call: ringing, then on with its check words.
         let mut call = data.clone();
@@ -526,6 +534,10 @@ fn main() -> Result<(), slint::PlatformError> {
         };
         view::apply(&ui, &call);
         shot("60-call-ringing-phone", phone);
+        call.call.direct_asked = true;
+        view::apply(&ui, &call);
+        shot("60-call-ringing-direct-phone", phone);
+        call.call.direct_asked = false;
         call.call.state = 4;
         call.call.words = "harbor velvet".into();
         call.call.connected_at = 1;

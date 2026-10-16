@@ -393,6 +393,75 @@ impl RelayLinks {
     }
 }
 
+/// A direct call's link to the other person (`docs/11-calls.md` §4):
+/// WireGuard between the two ends' fresh per-call keys (exchanged in
+/// ratchet messages, so authenticated), under the call's direct-mode
+/// pre-shared key. The caller initiates; WireGuard's own handshake is the
+/// connectivity check, sent to each address the other side named.
+pub struct DirectLink {
+    tunnel: Tunnel,
+    initiator: bool,
+}
+
+impl DirectLink {
+    /// Our secret key, the other end's public key, the call's direct PSK,
+    /// and whether we start the handshake (the caller).
+    pub fn new(secret: [u8; 32], peer: [u8; 32], psk: [u8; 32], initiator: bool) -> Self {
+        Self {
+            tunnel: Tunnel {
+                period: 0,
+                index: 1,
+                tunn: Tunn::new(
+                    StaticSecret::from(secret),
+                    PublicKey::from(peer),
+                    Some(psk),
+                    Some(KEEPALIVE),
+                    1,
+                    None,
+                ),
+                established: false,
+            },
+            initiator,
+        }
+    }
+
+    /// Whether the handshake has completed.
+    pub fn established(&self) -> bool {
+        self.tunnel.established
+    }
+
+    /// A handshake initiation (the initiator, until the link is up; sent
+    /// to every candidate address), else nothing.
+    pub fn probe(&mut self) -> Vec<u8> {
+        if !self.initiator || self.tunnel.established {
+            return Vec::new();
+        }
+        let mut buf = vec![0u8; MAX_DATAGRAM];
+        match self.tunnel.tunn.format_handshake_initiation(&mut buf, true) {
+            TunnResult::WriteToNetwork(b) => b.to_vec(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Datagrams that carry `payload` (queued until the handshake is done).
+    pub fn send(&mut self, payload: &[u8]) -> Result<Vec<Vec<u8>>> {
+        encapsulate(&mut self.tunnel, payload)
+    }
+
+    /// A datagram from the other end.
+    pub fn receive(&mut self, dg: &[u8]) -> Result<Received> {
+        Tunn::parse_incoming_packet(dg).map_err(|_| CallError::Malformed)?;
+        let mut out = Received::default();
+        decapsulate(&mut self.tunnel, dg, &mut out)?;
+        Ok(out)
+    }
+
+    /// Timers (rekeys, keepalives): what to send now. Every second or so.
+    pub fn tick(&mut self) -> Vec<Vec<u8>> {
+        timers(&mut self.tunnel)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,5 +550,44 @@ mod tests {
         assert!(relay.receive(later, &dg).is_err());
         // Expired tickets end the link.
         assert!(client.send(now + 3600, b"late").is_err());
+    }
+
+    #[test]
+    fn direct_links_handshake_and_carry_payloads() {
+        let (a, b) = ([11u8; 32], [12u8; 32]);
+        let psk = [13u8; 32];
+        let mut caller = DirectLink::new(a, public_key(b), psk, true);
+        let mut callee = DirectLink::new(b, public_key(a), psk, false);
+        assert!(callee.probe().is_empty(), "only the caller probes");
+        let init = caller.probe();
+        assert!(!init.is_empty());
+        let r = callee.receive(&init).unwrap();
+        assert!(callee.established() || !r.send.is_empty());
+        for dg in r.send {
+            let back = caller.receive(&dg).unwrap();
+            assert!(back.send.is_empty() || back.payload.is_none());
+        }
+        assert!(caller.established());
+        assert!(caller.probe().is_empty(), "no more probes once up");
+        let up = caller.send(b"hello direct").unwrap();
+        let mut got = None;
+        for dg in up {
+            let r = callee.receive(&dg).unwrap();
+            got = got.or(r.payload);
+        }
+        assert_eq!(got.as_deref(), Some(&b"hello direct"[..]));
+        assert!(callee.established());
+        for dg in callee.send(b"and back").unwrap() {
+            assert_eq!(
+                caller.receive(&dg).unwrap().payload.as_deref(),
+                Some(&b"and back"[..])
+            );
+        }
+        // The wrong pre-shared key (not this call) gets nowhere.
+        let mut stranger = DirectLink::new([14; 32], public_key(b), [0; 32], true);
+        let mut other = DirectLink::new(b, public_key([14; 32]), psk, false);
+        let r = other.receive(&stranger.probe());
+        assert!(r.is_err() || r.unwrap().send.iter().all(|d| stranger.receive(d).is_err()));
+        assert!(!stranger.established());
     }
 }

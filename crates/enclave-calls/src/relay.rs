@@ -4,6 +4,7 @@
 //! ```text
 //! T_DESC   ‖ part ‖ zeros to DESC_REQUEST          → T_DESC ‖ part ‖ count ‖ ≤ DESC_PART bytes
 //! T_TICKET ‖ id (8) ‖ index ‖ count ‖ ≤ TICKET_PART → T_TICKET ‖ id ‖ sealed ticket reply
+//! T_REFLECT ‖ nonce (8) ‖ zeros to REFLECT_REQUEST → T_REFLECT ‖ nonce ‖ len ‖ "IP:PORT" seen
 //! WireGuard (types 1–4)                             payloads: P_JOIN, P_MEDIA, P_KEEPALIVE
 //! ```
 
@@ -17,6 +18,11 @@ pub const T_TICKET: u8 = 0x10;
 /// Datagram type: a request for one part of the signed descriptor, or
 /// that part.
 pub const T_DESC: u8 = 0x11;
+/// Datagram type: what address did this come from? (Direct mode's
+/// candidates, `docs/11-calls.md` §4: the relay is the only STUN server.)
+pub const T_REFLECT: u8 = 0x12;
+/// A reflect request is padded to this many bytes, more than any answer.
+pub const REFLECT_REQUEST: usize = 64;
 /// A descriptor request is padded to this many bytes, so the relay never
 /// answers with more than it was sent (no amplification).
 pub const DESC_REQUEST: usize = 1100;
@@ -94,5 +100,56 @@ pub fn ticket_reply(dg: &[u8]) -> Option<([u8; 8], &[u8])> {
     match dg {
         [T_TICKET, rest @ ..] if rest.len() > 8 => Some((rest[..8].try_into().ok()?, &rest[8..])),
         _ => None,
+    }
+}
+
+/// Client helper: a request for the address a relay sees us at.
+pub fn reflect_request(nonce: [u8; 8]) -> Vec<u8> {
+    let mut v = vec![0u8; REFLECT_REQUEST];
+    v[0] = T_REFLECT;
+    v[1..9].copy_from_slice(&nonce);
+    v
+}
+
+/// Relay helper: the answer to a reflect request from `from`.
+pub fn reflect_reply(dg: &[u8], from: SocketAddr) -> Option<Vec<u8>> {
+    if dg.len() < REFLECT_REQUEST || dg.first() != Some(&T_REFLECT) {
+        return None;
+    }
+    let seen = from.to_string();
+    let mut v = vec![T_REFLECT];
+    v.extend_from_slice(&dg[1..9]);
+    v.push(seen.len() as u8);
+    v.extend_from_slice(seen.as_bytes());
+    Some(v)
+}
+
+/// Client helper: a reflect answer's nonce and the address it names.
+pub fn reflected(dg: &[u8]) -> Option<([u8; 8], SocketAddr)> {
+    match dg {
+        [T_REFLECT, rest @ ..] if rest.len() > 9 => {
+            let nonce: [u8; 8] = rest[..8].try_into().ok()?;
+            let n = usize::from(rest[8]);
+            let s = std::str::from_utf8(rest.get(9..9 + n)?).ok()?;
+            Some((nonce, s.parse().ok()?))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn reflect_answers_with_the_address_and_never_more_than_it_was_sent() {
+        let from: SocketAddr = "[2001:db8::1234:5678:9abc:def0]:65535".parse().unwrap();
+        let req = reflect_request([7; 8]);
+        let reply = reflect_reply(&req, from).unwrap();
+        assert!(reply.len() <= req.len());
+        assert_eq!(reflected(&reply), Some(([7; 8], from)));
+        assert!(reflect_reply(&req[..10], from).is_none());
+        assert!(reflected(&req).is_none());
     }
 }

@@ -735,11 +735,19 @@ const MAX_SOCKETS: usize = 8;
 /// Largest datagram read.
 const MAX_DATAGRAM: usize = 2048;
 
-type Socket = (Arc<tokio::net::UdpSocket>, tokio::task::JoinHandle<()>);
+/// A socket, its reader, and whether it talks to any address.
+type Socket = (
+    Arc<tokio::net::UdpSocket>,
+    tokio::task::JoinHandle<()>,
+    bool,
+);
 
-/// The UDP sockets calls use. Each is connected to one address; what
-/// arrives on it goes to the vault as a [`enclave_ipc::net::SOCKET_EVENT`]
-/// reply, and an error closes it.
+/// The UDP sockets calls use. Most are connected to one address (a relay);
+/// a direct call's talks to any (its relay, for its address as seen from
+/// outside, and the other person), with each datagram's address framed on
+/// it both ways (`enclave_net::transport::addressed`). What arrives goes to
+/// the vault as a [`enclave_ipc::net::SOCKET_EVENT`] reply, and an error
+/// closes it.
 #[derive(Default)]
 struct Udp {
     next: std::sync::atomic::AtomicU32,
@@ -747,40 +755,76 @@ struct Udp {
 }
 
 impl Udp {
+    /// Open a socket to `remote`, or to any address when it is empty. The
+    /// reply is the socket's number, then (any address) its own address on
+    /// the local network if known.
     async fn open(
         &self,
         remote: &str,
         tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     ) -> Result<Vec<u8>, String> {
         use enclave_ipc::net::SOCKET_EVENT;
+        use enclave_net::transport::{addressed, local_ip};
         if self.open.lock().map(|o| o.len()).unwrap_or(MAX_SOCKETS) >= MAX_SOCKETS {
             return Err("too many call sockets".into());
         }
-        let addr = tokio::net::lookup_host(remote)
-            .await
-            .map_err(|e| format!("{remote}: {e}"))?
-            .next()
-            .ok_or_else(|| format!("{remote}: no address"))?;
-        let local: std::net::SocketAddr = if addr.is_ipv4() {
-            ([0, 0, 0, 0], 0).into()
+        let any = remote.is_empty();
+        let sock = if any {
+            tokio::net::UdpSocket::bind(("0.0.0.0", 0))
+                .await
+                .map_err(|e| e.to_string())?
         } else {
-            (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
+            let addr = tokio::net::lookup_host(remote)
+                .await
+                .map_err(|e| format!("{remote}: {e}"))?
+                .next()
+                .ok_or_else(|| format!("{remote}: no address"))?;
+            let local: std::net::SocketAddr = if addr.is_ipv4() {
+                ([0, 0, 0, 0], 0).into()
+            } else {
+                (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
+            };
+            let sock = tokio::net::UdpSocket::bind(local)
+                .await
+                .map_err(|e| e.to_string())?;
+            sock.connect(addr).await.map_err(|e| e.to_string())?;
+            sock
         };
-        let sock = tokio::net::UdpSocket::bind(local)
-            .await
-            .map_err(|e| e.to_string())?;
-        sock.connect(addr).await.map_err(|e| e.to_string())?;
         let sock = Arc::new(sock);
         let n = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % SOCKET_EVENT;
+        let mut reply = n.to_be_bytes().to_vec();
+        if any && let (Some(ip), Ok(bound)) = (local_ip(), sock.local_addr()) {
+            reply.extend_from_slice(
+                std::net::SocketAddr::new(ip, bound.port())
+                    .to_string()
+                    .as_bytes(),
+            );
+        }
         let reader = Arc::clone(&sock);
         let task = tokio::spawn(async move {
             let mut buf = vec![0u8; MAX_DATAGRAM];
             loop {
-                let result = match reader.recv(&mut buf).await {
-                    Ok(len) => Ok(buf[..len].to_vec()),
+                let got = if any {
+                    reader
+                        .recv_from(&mut buf)
+                        .await
+                        .map(|(len, from)| addressed(from, &buf[..len]))
+                } else {
+                    reader.recv(&mut buf).await.map(|len| buf[..len].to_vec())
+                };
+                let result = match got {
+                    Ok(d) => Ok(d),
                     // ICMP unreachable doesn't close it: the relay may
-                    // just not be up yet.
-                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => continue,
+                    // just not be up yet (Windows says "reset").
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::ConnectionRefused
+                                | std::io::ErrorKind::ConnectionReset
+                        ) =>
+                    {
+                        continue;
+                    }
                     Err(e) => Err(e.to_string()),
                 };
                 let closed = result.is_err();
@@ -794,9 +838,9 @@ impl Udp {
             }
         });
         if let Ok(mut o) = self.open.lock() {
-            o.insert(n, (sock, task));
+            o.insert(n, (sock, task, any));
         }
-        Ok(n.to_be_bytes().to_vec())
+        Ok(reply)
     }
 
     async fn send(&self, socket: u32, bytes: &[u8]) {
@@ -804,15 +848,23 @@ impl Udp {
             .open
             .lock()
             .ok()
-            .and_then(|o| o.get(&socket).map(|s| Arc::clone(&s.0)));
-        if let Some(s) = sock {
-            // A datagram that can't go is lost, as on the network.
-            let _ = s.send(bytes).await;
+            .and_then(|o| o.get(&socket).map(|s| (Arc::clone(&s.0), s.2)));
+        // A datagram that can't go is lost, as on the network.
+        match sock {
+            Some((s, false)) => {
+                let _ = s.send(bytes).await;
+            }
+            Some((s, true)) => {
+                if let Some((to, bytes)) = enclave_net::transport::unaddressed(bytes) {
+                    let _ = s.send_to(bytes, to).await;
+                }
+            }
+            None => {}
         }
     }
 
     fn close(&self, socket: u32) {
-        if let Some((_, task)) = self.open.lock().ok().and_then(|mut o| o.remove(&socket)) {
+        if let Some((_, task, _)) = self.open.lock().ok().and_then(|mut o| o.remove(&socket)) {
             task.abort();
         }
     }
@@ -830,7 +882,7 @@ mod tests {
         let addr = peer.local_addr().unwrap();
         let udp = Udp::default();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let n = udp.open(&addr.to_string(), tx).await.unwrap();
+        let n = udp.open(&addr.to_string(), tx.clone()).await.unwrap();
         let n = u32::from_be_bytes(n.try_into().unwrap());
         udp.send(n, b"to the relay").await;
         let mut buf = [0u8; 64];
@@ -842,6 +894,19 @@ mod tests {
         assert_eq!(reply.result, Ok(b"back".to_vec()));
         udp.close(n);
         udp.send(n, b"gone").await;
+        // A socket to any address: datagrams carry their address.
+        use enclave_net::transport::{addressed, unaddressed};
+        let opened = udp.open("", tx).await.unwrap();
+        let n = u32::from_be_bytes(opened[..4].try_into().unwrap());
+        udp.send(n, &addressed(addr, b"to anyone")).await;
+        let (len, from) = peer.recv_from(&mut buf).await.unwrap();
+        assert_eq!(&buf[..len], b"to anyone");
+        peer.send_to(b"from the peer", from).await.unwrap();
+        let reply = NetReply::decode(&rx.recv().await.unwrap()).unwrap();
+        let dg = reply.result.unwrap();
+        let (got_from, bytes) = unaddressed(&dg).unwrap();
+        assert_eq!((got_from, bytes), (addr, &b"from the peer"[..]));
+        udp.close(n);
         assert!(
             udp.open("not an address", tokio::sync::mpsc::unbounded_channel().0)
                 .await

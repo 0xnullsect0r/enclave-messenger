@@ -395,6 +395,36 @@ impl Transport for PipeTransport {
         Ok(Datagrams { send, recv })
     }
 
+    async fn open_udp_any(&self) -> enclave_net::Result<(Datagrams, Option<std::net::SocketAddr>)> {
+        let l = self.link()?;
+        let b = Self::send(l, |id| NetRequest::UdpOpen {
+            id,
+            remote: String::new(),
+        })
+        .await?;
+        let (n, local) = b.split_first_chunk::<4>().ok_or(NetError::BadReply)?;
+        let socket = u32::from_be_bytes(*n);
+        let local = std::str::from_utf8(local).ok().and_then(|s| s.parse().ok());
+        let (deliver, recv) = mpsc::unbounded_channel();
+        if let Ok(mut s) = l.sockets.lock() {
+            s.insert(socket, deliver);
+        }
+        let (send, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
+        let out = l.out.clone();
+        tokio::spawn(async move {
+            while let Some(bytes) = outgoing.recv().await {
+                if out
+                    .send(NetRequest::UdpSend { socket, bytes }.encode())
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            let _ = out.send(NetRequest::UdpClose { socket }.encode());
+        });
+        Ok((Datagrams { send, recv }, local))
+    }
+
     async fn tor_status(&self) -> enclave_net::Result<u8> {
         let b = self.call(|id| NetRequest::TorStatus { id }).await?;
         b.first().copied().ok_or(NetError::BadReply)

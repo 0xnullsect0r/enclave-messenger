@@ -249,3 +249,96 @@ async fn video_goes_through_two_relays() {
     assert!(pictures >= 3, "Ben saw {pictures} pictures");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Direct mode (`docs/11-calls.md` §4): each side learns its address from
+/// its relay, the two exchange candidates, and once WireGuard's handshake
+/// (the caller's probes) gets through, the media goes directly, with the
+/// relays kept as the fallback.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn audio_goes_directly_once_both_agree() {
+    let dir = std::env::temp_dir().join(format!("enclave-direct-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, ab) = relay(&dir.join("b"), "beta").await;
+    {
+        let d = rb.lock().await.descriptor().clone();
+        ra.lock().await.add_peer(&d).unwrap();
+        let d = ra.lock().await.descriptor().clone();
+        rb.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let leg_a = calls::open_leg(&t, &la).await.unwrap();
+    let leg_b = calls::open_leg(&t, &lb).await.unwrap();
+    // Each side's address as its own relay sees it, and its key.
+    let side_a = calls::open_direct(&t, &la).await.unwrap();
+    let side_b = calls::open_direct(&t, &lb).await.unwrap();
+    assert!(
+        side_a.ours.addrs.iter().any(|a| a.ip().is_loopback()),
+        "the relay reflected {:?}",
+        side_a.ours.addrs
+    );
+    let (cand_a, cand_b) = (side_a.ours.clone(), side_b.ours.clone());
+
+    let mut rng = HedgedRng::new().unwrap();
+    let pending = signal::offer(Media::Audio, Route::Direct, vec![], now(), &mut rng).unwrap();
+    let id = pending.offer().call_id;
+    let (ans, kb) = signal::answer(pending.offer(), vec![], b"conv", now(), &mut rng).unwrap();
+    let ka = pending.finish(&ans, b"conv", now()).unwrap();
+    assert_eq!(*ka.direct_psk(), *kb.direct_psk());
+    let paths = [
+        calls::DirectPath::new(side_a, &cand_b, *ka.direct_psk(), true),
+        calls::DirectPath::new(side_b, &cand_a, *kb.direct_psk(), false),
+    ];
+
+    let helpers = Helpers::in_process();
+    let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
+    let mut sides = Vec::new();
+    for ((leg, keys, caller, peer), path) in [(leg_a, ka, true, ab), (leg_b, kb, false, aa)]
+        .into_iter()
+        .zip(paths)
+    {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let plan = Plan {
+            id,
+            keys,
+            caller,
+            peer_relay: peer,
+            codec: helpers.open_call().await.unwrap(),
+            video: None,
+        };
+        tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
+        tx.send(ToCall::Direct(Box::new(path))).unwrap();
+        sides.push((tx, out_rx));
+    }
+    let (b_tx, mut b_out) = sides.pop().unwrap();
+    let (a_tx, _a_out) = sides.pop().unwrap();
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    for f in 0..200 {
+        tick.tick().await;
+        a_tx.send(ToCall::Mic(tone(f))).unwrap();
+        b_tx.send(ToCall::Mic(vec![0; 960])).unwrap();
+    }
+    let mut direct = 0;
+    while let Ok(ev) = ev_rx.try_recv() {
+        if let CallEvent::Media(_, FromCall::Direct(true)) = ev {
+            direct += 1;
+        }
+    }
+    assert_eq!(direct, 2, "both sides went direct");
+    let mut loud = 0;
+    while let Ok(Out::CallAudio(pcm)) = b_out.try_recv() {
+        let e: f64 = pcm.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / pcm.len() as f64;
+        if e > 1e5 {
+            loud += 1;
+        }
+    }
+    assert!(loud > 120, "Ben heard Ada in {loud} frames");
+    // Most of the 4 s went directly: the relays carried the first moments.
+    let relayed = ra.lock().await.stats().to_peer;
+    assert!(relayed < 100, "relay A forwarded {relayed} packets");
+    drop(a_tx);
+    drop(b_tx);
+    let _ = rb;
+    let _ = std::fs::remove_dir_all(&dir);
+}

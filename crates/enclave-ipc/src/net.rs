@@ -18,9 +18,12 @@ pub const SOCKET_EVENT: u32 = 1 << 31;
 /// Vault → netd.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetRequest {
-    /// Open a UDP socket to a call relay (or, in direct mode, the other
-    /// person) at `remote` (`IP:PORT`; `docs/11-calls.md` §3). The reply
-    /// is the socket's number (`u32`); datagrams that arrive come as
+    /// Open a UDP socket to a call relay at `remote` (`IP:PORT`;
+    /// `docs/11-calls.md` §3), or, with `remote` empty, one that talks to
+    /// any address (a direct call, §4), whose datagrams both ways carry
+    /// their address (`enclave_net::transport::addressed`). The reply is
+    /// the socket's number (`u32`), then for the latter its own address on
+    /// the local network if known; datagrams that arrive come as
     /// [`SOCKET_EVENT`] replies.
     UdpOpen {
         /// Request number.

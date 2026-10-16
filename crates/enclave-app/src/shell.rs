@@ -190,17 +190,23 @@ fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
         let _ = t.send(Cmd::CheckUpdates);
     });
     let t = tx.clone();
-    ui.on_start_call(move |conversation, video| {
+    ui.on_start_call(move |conversation, video, direct| {
         // A phone asks for the microphone now, not at install.
         #[cfg(any(target_os = "android", target_os = "ios"))]
         enclave_platform::phone::ask_microphone();
-        let _ = t.send(Cmd::StartCall(conversation.to_string(), video));
+        let _ = t.send(Cmd::StartCall(conversation.to_string(), video, direct));
     });
     let t = tx.clone();
     ui.on_answer_call(move || {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         enclave_platform::phone::ask_microphone();
         let _ = t.send(Cmd::AnswerCall);
+    });
+    let t = tx.clone();
+    ui.on_answer_call_direct(move || {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        enclave_platform::phone::ask_microphone();
+        let _ = t.send(Cmd::AnswerCallDirect);
     });
     let t = tx.clone();
     ui.on_decline_call(move || {

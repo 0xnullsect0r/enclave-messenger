@@ -150,7 +150,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -754,7 +754,16 @@ export component AppWindow inherits Window {
     in-out property <image> call-remote;
     in-out property <bool> call-has-remote;
     in-out property <image> call-self;
-    callback start-call(string, bool);
+    callback start-call(string, bool, bool);
+    callback answer-call-direct();
+    // The caller asked for a direct call (while it rings), and the media
+    // goes directly now.
+    in property <bool> call-direct-asked;
+    in property <bool> call-direct;
+    // The pre-call sheet: a video call, and the unchecked-contact warning
+    // already shown.
+    in-out property <bool> call-route-video;
+    in-out property <bool> call-route-warned;
     callback camera-call(bool);
     callback answer-call();
     callback decline-call();
@@ -1728,7 +1737,7 @@ export component AppWindow inherits Window {
                             IconButton {
                                 icon: Icons.phone;
                                 label: @tr("Call {}", root.current.name);
-                                clicked => { root.start-call(root.current-id, false); }
+                                clicked => { root.call-route-video = false; root.call-route-warned = false; root.sheet = Sheet.call-route; }
                             }
                         }
                         // On a phone, video calls start from the conversation sheet.
@@ -1737,7 +1746,7 @@ export component AppWindow inherits Window {
                             IconButton {
                                 icon: Icons.video;
                                 label: @tr("Video call {}", root.current.name);
-                                clicked => { root.start-call(root.current-id, true); }
+                                clicked => { root.call-route-video = true; root.call-route-warned = false; root.sheet = Sheet.call-route; }
                             }
                         }
                         if root.current.state == 2 && root.current.kind == 0: VerticalLayout {
@@ -2175,7 +2184,7 @@ export component AppWindow inherits Window {
             alignment: start;
             QuietButton {
                 text: @tr("Video call");
-                clicked => { root.sheet = Sheet.none; root.start-call(root.current-id, true); }
+                clicked => { root.call-route-video = true; root.call-route-warned = false; root.sheet = Sheet.call-route; }
             }
         }
         if root.current.kind == 0: SwitchRow {
@@ -2249,6 +2258,48 @@ export component AppWindow inherits Window {
         }
     }
 
+    // The pre-call sheet (`docs/11-calls.md` §4): the private route, or
+    // direct with what it shows; a second, stronger warning for a contact
+    // whose code wasn't checked.
+    if root.sheet == Sheet.call-route: SheetFrame {
+        title: root.call-route-video ? @tr("Video call {}", root.current.name) : @tr("Call {}", root.current.name);
+        close => { root.sheet = Sheet.none; }
+        if !root.call-route-warned: Secondary {
+            text: @tr("The private route goes through two relays run by different operators, so neither sees both of you, and {} doesn't see your internet address.", root.current.name);
+        }
+        if !root.call-route-warned: PrimaryButton {
+            text: @tr("Private route");
+            clicked => { root.sheet = Sheet.none; root.start-call(root.current-id, root.call-route-video, false); }
+        }
+        if !root.call-route-warned: QuietButton {
+            text: @tr("Call directly");
+            clicked => {
+                if root.current.verified {
+                    root.sheet = Sheet.none;
+                    root.start-call(root.current-id, root.call-route-video, true);
+                } else {
+                    root.call-route-warned = true;
+                }
+            }
+        }
+        if !root.call-route-warned: Secondary {
+            text: @tr("Directly is clearer, but {} can see your internet address.", root.current.name);
+        }
+        if root.call-route-warned: Notice {
+            kind: 2;
+            title: @tr("You haven't checked {}'s security code", root.current.name);
+            text: @tr("Direct calls show your internet address to whoever is on the other end. If this isn't really {}, they learn where you are.", root.current.name);
+        }
+        if root.call-route-warned: PrimaryButton {
+            text: @tr("Use the private route");
+            clicked => { root.sheet = Sheet.none; root.start-call(root.current-id, root.call-route-video, false); }
+        }
+        if root.call-route-warned: QuietButton {
+            text: @tr("Call directly anyway");
+            danger: true;
+            clicked => { root.sheet = Sheet.none; root.start-call(root.current-id, root.call-route-video, true); }
+        }
+    }
     if root.sheet == Sheet.timer: SheetFrame {
         title: @tr("Disappearing messages");
         close => { root.sheet = Sheet.none; }
@@ -3930,7 +3981,11 @@ export component AppWindow inherits Window {
                 }
             }
             if root.call-state != 5: Text {
-                text: @tr("Private route: two relays, run by different operators, so neither sees both of you.");
+                text: root.call-state == 2 && root.call-direct-asked
+                    ? @tr("{} asked for a direct call: clearer, but answering directly shows your internet address to them.", root.call-name)
+                    : root.call-direct
+                    ? @tr("Direct: you and {} can see each other's internet address.", root.call-name)
+                    : @tr("Private route: two relays, run by different operators, so neither sees both of you.");
                 color: #ffffff73;
                 font-size: Tokens.type-caption;
                 horizontal-alignment: center;
@@ -3949,10 +4004,17 @@ export component AppWindow inherits Window {
                 }
                 if root.call-state == 2: CallButton {
                     icon: root.call-video ? Icons.video : Icons.phone;
-                    label: @tr("Answer");
+                    label: root.call-direct-asked ? @tr("Answer privately") : @tr("Answer");
                     tint: #1f6f50;
                     ink: #ffffff;
                     clicked => { root.answer-call(); }
+                }
+                if root.call-state == 2 && root.call-direct-asked: CallButton {
+                    icon: root.call-video ? Icons.video : Icons.phone;
+                    label: @tr("Answer directly");
+                    tint: #ffffff26;
+                    ink: #ffffff;
+                    clicked => { root.answer-call-direct(); }
                 }
                 if root.call-state == 3 || root.call-state == 4: CallButton {
                     icon: root.call-muted ? Icons.mic-off : Icons.voice;

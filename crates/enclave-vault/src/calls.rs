@@ -17,18 +17,21 @@
 //! about a call is stored but the line the conversation shows afterwards.
 
 use crate::media::{CallCodec, CallDecode};
+use enclave_calls::direct::Candidates;
 use enclave_calls::relay::{
-    P_KEEPALIVE, P_MEDIA, descriptor_part, descriptor_request, ticket_datagrams, ticket_reply,
+    P_KEEPALIVE, P_MEDIA, descriptor_part, descriptor_request, reflect_request, reflected,
+    ticket_datagrams, ticket_reply,
 };
 use enclave_calls::shape::{Inner, Shaper, Stream, decode_plaintext};
 use enclave_calls::signal::{CALLEE, CALLER, CallKeys};
 use enclave_calls::ticket::{self, TicketKey};
-use enclave_calls::wg::{self, ClientLink};
+use enclave_calls::wg::{self, ClientLink, DirectLink};
 use enclave_crypto::rng::HedgedRng;
 use enclave_federation::{ListedRelay, RelayDescriptor};
 use enclave_ipc::Out;
-use enclave_net::transport::{Datagrams, Transport};
+use enclave_net::transport::{Datagrams, Transport, addressed, unaddressed};
 use std::collections::{BTreeMap, VecDeque};
+use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -195,6 +198,171 @@ pub async fn open_leg(transport: &dyn Transport, relay: &ListedRelay) -> Result<
     })
 }
 
+/// Our side of a direct call (`docs/11-calls.md` §4), before the other
+/// side's addresses are known.
+pub struct DirectSide {
+    /// A socket that talks to any address (through netd).
+    pub dg: Datagrams,
+    /// Our WireGuard secret for the direct link.
+    pub secret: [u8; 32],
+    /// What we tell the other side: our key and addresses.
+    pub ours: Candidates,
+}
+
+/// A direct link being tried, or up.
+pub struct DirectPath {
+    dg: Datagrams,
+    link: DirectLink,
+    /// The addresses the other side named.
+    peers: Vec<SocketAddr>,
+    /// Where the link answered from (once up).
+    at: Option<SocketAddr>,
+    /// When it was last heard.
+    heard: Option<tokio::time::Instant>,
+}
+
+impl std::fmt::Debug for DirectPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DirectPath")
+            .field("peers", &self.peers.len())
+            .field("up", &self.link.established())
+            .finish()
+    }
+}
+
+impl DirectPath {
+    /// Our side, the other side's candidates, the call's direct PSK, and
+    /// whether we start the handshake (the caller).
+    pub fn new(side: DirectSide, theirs: &Candidates, psk: [u8; 32], initiator: bool) -> Self {
+        Self {
+            link: DirectLink::new(side.secret, theirs.wg, psk, initiator),
+            dg: side.dg,
+            peers: theirs.addrs.clone(),
+            at: None,
+            heard: None,
+        }
+    }
+
+    /// Up and heard from lately: the media goes this way.
+    fn usable(&self) -> bool {
+        self.link.established()
+            && self.at.is_some()
+            && self.heard.is_some_and(|h| h.elapsed() < DIRECT_QUIET)
+    }
+
+    fn send_to(&self, to: SocketAddr, dgs: Vec<Vec<u8>>) {
+        for d in dgs {
+            let _ = self.dg.send.send(addressed(to, &d));
+        }
+    }
+
+    /// Once a second: handshake probes to every address until the link is
+    /// up (the callee sends a byte to each instead, opening its NAT for the
+    /// caller's probes), then the link's timers.
+    fn tick(&mut self) {
+        if let (true, Some(at)) = (self.link.established(), self.at) {
+            // A keepalive each second, so both ends keep hearing the link
+            // while the other still sends through the relays.
+            let mut t = self.link.tick();
+            t.extend(self.link.send(&[P_KEEPALIVE]).unwrap_or_default());
+            self.send_to(at, t);
+            return;
+        }
+        let probe = self.link.probe();
+        let probe = if probe.is_empty() { vec![0] } else { probe };
+        for p in self.peers.clone() {
+            self.send_to(p, vec![probe.clone()]);
+        }
+    }
+
+    /// A datagram on the socket: the payload it carried, if any.
+    fn arrived(&mut self, dg: &[u8]) -> Option<Vec<u8>> {
+        let (from, bytes) = unaddressed(dg)?;
+        let got = self.link.receive(bytes).ok()?;
+        // WireGuard authenticated it: this is where the other side is.
+        self.at = Some(from);
+        self.heard = Some(tokio::time::Instant::now());
+        self.send_to(from, got.send);
+        got.payload
+    }
+
+    /// Send a payload; false when it can't go this way.
+    fn send(&mut self, payload: &[u8]) -> bool {
+        let Some(at) = self.at.filter(|_| self.usable()) else {
+            return false;
+        };
+        match self.link.send(payload) {
+            Ok(dgs) => {
+                self.send_to(at, dgs);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+}
+
+/// How long the direct link may be quiet before the media goes back
+/// through the relays.
+const DIRECT_QUIET: Duration = Duration::from_secs(3);
+
+/// Our side of a direct call: a socket that talks to any address, our
+/// address as `relay` sees it (through any NAT) and on the local network,
+/// and a fresh WireGuard key.
+pub async fn open_direct(
+    transport: &dyn Transport,
+    relay: &ListedRelay,
+) -> Result<DirectSide, String> {
+    let relay_addr: SocketAddr = relay
+        .addr
+        .parse()
+        .map_err(|_| "the relay's address isn't an IP address".to_string())?;
+    let (mut dg, local) = transport.open_udp_any().await.map_err(|e| e.to_string())?;
+    let mut rng = HedgedRng::new().map_err(|e| e.to_string())?;
+    let nonce: [u8; 8] = rng
+        .array("calls/reflect-nonce")
+        .map_err(|e| e.to_string())?;
+    let mut seen = None;
+    'tries: for _ in 0..3 {
+        if dg
+            .send
+            .send(addressed(relay_addr, &reflect_request(nonce)))
+            .is_err()
+        {
+            return Err("the call's connection closed".into());
+        }
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(1000);
+        while let Some(d) = recv_within(
+            &mut dg,
+            deadline.saturating_duration_since(tokio::time::Instant::now()),
+        )
+        .await?
+        {
+            if let Some((from, bytes)) = unaddressed(&d)
+                && from == relay_addr
+                && let Some((n, addr)) = reflected(bytes)
+                && n == nonce
+            {
+                seen = Some(addr);
+                break 'tries;
+            }
+        }
+    }
+    let mut addrs: Vec<SocketAddr> = seen.into_iter().chain(local).collect();
+    addrs.dedup();
+    if addrs.is_empty() {
+        return Err("couldn't find an address for a direct call".into());
+    }
+    let secret: [u8; 32] = rng.array("calls/direct-wg").map_err(|e| e.to_string())?;
+    Ok(DirectSide {
+        dg,
+        secret,
+        ours: Candidates {
+            wg: wg::public_key(secret),
+            addrs,
+        },
+    })
+}
+
 /// What the window says to a running call.
 #[derive(Debug)]
 pub enum ToCall {
@@ -206,6 +374,10 @@ pub enum ToCall {
     Camera(bool),
     /// A camera frame (RGBA at the call's video size).
     Frame(Vec<u8>),
+    /// Both sides agreed to a direct call and named their addresses: try
+    /// the direct link (the relays carry the call until it is up, and again
+    /// if it fails).
+    Direct(Box<DirectPath>),
 }
 
 /// What call work in the background tells the engine.
@@ -214,6 +386,9 @@ pub enum CallEvent {
     Leg([u8; 16], Result<Box<Leg>, String>),
     /// A running call's news.
     Media([u8; 16], FromCall),
+    /// Our side of a direct call is ready: its socket, key and addresses
+    /// (or why not).
+    Direct([u8; 16], Result<Box<DirectSide>, String>),
 }
 
 /// What a running call tells the engine.
@@ -223,6 +398,8 @@ pub enum FromCall {
     Connected,
     /// It ended by itself (why).
     Dropped(String),
+    /// The media goes directly (true) or through the relays again.
+    Direct(bool),
 }
 
 /// Frames that arrived, by sequence number, and which to play next.
@@ -431,6 +608,50 @@ pub async fn run(
     let _ = events.send(CallEvent::Media(plan.id, FromCall::Dropped(why)));
 }
 
+/// A payload from the other side (through the relays or directly): media
+/// into the jitter buffer or the video side. Whether it was audio.
+fn take_payload(
+    p: &[u8],
+    video_len: usize,
+    video: &mut Option<VideoSide>,
+    receiver: &mut enclave_calls::sframe::Receiver,
+    jitter: &mut Jitter,
+) -> bool {
+    if p.first() != Some(&P_MEDIA) {
+        return false;
+    }
+    if video_len > 0 && p.len() - 1 == video_len {
+        if let Some(v) = video.as_mut()
+            && let Ok(pt) = receiver.unprotect(&p[1..], VIDEO_AD)
+        {
+            v.arrived(&pt);
+        }
+        return false;
+    }
+    let Ok(pt) = receiver.unprotect(&p[1..], AUDIO_AD) else {
+        return false;
+    };
+    if let Ok(Inner::Media(f)) = decode_plaintext(&pt)
+        && f.len() > 4
+    {
+        let s = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
+        jitter.push(s, f[4..].to_vec());
+    }
+    true
+}
+
+/// Send a payload directly when that works, else through our relay; false
+/// when the relay's socket closed.
+fn send_payload(leg: &mut Leg, direct: &mut Option<DirectPath>, now: u64, payload: &[u8]) -> bool {
+    if direct.as_mut().is_some_and(|d| d.send(payload)) {
+        return true;
+    }
+    match leg.link.send(now, payload) {
+        Ok(dgs) => send_all(&leg.dg, dgs),
+        Err(_) => true,
+    }
+}
+
 async fn media_loop(
     leg: &mut Leg,
     id: [u8; 16],
@@ -462,6 +683,8 @@ async fn media_loop(
         .as_ref()
         .map_or(0, |(_, t)| Stream::Video(*t).packet_len());
     let mut video = video_codec.map(|(codec, tier)| VideoSide::start(codec, tier, out.clone()));
+    let mut direct: Option<DirectPath> = None;
+    let mut on_direct = false;
     loop {
         tokio::select! {
             cmd = cmds.recv() => match cmd {
@@ -483,6 +706,10 @@ async fn media_loop(
                         let _ = v.frames.try_send(rgba);
                     }
                 }
+                Some(ToCall::Direct(mut p)) => {
+                    p.tick();
+                    direct = Some(*p);
+                }
                 // The engine hung up.
                 None => return String::new(),
             },
@@ -493,23 +720,28 @@ async fn media_loop(
                     return "The call's connection closed.".into();
                 }
                 let Some(p) = got.payload else { continue };
-                if p.first() != Some(&P_MEDIA) {
+                if !take_payload(&p, video_len, &mut video, &mut receiver, &mut jitter) {
                     continue;
                 }
-                if video_len > 0 && p.len() - 1 == video_len {
-                    if let Some(v) = video.as_mut()
-                        && let Ok(pt) = receiver.unprotect(&p[1..], VIDEO_AD)
-                    {
-                        v.arrived(&pt);
-                    }
-                    continue;
+                if heard.is_none() {
+                    let _ = events.send(CallEvent::Media(id, FromCall::Connected));
                 }
-                let Ok(pt) = receiver.unprotect(&p[1..], AUDIO_AD) else { continue };
-                if let Ok(Inner::Media(f)) = decode_plaintext(&pt)
-                    && f.len() > 4
-                {
-                    let s = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
-                    jitter.push(s, f[4..].to_vec());
+                heard = Some(tokio::time::Instant::now());
+            }
+            d = async {
+                match direct.as_mut() {
+                    Some(p) => p.dg.recv.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                let Some(d) = d else {
+                    // netd closed the direct socket: the relays carry on.
+                    direct = None;
+                    continue;
+                };
+                let Some(p) = direct.as_mut().and_then(|p| p.arrived(&d)) else { continue };
+                if !take_payload(&p, video_len, &mut video, &mut receiver, &mut jitter) {
+                    continue;
                 }
                 if heard.is_none() {
                     let _ = events.send(CallEvent::Media(id, FromCall::Connected));
@@ -529,9 +761,7 @@ async fn media_loop(
                 let elapsed = started.elapsed().as_millis() as u64;
                 if let Ok(packet) = sender.protect(elapsed, VIDEO_AD, &pt) {
                     let payload = [&[P_MEDIA][..], &packet].concat();
-                    if let Ok(dgs) = leg.link.send(unix_now(), &payload)
-                        && !send_all(&leg.dg, dgs)
-                    {
+                    if !send_payload(leg, &mut direct, unix_now(), &payload) {
                         return "The call's connection closed.".into();
                     }
                 }
@@ -553,6 +783,13 @@ async fn media_loop(
                     }
                     if !send_all(&leg.dg, dgs) {
                         return "The call's connection closed.".into();
+                    }
+                    if let Some(p) = direct.as_mut() {
+                        p.tick();
+                        if p.usable() != on_direct {
+                            on_direct = p.usable();
+                            let _ = events.send(CallEvent::Media(id, FromCall::Direct(on_direct)));
+                        }
                     }
                 }
                 match heard {
@@ -576,9 +813,7 @@ async fn media_loop(
                 let elapsed = started.elapsed().as_millis() as u64;
                 if let Ok(packet) = sender.protect(elapsed, AUDIO_AD, &pt) {
                     let payload = [&[P_MEDIA][..], &packet].concat();
-                    if let Ok(dgs) = leg.link.send(now, &payload)
-                        && !send_all(&leg.dg, dgs)
-                    {
+                    if !send_payload(leg, &mut direct, now, &payload) {
                         return "The call's connection closed.".into();
                     }
                 }

@@ -13,6 +13,8 @@
 //!   quality only ever steps down.
 //! * [`ticket`]: relay tickets and the per-period link keys derived from them.
 //! * [`relay`]: the datagrams between a client and its relay.
+//! * [`direct`]: direct mode's candidates (opt-in; shows each side's
+//!   address to the other).
 //! * [`route`]: choosing the two relays of a call from distinct operator
 //!   families.
 //!
@@ -20,6 +22,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod direct;
 pub mod message;
 pub mod relay;
 pub mod route;

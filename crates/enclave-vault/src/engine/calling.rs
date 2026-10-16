@@ -6,10 +6,14 @@
 //!                      leg to our relay      Answer → keys → media
 //! callee:  Offer → Ringing ──→ AnswerCall → Answer, leg to our relay → media
 //! either:  End / Decline / Busy, or 60 s without an answer
+//! direct:  the offer asks; the callee answers directly → its Candidates;
+//!          then the caller's Candidates → the caller's WireGuard probes
+//!          reach the callee; the relays carry the call meanwhile
 //! ```
 
 use super::{Engine, hex_id};
-use crate::calls::{self, CallEvent, FromCall, Leg, ToCall};
+use crate::calls::{self, CallEvent, DirectPath, DirectSide, FromCall, Leg, ToCall};
+use enclave_calls::direct::Candidates;
 use enclave_calls::message::CallMessage;
 use enclave_calls::route;
 use enclave_calls::signal::{self, CallKeys, Media, OFFER_TTL, Offer, Pending, Route};
@@ -59,6 +63,18 @@ pub(super) struct Call {
     tx: Option<mpsc::UnboundedSender<ToCall>>,
     created: Instant,
     pub(super) connected_at: u64,
+    /// Direct mode: we asked for it (calling) or agreed to it (answering).
+    direct_wanted: bool,
+    /// Our side of the direct link, once ready.
+    direct_side: Option<DirectSide>,
+    /// Our side is being set up.
+    direct_opening: bool,
+    /// Their candidates.
+    direct_peer: Option<Candidates>,
+    /// The call's direct-mode key (kept when the keys go to the media).
+    direct_psk: Option<[u8; 32]>,
+    /// The media goes directly now.
+    pub(super) on_direct: bool,
 }
 
 /// "3:02" from seconds.
@@ -162,7 +178,7 @@ impl Engine {
         )
     }
 
-    pub(super) async fn start_call(&mut self, conversation: &str, video: bool) {
+    pub(super) async fn start_call(&mut self, conversation: &str, video: bool, direct: bool) {
         if self.call.is_some() {
             self.status = "You're already in a call.".into();
             return;
@@ -210,7 +226,8 @@ impl Engine {
             return;
         };
         let rid = enclave_federation::relay_id(&relay.identity);
-        let Ok(pending) = signal::offer(media, Route::Relay, rid.to_vec(), now, &mut rng) else {
+        let route = if direct { Route::Direct } else { Route::Relay };
+        let Ok(pending) = signal::offer(media, route, rid.to_vec(), now, &mut rng) else {
             return;
         };
         let offer = pending.offer().clone();
@@ -234,6 +251,12 @@ impl Engine {
             tx: None,
             created: Instant::now(),
             connected_at: 0,
+            direct_wanted: direct,
+            direct_side: None,
+            direct_opening: false,
+            direct_peer: None,
+            direct_psk: None,
+            on_direct: false,
         });
         self.open_leg(id, relay);
         if !self.signal(&root, &CallMessage::Offer(offer)).await {
@@ -241,7 +264,7 @@ impl Engine {
         }
     }
 
-    pub(super) async fn answer_call(&mut self) {
+    pub(super) async fn answer_call(&mut self, direct: bool) {
         let Some(call) = self.call.as_mut() else {
             return;
         };
@@ -293,17 +316,57 @@ impl Engine {
             }
         };
         let id = offer.call_id;
+        let direct = direct && offer.route == Route::Direct;
         if let Some(call) = self.call.as_mut() {
             call.words = keys.check_words().join(" ");
+            call.direct_psk = Some(*keys.direct_psk());
             call.keys = Some(keys);
             call.peer_relay = Some(peer);
             call.our_relay = Some(relay.clone());
             call.phase = Phase::Connecting;
+            call.direct_wanted = direct;
         }
-        self.open_leg(id, relay);
+        self.open_leg(id, relay.clone());
         if !self.signal(&root, &CallMessage::Answer(answer)).await {
             self.finish_call("Missed call", "Couldn't reach them to answer. Try again.");
+            return;
         }
+        // Answered directly: our addresses go first (the caller asked).
+        if direct {
+            self.open_direct(id, relay);
+        }
+    }
+
+    /// Our side of a direct call, set up in the background.
+    fn open_direct(&mut self, id: [u8; 16], relay: ListedRelay) {
+        if let Some(c) = self.call.as_mut() {
+            c.direct_opening = true;
+        }
+        let transport = std::sync::Arc::clone(&self.transport);
+        let tx = self.call_tx.clone();
+        tokio::spawn(async move {
+            let side = calls::open_direct(&*transport, &relay).await;
+            let _ = tx.send(CallEvent::Direct(id, side.map(Box::new)));
+        });
+    }
+
+    /// Hand the running media both sides of the direct link, once there
+    /// are both.
+    fn try_direct(&mut self) {
+        let Some(call) = self.call.as_mut() else {
+            return;
+        };
+        let (Some(tx), Some(psk)) = (call.tx.as_ref(), call.direct_psk) else {
+            return;
+        };
+        if call.direct_side.is_none() || call.direct_peer.is_none() {
+            return;
+        }
+        let (Some(side), Some(peer)) = (call.direct_side.take(), call.direct_peer.take()) else {
+            return;
+        };
+        let path = DirectPath::new(side, &peer, psk, call.outgoing);
+        let _ = tx.send(ToCall::Direct(Box::new(path)));
     }
 
     pub(super) async fn decline_call(&mut self) {
@@ -419,6 +482,12 @@ impl Engine {
                     tx: None,
                     created: Instant::now(),
                     connected_at: 0,
+                    direct_wanted: false,
+                    direct_side: None,
+                    direct_opening: false,
+                    direct_peer: None,
+                    direct_psk: None,
+                    on_direct: false,
                 });
                 self.signal(&from, &CallMessage::Ringing(id)).await;
                 let named = self.client.as_ref().is_some_and(|c| c.previews());
@@ -470,6 +539,7 @@ impl Engine {
                     return;
                 };
                 call.words = keys.check_words().join(" ");
+                call.direct_psk = Some(*keys.direct_psk());
                 call.keys = Some(keys);
                 call.peer_relay = peer;
                 call.phase = Phase::Connecting;
@@ -492,7 +562,28 @@ impl Engine {
                 };
                 self.finish_call(&line, "");
             }
-            // Direct mode's candidates, and messages about other calls.
+            CallMessage::Candidates(_, bytes) if ours => {
+                let Ok(theirs) = Candidates::decode(&bytes) else {
+                    return;
+                };
+                let Some(call) = self.call.as_mut() else {
+                    return;
+                };
+                // Only a direct call we asked for (or agreed to) takes them.
+                if !call.direct_wanted || call.direct_peer.is_some() {
+                    return;
+                }
+                call.direct_peer = Some(theirs);
+                // The callee named its addresses: now ours (the caller's).
+                if call.outgoing && call.direct_side.is_none() && !call.direct_opening {
+                    let id = call.id;
+                    if let Some(relay) = call.our_relay.clone() {
+                        self.open_direct(id, relay);
+                    }
+                }
+                self.try_direct();
+            }
+            // Messages about other calls.
             _ => {}
         }
     }
@@ -559,6 +650,7 @@ impl Engine {
             self.out.clone(),
             self.call_tx.clone(),
         ));
+        self.try_direct();
     }
 
     /// What a leg or a running call reported.
@@ -602,6 +694,31 @@ impl Engine {
                 };
                 self.signal(&root, &CallMessage::End(id)).await;
                 self.finish_call(&line, &why);
+            }
+            CallEvent::Media(id, FromCall::Direct(on)) if current(self, &id) => {
+                if let Some(c) = self.call.as_mut() {
+                    c.on_direct = on;
+                }
+            }
+            CallEvent::Direct(id, Ok(side)) if current(self, &id) => {
+                let ours = side.ours.encode();
+                let root = match self.call.as_mut() {
+                    Some(c) => {
+                        c.direct_opening = false;
+                        c.direct_side = Some(*side);
+                        c.root
+                    }
+                    None => return,
+                };
+                self.signal(&root, &CallMessage::Candidates(id, ours)).await;
+                self.try_direct();
+            }
+            CallEvent::Direct(id, Err(e)) if current(self, &id) => {
+                // The relays carry the call.
+                eprintln!("enclave-vault: direct call: {e}");
+                if let Some(c) = self.call.as_mut() {
+                    c.direct_opening = false;
+                }
             }
             // About a call that already ended.
             _ => {}
@@ -677,6 +794,12 @@ impl Engine {
             } else {
                 String::new()
             },
+            direct_asked: call.phase == Phase::Ringing
+                && call
+                    .offer
+                    .as_ref()
+                    .is_some_and(|o| o.route == Route::Direct),
+            direct: call.on_direct,
         }
     }
 }

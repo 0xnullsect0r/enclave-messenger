@@ -222,6 +222,14 @@ msgid "Answer"
 msgstr "[Áñswér··]"
 
 #: ui/app.slint
+msgid "Answer directly"
+msgstr "[Áñswér díréçtlý······]"
+
+#: ui/app.slint
+msgid "Answer privately"
+msgstr "[Áñswér prívátélý······]"
+
+#: ui/app.slint
 msgid "Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
 msgstr "[Áñý ·{} óf thé ···{} péóplé ýóú çhósé çáñ hélp ýóú gét ýóúr áççóúñt báçk íf ýóú lósé ýóúr wórds áñd évérý dévíçé. Ñóñé óf thém çáñ dó ít álóñé.·················································]"
 
@@ -276,6 +284,10 @@ msgstr "[Ásks tó jóíñ ·····{}]"
 #: ui/app.slint
 msgid "Back"
 msgstr "[Báçk·]"
+
+#: ui/app.slint
+msgid "Back to the app (the call goes on)"
+msgstr "[Báçk tó thé ápp (thé çáll góés óñ)·············]"
 
 #: ui/app.slint
 msgid "Back to the private route"
@@ -348,6 +360,14 @@ msgstr "[Çáll çhéçk wórds: ·······{}]"
 #: enclave-vault/src/engine/calling.rs
 msgid "Call declined"
 msgstr "[Çáll déçlíñéd·····]"
+
+#: ui/app.slint
+msgid "Call directly"
+msgstr "[Çáll díréçtlý·····]"
+
+#: ui/app.slint
+msgid "Call directly anyway"
+msgstr "[Çáll díréçtlý áñýwáý········]"
 
 #: ui/app.slint
 msgid "Call with {}"
@@ -954,6 +974,18 @@ msgid "Delivered"
 msgstr "[Délívéréd···]"
 
 #: ui/app.slint
+msgid "Direct calls show your internet address to whoever is on the other end. If this isn't really {}, they learn where you are."
+msgstr "[Díréçt çálls shów ýóúr íñtérñét áddréss tó whóévér ís óñ thé óthér éñd. Íf thís ísñ't réállý ·····································{}, théý léárñ whéré ýóú áré.··········]"
+
+#: ui/app.slint
+msgid "Direct: you and {} can see each other's internet address."
+msgstr "[Díréçt: ýóú áñd ······{} çáñ séé éáçh óthér's íñtérñét áddréss.···············]"
+
+#: ui/app.slint
+msgid "Directly is clearer, but {} can see your internet address."
+msgstr "[Díréçtlý ís çléárér, bút ··········{} çáñ séé ýóúr íñtérñét áddréss.············]"
+
+#: ui/app.slint
 msgid "Disappearing messages"
 msgstr "[Dísáppéáríñg mésságés········]"
 
@@ -1349,7 +1381,7 @@ msgstr "[Íñçlúdé phótós áñd fílés·········]"
 msgid "Include their last messages"
 msgstr "[Íñçlúdé théír lást mésságés··········]"
 
-#: enclave-vault/src/engine/calling.rs ui/app.slint
+#: ui/app.slint
 msgid "Incoming call"
 msgstr "[Íñçómíñg çáll·····]"
 
@@ -1357,7 +1389,7 @@ msgstr "[Íñçómíñg çáll·····]"
 msgid "Incoming call from {}"
 msgstr "[Íñçómíñg çáll fróm ·······{}]"
 
-#: enclave-vault/src/engine/calling.rs ui/app.slint
+#: ui/app.slint
 msgid "Incoming video call"
 msgstr "[Íñçómíñg vídéó çáll·······]"
 
@@ -1616,6 +1648,10 @@ msgstr "[Móvíñg…··]"
 #: ui/app.slint
 msgid "Mute"
 msgstr "[Múté·]"
+
+#: ui/app.slint
+msgid "Muted"
+msgstr "[Mútéd··]"
 
 #: ui/app.slint
 msgid "My code"
@@ -2020,6 +2056,10 @@ msgstr "[Pórtúgúês···]"
 #: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
 msgstr "[Príváté délívérý tákés á féw séçóñds. Thát páúsé ís párt óf whát hídés whó ýóú tálk tó.··································]"
+
+#: ui/app.slint
+msgid "Private route"
+msgstr "[Príváté róúté·····]"
 
 #: ui/app.slint
 msgid "Private route: two relays, run by different operators, so neither sees both of you."
@@ -2621,6 +2661,10 @@ msgstr "[Thé gróúp móvés tó thát sérvér tómórrów.·········�
 msgid "The microphone gives {} samples, which Enclave can't read."
 msgstr "[Thé míçróphóñé gívés ········{} sámplés, whíçh Éñçlávé çáñ't réád.··············]"
 
+#: ui/app.slint
+msgid "The private route goes through two relays run by different operators, so neither sees both of you, and {} doesn't see your internet address."
+msgstr "[Thé príváté róúté góés thróúgh twó réláýs rúñ bý dífféréñt ópérátórs, só ñéíthér séés bóth óf ýóú, áñd ·········································{} dóésñ't séé ýóúr íñtérñét áddréss.··············]"
+
 #: enclave-vault/src/engine.rs
 msgid "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup."
 msgstr "[Thé réçóvérý wórds ór thé báçkúp dóñ't mátçh. Çhéçk thé wórds, áñd thát thé fílé ís ýóúr Éñçlávé báçkúp.·········································]"
@@ -2962,6 +3006,10 @@ msgid "Use it"
 msgstr "[Úsé ít··]"
 
 #: ui/app.slint
+msgid "Use the private route"
+msgstr "[Úsé thé príváté róúté········]"
+
+#: ui/app.slint
 msgid "Use this server"
 msgstr "[Úsé thís sérvér······]"
 
@@ -3140,6 +3188,10 @@ msgstr "[Ýóú çáñ stíll réád thís çóñvérsátíóñ. Ñóthíñg mó
 #: ui/app.slint
 msgid "You can write again once they accept your request."
 msgstr "[Ýóú çáñ wríté ágáíñ óñçé théý áççépt ýóúr réqúést.····················]"
+
+#: ui/app.slint
+msgid "You haven't checked {}'s security code"
+msgstr "[Ýóú hávéñ't çhéçkéd ········{}'s séçúrítý çódé······]"
 
 #: ui/app.slint
 msgid "You haven't talked before. They can't see whether you've read this until you accept. The name is what they typed; check their security code before sharing anything private."
@@ -3364,6 +3416,10 @@ msgstr "[zh-Háñs··]"
 #: ui/app.slint
 msgid "zh-Hant"
 msgstr "[zh-Háñt··]"
+
+#: ui/app.slint
+msgid "{} asked for a direct call: clearer, but answering directly shows your internet address to them."
+msgstr "[{} áskéd fór á díréçt çáll: çléárér, bút áñswéríñg díréçtlý shóws ýóúr íñtérñét áddréss tó thém.·····································]"
 
 #: ui/app.slint
 msgid "{} asked for your part of their recovery. Only continue if you're with {} right now."

@@ -358,6 +358,10 @@ impl Relay {
             self.on_ticket(from, dg, now)
         } else if dg.first() == Some(&T_DESC) {
             self.on_descriptor(from, dg)
+        } else if dg.first() == Some(&enclave_calls::relay::T_REFLECT) {
+            enclave_calls::relay::reflect_reply(dg, from)
+                .map(|r| vec![(from, r)])
+                .ok_or(CallError::Malformed)
         } else {
             self.on_client(from, dg, now)
         };

@@ -192,6 +192,11 @@ pub struct CallView {
     pub words: String,
     /// Why it failed, or how it ended.
     pub error: String,
+    /// The caller asked for a direct call (shown while it rings: answering
+    /// directly shows our address to them).
+    pub direct_asked: bool,
+    /// The media goes directly now, not through the relays.
+    pub direct: bool,
 }
 
 /// Everything the window shows.
@@ -659,10 +664,14 @@ pub enum Cmd {
     VerifyBuild(Vec<FileHash>),
     /// Ask the home server for release updates now.
     CheckUpdates,
-    /// Call a contact (conversation id), with video or not.
-    StartCall(String, bool),
-    /// Take the call that is ringing.
+    /// Call a contact (conversation id), with video or not, directly or
+    /// not (direct shows each side's internet address to the other).
+    StartCall(String, bool, bool),
+    /// Take the call that is ringing (through the relays).
     AnswerCall,
+    /// Take the call that is ringing directly, as the caller asked (shows
+    /// our internet address to them).
+    AnswerCallDirect,
     /// Turn down the call that is ringing.
     DeclineCall,
     /// Hang up (or stop calling).
@@ -1071,7 +1080,9 @@ impl Snapshot {
             .u32(self.call.video_height)
             .u64(self.call.connected_at)
             .str(&self.call.words)
-            .str(&self.call.error);
+            .str(&self.call.error)
+            .bool(self.call.direct_asked)
+            .bool(self.call.direct);
         w.0
     }
 
@@ -1334,6 +1345,8 @@ impl Snapshot {
                 connected_at: r.u64()?,
                 words: r.str()?,
                 error: r.str()?,
+                direct_asked: r.bool()?,
+                direct: r.bool()?,
             },
         };
         r.end()?;
@@ -1463,7 +1476,8 @@ impl Cmd {
                 &mut w
             }
             Cmd::CheckUpdates => w.u8(97),
-            Cmd::StartCall(c, video) => w.u8(98).str(c).bool(*video),
+            Cmd::StartCall(c, video, direct) => w.u8(98).str(c).bool(*video).bool(*direct),
+            Cmd::AnswerCallDirect => w.u8(106),
             Cmd::AnswerCall => w.u8(99),
             Cmd::DeclineCall => w.u8(100),
             Cmd::EndCall => w.u8(101),
@@ -1604,7 +1618,8 @@ impl Cmd {
                 Cmd::VerifyBuild(files)
             }
             97 => Cmd::CheckUpdates,
-            98 => Cmd::StartCall(r.str()?, r.bool()?),
+            98 => Cmd::StartCall(r.str()?, r.bool()?, r.bool()?),
+            106 => Cmd::AnswerCallDirect,
             99 => Cmd::AnswerCall,
             100 => Cmd::DeclineCall,
             101 => Cmd::EndCall,

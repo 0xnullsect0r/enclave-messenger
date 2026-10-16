@@ -624,6 +624,8 @@ fn apply_call(ui: &AppWindow, s: &Snapshot) {
     ui.set_call_video(c.video);
     ui.set_call_muted(c.muted);
     ui.set_call_camera(c.camera);
+    ui.set_call_direct_asked(c.direct_asked);
+    ui.set_call_direct(c.direct);
     ui.set_call_words(c.words.clone().into());
     ui.set_call_note(crate::i18n::tr(&c.error).into());
     let now = std::time::SystemTime::now()

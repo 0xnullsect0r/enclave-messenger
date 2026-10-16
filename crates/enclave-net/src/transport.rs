@@ -133,6 +133,14 @@ pub trait Transport: Send + Sync {
     async fn open_udp(&self, _remote: &str) -> Result<Datagrams> {
         Err(NetError::Unavailable("calls aren't carried here"))
     }
+    /// Open a UDP socket that talks to any address (a direct call,
+    /// `docs/11-calls.md` §4: one socket for the relay's reflection and
+    /// the other person, so the NAT mapping the relay saw is the one the
+    /// other person reaches). Datagrams both ways are [`addressed`]; also
+    /// returns the socket's own address on the local network, if known.
+    async fn open_udp_any(&self) -> Result<(Datagrams, Option<SocketAddr>)> {
+        Err(NetError::Unavailable("calls aren't carried here"))
+    }
     /// Current time, Unix seconds. The system clock, except in simulations
     /// that move time forward.
     fn now(&self) -> u64 {
@@ -154,6 +162,35 @@ pub struct Datagrams {
 
 /// Most bytes of one call datagram.
 pub const MAX_DATAGRAM: usize = 2048;
+
+/// A datagram with the address it goes to or came from, as an unconnected
+/// socket's ([`Transport::open_udp_any`]) carry them: `len ‖ "IP:PORT" ‖
+/// bytes`.
+pub fn addressed(peer: SocketAddr, bytes: &[u8]) -> Vec<u8> {
+    let a = peer.to_string();
+    let mut v = Vec::with_capacity(1 + a.len() + bytes.len());
+    v.push(a.len() as u8);
+    v.extend_from_slice(a.as_bytes());
+    v.extend_from_slice(bytes);
+    v
+}
+
+/// The address and bytes of an [`addressed`] datagram.
+pub fn unaddressed(dg: &[u8]) -> Option<(SocketAddr, &[u8])> {
+    let n = usize::from(*dg.first()?);
+    let a = std::str::from_utf8(dg.get(1..1 + n)?).ok()?.parse().ok()?;
+    Some((a, &dg[1 + n..]))
+}
+
+/// This machine's address on the network it would reach the internet
+/// through (no packet is sent: the system only picks the route).
+pub fn local_ip() -> Option<std::net::IpAddr> {
+    let s = std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    // TEST-NET-1: never answered, only routed.
+    s.connect((std::net::Ipv4Addr::new(192, 0, 2, 1), 9)).ok()?;
+    let ip = s.local_addr().ok()?.ip();
+    (!ip.is_unspecified()).then_some(ip)
+}
 
 impl Datagrams {
     /// A socket of this process to `remote` (netd's, or the development
@@ -198,6 +235,46 @@ impl Datagrams {
             reader.abort();
         });
         Ok(Self { send, recv })
+    }
+
+    /// A socket of this process to any address (IPv4): datagrams both ways
+    /// are [`addressed`]. Also its address on the local network.
+    pub async fn any() -> Result<(Self, Option<SocketAddr>)> {
+        let socket = std::sync::Arc::new(
+            tokio::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).await?,
+        );
+        let port = socket.local_addr()?.port();
+        let local = local_ip().map(|ip| SocketAddr::new(ip, port));
+        let (send, mut out) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let (deliver, recv) = tokio::sync::mpsc::unbounded_channel();
+        let tx = std::sync::Arc::clone(&socket);
+        let reader = tokio::spawn(async move {
+            let mut buf = vec![0u8; MAX_DATAGRAM];
+            loop {
+                match socket.recv_from(&mut buf).await {
+                    Ok((n, from)) => {
+                        if deliver.send(addressed(from, &buf[..n])).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
+                    // Windows reports an earlier send's ICMP error here.
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {}
+                    Err(_) => break,
+                }
+            }
+        });
+        tokio::spawn(async move {
+            while let Some(dg) = out.recv().await {
+                if let Some((to, bytes)) = unaddressed(&dg)
+                    && bytes.len() <= MAX_DATAGRAM
+                {
+                    let _ = tx.send_to(bytes, to).await;
+                }
+            }
+            reader.abort();
+        });
+        Ok((Self { send, recv }, local))
     }
 }
 
@@ -370,6 +447,10 @@ impl Transport for TcpTransport {
 
     async fn open_udp(&self, remote: &str) -> Result<Datagrams> {
         Datagrams::direct(remote).await
+    }
+
+    async fn open_udp_any(&self) -> Result<(Datagrams, Option<SocketAddr>)> {
+        Datagrams::any().await
     }
 }
 

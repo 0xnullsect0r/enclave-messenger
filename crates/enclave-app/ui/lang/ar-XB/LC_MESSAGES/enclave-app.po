@@ -222,6 +222,14 @@ msgid "Answer"
 msgstr "‫Answer‬"
 
 #: ui/app.slint
+msgid "Answer directly"
+msgstr "‫Answer directly‬"
+
+#: ui/app.slint
+msgid "Answer privately"
+msgstr "‫Answer privately‬"
+
+#: ui/app.slint
 msgid "Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
 msgstr "‫Any ‬{}‫ of the ‬{}‫ people you chose can help you get your account back if you lose your words and every device. None of them can do it alone.‬"
 
@@ -276,6 +284,10 @@ msgstr "‫Asks to join ‬{}"
 #: ui/app.slint
 msgid "Back"
 msgstr "‫Back‬"
+
+#: ui/app.slint
+msgid "Back to the app (the call goes on)"
+msgstr "‫Back to the app (the call goes on)‬"
 
 #: ui/app.slint
 msgid "Back to the private route"
@@ -348,6 +360,14 @@ msgstr "‫Call check words: ‬{}"
 #: enclave-vault/src/engine/calling.rs
 msgid "Call declined"
 msgstr "‫Call declined‬"
+
+#: ui/app.slint
+msgid "Call directly"
+msgstr "‫Call directly‬"
+
+#: ui/app.slint
+msgid "Call directly anyway"
+msgstr "‫Call directly anyway‬"
 
 #: ui/app.slint
 msgid "Call with {}"
@@ -954,6 +974,18 @@ msgid "Delivered"
 msgstr "‫Delivered‬"
 
 #: ui/app.slint
+msgid "Direct calls show your internet address to whoever is on the other end. If this isn't really {}, they learn where you are."
+msgstr "‫Direct calls show your internet address to whoever is on the other end. If this isn't really ‬{}‫, they learn where you are.‬"
+
+#: ui/app.slint
+msgid "Direct: you and {} can see each other's internet address."
+msgstr "‫Direct: you and ‬{}‫ can see each other's internet address.‬"
+
+#: ui/app.slint
+msgid "Directly is clearer, but {} can see your internet address."
+msgstr "‫Directly is clearer, but ‬{}‫ can see your internet address.‬"
+
+#: ui/app.slint
 msgid "Disappearing messages"
 msgstr "‫Disappearing messages‬"
 
@@ -1349,7 +1381,7 @@ msgstr "‫Include photos and files‬"
 msgid "Include their last messages"
 msgstr "‫Include their last messages‬"
 
-#: enclave-vault/src/engine/calling.rs ui/app.slint
+#: ui/app.slint
 msgid "Incoming call"
 msgstr "‫Incoming call‬"
 
@@ -1357,7 +1389,7 @@ msgstr "‫Incoming call‬"
 msgid "Incoming call from {}"
 msgstr "‫Incoming call from ‬{}"
 
-#: enclave-vault/src/engine/calling.rs ui/app.slint
+#: ui/app.slint
 msgid "Incoming video call"
 msgstr "‫Incoming video call‬"
 
@@ -1616,6 +1648,10 @@ msgstr "‫Moving…‬"
 #: ui/app.slint
 msgid "Mute"
 msgstr "‫Mute‬"
+
+#: ui/app.slint
+msgid "Muted"
+msgstr "‫Muted‬"
 
 #: ui/app.slint
 msgid "My code"
@@ -2020,6 +2056,10 @@ msgstr "‫Português‬"
 #: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
 msgstr "‫Private delivery takes a few seconds. That pause is part of what hides who you talk to.‬"
+
+#: ui/app.slint
+msgid "Private route"
+msgstr "‫Private route‬"
 
 #: ui/app.slint
 msgid "Private route: two relays, run by different operators, so neither sees both of you."
@@ -2621,6 +2661,10 @@ msgstr "‫The group moves to that server tomorrow.‬"
 msgid "The microphone gives {} samples, which Enclave can't read."
 msgstr "‫The microphone gives ‬{}‫ samples, which Enclave can't read.‬"
 
+#: ui/app.slint
+msgid "The private route goes through two relays run by different operators, so neither sees both of you, and {} doesn't see your internet address."
+msgstr "‫The private route goes through two relays run by different operators, so neither sees both of you, and ‬{}‫ doesn't see your internet address.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup."
 msgstr "‫The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup.‬"
@@ -2962,6 +3006,10 @@ msgid "Use it"
 msgstr "‫Use it‬"
 
 #: ui/app.slint
+msgid "Use the private route"
+msgstr "‫Use the private route‬"
+
+#: ui/app.slint
 msgid "Use this server"
 msgstr "‫Use this server‬"
 
@@ -3140,6 +3188,10 @@ msgstr "‫You can still read this conversation. Nothing more can be sent to the
 #: ui/app.slint
 msgid "You can write again once they accept your request."
 msgstr "‫You can write again once they accept your request.‬"
+
+#: ui/app.slint
+msgid "You haven't checked {}'s security code"
+msgstr "‫You haven't checked ‬{}‫'s security code‬"
 
 #: ui/app.slint
 msgid "You haven't talked before. They can't see whether you've read this until you accept. The name is what they typed; check their security code before sharing anything private."
@@ -3364,6 +3416,10 @@ msgstr "‫zh-Hans‬"
 #: ui/app.slint
 msgid "zh-Hant"
 msgstr "‫zh-Hant‬"
+
+#: ui/app.slint
+msgid "{} asked for a direct call: clearer, but answering directly shows your internet address to them."
+msgstr "{}‫ asked for a direct call: clearer, but answering directly shows your internet address to them.‬"
 
 #: ui/app.slint
 msgid "{} asked for your part of their recovery. Only continue if you're with {} right now."
