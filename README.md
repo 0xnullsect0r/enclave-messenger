@@ -287,6 +287,7 @@ services:
       - "${RELAY_PORT:-51820}:51820/udp"
     volumes:
       - ./config/relay.toml:/etc/enclave/relay.toml:ro
+      - ./foundation:/etc/enclave/foundation:ro
       - relay-keys:/var/lib/enclave/relay-keys
       - relay-data:/var/lib/enclave/relay
     networks: [edge]

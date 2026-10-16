@@ -180,4 +180,14 @@ fn found_by_the_nightly_fuzzer() {
     enclave_fuzz::run("media", &[0, 0, 0, 1, 0]);
     // media: an 8-byte AV1 unit the nightly fuzzer killed the decoder with.
     enclave_fuzz::run("media", &[0, 0, 0, 8, 40, 4, 0, 0, 0, 0, 0, 0, 0, 65]);
+    // media: a picture whose frame header was refused reached rav1d's
+    // error path, which read the header it didn't have.
+    enclave_fuzz::run(
+        "media",
+        &[
+            0, 0, 0, 22, 137, 39, 34, 206, 0, 137, 80, 78, 0, 0, 0, 0, 1, 0, 0, 0, 8, 0, 0, 0, 0,
+            255, 0, 0, 0, 22, 52, 0, 0, 0, 0, 137, 80, 178, 250, 0, 0, 0, 1, 0, 0, 0, 0, 0, 253,
+            10, 26, 38,
+        ],
+    );
 }
