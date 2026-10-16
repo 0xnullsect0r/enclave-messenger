@@ -43,6 +43,16 @@ pub const T_RELAY: u8 = 0x02;
 /// Datagram type: a ticket request part, or a ticket reply. (A WireGuard
 /// datagram starts with its type, 1 to 4, then three zero bytes.)
 pub const T_TICKET: u8 = 0x10;
+/// Datagram type: a request for one part of the signed descriptor, or
+/// that part.
+pub const T_DESC: u8 = 0x11;
+/// A descriptor request is padded to this many bytes, so the relay never
+/// answers with more than it was sent (no amplification).
+pub const DESC_REQUEST: usize = 1100;
+/// Bytes of the descriptor in one reply datagram.
+pub const DESC_PART: usize = 1024;
+/// Most parts a descriptor is sent in.
+pub const MAX_DESC_PARTS: usize = 32;
 /// Bytes of a ticket request in one datagram.
 pub const TICKET_PART: usize = 1024;
 /// Proof-of-work effort a relay asks for a ticket, by default.
@@ -111,6 +121,9 @@ pub struct Relay {
     effort: u32,
     /// Ticket requests arriving in parts: (from, request id) → parts.
     partial: HashMap<(SocketAddr, [u8; 8]), Partial>,
+    /// The signed descriptor (`enclave_federation::RelayDescriptor`)
+    /// clients fetch before asking for a ticket.
+    published: Vec<u8>,
 }
 
 /// A ticket request still missing parts.
@@ -152,10 +165,7 @@ impl Relay {
         if tickets.is_empty() {
             return Err(CallError::UnknownKey);
         }
-        // The static WireGuard key comes from the link key, so it is as
-        // long-lived and needs no file of its own.
-        let wg: [u8; 32] =
-            enclave_crypto::kmac::kmac256(&link_secret.to_bytes()[..], b"", labels::RELAY_WG);
+        let wg = wg_secret(&link_secret);
         Ok(Self {
             desc: Descriptor {
                 id,
@@ -166,6 +176,7 @@ impl Relay {
             links: RelayLinks::new(wg),
             effort: TICKET_EFFORT,
             partial: HashMap::new(),
+            published: Vec::new(),
             link_secret,
             tickets,
             sessions: HashMap::new(),
@@ -223,6 +234,14 @@ impl Relay {
             },
         );
         Ok(())
+    }
+
+    /// Serve this signed descriptor (re-signed when the ticket keys turn
+    /// over at midnight UTC).
+    pub fn set_published(&mut self, descriptor: Vec<u8>) {
+        if descriptor.len() <= DESC_PART * MAX_DESC_PARTS {
+            self.published = descriptor;
+        }
     }
 
     /// Ask this much proof of work for a ticket.
@@ -321,6 +340,25 @@ impl Relay {
         Ok(vec![(from, [&[T_TICKET][..], &id, &reply].concat())])
     }
 
+    /// One part of the signed descriptor, for a request at least as long
+    /// as the answer.
+    fn on_descriptor(
+        &mut self,
+        from: SocketAddr,
+        dg: &[u8],
+    ) -> Result<Vec<(SocketAddr, Vec<u8>)>, CallError> {
+        if dg.len() < DESC_REQUEST || self.published.is_empty() {
+            return Err(CallError::Malformed);
+        }
+        let parts: Vec<&[u8]> = self.published.chunks(DESC_PART).collect();
+        let part = usize::from(dg[1]);
+        let chunk = parts.get(part).ok_or(CallError::Malformed)?;
+        Ok(vec![(
+            from,
+            [&[T_DESC, part as u8, parts.len() as u8][..], chunk].concat(),
+        )])
+    }
+
     /// Drop expired sessions and spent tokens past their retention.
     pub fn expire(&mut self, now: u64) {
         if let Err(e) = self.spent.prune(now) {
@@ -342,6 +380,8 @@ impl Relay {
             }
         } else if dg.first() == Some(&T_TICKET) {
             self.on_ticket(from, dg, now)
+        } else if dg.first() == Some(&T_DESC) {
+            self.on_descriptor(from, dg)
         } else {
             self.on_client(from, dg, now)
         };
@@ -465,6 +505,12 @@ impl Relay {
     }
 }
 
+/// A relay's static WireGuard secret, from its link key, so it is as
+/// long-lived and needs no file of its own.
+pub fn wg_secret(link: &X448Secret) -> [u8; 32] {
+    enclave_crypto::kmac::kmac256(&link.to_bytes()[..], b"", labels::RELAY_WG)
+}
+
 /// Encode a join payload: rendezvous id and the peer relay's address.
 pub fn join_payload(rendezvous: &[u8; 16], peer: SocketAddr) -> Vec<u8> {
     let mut v = vec![P_JOIN];
@@ -485,6 +531,26 @@ fn decode_join(b: &[u8]) -> Result<([u8; 16], SocketAddr), CallError> {
     let s = std::str::from_utf8(b.get(17..17 + n).ok_or(CallError::Malformed)?)
         .map_err(|_| CallError::Malformed)?;
     Ok((rv, s.parse().map_err(|_| CallError::Malformed)?))
+}
+
+/// Client helper: the request for part `part` of a relay's descriptor.
+pub fn descriptor_request(part: u8) -> Vec<u8> {
+    let mut v = vec![0u8; DESC_REQUEST];
+    v[0] = T_DESC;
+    v[1] = part;
+    v
+}
+
+/// Client helper: a descriptor reply's part number, part count and bytes.
+pub fn descriptor_part(dg: &[u8]) -> Option<(usize, usize, &[u8])> {
+    match dg {
+        [T_DESC, part, count, rest @ ..]
+            if part < count && usize::from(*count) <= MAX_DESC_PARTS && rest.len() <= DESC_PART =>
+        {
+            Some((usize::from(*part), usize::from(*count), rest))
+        }
+        _ => None,
+    }
 }
 
 /// Client helper: a ticket request as the datagrams that carry it.

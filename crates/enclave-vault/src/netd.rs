@@ -7,9 +7,9 @@
 //! all: only sealed requests and replies cross to and from netd.
 
 use enclave_ipc::frame;
-use enclave_ipc::net::{NetReply, NetRequest};
+use enclave_ipc::net::{NetReply, NetRequest, SOCKET_EVENT};
 use enclave_net::NetError;
-use enclave_net::transport::{ServerId, Transport};
+use enclave_net::transport::{Datagrams, ServerId, Transport};
 use enclave_rpc::ServerKey;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +18,7 @@ use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 type Pending = Arc<Mutex<HashMap<u32, oneshot::Sender<Result<Vec<u8>, String>>>>>;
+type Sockets = Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>>>;
 
 /// Tor bridges for this profile (censorship mode, `docs/09-transport.md`
 /// §7), in the profile directory: `builtin` (Tor's obfs4 bridges),
@@ -98,6 +99,8 @@ struct Link {
     next: AtomicU32,
     out: mpsc::UnboundedSender<Vec<u8>>,
     pending: Pending,
+    /// Open UDP sockets (calls) and where what arrives on each goes.
+    sockets: Sockets,
     alive: Arc<AtomicBool>,
     // Kept with the transport. When it goes, netd's stdin closes and netd
     // exits by itself once what was sent one way has left (at most 10 s),
@@ -164,6 +167,7 @@ impl Link {
             };
         let (out, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        let sockets: Sockets = Arc::default();
         let alive = Arc::new(AtomicBool::new(true));
         tokio::spawn(async move {
             while let Some(body) = rx.recv().await {
@@ -174,11 +178,29 @@ impl Link {
         });
         let p = Arc::clone(&pending);
         let a = Arc::clone(&alive);
+        let socks = Arc::clone(&sockets);
         tokio::spawn(async move {
             while let Ok(body) = frame::read_frame(&mut stdout).await {
                 let Ok(reply) = NetReply::decode(&body) else {
                     break;
                 };
+                if reply.id & SOCKET_EVENT != 0 {
+                    let n = reply.id & !SOCKET_EVENT;
+                    if let Ok(mut s) = socks.lock() {
+                        match reply.result {
+                            Ok(dg) => {
+                                if s.get(&n).is_some_and(|tx| tx.send(dg).is_err()) {
+                                    s.remove(&n);
+                                }
+                            }
+                            // It closed.
+                            Err(_) => {
+                                s.remove(&n);
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if let Some(tx) = p.lock().await.remove(&reply.id) {
                     let _ = tx.send(reply.result);
                 }
@@ -186,12 +208,16 @@ impl Link {
             // netd went away: mark it, then fail everything still waiting.
             a.store(false, Ordering::SeqCst);
             p.lock().await.clear();
+            if let Ok(mut s) = socks.lock() {
+                s.clear();
+            }
         });
         Ok(Self {
             connected: AtomicBool::new(false),
             next: AtomicU32::new(1),
             out,
             pending,
+            sockets,
             alive,
             _child: child,
         })
@@ -228,12 +254,16 @@ impl PipeTransport {
             .count()
     }
 
-    async fn call(&self, make: impl FnOnce(u32) -> NetRequest) -> enclave_net::Result<Vec<u8>> {
-        let l = self
-            .links
+    /// The netd in use: the first still running.
+    fn link(&self) -> enclave_net::Result<&Link> {
+        self.links
             .iter()
             .find(|l| l.alive.load(Ordering::SeqCst))
-            .ok_or(NetError::Unavailable("netd stopped"))?;
+            .ok_or(NetError::Unavailable("netd stopped"))
+    }
+
+    async fn call(&self, make: impl FnOnce(u32) -> NetRequest) -> enclave_net::Result<Vec<u8>> {
+        let l = self.link()?;
         // A spare taking over connects with the tickets the first had.
         let tickets = self.tickets.lock().ok().and_then(|t| t.clone());
         if let Some(t) = tickets
@@ -338,6 +368,31 @@ impl Transport for PipeTransport {
         })
         .await
         .map(|_| ())
+    }
+
+    async fn open_udp(&self, remote: &str) -> enclave_net::Result<Datagrams> {
+        let l = self.link()?;
+        let remote = remote.to_string();
+        let b = Self::send(l, |id| NetRequest::UdpOpen { id, remote }).await?;
+        let socket = u32::from_be_bytes(b.as_slice().try_into().map_err(|_| NetError::BadReply)?);
+        let (deliver, recv) = mpsc::unbounded_channel();
+        if let Ok(mut s) = l.sockets.lock() {
+            s.insert(socket, deliver);
+        }
+        let (send, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
+        let out = l.out.clone();
+        tokio::spawn(async move {
+            while let Some(bytes) = outgoing.recv().await {
+                if out
+                    .send(NetRequest::UdpSend { socket, bytes }.encode())
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            let _ = out.send(NetRequest::UdpClose { socket }.encode());
+        });
+        Ok(Datagrams { send, recv })
     }
 
     async fn tor_status(&self) -> enclave_net::Result<u8> {

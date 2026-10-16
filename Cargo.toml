@@ -94,3 +94,4 @@ opt-level = 2
 [patch.crates-io]
 ptrs = { path = "third_party/ptrs" }
 i-slint-backend-android-activity = { path = "third_party/i-slint-backend-android-activity" }
+opus-decoder = { path = "third_party/opus-decoder" }

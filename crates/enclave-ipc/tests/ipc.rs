@@ -520,6 +520,31 @@ fn media_messages_round_trip_and_check_sizes() {
             op: MediaOp::ClipFrames(360),
             bytes: vec![0; 10],
         },
+        MediaRequest {
+            id: 13,
+            op: MediaOp::CallOpen(4),
+            bytes: Vec::new(),
+        },
+        MediaRequest {
+            id: 14,
+            op: MediaOp::CallEncode(4),
+            bytes: vec![0; 1920],
+        },
+        MediaRequest {
+            id: 15,
+            op: MediaOp::CallDecode(4, enclave_ipc::media::CallDecode::Recover),
+            bytes: vec![1; 80],
+        },
+        MediaRequest {
+            id: 16,
+            op: MediaOp::CallDecode(4, enclave_ipc::media::CallDecode::Lost),
+            bytes: Vec::new(),
+        },
+        MediaRequest {
+            id: 17,
+            op: MediaOp::CallClose(4),
+            bytes: Vec::new(),
+        },
     ] {
         assert_eq!(MediaRequest::decode(&r.encode()).unwrap(), r);
     }
@@ -554,6 +579,10 @@ fn media_messages_round_trip_and_check_sizes() {
                 bytes: vec![3; 9],
                 frames: vec![vec![1; 16], vec![2; 16]],
             }),
+        },
+        MediaReply {
+            id: 6,
+            result: Ok(MediaOut::Raw(vec![4; 80])),
         },
     ] {
         assert_eq!(MediaReply::decode(&r.encode()).unwrap(), r);

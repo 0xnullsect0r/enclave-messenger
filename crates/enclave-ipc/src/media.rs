@@ -32,6 +32,29 @@ pub enum MediaOp {
     ClipPoster(u16),
     /// A clip's frames for playing, shrunk to at most this many pixels.
     ClipFrames(u16),
+    /// Start a call's audio (`enclave_media::call`) with this number.
+    CallOpen(u32),
+    /// A call's next 20 ms from the microphone (16-bit little-endian PCM,
+    /// 48 kHz mono) to an Opus frame ([`MediaOut::Raw`]).
+    CallEncode(u32),
+    /// A call's next 20 ms to play ([`MediaOut::Raw`], PCM as above) from
+    /// the other person's frame ([`CallDecode::Packet`]), the next one's
+    /// forward error correction (`Recover`), or nothing (`Lost`; empty
+    /// bytes).
+    CallDecode(u32, CallDecode),
+    /// End a call's audio.
+    CallClose(u32),
+}
+
+/// How [`MediaOp::CallDecode`] uses its bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallDecode {
+    /// This frame arrived.
+    Packet,
+    /// It was lost; these are the next frame's.
+    Recover,
+    /// It was lost.
+    Lost,
 }
 
 /// Vault → mediad.
@@ -83,6 +106,9 @@ pub enum MediaOut {
         /// Frames, evenly spaced over the clip.
         frames: Vec<Vec<u8>>,
     },
+    /// Bytes as they are (call audio; empty when there is nothing to
+    /// say).
+    Raw(Vec<u8>),
     /// 8-bit RGBA pixels.
     Rgba {
         /// Width.
@@ -118,6 +144,14 @@ impl MediaRequest {
             MediaOp::Clip => w.u8(7),
             MediaOp::ClipPoster(side) => w.u8(8).u32(u32::from(side)),
             MediaOp::ClipFrames(side) => w.u8(9).u32(u32::from(side)),
+            MediaOp::CallOpen(n) => w.u8(10).u32(n),
+            MediaOp::CallEncode(n) => w.u8(11).u32(n),
+            MediaOp::CallDecode(n, how) => w.u8(12).u32(n).u8(match how {
+                CallDecode::Packet => 0,
+                CallDecode::Recover => 1,
+                CallDecode::Lost => 2,
+            }),
+            MediaOp::CallClose(n) => w.u8(13).u32(n),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -137,6 +171,21 @@ impl MediaRequest {
             7 => MediaOp::Clip,
             8 => MediaOp::ClipPoster(u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?),
             9 => MediaOp::ClipFrames(u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?),
+            10 => MediaOp::CallOpen(r.u32()?),
+            11 => MediaOp::CallEncode(r.u32()?),
+            12 => {
+                let n = r.u32()?;
+                MediaOp::CallDecode(
+                    n,
+                    match r.u8()? {
+                        0 => CallDecode::Packet,
+                        1 => CallDecode::Recover,
+                        2 => CallDecode::Lost,
+                        _ => return Err(IpcError::Malformed),
+                    },
+                )
+            }
+            13 => MediaOp::CallClose(r.u32()?),
             _ => return Err(IpcError::Malformed),
         };
         let bytes = r.bytes()?;
@@ -191,6 +240,9 @@ impl MediaReply {
                 for f in frames {
                     w.bytes(f);
                 }
+            }
+            Ok(MediaOut::Raw(bytes)) if bytes.len() <= MAX_BYTES => {
+                w.u8(5).bytes(bytes);
             }
             Ok(_) => {
                 w.u8(0).str("too large");
@@ -261,6 +313,7 @@ impl MediaReply {
                     frames,
                 })
             }
+            5 => Ok(MediaOut::Raw(r.bytes()?)),
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

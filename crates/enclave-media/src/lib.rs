@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod call;
 mod exif;
 mod resize;
 pub mod video;

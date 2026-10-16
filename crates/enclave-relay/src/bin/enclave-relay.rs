@@ -188,7 +188,13 @@ fn write_descriptor(args: &[String]) -> Result<(), String> {
         .unwrap_or(cfg.relay.listen)
         .to_string();
     let d = keys
-        .descriptor(&cfg.relay.operator, &cfg.relay.family, &addr, now())
+        .descriptor(
+            &cfg.relay.operator,
+            &cfg.relay.family,
+            &addr,
+            cfg.relay.ticket_effort,
+            now(),
+        )
         .map_err(|e| e.to_string())?;
     std::fs::write(out, d.encode()).map_err(|e| format!("{out}: {e}"))?;
     println!("{}", hex(&d.id()));
@@ -227,6 +233,17 @@ async fn run(args: &[String]) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     relay.set_ticket_effort(cfg.relay.ticket_effort);
+    let (operator, family, addr, effort) = (
+        cfg.relay.operator.clone(),
+        cfg.relay.family.clone(),
+        desc.addr.to_string(),
+        cfg.relay.ticket_effort,
+    );
+    let sign = move |keys: &RelayKeys| {
+        keys.descriptor(&operator, &family, &addr, effort, now())
+            .map(|d| d.encode())
+    };
+    relay.set_published(sign(&keys).map_err(|e| e.to_string())?);
     for p in &cfg.relay.peers {
         let d = decode(p, "peer").ok_or_else(|| format!("malformed peer descriptor {p}"))?;
         relay.add_peer(&d).map_err(|e| e.to_string())?;
@@ -251,7 +268,14 @@ async fn run(args: &[String]) -> Result<(), String> {
                 tick.tick().await;
                 let _ = std::fs::write(&beat, now().to_string());
                 match keys.advance(today()) {
-                    Ok(true) => relay.lock().await.set_ticket_keys(keys.tickets()),
+                    Ok(true) => {
+                        let mut r = relay.lock().await;
+                        r.set_ticket_keys(keys.tickets());
+                        match sign(&keys) {
+                            Ok(d) => r.set_published(d),
+                            Err(e) => eprintln!("re-signing the descriptor failed: {e}"),
+                        }
+                    }
                     Ok(false) => {}
                     Err(e) => eprintln!("ticket-key rotation failed: {e}"),
                 }

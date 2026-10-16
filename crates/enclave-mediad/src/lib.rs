@@ -19,8 +19,66 @@ use std::process::ExitCode;
 #[cfg(not(target_os = "wasi"))]
 const MEMORY_LIMIT: u64 = 2 << 30;
 
-fn handle(req: MediaRequest) -> MediaReply {
+/// Calls' audio state, by the vault's number for each.
+type Calls = std::collections::HashMap<u32, enclave_media::call::CallAudio>;
+
+/// Most calls at once.
+const MAX_CALLS: usize = 4;
+
+/// PCM as 16-bit little-endian bytes and back.
+fn pcm_bytes(pcm: &[i16]) -> Vec<u8> {
+    pcm.iter().flat_map(|s| s.to_le_bytes()).collect()
+}
+
+fn bytes_pcm(b: &[u8]) -> Vec<i16> {
+    b.chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+        .collect()
+}
+
+fn call_op(op: MediaOp, bytes: &[u8], calls: &mut Calls) -> enclave_media::Result<MediaOut> {
+    use enclave_ipc::media::CallDecode;
+    use enclave_media::MediaError;
+    use enclave_media::call::{CallAudio, Decode, FRAME};
+    let missing = MediaError::Unsupported;
+    match op {
+        MediaOp::CallOpen(n) => {
+            if calls.len() >= MAX_CALLS && !calls.contains_key(&n) {
+                return Err(MediaError::TooLarge);
+            }
+            calls.insert(n, CallAudio::new()?);
+            Ok(MediaOut::Raw(Vec::new()))
+        }
+        MediaOp::CallEncode(n) => {
+            if bytes.len() > FRAME * 2 {
+                return Err(MediaError::TooLarge);
+            }
+            let c = calls.get_mut(&n).ok_or(missing)?;
+            c.encode(&bytes_pcm(bytes)).map(MediaOut::Raw)
+        }
+        MediaOp::CallDecode(n, how) => {
+            let c = calls.get_mut(&n).ok_or(missing)?;
+            let what = match how {
+                CallDecode::Packet => Decode::Packet(bytes),
+                CallDecode::Recover => Decode::Recover(bytes),
+                CallDecode::Lost => Decode::Lost,
+            };
+            c.decode(what).map(|pcm| MediaOut::Raw(pcm_bytes(&pcm)))
+        }
+        MediaOp::CallClose(n) => {
+            calls.remove(&n);
+            Ok(MediaOut::Raw(Vec::new()))
+        }
+        _ => Err(missing),
+    }
+}
+
+fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
     let result = match req.op {
+        MediaOp::CallOpen(_)
+        | MediaOp::CallEncode(_)
+        | MediaOp::CallDecode(..)
+        | MediaOp::CallClose(_) => call_op(req.op, &req.bytes, calls),
         MediaOp::Sanitize => enclave_media::sanitize(&req.bytes).map(|s| MediaOut::Sanitized {
             png: s.format == enclave_media::Format::Png,
             width: s.width,
@@ -154,13 +212,63 @@ fn serve(input: impl Read, output: impl Write) -> ExitCode {
     let mut stdin = std::io::BufReader::new(input);
     let mut stdout = std::io::BufWriter::new(output);
     // One request at a time: pictures are decoded in order.
+    let mut calls = Calls::new();
     while let Some(body) = read_frame(&mut stdin) {
         let Ok(req) = MediaRequest::decode(&body) else {
             break;
         };
-        if !write_frame(&mut stdout, &handle(req).encode()) {
+        if !write_frame(&mut stdout, &handle(req, &mut calls).encode()) {
             break;
         }
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use enclave_ipc::media::CallDecode;
+
+    fn ask(op: MediaOp, bytes: Vec<u8>, calls: &mut Calls) -> Result<MediaOut, String> {
+        handle(MediaRequest { id: 1, op, bytes }, calls).result
+    }
+
+    #[test]
+    fn calls_keep_their_codec_state() {
+        let mut calls = Calls::new();
+        assert!(ask(MediaOp::CallEncode(7), vec![0; 1920], &mut calls).is_err());
+        ask(MediaOp::CallOpen(7), Vec::new(), &mut calls).unwrap();
+        let mic: Vec<u8> = (0..960i16)
+            .flat_map(|i| ((i % 48) * 300).to_le_bytes())
+            .collect();
+        let Ok(MediaOut::Raw(frame)) = ask(MediaOp::CallEncode(7), mic, &mut calls) else {
+            panic!()
+        };
+        assert!(!frame.is_empty() && frame.len() <= 100);
+        let Ok(MediaOut::Raw(pcm)) = ask(
+            MediaOp::CallDecode(7, CallDecode::Packet),
+            frame,
+            &mut calls,
+        ) else {
+            panic!()
+        };
+        assert_eq!(pcm.len(), 1920);
+        let Ok(MediaOut::Raw(pcm)) = ask(
+            MediaOp::CallDecode(7, CallDecode::Lost),
+            Vec::new(),
+            &mut calls,
+        ) else {
+            panic!()
+        };
+        assert_eq!(pcm.len(), 1920);
+        assert!(ask(MediaOp::CallEncode(7), vec![0; 4000], &mut calls).is_err());
+        for n in 8..11 {
+            ask(MediaOp::CallOpen(n), Vec::new(), &mut calls).unwrap();
+        }
+        assert!(ask(MediaOp::CallOpen(11), Vec::new(), &mut calls).is_err());
+        ask(MediaOp::CallClose(7), Vec::new(), &mut calls).unwrap();
+        assert!(ask(MediaOp::CallEncode(7), vec![0; 1920], &mut calls).is_err());
+        ask(MediaOp::CallOpen(11), Vec::new(), &mut calls).unwrap();
+    }
 }

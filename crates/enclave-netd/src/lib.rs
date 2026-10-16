@@ -776,11 +776,13 @@ impl Udp {
         let task = tokio::spawn(async move {
             let mut buf = vec![0u8; MAX_DATAGRAM];
             loop {
-                let result = reader
-                    .recv(&mut buf)
-                    .await
-                    .map(|len| buf[..len].to_vec())
-                    .map_err(|e| e.to_string());
+                let result = match reader.recv(&mut buf).await {
+                    Ok(len) => Ok(buf[..len].to_vec()),
+                    // ICMP unreachable doesn't close it: the relay may
+                    // just not be up yet.
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => continue,
+                    Err(e) => Err(e.to_string()),
+                };
                 let closed = result.is_err();
                 let reply = NetReply {
                     id: SOCKET_EVENT | n,

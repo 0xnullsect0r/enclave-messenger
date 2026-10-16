@@ -25,7 +25,7 @@ pub const SPARES: usize = 2;
 /// Where pictures are handled.
 pub struct Media {
     /// The helpers, first live one used; empty means in this process.
-    procs: Vec<Proc>,
+    procs: Vec<Arc<Proc>>,
 }
 
 struct Proc {
@@ -126,6 +126,111 @@ impl Proc {
     }
 }
 
+impl Proc {
+    async fn call(&self, op: MediaOp, bytes: Vec<u8>) -> Result<MediaOut, String> {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().await.insert(id, tx);
+        // The reader marks a helper dead before failing what's pending, so
+        // a request added after that is caught here instead of waiting
+        // forever.
+        if !self.alive.load(Ordering::SeqCst) {
+            self.pending.lock().await.remove(&id);
+            return Err("mediad stopped".into());
+        }
+        if self
+            .out
+            .send(MediaRequest { id, op, bytes }.encode())
+            .is_err()
+        {
+            self.alive.store(false, Ordering::SeqCst);
+            return Err("mediad stopped".into());
+        }
+        rx.await.map_err(|_| "mediad stopped".to_string())?
+    }
+}
+
+/// One call's audio: its encoder, decoder and echo canceller live in one
+/// helper (or, without helpers, here) until it is dropped.
+pub struct CallCodec {
+    n: u32,
+    at: CallAt,
+}
+
+enum CallAt {
+    Helper(Arc<Proc>),
+    Here(Arc<std::sync::Mutex<enclave_media::call::CallAudio>>),
+}
+
+/// How [`CallCodec::decode`] takes its bytes.
+pub use enclave_ipc::media::CallDecode;
+
+impl CallCodec {
+    /// The microphone's next 20 ms (960 samples) to an Opus frame.
+    pub async fn encode(&self, mic: &[i16]) -> Result<Vec<u8>, String> {
+        match &self.at {
+            CallAt::Helper(p) => {
+                let pcm: Vec<u8> = mic.iter().flat_map(|s| s.to_le_bytes()).collect();
+                match p.call(MediaOp::CallEncode(self.n), pcm).await? {
+                    MediaOut::Raw(b) => Ok(b),
+                    _ => Err("unexpected reply".into()),
+                }
+            }
+            CallAt::Here(a) => a
+                .lock()
+                .map_err(|_| "poisoned".to_string())?
+                .encode(mic)
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    /// The next 20 ms to play.
+    pub async fn decode(&self, how: CallDecode, bytes: &[u8]) -> Result<Vec<i16>, String> {
+        match &self.at {
+            CallAt::Helper(p) => {
+                match p
+                    .call(MediaOp::CallDecode(self.n, how), bytes.to_vec())
+                    .await?
+                {
+                    MediaOut::Raw(b) if b.len() == enclave_media::call::FRAME * 2 => Ok(b
+                        .chunks_exact(2)
+                        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                        .collect()),
+                    _ => Err("unexpected reply".into()),
+                }
+            }
+            CallAt::Here(a) => {
+                use enclave_media::call::Decode;
+                let what = match how {
+                    CallDecode::Packet => Decode::Packet(bytes),
+                    CallDecode::Recover => Decode::Recover(bytes),
+                    CallDecode::Lost => Decode::Lost,
+                };
+                a.lock()
+                    .map_err(|_| "poisoned".to_string())?
+                    .decode(what)
+                    .map_err(|e| e.to_string())
+            }
+        }
+    }
+}
+
+impl Drop for CallCodec {
+    fn drop(&mut self) {
+        if let CallAt::Helper(p) = &self.at {
+            // No one waits for the answer (id 0 is never pending).
+            let _ = p.out.send(
+                MediaRequest {
+                    id: 0,
+                    op: MediaOp::CallClose(self.n),
+                    bytes: Vec::new(),
+                }
+                .encode(),
+            );
+        }
+    }
+}
+
 impl Media {
     /// Decode in this process (demo, tests, or no mediad).
     pub fn in_process() -> Self {
@@ -159,8 +264,12 @@ impl Media {
         let (first, rest) = bins
             .split_first()
             .ok_or_else(|| std::io::Error::other("no helper"))?;
-        let mut procs = vec![Proc::spawn(first)?];
-        procs.extend(rest.iter().filter_map(|b| Proc::spawn(b).ok()));
+        let mut procs = vec![Arc::new(Proc::spawn(first)?)];
+        procs.extend(
+            rest.iter()
+                .filter_map(|b| Proc::spawn(b).ok())
+                .map(Arc::new),
+        );
         Ok(Self { procs })
     }
 
@@ -173,21 +282,33 @@ impl Media {
         let Some(p) = self.procs.iter().find(|p| p.alive.load(Ordering::SeqCst)) else {
             return Err("mediad stopped".into());
         };
-        let id = p.next.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = oneshot::channel();
-        p.pending.lock().await.insert(id, tx);
-        // The reader marks a helper dead before failing what's pending, so
-        // a request added after that is caught here instead of waiting
-        // forever.
-        if !p.alive.load(Ordering::SeqCst) {
-            p.pending.lock().await.remove(&id);
-            return Err("mediad stopped".into());
+        p.call(op, bytes).await
+    }
+
+    /// Start a call's audio (`enclave_media::call`). It goes to the last
+    /// helper still running, so pictures (on the first) don't hold up its
+    /// frames; with one helper they share it.
+    pub async fn open_call(&self) -> Result<CallCodec, String> {
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        if self.procs.is_empty() {
+            let audio = enclave_media::call::CallAudio::new().map_err(|e| e.to_string())?;
+            return Ok(CallCodec {
+                n,
+                at: CallAt::Here(Arc::new(std::sync::Mutex::new(audio))),
+            });
         }
-        if p.out.send(MediaRequest { id, op, bytes }.encode()).is_err() {
-            p.alive.store(false, Ordering::SeqCst);
-            return Err("mediad stopped".into());
-        }
-        rx.await.map_err(|_| "mediad stopped".to_string())?
+        let p = self
+            .procs
+            .iter()
+            .rev()
+            .find(|p| p.alive.load(Ordering::SeqCst))
+            .ok_or("mediad stopped")?;
+        p.call(MediaOp::CallOpen(n), Vec::new()).await?;
+        Ok(CallCodec {
+            n,
+            at: CallAt::Helper(Arc::clone(p)),
+        })
     }
 
     /// Re-encode a picture for sending.
@@ -398,6 +519,11 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         }
         // Other people's AV1 is decoded in mediad only, never in the vault.
         MediaOp::ClipFrames(_) => return Err("playing clips needs the media process".into()),
+        // Calls keep state (`Media::open_call`).
+        MediaOp::CallOpen(_)
+        | MediaOp::CallEncode(_)
+        | MediaOp::CallDecode(..)
+        | MediaOp::CallClose(_) => return Err("calls go through Media::open_call".into()),
     }
     .map_err(|e| e.to_string())
 }

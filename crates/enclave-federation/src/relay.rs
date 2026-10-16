@@ -2,14 +2,18 @@
 //!
 //! ```text
 //! relay id   = first 16 B of SHAKE256("enclave/v1/calls/relay-id" ‖ identity public key)
-//! descriptor = u8(1) ‖ identity pk (2,649) ‖ bytes(operator) ‖ bytes(family)
-//!            ‖ bytes(UDP address) ‖ link key (56)
+//! descriptor = u8(2) ‖ identity pk (2,649) ‖ bytes(operator) ‖ bytes(family)
+//!            ‖ bytes(UDP address) ‖ link key (56) ‖ WireGuard key (32)
 //!            ‖ u8(n) ‖ n × (u32(day) ‖ X448 (56) ‖ ML-KEM-1024 (1,568))     ticket keys
-//!            ‖ u64(published) ‖ u64(expires)
+//!            ‖ u32(ticket effort) ‖ u64(published) ‖ u64(expires)
 //!            ‖ CompositeSign(identity, "enclave/v1/calls/relay-descriptor", all of the above)
 //! ```
 //!
 //! Callers pick relays from operator families different from each other's.
+//! The server list names each relay's identity, address and family; the
+//! descriptor itself changes daily (its ticket keys), so a caller fetches
+//! it from the relay (`enclave-relay`'s descriptor datagrams) and checks it
+//! against the listed identity.
 
 use crate::codec::{Reader, Writer};
 use crate::{FedError, MAX_ADDRESS, MAX_NAME, Result, read_composite, read_sig, utf8};
@@ -23,7 +27,9 @@ pub const CTX_RELAY_DESCRIPTOR: &str = "enclave/v1/calls/relay-descriptor";
 pub const RELAY_ID_LABEL: &str = "enclave/v1/calls/relay-id";
 /// Bytes of one ticket key: `u32 day ‖ X448 ‖ ML-KEM-1024`.
 pub const TICKET_KEY_LEN: usize = 4 + 56 + 1568;
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
+/// Most proof-of-work effort a descriptor may ask for a ticket.
+pub const MAX_TICKET_EFFORT: u32 = 24;
 const MAX_TICKET_KEYS: usize = 3;
 
 /// A relay id from its identity key.
@@ -47,9 +53,13 @@ pub struct RelayDescriptor {
     pub addr: String,
     /// X448 public key for relay↔relay links.
     pub link_key: [u8; 56],
+    /// The relay's static WireGuard key (clients' links).
+    pub wg_key: [u8; 32],
     /// Ticket keys (`u32 day ‖ X448 ‖ ML-KEM-1024` each): today's and the
     /// next day's.
     pub ticket_keys: Vec<Vec<u8>>,
+    /// Proof-of-work effort a ticket costs (`enclave_tokens::solve`).
+    pub ticket_effort: u32,
     /// When signed.
     pub published: u64,
     /// Valid until.
@@ -71,11 +81,14 @@ impl RelayDescriptor {
             .bytes(self.family.as_bytes())
             .bytes(self.addr.as_bytes())
             .fixed(&self.link_key)
+            .fixed(&self.wg_key)
             .u8(self.ticket_keys.len() as u8);
         for k in &self.ticket_keys {
             w.fixed(k);
         }
-        w.u64(self.published).u64(self.expires);
+        w.u32(self.ticket_effort)
+            .u64(self.published)
+            .u64(self.expires);
         w.finish()
     }
 
@@ -87,7 +100,9 @@ impl RelayDescriptor {
         family: &str,
         addr: &str,
         link_key: [u8; 56],
+        wg_key: [u8; 32],
         ticket_keys: Vec<Vec<u8>>,
+        ticket_effort: u32,
         published: u64,
         expires: u64,
         rng: &mut HedgedRng,
@@ -100,6 +115,7 @@ impl RelayDescriptor {
             || ticket_keys.is_empty()
             || ticket_keys.len() > MAX_TICKET_KEYS
             || ticket_keys.iter().any(|k| k.len() != TICKET_KEY_LEN)
+            || ticket_effort > MAX_TICKET_EFFORT
             || expires <= published
         {
             return Err(FedError::Malformed);
@@ -110,7 +126,9 @@ impl RelayDescriptor {
             family: family.into(),
             addr: addr.into(),
             link_key,
+            wg_key,
             ticket_keys,
+            ticket_effort,
             published,
             expires,
             signature: Vec::new(),
@@ -139,6 +157,7 @@ impl RelayDescriptor {
         let family = utf8(r.bytes(MAX_NAME)?)?;
         let addr = utf8(r.bytes(MAX_ADDRESS)?)?;
         let link_key = r.array::<56>()?;
+        let wg_key = r.array::<32>()?;
         let n = usize::from(r.u8()?);
         if n == 0 || n > MAX_TICKET_KEYS {
             return Err(FedError::Malformed);
@@ -152,13 +171,26 @@ impl RelayDescriptor {
             family,
             addr,
             link_key,
+            wg_key,
             ticket_keys,
+            ticket_effort: r.u32()?,
             published: r.u64()?,
             expires: r.u64()?,
             signature: read_sig(&mut r)?.to_vec(),
         };
         r.end()?;
+        if d.ticket_effort > MAX_TICKET_EFFORT {
+            return Err(FedError::Malformed);
+        }
         Ok(d)
+    }
+
+    /// The ticket key for `day` (`u32 day ‖ X448 ‖ ML-KEM-1024`), if listed.
+    pub fn ticket_key(&self, day: u32) -> Option<&[u8]> {
+        self.ticket_keys
+            .iter()
+            .find(|k| k[..4] == day.to_be_bytes())
+            .map(Vec::as_slice)
     }
 
     /// Check the self-signature and the validity window.

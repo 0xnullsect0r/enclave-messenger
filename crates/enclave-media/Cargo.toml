@@ -28,6 +28,7 @@ opus-decoder = "0.1.1"
 gif = "0.14"
 rav1e = { version = "0.8", default-features = false }
 enclave-av1 = { path = "../enclave-av1", optional = true }
+sonora = "0.2"
 
 [features]
 # AV1 decoding: only mediad (and tests) turn this on.

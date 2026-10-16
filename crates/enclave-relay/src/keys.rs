@@ -105,6 +105,12 @@ impl RelayKeys {
         v
     }
 
+    /// The relay's static WireGuard key, from the link key (as
+    /// [`crate::Relay`] derives it).
+    pub fn wg_public(&self) -> [u8; 32] {
+        enclave_calls::wg::public_key(crate::wg_secret(&self.link_secret()))
+    }
+
     /// Tomorrow's ticket key (published ahead in the relay descriptor).
     pub fn next_ticket(&self) -> TicketSecretKey {
         TicketSecretKey::from_seed(self.id, self.chain.period() + 1, &self.chain.next())
@@ -117,6 +123,7 @@ impl RelayKeys {
         operator: &str,
         family: &str,
         addr: &str,
+        effort: u32,
         now: u64,
     ) -> Result<enclave_federation::RelayDescriptor, KeyError> {
         let ticket = |k: &TicketSecretKey| {
@@ -130,7 +137,9 @@ impl RelayKeys {
             family,
             addr,
             self.link_secret().public().0,
+            self.wg_public(),
             vec![ticket(&self.tickets()[0]), ticket(&self.next_ticket())],
+            effort,
             now,
             now + 2 * 86_400,
             &mut rng,

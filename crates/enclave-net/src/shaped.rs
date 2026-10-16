@@ -436,6 +436,11 @@ impl Transport for ShapedTransport {
         self.inner.tor_status().await
     }
 
+    // Calls have their own constant-rate shape (`enclave_calls::shape`).
+    async fn open_udp(&self, remote: &str) -> Result<crate::transport::Datagrams> {
+        self.inner.open_udp(remote).await
+    }
+
     // Outside the shape: Tor carries these, not the mixnet.
     async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
         self.inner.fetch(method, url, body).await

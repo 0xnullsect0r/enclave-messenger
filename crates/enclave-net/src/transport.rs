@@ -127,6 +127,12 @@ pub trait Transport: Send + Sync {
     async fn tickets_spent(&self) -> Result<u64> {
         Ok(0)
     }
+    /// Open a UDP socket to a call relay (or, in direct mode, the other
+    /// person) at `remote` (`IP:PORT`). Calls only: media goes to relays
+    /// over UDP, outside the mixnet (`docs/11-calls.md` §3).
+    async fn open_udp(&self, _remote: &str) -> Result<Datagrams> {
+        Err(NetError::Unavailable("calls aren't carried here"))
+    }
     /// Current time, Unix seconds. The system clock, except in simulations
     /// that move time forward.
     fn now(&self) -> u64 {
@@ -134,6 +140,64 @@ pub trait Transport: Send + Sync {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0)
+    }
+}
+
+/// A UDP socket as two channels: datagrams to send, and datagrams that
+/// arrived. Dropping `send` closes the socket; `recv` ends when it closed.
+pub struct Datagrams {
+    /// Datagrams to send.
+    pub send: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Datagrams that arrived.
+    pub recv: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+}
+
+/// Most bytes of one call datagram.
+pub const MAX_DATAGRAM: usize = 2048;
+
+impl Datagrams {
+    /// A socket of this process to `remote` (netd's, or the development
+    /// transport's): only datagrams from `remote` are taken.
+    pub async fn direct(remote: &str) -> Result<Self> {
+        let remote: SocketAddr = tokio::net::lookup_host(remote)
+            .await?
+            .next()
+            .ok_or_else(|| NetError::Unreachable("no address".into()))?;
+        let local: SocketAddr = if remote.is_ipv4() {
+            (std::net::Ipv4Addr::UNSPECIFIED, 0).into()
+        } else {
+            (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
+        };
+        let socket = std::sync::Arc::new(tokio::net::UdpSocket::bind(local).await?);
+        socket.connect(remote).await?;
+        let (send, mut out) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let (deliver, recv) = tokio::sync::mpsc::unbounded_channel();
+        let tx = std::sync::Arc::clone(&socket);
+        let reader = tokio::spawn(async move {
+            let mut buf = vec![0u8; MAX_DATAGRAM];
+            loop {
+                match socket.recv(&mut buf).await {
+                    Ok(n) => {
+                        if deliver.send(buf[..n].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                    // ICMP unreachable doesn't close it: the relay may
+                    // just not be up yet.
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
+                    Err(_) => break,
+                }
+            }
+        });
+        tokio::spawn(async move {
+            while let Some(dg) = out.recv().await {
+                if dg.len() <= MAX_DATAGRAM {
+                    let _ = tx.send(&dg).await;
+                }
+            }
+            reader.abort();
+        });
+        Ok(Self { send, recv })
     }
 }
 
@@ -302,6 +366,10 @@ impl Transport for TcpTransport {
         if let (Route::Tcp(a), Ok(mut addrs)) = (route, self.addrs.write()) {
             addrs.insert(server, a);
         }
+    }
+
+    async fn open_udp(&self, remote: &str) -> Result<Datagrams> {
+        Datagrams::direct(remote).await
     }
 }
 
