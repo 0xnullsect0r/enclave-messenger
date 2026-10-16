@@ -378,3 +378,58 @@ async fn account_records_are_committed() {
             .is_err()
     );
 }
+
+/// Claims that arrive within the batch window share one epoch, so the log
+/// doesn't say which came first; a rename is one epoch; a second change to
+/// a label already in the batch waits for the next epoch.
+#[test]
+fn claims_in_one_window_share_an_epoch() {
+    use enclave_kt::KtService;
+    use std::sync::Arc;
+    let (svc, _) = KtService::start_dev([5; 16], "enclave.test").unwrap();
+    let svc = Arc::new(svc);
+    const NOW: u64 = 1_700_000_000;
+    // No window: one claim after another, one epoch each.
+    let a = svc.publish("ada", vec![1], NOW).unwrap();
+    let b = svc.publish("ben", vec![2], NOW).unwrap();
+    assert_eq!(b, a + 1);
+    // A rename in one job: one epoch.
+    let r = svc
+        .publish_many(
+            vec![("ben".into(), vec![0]), ("benny".into(), vec![2])],
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(r, b + 1);
+    svc.set_batch_window(std::time::Duration::from_millis(800));
+    let claims: Vec<_> = ["cyrus", "dana", "eli", "cyrus"]
+        .into_iter()
+        .enumerate()
+        .map(|(i, n)| {
+            let svc = Arc::clone(&svc);
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(50 * i as u64));
+                (n, svc.publish(n, vec![i as u8], NOW))
+            })
+        })
+        .collect();
+    let mut epochs: Vec<(&str, u64)> = claims
+        .into_iter()
+        .map(|h| {
+            let (n, e) = h.join().unwrap();
+            (n, e.unwrap())
+        })
+        .collect();
+    epochs.sort();
+    let first = epochs.iter().map(|(_, e)| *e).min().unwrap();
+    assert_eq!(first, r + 1);
+    let one: Vec<&str> = epochs
+        .iter()
+        .filter(|(_, e)| *e == first)
+        .map(|(n, _)| *n)
+        .collect();
+    // The three different names together; the second "cyrus" in the next.
+    assert_eq!(one.len(), 3, "{epochs:?}");
+    assert!(one.contains(&"dana") && one.contains(&"eli") && one.contains(&"cyrus"));
+    assert_eq!(epochs.iter().filter(|(_, e)| *e == first + 1).count(), 1);
+}

@@ -2565,13 +2565,16 @@ impl Server {
             }
         }
         let old = old.and_then(|o| String::from_utf8(o).ok());
+        // A rename releases the old name and takes the new one in one
+        // epoch.
+        let mut changes = Vec::with_capacity(2);
         if let Some(old) = &old
             && *old != name
-            && kt.publish(old, root.to_vec(), now).is_err()
         {
-            return Status::Invalid;
+            changes.push((old.clone(), root.to_vec()));
         }
-        if kt.publish(&name, claim.value.clone(), now).is_err() {
+        changes.push((name.clone(), claim.value.clone()));
+        if kt.publish_many(changes, now).is_err() {
             return Status::Denied;
         }
         let time = claim.time;

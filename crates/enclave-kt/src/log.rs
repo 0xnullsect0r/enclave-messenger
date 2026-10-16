@@ -210,6 +210,51 @@ impl KtLog {
         Ok(sh)
     }
 
+    /// Check `name` for [`Self::publish_entries`]: its normalized form and
+    /// its confusable skeleton, refused if another name already holds the
+    /// skeleton.
+    pub fn check_name(&self, name: &str) -> Result<(String, String)> {
+        let n = normalize(name)?;
+        let sk = skeleton(&n);
+        if let Some(existing) = self.skeletons.get(&sk)
+            && existing != &n
+        {
+            return Err(KtError::Username);
+        }
+        Ok((n, sk))
+    }
+
+    /// Commit many changes in one epoch: usernames already checked with
+    /// [`Self::check_name`] (`(normalized, skeleton, value)`) and raw labels
+    /// (as for [`Self::commit_labels`]). Claims made together then can't be
+    /// told apart by their epoch. Labels must be distinct.
+    pub async fn publish_entries(
+        &mut self,
+        names: Vec<(String, String, Vec<u8>)>,
+        raw: Vec<(Vec<u8>, Vec<u8>)>,
+        now: u64,
+        rng: &mut HedgedRng,
+    ) -> Result<SignedHead> {
+        if raw
+            .iter()
+            .any(|(l, _)| !matches!(l.first(), Some(&b) if b == 0 || b == ACCOUNT_TAG))
+        {
+            return Err(KtError::Username);
+        }
+        let mut entries: Vec<(AkdLabel, AkdValue)> = names
+            .iter()
+            .map(|(n, _, v)| (AkdLabel::from(n.as_str()), AkdValue(v.clone())))
+            .collect();
+        entries.extend(raw.into_iter().map(|(l, v)| (AkdLabel(l), AkdValue(v))));
+        let eh = self.dir.publish(entries).await.map_err(akd_err)?;
+        let sh = self.sign_head(eh.epoch(), eh.hash(), now, rng)?;
+        for (n, sk, _) in names {
+            self.store.put_skeleton(&sk, &n)?;
+            self.skeletons.insert(sk, n);
+        }
+        Ok(sh)
+    }
+
     /// Start a new epoch with no username changes, so heads stay fresh for
     /// clients (they refuse heads older than a day). The label is not a valid
     /// username, so no lookup can reach it.

@@ -364,6 +364,7 @@ async fn run(args: &[String]) -> Result<(), String> {
                 witnesses: pinned,
             },
         };
+        kt.set_batch_window(std::time::Duration::from_secs(cfg.kt.batch_secs));
         server.enable_kt(kt);
         for name in &cfg.kt.withdrawn {
             match server.withdraw_username(name, now()) {

@@ -24,12 +24,14 @@ use std::sync::mpsc;
 pub const HEARTBEAT_SECS: u64 = 3600;
 
 enum Job {
+    /// Names bound together (one epoch whatever the window).
     Publish {
-        name: String,
-        value: Vec<u8>,
+        names: Vec<(String, Vec<u8>)>,
         now: u64,
         reply: mpsc::Sender<Result<u64>>,
     },
+    /// How long to gather changes into one epoch.
+    Window(std::time::Duration),
     /// A name, or a raw label (`Err`: the descriptor digest, an account
     /// record).
     Lookup {
@@ -236,16 +238,25 @@ impl KtService {
     /// Bind `name` to `value` in a new epoch and collect witness cosignatures.
     /// Returns the epoch.
     pub fn publish(&self, name: &str, value: Vec<u8>, now: u64) -> Result<u64> {
+        self.publish_many(vec![(name.to_string(), value)], now)
+    }
+
+    /// Bind several names in one epoch (a rename: the old name released
+    /// and the new one taken together). Returns the epoch.
+    pub fn publish_many(&self, names: Vec<(String, Vec<u8>)>, now: u64) -> Result<u64> {
         let (reply, rx) = mpsc::channel();
         self.tx
-            .send(Job::Publish {
-                name: name.to_string(),
-                value,
-                now,
-                reply,
-            })
+            .send(Job::Publish { names, now, reply })
             .map_err(|_| KtError::Stopped)?;
         rx.recv().map_err(|_| KtError::Stopped)?
+    }
+
+    /// Gather the changes that arrive within `window` of the first into
+    /// one epoch (`12-servers.md` §3.4), so names claimed around the same
+    /// time can't be told apart by epoch. Zero (the default) still puts
+    /// whatever is already waiting into one epoch.
+    pub fn set_batch_window(&self, window: std::time::Duration) {
+        let _ = self.tx.send(Job::Window(window));
     }
 
     /// Commit a descriptor digest in a new epoch (and collect witness
@@ -382,32 +393,44 @@ fn run(
         now,
         &mut rng,
     ));
-    while let Ok(job) = rx.recv() {
+    let mut window = std::time::Duration::ZERO;
+    // Jobs taken off the channel while a batch gathered, to run after it.
+    let mut held: std::collections::VecDeque<Job> = Default::default();
+    loop {
+        let job = match held.pop_front() {
+            Some(j) => j,
+            None => match rx.recv() {
+                Ok(j) => j,
+                Err(_) => break,
+            },
+        };
         match job {
-            Job::Publish {
-                name,
-                value,
-                now,
-                reply,
-            } => {
-                let r = rt.block_on(async {
-                    let sh = log.publish(&name, value, now, &mut rng).await?;
-                    cosign_all(&mut log, &mut witnesses, &mut last, now, &mut rng).await;
-                    Ok(sh.head.epoch)
-                });
-                let _ = reply.send(r);
-            }
-            Job::Commit {
-                entries,
-                now,
-                reply,
-            } => {
-                let r = rt.block_on(async {
-                    let sh = log.commit_labels(entries, now, &mut rng).await?;
-                    cosign_all(&mut log, &mut witnesses, &mut last, now, &mut rng).await;
-                    Ok(sh.head.epoch)
-                });
-                let _ = reply.send(r);
+            Job::Window(w) => window = w,
+            first @ (Job::Publish { .. } | Job::Commit { .. }) => {
+                let mut batch = vec![first];
+                let deadline = std::time::Instant::now() + window;
+                loop {
+                    let next = match deadline.checked_duration_since(std::time::Instant::now()) {
+                        Some(left) if !left.is_zero() => rx.recv_timeout(left).ok(),
+                        _ => rx.try_recv().ok(),
+                    };
+                    match next {
+                        Some(j @ (Job::Publish { .. } | Job::Commit { .. })) => batch.push(j),
+                        Some(other) => held.push_back(other),
+                        None => break,
+                    }
+                }
+                let left = rt.block_on(commit_batch(
+                    &mut log,
+                    &mut witnesses,
+                    &mut last,
+                    batch,
+                    &mut rng,
+                ));
+                // Changes to a label already in the batch go next.
+                for j in left.into_iter().rev() {
+                    held.push_front(j);
+                }
             }
             Job::Lookup {
                 name,
@@ -443,6 +466,109 @@ fn run(
             }
         }
     }
+}
+
+/// Commit a batch of `Publish` and `Commit` jobs in one epoch and answer
+/// each with it (or with its own error). Returns the jobs that touch a
+/// label already in this epoch (akd takes each label once an epoch), to
+/// run in the next.
+async fn commit_batch(
+    log: &mut KtLog,
+    witnesses: &mut [Box<dyn WitnessClient>],
+    last: &mut [Option<u64>],
+    batch: Vec<Job>,
+    rng: &mut HedgedRng,
+) -> Vec<Job> {
+    let mut labels: std::collections::HashSet<Vec<u8>> = Default::default();
+    let mut skeletons: std::collections::HashMap<String, String> = Default::default();
+    let mut names = Vec::new();
+    let mut raw = Vec::new();
+    let mut replies = Vec::new();
+    let mut later = Vec::new();
+    let mut now = 0;
+    for job in batch {
+        match job {
+            Job::Publish {
+                names: ns,
+                now: t,
+                reply,
+            } => {
+                let checked: Result<Vec<(String, String, Vec<u8>)>> = ns
+                    .into_iter()
+                    .map(|(n, v)| log.check_name(&n).map(|(n, sk)| (n, sk, v)))
+                    .collect();
+                let checked = match checked {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = reply.send(Err(e));
+                        continue;
+                    }
+                };
+                // Two names with one skeleton in the same batch: the first
+                // claim wins, as it would one epoch apart.
+                if checked
+                    .iter()
+                    .any(|(n, sk, _)| skeletons.get(sk).is_some_and(|other| other != n))
+                {
+                    let _ = reply.send(Err(KtError::Username));
+                    continue;
+                }
+                if checked
+                    .iter()
+                    .any(|(n, _, _)| labels.contains(n.as_bytes()))
+                {
+                    later.push(Job::Publish {
+                        names: checked.into_iter().map(|(n, _, v)| (n, v)).collect(),
+                        now: t,
+                        reply,
+                    });
+                    continue;
+                }
+                for (n, sk, v) in checked {
+                    labels.insert(n.as_bytes().to_vec());
+                    skeletons.insert(sk.clone(), n.clone());
+                    names.push((n, sk, v));
+                }
+                now = now.max(t);
+                replies.push(reply);
+            }
+            Job::Commit {
+                entries,
+                now: t,
+                reply,
+            } => {
+                if entries.iter().any(|(l, _)| labels.contains(l)) {
+                    later.push(Job::Commit {
+                        entries,
+                        now: t,
+                        reply,
+                    });
+                    continue;
+                }
+                for (l, v) in entries {
+                    labels.insert(l.clone());
+                    raw.push((l, v));
+                }
+                now = now.max(t);
+                replies.push(reply);
+            }
+            other => later.push(other),
+        }
+    }
+    if replies.is_empty() {
+        return later;
+    }
+    let r = match log.publish_entries(names, raw, now, rng).await {
+        Ok(sh) => {
+            cosign_all(log, witnesses, last, now, rng).await;
+            Ok(sh.head.epoch)
+        }
+        Err(e) => Err(e),
+    };
+    for reply in replies {
+        let _ = reply.send(r.clone());
+    }
+    later
 }
 
 /// Ask every witness to cosign the latest head. A witness that refuses leaves

@@ -156,6 +156,10 @@ pub struct KtSection {
     /// Usernames the operator withdrew for breaking its policy
     /// (`13-operators.md` §1): tombstoned at start, for good.
     pub withdrawn: Vec<String>,
+    /// Seconds over which claims are gathered into one epoch
+    /// (`12-servers.md` §3.4), so names claimed around the same time
+    /// can't be told apart by epoch. Each claim waits up to this long.
+    pub batch_secs: u64,
 }
 
 impl Default for KtSection {
@@ -165,6 +169,7 @@ impl Default for KtSection {
             witnesses: Vec::new(),
             witness_ca: None,
             withdrawn: Vec::new(),
+            batch_secs: 2,
         }
     }
 }

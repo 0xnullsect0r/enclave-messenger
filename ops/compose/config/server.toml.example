@@ -40,6 +40,9 @@ enabled = true
 # Other operators' witnesses that cosign this log (the foundation's list
 # names them), for example ["https://b.example", "https://c.example"].
 witnesses = []
+# Claims within this many seconds go into one epoch, so names claimed
+# around the same time can't be told apart by epoch.
+batch_secs = 2
 
 [backup]
 dir = "/var/lib/enclave/backups"
