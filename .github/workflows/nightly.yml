@@ -52,7 +52,14 @@ jobs:
       - name: Build without network, install, start
         run: |
           set -euo pipefail
-          flatpak-builder --user --force-clean --sandbox --install build flathub/com.aricummings.Enclave.yml
+          # The sources first, retried (crates.io answers an occasional 500);
+          # the build itself then runs without network.
+          for try in 1 2 3 4; do
+            flatpak-builder --user --download-only build flathub/com.aricummings.Enclave.yml && break
+            [ "$try" = 4 ] && exit 1
+            sleep $((try * 30))
+          done
+          flatpak-builder --user --force-clean --sandbox --disable-download --install build flathub/com.aricummings.Enclave.yml
           flatpak run com.aricummings.Enclave --version | grep '^enclave '
           for p in enclave-vault enclave-netd enclave-mediad enclave-tord enclave-nymd lyrebird; do
             flatpak run --command=test com.aricummings.Enclave -x "/app/lib/enclave-messenger/$p"

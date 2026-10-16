@@ -199,6 +199,11 @@ jobs:
       ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go for lyrebird (ci/tor/lyrebird.sh; its go.mod picks the toolchain).
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.24"
+          cache: false
       - name: Programs for both architectures, joined (cargo xtask dist)
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
@@ -281,6 +286,11 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go for lyrebird (ci/tor/lyrebird.sh; its go.mod picks the toolchain).
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.24"
+          cache: false
       - name: Programs (cargo xtask dist)
         run: |
           rustup target add "$TARGET"
@@ -323,6 +333,11 @@ jobs:
       ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go for lyrebird (ci/tor/lyrebird.sh; its go.mod picks the toolchain).
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.24"
+          cache: false
       - name: SDK platform, build tools, NDK r28, Rust targets, cargo-ndk
         run: |
           set -euo pipefail
@@ -407,6 +422,11 @@ jobs:
       ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go for lyrebird (ci/tor/lyrebird.sh; its go.mod picks the toolchain).
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.24"
+          cache: false
       - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim wasm32-wasip1
       - name: Distribution certificate, provisioning profile, App Store Connect key
         if: needs.prepare.outputs.dry != 'true'

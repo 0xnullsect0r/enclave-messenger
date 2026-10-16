@@ -151,7 +151,12 @@ rec {
       "enclave-mediad"
       "enclave-tord"
     ];
-    nativeBuildInputs = [ pkgs.makeWrapper ];
+    # bindgenHook: libclang for the desktop camera's V4L2 bindings
+    # (v4l2-sys-mit, through nokhwa).
+    nativeBuildInputs = [
+      pkgs.makeWrapper
+      pkgs.rustPlatform.bindgenHook
+    ];
     # Found by pkg-config at build time (fontconfig, ALSA, …).
     buildInputs = runtimeLibs;
     extraInstall = ''

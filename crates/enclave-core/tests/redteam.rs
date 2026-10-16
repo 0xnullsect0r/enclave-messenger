@@ -745,8 +745,11 @@ async fn rt21_secure_my_account_rotates_all() {
     let old_card = ada.card();
     let code = ben.security_code(&ada.root());
 
-    // The copy.
+    // The copy (closed first: Windows won't read a database file another
+    // handle has locked).
+    drop(ada);
     copy_dir(&dir.join("ada"), &dir.join("copy"));
+    let mut ada = Client::open(on_disk(&dir.join("ada")), Arc::new(net.clone())).unwrap();
     ben.send_group_text(&trip, "before securing").await.unwrap();
     settle(&mut [&mut ada, &mut ben], 1).await;
 

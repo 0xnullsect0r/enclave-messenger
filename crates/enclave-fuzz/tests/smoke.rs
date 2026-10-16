@@ -178,4 +178,6 @@ fn found_by_the_nightly_fuzzer() {
     );
     // media: a one-byte AV1 unit (rav1d's empty picture leaked).
     enclave_fuzz::run("media", &[0, 0, 0, 1, 0]);
+    // media: an 8-byte AV1 unit the nightly fuzzer killed the decoder with.
+    enclave_fuzz::run("media", &[0, 0, 0, 8, 40, 4, 0, 0, 0, 0, 0, 0, 0, 65]);
 }

@@ -230,7 +230,7 @@ fn build(target: &str) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", from.display()))?;
     // lyrebird (Go), for Snowflake and WebTunnel bridges.
     let (goos, goarch) = go_target(target)?;
-    run(Command::new("bash")
+    run(Command::new(bash())
         .current_dir(&root)
         .arg("ci/tor/lyrebird.sh")
         .arg("build")
@@ -454,6 +454,21 @@ fn zip(dir: &Path, top: &str, out: &Path) -> Result<(), String> {
     fs::write(out, body).map_err(|e| e.to_string())
 }
 
+/// bash: on Windows Git's, not the `bash.exe` in System32 that starts WSL
+/// (which runners don't have a distribution for).
+fn bash() -> PathBuf {
+    if cfg!(windows) {
+        let candidates = [
+            std::env::var_os("ProgramFiles").map(|p| PathBuf::from(p).join("Git/bin/bash.exe")),
+            Some(PathBuf::from("C:/Program Files/Git/bin/bash.exe")),
+        ];
+        if let Some(git) = candidates.into_iter().flatten().find(|p| p.exists()) {
+            return git;
+        }
+    }
+    PathBuf::from("bash")
+}
+
 fn out_dir() -> Result<PathBuf, String> {
     let d = root().join("target/dist");
     fs::create_dir_all(&d).map_err(|e| e.to_string())?;
@@ -498,6 +513,9 @@ fn packager_config(target: &str, formats: &[&str]) -> Result<serde_json::Value, 
         .map(|p| serde_json::json!({ "path": p, "main": *p == "enclave" }))
         .collect();
     let mut cfg = serde_json::json!({
+        // Named here: without it cargo-packager 0.11 looks for the package
+        // name by changing into the config file's path, which fails.
+        "name": "enclave",
         "productName": "Enclave",
         "version": numeric(&v),
         "identifier": APP_ID,
