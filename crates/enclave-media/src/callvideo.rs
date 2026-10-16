@@ -49,6 +49,25 @@ pub const TIERS: [Tier; 3] = [
     },
 ];
 
+/// A shared screen: a bigger picture at fewer frames a second, for the
+/// same bits as the camera's tier (so the stream on the wire is the same
+/// whichever is sent).
+pub const SCREEN: Tier = Tier {
+    width: 960,
+    height: 540,
+    fps: 5,
+    kbps: 240,
+};
+
+/// The screen's picture for a call at tier `index`: [`SCREEN`] at that
+/// tier's bit rate.
+pub fn screen(index: usize) -> Tier {
+    Tier {
+        kbps: tier(index).kbps,
+        ..SCREEN
+    }
+}
+
 /// The tier at `index` (the lowest when out of range).
 pub fn tier(index: usize) -> Tier {
     TIERS.get(index).copied().unwrap_or(TIERS[0])
@@ -102,8 +121,17 @@ fn obus(unit: &[u8]) -> Vec<(u8, usize, usize)> {
 impl VideoEncoder {
     /// An encoder for tier `index`.
     pub fn new(index: usize) -> Result<Self> {
+        Self::for_tier(tier(index))
+    }
+
+    /// An encoder for a shared screen in a call at tier `index`
+    /// ([`screen`]).
+    pub fn screen(index: usize) -> Result<Self> {
+        Self::for_tier(screen(index))
+    }
+
+    fn for_tier(t: Tier) -> Result<Self> {
         use rav1e::prelude::*;
-        let t = tier(index);
         let mut enc = EncoderConfig::with_speed_preset(10);
         enc.width = t.width as usize;
         enc.height = t.height as usize;
@@ -211,14 +239,16 @@ impl VideoDecoder {
     }
 
     /// Decode one temporal unit: the newest picture it completed, if any.
-    /// Pictures larger than the largest tier are refused.
+    /// Pictures larger than the largest tier or a shared screen
+    /// ([`SCREEN`]) are refused.
     pub fn decode(&mut self, unit: &[u8]) -> Result<Option<Rgba>> {
         let frames = self.dec.decode(unit).map_err(|_| MediaError::Damaged)?;
         let Some(f) = frames.into_iter().last() else {
             return Ok(None);
         };
         let top = TIERS[TIERS.len() - 1];
-        if f.width > top.width || f.height > top.height {
+        let (max_w, max_h) = (top.width.max(SCREEN.width), top.height.max(SCREEN.height));
+        if f.width > max_w || f.height > max_h {
             return Err(MediaError::TooLarge);
         }
         i420_to_rgba(f.width, f.height, &f.y, &f.u, &f.v).map(Some)

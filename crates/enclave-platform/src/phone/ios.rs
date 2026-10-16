@@ -3,6 +3,9 @@
 //! arrive on a queue of their own.
 
 mod calls;
+mod screen;
+
+pub(super) use screen::{start_screen_capture, stop_screen_capture};
 
 use super::{Camera, Pick};
 use block2::RcBlock;

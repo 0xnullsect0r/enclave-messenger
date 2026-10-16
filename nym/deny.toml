@@ -112,60 +112,34 @@ allow-build-scripts = [
     # Our own crates from the main workspace, which the phone app
     # (enclave-mobile) builds here: their build scripts set cfgs and write
     # the Windows resource; checked in the main workspace.
-    "enclave-app",
-    "enclave-vault",
     # The app's call audio (cpal), as in the main workspace: cpal's script
     # sets target cfgs; alsa-sys links the system's ALSA on a Linux host.
-    "alsa-sys",
-    "cpal",
     # nym-sdk 1.21.5 (nym/ workspace only): nym crates' build scripts set up
     # sqlx's offline query checks and version info (vergen); aws-lc-sys is
     # rustls's default C crypto there; blake3 and snow pick SIMD paths;
     # the rest are platform probes and code generation.
-    "aws-lc-rs",
-    "aws-lc-sys",
-    "blake3",
-    "camino",
-    "encoding_rs",
-    "eyre",
-    "ipconfig",
-    "libcrux-aes",
-    "nym-bandwidth-fetcher",
-    "nym-bin-common",
-    "nym-client-core-gateways-storage",
-    "nym-client-core-surb-storage",
-    "nym-contracts-common",
-    "nym-credential-storage",
-    "nym-http-api-client-macro",
-    "prometheus",
-    "schemars",
-    "snow",
-    "system-configuration-sys",
-    "vergen",
     # The app and its desktop helpers, built here too for Android and iOS
     # (enclave-mobile), with the same reasons as ../deny.toml.
-    "atomic-polyfill",  # target-atomics cfg; obfs4 bridges (enclave-tord)
-    "core-foundation-sys",  # links CoreFoundation (camera, via nokhwa on macOS)
-    "curve25519-elligator2",  # backend cfg, as curve25519-dalek; obfs4 bridges
-    "derive-adhoc-macros",  # empty build script; obfs4 bridges (old tor-* crates)
-    "heapless",  # target cfg; obfs4 bridges (enclave-tord)
-    "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
-    "nokhwa-bindings-macos",  # links AVFoundation, CoreMedia, CoreVideo (camera scanning)
-    "objc_exception",  # one small Objective-C file catching exceptions (nokhwa on macOS)
-    "rfd",  # links AppKit on macOS; checks one dialog backend is chosen
-    "v4l2-sys-mit",  # bindgen over the kernel's videodev2.h (camera scanning on Linux)
     "ahash",
     "akd_core",
+    "alsa-sys",
     "android-activity",  # Android entry point (Slint backend)
     "anyhow",
     "ash",
     "async-io",
     "async_executors",
+    "atomic-polyfill",  # target-atomics cfg; obfs4 bridges (enclave-tord)
     "av-scenechange",  # rav1e scene detection; asm off
+    "aws-lc-rs",
+    "aws-lc-sys",
     "bindgen",
+    "blake3",
     "borsh",
+    "camino",
     "clang-sys",
     "classic-mceliece-rust",
+    "core-foundation-sys",  # links CoreFoundation (camera, via nokhwa on macOS)
+    "cpal",
     "crabgrind",  # constant-time tests under valgrind only (cfg(valgrind_ct_test))
     "crc32fast",
     "crossbeam-deque",
@@ -173,22 +147,30 @@ allow-build-scripts = [
     "crossbeam-utils",
     "crunchy",
     "curve25519-dalek",
+    "curve25519-elligator2",  # backend cfg, as curve25519-dalek; obfs4 bridges
     "defmt",
     "defmt-macros",
+    "derive-adhoc-macros",  # empty build script; obfs4 bridges (old tor-* crates)
     "derive-deftly-macros",
     "drm-fourcc",  # Linux KMS backend
     "drm-sys",  # Linux KMS backend (Slint, unused on desktop)
+    "enclave-app",
+    "enclave-vault",
+    "encoding_rs",
+    "eyre",
     "field-offset",
     "figment",
     "gbm-sys",  # Linux KMS backend
     "generic-array",
     "getrandom",
+    "gl",  # in the lock through xcap's Linux path (enclave-app), never built here
     "glutin",
     "glutin-winit",
     "glutin_egl_sys",
     "glutin_glx_sys",
     "glutin_wgl_sys",
     "hax-lib",
+    "heapless",  # target cfg; obfs4 bridges (enclave-tord)
     "httparse",
     "i-slint-backend-android-activity",
     "i-slint-backend-linuxkms",
@@ -208,11 +190,14 @@ allow-build-scripts = [
     "inotify-sys",
     "input-sys",  # Linux libinput (Slint linuxkms, unused on desktop)
     "io-lifetimes",
+    "ipconfig",
     "jni",
     "jni-macros",
     "jni-sys",
+    "khronos-egl",  # likewise
     "khronos_api",
     "libc",
+    "libcrux-aes",
     "libcrux-intrinsics",
     "libcrux-ml-dsa",
     "libcrux-ml-kem",
@@ -222,25 +207,39 @@ allow-build-scripts = [
     "libm",
     "libseat",  # Linux seat management (linuxkms)
     "libseat-sys",  # Linux seat management (linuxkms)
+    "libspa",  # PipeWire bindings: enclave-app's screen share on Linux; not built for phones
+    "libspa-sys",  # likewise
     "libsqlite3-sys",  # arti/nym-sdk state storage; netd/ingress only
     "libudev-sys",  # Linux device discovery (linuxkms)
+    "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
     "memoffset",
     "naga",
     "nix",
+    "nokhwa-bindings-macos",  # links AVFoundation, CoreMedia, CoreVideo (camera scanning)
     "ntapi",
     "num-bigint-dig",
     "num-traits",
+    "nym-bandwidth-fetcher",
+    "nym-bin-common",
+    "nym-client-core-gateways-storage",
+    "nym-client-core-surb-storage",
+    "nym-contracts-common",
+    "nym-credential-storage",
+    "nym-http-api-client-macro",
     "objc-sys",  # Apple platform glue (winit)
     "objc2",
+    "objc_exception",  # one small Objective-C file catching exceptions (nokhwa on macOS)
     "openssl",
     "openssl-sys",  # test oracle only (dev-dependency of enclave-crypto); never shipped
     "orbclient",
     "parking_lot_core",
     "paste",
+    "pipewire-sys",  # likewise
     "portable-atomic",
     "portable-atomic-util",
     "prettyplease",
     "proc-macro2",
+    "prometheus",
     "protobuf",
     "pulldown-cmark",
     "quote",
@@ -250,23 +249,30 @@ allow-build-scripts = [
     "rayon-core",
     "redb",
     "ref-cast",
+    "rfd",  # links AppKit on macOS; checks one dialog backend is chosen
     "ring",  # rustls via arti (tor feature) and nym-sdk; netd/ingress only, no long-term keys
     "rspolib",
     "rustix",
     "rustls",
     "rustversion",
+    "schemars",
     "serde",
     "serde_core",
     "serde_json",
     "skia-bindings",  # Slint renderer on iOS/Android only (PLAN §22 exception: Skia)
     "slotmap",
     "smithay-client-toolkit",  # Linux windowing
+    "snow",
     "sqlite-wasm-rs",  # pulled by rusqlite feature graph; not built for native targets
     "syn",
+    "system-configuration-sys",
+    "target-lexicon",  # system-deps (PipeWire's pkg-config lookup)
     "thiserror",
     "tiny-xlib",  # Linux X11 fallback
     "uncased",
+    "v4l2-sys-mit",  # bindgen over the kernel's videodev2.h (camera scanning on Linux)
     "valuable",
+    "vergen",
     "wasm-bindgen",
     "wasm-bindgen-shared",
     "wasmparser",  # iOS media sandbox (wasmi): reads the rustc version for a cfg
@@ -290,6 +296,8 @@ allow-build-scripts = [
     "winit",
     "wit-bindgen",
     "x11-dl",  # Linux X11 fallback (dlopen)
+    "xcap",  # enclave-app's screen share on macOS and Windows; not built for phones
+    "xcb",  # in the lock through xcap's Linux path, never built
     "yeslogic-fontconfig-sys",  # Linux font discovery for Slint (system library, linked)
     "zerocopy",
     "zmij",

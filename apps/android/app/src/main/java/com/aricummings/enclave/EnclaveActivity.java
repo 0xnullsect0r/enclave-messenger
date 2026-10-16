@@ -62,6 +62,8 @@ public class EnclaveActivity extends android.app.NativeActivity {
     static native void nativeFrame(byte[] grey, int width, int height);
     static native void nativeColorFrame(byte[] i420, int width, int height, int rotation);
     static native void nativeScanFailed(String why);
+    static native void nativeScreenFrame(byte[] rgba, int width, int height);
+    static native void nativeScreenFailed(String why);
 
     @Override
     protected void onCreate(Bundle state) {
@@ -245,6 +247,10 @@ public class EnclaveActivity extends android.app.NativeActivity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == Screen.REQUEST) {
+            Screen.granted(this, result, data);
+            return;
+        }
         if (request == UnifiedPush.LINK_REQUEST) {
             UnifiedPush.linked(this, result, data);
             Native.event(Native.DELIVERY, Integer.toString(EnclaveService.delivery(this)));
@@ -382,6 +388,17 @@ public class EnclaveActivity extends android.app.NativeActivity {
                 requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, PERMISSION_MICROPHONE);
             }
         });
+    }
+
+    /** Share the screen in a video call (Android asks first); pictures go to
+     *  nativeScreenFrame. */
+    public void startScreenShare() {
+        runOnUiThread(() -> Screen.ask(this));
+    }
+
+    /** Stop sharing the screen. */
+    public void stopScreenShare() {
+        Screen.stop(this, true);
     }
 
     /** Start the front camera for a video call; colour frames go to

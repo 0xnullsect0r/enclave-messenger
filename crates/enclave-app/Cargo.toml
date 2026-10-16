@@ -72,7 +72,7 @@ license = "GPL-3.0-only"
 url = "https://github.com/0xnullsect0r/enclave-messenger"
 # As for the deb: what the window loads at run time, beyond what the
 # programs link (found by `auto-req`).
-requires = { alsa-lib = "*", libxkbcommon = "*", libxkbcommon-x11 = "*", libwayland-client = "*", libwayland-egl = "*", libglvnd-egl = "*", libglvnd-glx = "*", libX11 = "*", libX11-xcb = "*", libXcursor = "*", libXi = "*", libXrandr = "*" }
+requires = { alsa-lib = "*", pipewire-libs = "*", libxkbcommon = "*", libxkbcommon-x11 = "*", libwayland-client = "*", libwayland-egl = "*", libglvnd-egl = "*", libglvnd-glx = "*", libX11 = "*", libX11-xcb = "*", libXcursor = "*", libXi = "*", libXrandr = "*" }
 assets = [
   { source = "target/release/dist/enclave", dest = "/usr/lib/enclave-messenger/enclave", mode = "755" },
   { source = "target/release/dist/enclave-vault", dest = "/usr/lib/enclave-messenger/enclave-vault", mode = "755" },
@@ -150,6 +150,19 @@ webpki-roots = "1"
 # MJPEG frames decoded in Rust.
 nokhwa = { version = "0.10", default-features = false, features = ["input-native"] }
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+
+# Sharing the screen in a call: Windows Graphics Capture, and macOS.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+xcap = { version = "0.9.8", features = ["wgc"] }
+
+# Sharing the screen on Linux: the desktop portal's screen cast (PipeWire)
+# on Wayland and in a Flatpak, the root window on X11.
+[target.'cfg(target_os = "linux")'.dependencies]
+# (async-io, as rfd builds it; a thread blocks on its futures.)
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "screencast"] }
+futures-lite = "2"
+pipewire = "0.10"
+x11rb = "0.13"
 
 # Android: Slint's own backend on the activity (OpenGL ES through femtovg).
 [target.'cfg(target_os = "android")'.dependencies]

@@ -30,6 +30,9 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Sharing the screen in a video call (Screen.java: Android asks each
+         time, and shows that the screen is recorded). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <!-- UnifiedPush distributors and their link screen (UnifiedPush.java). -->
     <queries>
@@ -69,7 +72,7 @@
         <service
             android:name=".EnclaveService"
             android:exported="false"
-            android:foregroundServiceType="specialUse|phoneCall|microphone">
+            android:foregroundServiceType="specialUse|phoneCall|microphone|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps an end-to-end encrypted messenger connected to its mixnet so messages arrive without Google's push service, or fetches them after a push woke it." />

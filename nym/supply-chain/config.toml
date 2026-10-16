@@ -186,6 +186,10 @@ version = "0.1.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.annotate-snippets]]
+version = "0.11.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.annotate-snippets]]
 version = "0.12.16"
 criteria = "safe-to-deploy"
 
@@ -615,6 +619,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.cesu8]]
 version = "1.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.cfg-expr]]
+version = "0.20.10"
 criteria = "safe-to-deploy"
 
 [[exemptions.cfg-if]]
@@ -1161,6 +1169,10 @@ criteria = "safe-to-deploy"
 version = "0.14.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.drm]]
+version = "0.15.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.drm-ffi]]
 version = "0.9.1"
 criteria = "safe-to-deploy"
@@ -1483,6 +1495,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.gif]]
 version = "0.14.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.gl]]
+version = "0.14.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.gl_generator]]
@@ -1997,6 +2013,10 @@ criteria = "safe-to-deploy"
 version = "1.0.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.khronos-egl]]
+version = "6.0.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.khronos_api]]
 version = "3.1.0"
 criteria = "safe-to-deploy"
@@ -2141,12 +2161,24 @@ criteria = "safe-to-deploy"
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.libspa]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.libspa-sys]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.libsqlite3-sys]]
 version = "0.37.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.libudev-sys]]
 version = "0.1.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.libwayshot-xcap]]
+version = "0.3.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.linebender_resource_handle]]
@@ -2765,6 +2797,10 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.objc2-cloud-kit]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.objc2-contacts]]
 version = "0.2.2"
 criteria = "safe-to-deploy"
@@ -2781,8 +2817,16 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.objc2-core-data]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.objc2-core-image]]
 version = "0.2.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-image]]
+version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-location]]
@@ -2805,6 +2849,10 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.objc2-image-io]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.objc2-io-kit]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
@@ -2814,6 +2862,10 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-local-authentication]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-media-toolbox]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
@@ -3071,6 +3123,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.piper]]
 version = "0.2.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.pipewire]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.pipewire-sys]]
+version = "0.10.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.pkcs1]]
@@ -4017,6 +4077,10 @@ criteria = "safe-to-deploy"
 version = "0.6.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.system-deps]]
+version = "7.0.8"
+criteria = "safe-to-deploy"
+
 [[exemptions.taffy]]
 version = "0.10.1"
 criteria = "safe-to-deploy"
@@ -4027,6 +4091,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tar]]
 version = "0.4.46"
+criteria = "safe-to-deploy"
+
+[[exemptions.target-lexicon]]
+version = "0.13.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.tauri-winrt-notification]]
@@ -4557,6 +4625,10 @@ criteria = "safe-to-deploy"
 version = "8.3.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.version-compare]]
+version = "0.2.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.version_check]]
 version = "0.9.5"
 criteria = "safe-to-deploy"
@@ -4659,6 +4731,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.wayland-scanner]]
 version = "0.31.11"
+criteria = "safe-to-deploy"
+
+[[exemptions.wayland-server]]
+version = "0.31.14"
 criteria = "safe-to-deploy"
 
 [[exemptions.wayland-sys]]
@@ -5047,6 +5123,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.x25519-dalek]]
 version = "2.0.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.xcap]]
+version = "0.9.8"
+criteria = "safe-to-deploy"
+
+[[exemptions.xcb]]
+version = "1.7.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.xcursor]]

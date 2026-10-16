@@ -629,6 +629,7 @@ fn apply_call(ui: &AppWindow, s: &Snapshot) {
     ui.set_call_group(c.group);
     ui.set_call_hand(c.hand);
     ui.set_call_cameras_full(c.cameras_full);
+    ui.set_call_screen(c.screen);
     ui.set_current_call_live(
         c.live_groups
             .iter()

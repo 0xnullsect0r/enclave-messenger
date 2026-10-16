@@ -23,6 +23,7 @@ static NEXT: AtomicI32 = AtomicI32::new(1);
 static PICKS: Mutex<Option<HashMap<i32, Picked>>> = Mutex::new(None);
 static SAVES: Mutex<Option<HashMap<i32, Saved>>> = Mutex::new(None);
 static CAMERA: Mutex<Option<Frames>> = Mutex::new(None);
+static SCREEN: Mutex<Option<(super::ScreenFrames, Option<super::ScreenFailed>)>> = Mutex::new(None);
 
 extern "system" fn native_picked(
     mut env: JNIEnv<'_>,
@@ -114,6 +115,61 @@ extern "system" fn native_scan_failed(mut env: JNIEnv<'_>, _: JClass<'_>, why: J
     }
 }
 
+extern "system" fn native_screen_frame(
+    env: JNIEnv<'_>,
+    _: JClass<'_>,
+    rgba: JByteArray<'_>,
+    width: jint,
+    height: jint,
+) {
+    let Ok(bytes) = env.convert_byte_array(&rgba) else {
+        return;
+    };
+    let (Ok(w), Ok(h)) = (u32::try_from(width), u32::try_from(height)) else {
+        return;
+    };
+    if bytes.len() != (w as usize) * (h as usize) * 4 {
+        return;
+    }
+    if let Ok(mut s) = SCREEN.lock()
+        && let Some((frame, _)) = s.as_mut()
+    {
+        frame(w, h, bytes);
+    }
+}
+
+extern "system" fn native_screen_failed(mut env: JNIEnv<'_>, _: JClass<'_>, why: JString<'_>) {
+    let why: String = env.get_string(&why).map(Into::into).unwrap_or_default();
+    let failed = SCREEN
+        .lock()
+        .ok()
+        .and_then(|mut s| s.take())
+        .and_then(|(_, f)| f);
+    if let Some(f) = failed {
+        f(why);
+    }
+}
+
+pub(super) fn start_screen_capture(frame: super::ScreenFrames, failed: super::ScreenFailed) {
+    if let Ok(mut s) = SCREEN.lock() {
+        *s = Some((frame, Some(failed)));
+    }
+    let _ = with(|env, a| {
+        env.call_method(a, "startScreenShare", "()V", &[])
+            .map(|_| ())
+    });
+}
+
+pub(super) fn stop_screen_capture() {
+    if let Ok(mut s) = SCREEN.lock() {
+        *s = None;
+    }
+    let _ = with(|env, a| {
+        env.call_method(a, "stopScreenShare", "()V", &[])
+            .map(|_| ())
+    });
+}
+
 /// Register the activity's native methods.
 pub fn init() {
     let _ = with(|env, activity| {
@@ -143,6 +199,16 @@ pub fn init() {
                 name: "nativeScanFailed".into(),
                 sig: "(Ljava/lang/String;)V".into(),
                 fn_ptr: native_scan_failed as *mut std::ffi::c_void,
+            },
+            NativeMethod {
+                name: "nativeScreenFrame".into(),
+                sig: "([BII)V".into(),
+                fn_ptr: native_screen_frame as *mut std::ffi::c_void,
+            },
+            NativeMethod {
+                name: "nativeScreenFailed".into(),
+                sig: "(Ljava/lang/String;)V".into(),
+                fn_ptr: native_screen_failed as *mut std::ffi::c_void,
             },
         ];
         env.register_native_methods(&class, &methods)

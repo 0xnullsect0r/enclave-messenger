@@ -475,6 +475,10 @@ pub enum ToCall {
     /// the direct link (the relays carry the call until it is up, and again
     /// if it fails).
     Direct(Box<DirectPath>),
+    /// Share the screen (true) instead of the camera, or stop (a video
+    /// call: frames then come at the screen's size,
+    /// `enclave_media::callvideo::screen`).
+    Screen(bool),
     /// A group call: raise (true) or lower our hand.
     Hand(bool),
     /// A group call: a reaction everyone sees for a moment.
@@ -604,6 +608,10 @@ struct VideoSide {
     lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     asked: Option<tokio::time::Instant>,
     camera: bool,
+    /// A shared screen goes instead of the camera.
+    screen: bool,
+    /// Switches the encoder between camera and screen.
+    mode: mpsc::UnboundedSender<bool>,
     tick: tokio::time::Interval,
 }
 
@@ -621,9 +629,19 @@ impl VideoSide {
         let key = std::sync::Arc::new(AtomicBool::new(true));
         let lost = std::sync::Arc::new(AtomicBool::new(false));
         let (k, l) = (std::sync::Arc::clone(&key), std::sync::Arc::clone(&lost));
+        let (mode, mut mode_rx) = mpsc::unbounded_channel::<bool>();
+        let at = u8::try_from(tier).unwrap_or(0);
         tokio::spawn(async move {
             loop {
                 tokio::select! {
+                    on = mode_rx.recv() => {
+                        let Some(on) = on else { return };
+                        if let Err(e) = codec.set_screen(at, on).await {
+                            eprintln!("enclave-vault: screen share: {e}");
+                        }
+                        // The new picture starts from a key frame.
+                        k.store(true, Ordering::SeqCst);
+                    }
                     f = frame_rx.recv() => {
                         let Some(f) = f else { return };
                         let key = k.swap(false, Ordering::SeqCst);
@@ -662,6 +680,8 @@ impl VideoSide {
             lost,
             asked: None,
             camera: true,
+            screen: false,
+            mode,
             tick,
         }
     }
@@ -820,8 +840,14 @@ async fn media_loop(
                         v.camera = on;
                     }
                 }
+                Some(ToCall::Screen(on)) => {
+                    if let Some(v) = video.as_mut().filter(|v| v.screen != on) {
+                        v.screen = on;
+                        let _ = v.mode.send(on);
+                    }
+                }
                 Some(ToCall::Frame(rgba)) => {
-                    if let Some(v) = video.as_ref().filter(|v| v.camera) {
+                    if let Some(v) = video.as_ref().filter(|v| v.camera || v.screen) {
                         // Busy encoding: this frame is dropped.
                         let _ = v.frames.try_send(rgba);
                     }
@@ -1002,6 +1028,10 @@ struct GroupVideo {
     lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     asked: Option<tokio::time::Instant>,
     camera: bool,
+    /// A shared screen goes instead of the camera.
+    screen: bool,
+    /// Switches the encoder between camera and screen.
+    mode: mpsc::UnboundedSender<bool>,
     tick: tokio::time::Interval,
     /// When each other participant's last picture arrived.
     filming: std::collections::HashMap<u32, tokio::time::Instant>,
@@ -1029,9 +1059,19 @@ impl GroupVideo {
         let key = std::sync::Arc::new(AtomicBool::new(true));
         let lost = std::sync::Arc::new(AtomicBool::new(false));
         let (k, l) = (std::sync::Arc::clone(&key), std::sync::Arc::clone(&lost));
+        let (mode, mut mode_rx) = mpsc::unbounded_channel::<bool>();
+        let at = u8::try_from(tier).unwrap_or(0);
         tokio::spawn(async move {
             loop {
                 tokio::select! {
+                    on = mode_rx.recv() => {
+                        let Some(on) = on else { return };
+                        if let Err(e) = codec.set_screen(at, on).await {
+                            eprintln!("enclave-vault: screen share: {e}");
+                        }
+                        // The new picture starts from a key frame.
+                        k.store(true, Ordering::SeqCst);
+                    }
                     f = frame_rx.recv() => {
                         let Some(f) = f else { return };
                         let key = k.swap(false, Ordering::SeqCst);
@@ -1070,6 +1110,8 @@ impl GroupVideo {
             lost,
             asked: None,
             camera: true,
+            screen: false,
+            mode,
             tick,
             filming: std::collections::HashMap::new(),
             filmed: None,
@@ -1194,8 +1236,14 @@ async fn group_loop(
                         v.camera = on;
                     }
                 }
+                Some(ToCall::Screen(on)) => {
+                    if let Some(v) = video.as_mut().filter(|v| v.screen != on) {
+                        v.screen = on;
+                        let _ = v.mode.send(on);
+                    }
+                }
                 Some(ToCall::Frame(rgba)) => {
-                    if let Some(v) = video.as_mut().filter(|v| v.camera) {
+                    if let Some(v) = video.as_mut().filter(|v| v.camera || v.screen) {
                         let ok = v.may_film();
                         if ok {
                             let _ = v.frames.try_send(rgba);

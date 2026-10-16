@@ -881,6 +881,9 @@ export component AppWindow inherits Window {
     in-out property <bool> call-small;
     in-out property <image> call-remote;
     in-out property <bool> call-has-remote;
+    // The other person shares their screen (their picture is the screen's
+    // size).
+    in-out property <bool> call-remote-screen;
     in-out property <image> call-self;
     callback start-call(string, bool, bool);
     callback answer-call-direct();
@@ -893,6 +896,9 @@ export component AppWindow inherits Window {
     in property <bool> call-group;
     in property <bool> call-hand;
     in property <bool> call-cameras-full;
+    // We share the screen instead of the camera (a video call).
+    in property <bool> call-screen;
+    callback screen-call(bool);
     in-out property <[CallPeerTile]> call-peers;
     in property <bool> current-call-live;
     callback start-group-call(string, bool);
@@ -4056,12 +4062,13 @@ export component AppWindow inherits Window {
             width: 100%;
             height: 100%;
             source: root.call-remote;
-            image-fit: cover;
+            // A shared screen whole; a face filling the window.
+            image-fit: root.call-remote-screen ? contain : cover;
             accessible-role: image;
-            accessible-label: @tr("{}'s video", root.call-name);
+            accessible-label: root.call-remote-screen ? @tr("{}'s screen", root.call-name) : @tr("{}'s video", root.call-name);
         }
         // Our own, small, in a corner (mirrored, like a mirror).
-        if root.call-video && root.call-camera && (root.call-state == 3 || root.call-state == 4): Rectangle {
+        if root.call-video && (root.call-camera || root.call-screen) && (root.call-state == 3 || root.call-state == 4): Rectangle {
             x: parent.width - self.width - Tokens.space-m;
             y: Tokens.space-m;
             width: min(parent.width / 4, 200px);
@@ -4302,6 +4309,13 @@ export component AppWindow inherits Window {
                     tint: root.call-camera ? #ffffff26 : #ffffff;
                     ink: root.call-camera ? #ffffff : #101914;
                     clicked => { root.camera-call(!root.call-camera); }
+                }
+                if root.call-video && (root.call-state == 3 || root.call-state == 4): CallButton {
+                    icon: Icons.screen-share;
+                    label: root.call-screen ? @tr("Stop sharing") : @tr("Share screen");
+                    tint: root.call-screen ? #ffffff : #ffffff26;
+                    ink: root.call-screen ? #101914 : #ffffff;
+                    clicked => { root.screen-call(!root.call-screen); }
                 }
                 if root.call-group && (root.call-state == 3 || root.call-state == 4): CallButton {
                     icon: Icons.hand;

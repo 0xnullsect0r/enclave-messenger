@@ -1165,6 +1165,10 @@ msgstr "[Éñçlávé máý ñót úsé thé çámérá. Állów ít íñ Sýst�
 msgid "Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block."
 msgstr "[Éñçlávé réáçhés thé príváté ñétwórk thróúgh Tór, áñd Tór çóúldñ't çóññéçt fróm héré. Á brídgé çáñ gét áróúñd thé blóçk.···············································]"
 
+#: enclave-app/src/screen/linux.rs
+msgid "Enclave screen share"
+msgstr "[Éñçlávé sçrééñ sháré········]"
+
 #: ui/app.slint
 msgid "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery."
 msgstr "[Éñçlávé stáýs çóññéçtéd íñ thé báçkgróúñd, só mésságés árrívé át óñçé, áñd Áñdróíd shóws thát ít's rúññíñg. Á púsh sérvíçé úsés léss báttérý.························································]"
@@ -2333,6 +2337,10 @@ msgstr "[Sçáññíñg á çódé······]"
 msgid "Screen lock"
 msgstr "[Sçrééñ lóçk····]"
 
+#: enclave-app/src/screen/linux.rs
+msgid "Screen sharing was cancelled."
+msgstr "[Sçrééñ sháríñg wás çáñçélléd.···········]"
+
 #: ui/app.slint
 msgid "Screenshots, screen recordings and screen sharing show a blank window instead of your messages."
 msgstr "[Sçrééñshóts, sçrééñ réçórdíñgs áñd sçrééñ sháríñg shów á bláñk wíñdów íñstéád óf ýóúr mésságés.······································]"
@@ -2482,6 +2490,10 @@ msgid "Share new invite links and codes: old ones still lead to the account unde
 msgstr "[Sháré ñéw íñvíté líñks áñd çódés: óld óñés stíll léád tó thé áççóúñt úñdér thé óld wórds. Sávé á ñéw báçkúp áftérwárds.···············································]"
 
 #: ui/app.slint
+msgid "Share screen"
+msgstr "[Sháré sçrééñ····]"
+
+#: ui/app.slint
 msgid "Share with {} ({} needed)"
 msgstr "[Sháré wíth ····{} ({} ñéédéd)···]"
 
@@ -2600,6 +2612,10 @@ msgstr "[Stíçkérs···]"
 #: ui/app.slint
 msgid "Stop it"
 msgstr "[Stóp ít··]"
+
+#: ui/app.slint
+msgid "Stop sharing"
+msgstr "[Stóp sháríñg····]"
 
 #: ui/app.slint
 msgid "Stop {} being an admin"
@@ -3604,6 +3620,10 @@ msgstr "[{}'s áççóúñt móvéd tó á ñéw kéý···········]"
 #: ui/app.slint
 msgid "{}'s phone should show the same three words. If it does, you scanned each other and nobody else."
 msgstr "[{}'s phóñé shóúld shów thé sámé thréé wórds. Íf ít dóés, ýóú sçáññéd éáçh óthér áñd ñóbódý élsé.·····································]"
+
+#: ui/app.slint
+msgid "{}'s screen"
+msgstr "[{}'s sçrééñ···]"
 
 #: ui/app.slint
 msgid "{}'s video"

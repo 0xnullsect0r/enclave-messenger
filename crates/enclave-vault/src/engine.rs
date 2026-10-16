@@ -2967,6 +2967,7 @@ impl Engine {
             Cmd::CallHand(up) => self.call_hand(up),
             Cmd::CallReact(emoji) => self.call_react(emoji),
             Cmd::CreateCallLink(lobby) => self.create_call_link(lobby),
+            Cmd::CallScreen(on) => self.call_screen(on),
             Cmd::AdmitToCall(who) => self.admit_to_call(who),
             Cmd::RefuseFromCall(who) => self.refuse_from_call(who),
             Cmd::CheckUpdates => {

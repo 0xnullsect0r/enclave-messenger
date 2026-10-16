@@ -242,6 +242,29 @@ impl VideoCodec {
 }
 
 impl VideoCodec {
+    /// Encode a shared screen (true; `enclave_media::callvideo::screen` at
+    /// the call's tier) or the camera again.
+    pub async fn set_screen(&self, tier: u8, on: bool) -> Result<(), String> {
+        match &self.at {
+            VideoAt::Helper(p) => p
+                .call(MediaOp::VideoScreen(self.n, tier, on), Vec::new())
+                .await
+                .map(|_| ()),
+            #[cfg(feature = "demo")]
+            VideoAt::Here(c) => {
+                use enclave_media::callvideo::VideoEncoder;
+                let enc = if on {
+                    VideoEncoder::screen(usize::from(tier))
+                } else {
+                    VideoEncoder::new(usize::from(tier))
+                }
+                .map_err(|e| e.to_string())?;
+                c.lock().map_err(|_| "poisoned".to_string())?.0 = enc;
+                Ok(())
+            }
+        }
+    }
+
     /// Decode a temporal unit from one participant of a group call (its
     /// own decoder).
     pub async fn decode_from(&self, sender: u32, unit: Vec<u8>) -> Result<Option<Rgba>, String> {
@@ -751,7 +774,8 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         | MediaOp::VideoDecode(_)
         | MediaOp::VideoClose(_)
         | MediaOp::CallMix(_)
-        | MediaOp::VideoDecodeFrom(..) => {
+        | MediaOp::VideoDecodeFrom(..)
+        | MediaOp::VideoScreen(..) => {
             return Err("calls go through Media::open_call and open_video".into());
         }
     }

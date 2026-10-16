@@ -122,6 +122,8 @@ let
     libxkbcommon
     wayland
     alsa-lib
+    # Screen share: the desktop portal's PipeWire stream (linked).
+    pipewire
     fontconfig
     freetype
     xorg.libX11

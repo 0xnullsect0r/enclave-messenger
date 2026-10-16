@@ -131,6 +131,7 @@ fn snapshot() -> Snapshot {
             group: true,
             hand: true,
             cameras_full: true,
+            screen: true,
             peers: vec![enclave_ipc::CallPeer {
                 id: 7,
                 name: "Priya".into(),
@@ -306,6 +307,7 @@ fn cmds() -> Vec<Cmd> {
         Cmd::CreateCallLink(true),
         Cmd::AdmitToCall(3),
         Cmd::RefuseFromCall(4),
+        Cmd::CallScreen(true),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
@@ -604,6 +606,11 @@ fn media_messages_round_trip_and_check_sizes() {
             id: 19,
             op: MediaOp::VideoDecodeFrom(4, 7),
             bytes: vec![3; 40],
+        },
+        MediaRequest {
+            id: 20,
+            op: MediaOp::VideoScreen(4, 0, true),
+            bytes: Vec::new(),
         },
     ] {
         assert_eq!(MediaRequest::decode(&r.encode()).unwrap(), r);

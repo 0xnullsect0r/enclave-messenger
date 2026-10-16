@@ -95,8 +95,8 @@ allow-build-scripts = [
     "borsh",
     "clang-sys",
     "classic-mceliece-rust",
-    "cpal",  # target cfgs only (call audio)
     "core-foundation-sys",  # links CoreFoundation (camera, via nokhwa on macOS)
+    "cpal",  # target cfgs only (call audio)
     "crabgrind",  # constant-time tests under valgrind only (cfg(valgrind_ct_test))
     "crc32fast",
     "crossbeam-deque",
@@ -116,6 +116,7 @@ allow-build-scripts = [
     "gbm-sys",  # Linux KMS backend
     "generic-array",
     "getrandom",
+    "gl",  # in the lock through xcap's Linux path, which is never built (xcap is a macOS/Windows dependency)
     "glutin",
     "glutin-winit",
     "glutin_egl_sys",
@@ -145,6 +146,7 @@ allow-build-scripts = [
     "jni",
     "jni-macros",
     "jni-sys",
+    "khronos-egl",  # likewise (xcap on Linux; never built)
     "khronos_api",
     "libc",
     "libcrux-intrinsics",
@@ -156,6 +158,8 @@ allow-build-scripts = [
     "libm",
     "libseat",  # Linux seat management (linuxkms)
     "libseat-sys",  # Linux seat management (linuxkms)
+    "libspa",  # PipeWire bindings: screen share on Linux (pkg-config)
+    "libspa-sys",  # PipeWire bindings: screen share on Linux (bindgen against the system headers)
     "libsqlite3-sys",  # arti/nym-sdk state storage; netd/ingress only
     "libudev-sys",  # Linux device discovery (linuxkms)
     "mac-notification-sys",  # desktop notifications on macOS: one small Objective-C file (NSUserNotificationCenter), AppKit
@@ -174,6 +178,7 @@ allow-build-scripts = [
     "orbclient",
     "parking_lot_core",
     "paste",
+    "pipewire-sys",  # PipeWire bindings: screen share on Linux (bindgen against the system headers)
     "portable-atomic",
     "portable-atomic-util",
     "prettyplease",
@@ -201,6 +206,7 @@ allow-build-scripts = [
     "smithay-client-toolkit",  # Linux windowing
     "sqlite-wasm-rs",  # pulled by rusqlite feature graph; not built for native targets
     "syn",
+    "target-lexicon",  # system-deps (PipeWire's pkg-config lookup)
     "thiserror",
     "tiny-xlib",  # Linux X11 fallback
     "uncased",
@@ -229,6 +235,8 @@ allow-build-scripts = [
     "winit",
     "wit-bindgen",
     "x11-dl",  # Linux X11 fallback (dlopen)
+    "xcap",  # screen share on macOS and Windows (checks the target; links nothing)
+    "xcb",  # in the lock through xcap's Linux path, which is never built
     "yeslogic-fontconfig-sys",  # Linux font discovery for Slint (system library, linked)
     "zerocopy",
     "zmij",

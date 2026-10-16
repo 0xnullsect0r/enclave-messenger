@@ -77,6 +77,8 @@ pub(super) struct Call {
     direct_psk: Option<[u8; 32]>,
     /// The media goes directly now.
     pub(super) on_direct: bool,
+    /// We share our screen instead of the camera.
+    pub(super) sharing: bool,
 }
 
 /// "3:02" from seconds.
@@ -332,6 +334,7 @@ impl Engine {
             direct_peer: None,
             direct_psk: None,
             on_direct: false,
+            sharing: false,
         });
         self.leg_for(id, relay);
         if !self.signal(&root, &CallMessage::Offer(offer)).await {
@@ -525,21 +528,44 @@ impl Engine {
         }
     }
 
-    /// A camera frame, at the call's video size.
+    /// Share the screen instead of the camera (a video call), or stop.
+    pub(super) fn call_screen(&mut self, on: bool) {
+        if let Some(g) = self.group_call.as_mut().filter(|g| g.joined && g.video) {
+            g.sharing = on;
+            if let Some(tx) = &g.tx {
+                let _ = tx.send(ToCall::Screen(on));
+            }
+        }
+        if let Some(call) = self.call.as_mut().filter(|c| c.video) {
+            call.sharing = on;
+            if let Some(tx) = &call.tx {
+                let _ = tx.send(ToCall::Screen(on));
+            }
+        }
+    }
+
+    /// A camera frame, at the call's video size, or a shared screen's, at
+    /// the screen's.
     pub(super) fn call_frame(&mut self, width: u32, height: u32, rgba: Vec<u8>) {
-        let t = enclave_media::callvideo::tier(0);
+        let sharing = self.call.as_ref().is_some_and(|c| c.sharing)
+            || self.group_call.as_ref().is_some_and(|g| g.sharing);
+        let t = if sharing {
+            enclave_media::callvideo::screen(0)
+        } else {
+            enclave_media::callvideo::tier(0)
+        };
         if (width, height) != (t.width, t.height) {
             return;
         }
         let group = self
             .group_call
             .as_ref()
-            .filter(|g| g.camera)
+            .filter(|g| g.camera || g.sharing)
             .and_then(|g| g.tx.as_ref());
         if let Some(tx) = self
             .call
             .as_ref()
-            .filter(|c| c.camera)
+            .filter(|c| c.camera || c.sharing)
             .and_then(|c| c.tx.as_ref())
             .or(group)
         {
@@ -608,6 +634,7 @@ impl Engine {
                     direct_peer: None,
                     direct_psk: None,
                     on_direct: false,
+                    sharing: false,
                 });
                 self.signal(&from, &CallMessage::Ringing(id)).await;
                 let named = self.client.as_ref().is_some_and(|c| c.previews());
@@ -753,6 +780,9 @@ impl Engine {
         }
         if call.video && !call.camera {
             let _ = tx.send(ToCall::Camera(false));
+        }
+        if call.sharing {
+            let _ = tx.send(ToCall::Screen(true));
         }
         call.tx = Some(tx);
         let plan = calls::Plan {
@@ -954,6 +984,7 @@ impl Engine {
                     .as_ref()
                     .is_some_and(|o| o.route == Route::Direct),
             direct: call.on_direct,
+            screen: call.sharing,
             ..Default::default()
         }
     }

@@ -39,6 +39,10 @@ public class EnclaveService extends Service {
     static volatile boolean windowOpen;
     /** A call is on: the service holds the call's microphone and audio. */
     private static volatile boolean inCall;
+    /** The screen is shared: the grant waiting for the service, and whether it runs. */
+    private static Intent projectionData;
+    private static int projectionResult;
+    private static volatile boolean projecting;
 
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -70,6 +74,17 @@ public class EnclaveService extends Service {
         }
     }
 
+    /** Screen sharing was allowed (data), or stopped (null): the service
+     *  takes the media projection kind first, then starts it. */
+    static void project(Context c, int result, Intent data) {
+        synchronized (KINDS) {
+            projectionResult = result;
+            projectionData = data;
+            projecting = data != null;
+        }
+        start(c);
+    }
+
     /** A call started (true) or ended: the service keeps it going with no window. */
     static void call(Context c, boolean on) {
         inCall = on;
@@ -96,10 +111,12 @@ public class EnclaveService extends Service {
                 .setContentIntent(PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE))
                 .setOngoing(true)
                 .build();
-        int call = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        int call = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                | (projecting ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION : 0);
         try {
             if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(FOREGROUND_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE | (inCall ? call : 0));
+                startForeground(FOREGROUND_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                        | (inCall || projecting ? call : 0));
             } else if (inCall && Build.VERSION.SDK_INT >= 30) {
                 startForeground(FOREGROUND_ID, n, call);
             } else {
@@ -113,6 +130,16 @@ public class EnclaveService extends Service {
             } else {
                 startForeground(FOREGROUND_ID, n);
             }
+        }
+        Intent grant;
+        int granted;
+        synchronized (KINDS) {
+            grant = projectionData;
+            granted = projectionResult;
+            projectionData = null;
+        }
+        if (grant != null) {
+            Screen.begin(this, granted, grant);
         }
         Native.load();
         synchronized (KINDS) {

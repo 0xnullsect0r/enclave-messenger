@@ -245,6 +245,10 @@ fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
         let _ = t.send(Cmd::CallReact(emoji.to_string()));
     });
     let t = tx.clone();
+    ui.on_screen_call(move |on| {
+        let _ = t.send(Cmd::CallScreen(on));
+    });
+    let t = tx.clone();
     ui.on_create_call_link(move |lobby| {
         let _ = t.send(Cmd::CreateCallLink(lobby));
     });
@@ -539,6 +543,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             // the camera, while a video call's is on.
             let mut audio: Option<crate::audio::CallAudio> = None;
             let mut camera: Option<CallCamera> = None;
+            let mut screen: Option<crate::screen::Share> = None;
             while let Some(o) = out.blocking_recv() {
                 // Files are written here, in the UI process, where the
                 // person chooses: the vault can't reach anything outside
@@ -557,6 +562,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                             );
                             ui.set_call_remote(slint::Image::from_rgba8(buf));
                             ui.set_call_has_remote(true);
+                            ui.set_call_remote_screen(width >= enclave_ipc::SCREEN_WIDTH);
                         });
                         continue;
                     }
@@ -581,7 +587,48 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     }
                     Out::Snapshot(s) => {
                         let c = &s.call;
-                        let film = matches!(c.state, 3 | 4) && c.camera && c.video_width > 0;
+                        let sharing = matches!(c.state, 3 | 4) && c.screen && c.video_width > 0;
+                        if sharing && screen.is_none() {
+                            let (tx, w) = (lan_tx.clone(), w.clone());
+                            match crate::screen::Share::start(move |frame| {
+                                let (pw, ph) = (enclave_ipc::SCREEN_WIDTH / 4, enclave_ipc::SCREEN_HEIGHT / 4);
+                                let preview = crate::screen::contain(
+                                    enclave_ipc::SCREEN_WIDTH,
+                                    enclave_ipc::SCREEN_HEIGHT,
+                                    &frame,
+                                    pw,
+                                    ph,
+                                );
+                                let _ = tx.send(Cmd::CallFrame(
+                                    enclave_ipc::SCREEN_WIDTH,
+                                    enclave_ipc::SCREEN_HEIGHT,
+                                    frame,
+                                ));
+                                let _ = w.upgrade_in_event_loop(move |ui| {
+                                    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                        &preview, pw, ph,
+                                    );
+                                    ui.set_call_self(slint::Image::from_rgba8(buf));
+                                });
+                            }, {
+                                let tx = lan_tx.clone();
+                                move |why: String| {
+                                    if !why.is_empty() {
+                                        eprintln!("enclave: screen share: {why}");
+                                    }
+                                    let _ = tx.send(Cmd::CallScreen(false));
+                                }
+                            }) {
+                                Ok(sh) => screen = Some(sh),
+                                Err(e) => {
+                                    eprintln!("enclave: screen share: {e}");
+                                    let _ = lan_tx.send(Cmd::CallScreen(false));
+                                }
+                            }
+                        } else if !sharing {
+                            screen = None;
+                        }
+                        let film = matches!(c.state, 3 | 4) && c.camera && !c.screen && c.video_width > 0;
                         if film && camera.is_none() {
                             camera = Some(CallCamera::start(
                                 c.video_width,

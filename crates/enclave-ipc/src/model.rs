@@ -203,6 +203,9 @@ pub struct CallView {
     pub hand: bool,
     /// Our camera waits: eight others are on (a group call).
     pub cameras_full: bool,
+    /// We share our screen instead of the camera: frames go at
+    /// [`SCREEN_WIDTH`] × [`SCREEN_HEIGHT`].
+    pub screen: bool,
     /// The others heard in a group call.
     pub peers: Vec<CallPeer>,
     /// Groups with a call going on that we aren't in (they show Join).
@@ -726,7 +729,15 @@ pub enum Cmd {
     AdmitToCall(u32),
     /// Turn someone waiting in the lobby away.
     RefuseFromCall(u32),
+    /// Share the screen instead of the camera in a video call (true), or
+    /// stop.
+    CallScreen(bool),
 }
+
+/// The size a shared screen's frames go at ([`Cmd::CallFrame`]).
+pub const SCREEN_WIDTH: u32 = 960;
+/// As above.
+pub const SCREEN_HEIGHT: u32 = 540;
 
 /// Most people a group call shows.
 pub const MAX_CALL_PEERS: usize = 64;
@@ -1134,6 +1145,7 @@ impl Snapshot {
             .bool(self.call.group)
             .bool(self.call.hand)
             .bool(self.call.cameras_full)
+            .bool(self.call.screen)
             .u32(self.call.peers.len() as u32);
         for p in &self.call.peers {
             w.u32(p.id).str(&p.name).bool(p.hand).str(&p.reaction);
@@ -1410,6 +1422,7 @@ impl Snapshot {
                 group: r.bool()?,
                 hand: r.bool()?,
                 cameras_full: r.bool()?,
+                screen: r.bool()?,
                 peers: {
                     let n = r.u32()? as usize;
                     if n > MAX_CALL_PEERS {
@@ -1588,6 +1601,7 @@ impl Cmd {
             Cmd::CreateCallLink(lobby) => w.u8(111).bool(*lobby),
             Cmd::AdmitToCall(id) => w.u8(112).u32(*id),
             Cmd::RefuseFromCall(id) => w.u8(113).u32(*id),
+            Cmd::CallScreen(on) => w.u8(114).bool(*on),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1744,6 +1758,7 @@ impl Cmd {
             111 => Cmd::CreateCallLink(r.bool()?),
             112 => Cmd::AdmitToCall(r.u32()?),
             113 => Cmd::RefuseFromCall(r.u32()?),
+            114 => Cmd::CallScreen(r.bool()?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };

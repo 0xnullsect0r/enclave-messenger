@@ -149,6 +149,29 @@ pub fn start_call_camera(report: impl FnMut(Camera) + Send + 'static) {
     imp::start_call_camera(Box::new(report));
 }
 
+/// A shared screen's pictures (width, height, RGBA), and why sharing
+/// stopped or couldn't start (empty: stopped from the system's controls).
+pub type ScreenFrames = Box<dyn FnMut(u32, u32, Vec<u8>) + Send>;
+/// As above.
+pub type ScreenFailed = Box<dyn FnOnce(String) + Send>;
+
+/// Share the screen in a video call: the system asks first (Android's
+/// MediaProjection; on iOS, the broadcast extension the system's picker
+/// starts) and shows that the screen is recorded. Pictures, about five a
+/// second, go to `frame` until [`stop_screen_capture`]; `failed` hears if
+/// it was refused or stopped from the system's controls.
+pub fn start_screen_capture(
+    frame: impl FnMut(u32, u32, Vec<u8>) + Send + 'static,
+    failed: impl FnOnce(String) + Send + 'static,
+) {
+    imp::start_screen_capture(Box::new(frame), Box::new(failed));
+}
+
+/// Stop sharing the screen.
+pub fn stop_screen_capture() {
+    imp::stop_screen_capture();
+}
+
 /// Turn the camera off.
 pub fn stop_camera() {
     imp::stop_camera();

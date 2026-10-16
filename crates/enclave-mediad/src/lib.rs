@@ -114,6 +114,16 @@ fn call_op(op: MediaOp, bytes: &[u8], calls: &mut Calls) -> enclave_media::Resul
                 None => MediaOut::Raw(Vec::new()),
             })
         }
+        MediaOp::VideoScreen(n, tier, on) => {
+            use enclave_media::callvideo::VideoEncoder;
+            let (enc, _) = calls.video.get_mut(&n).ok_or(missing)?;
+            *enc = if on {
+                VideoEncoder::screen(usize::from(tier))?
+            } else {
+                VideoEncoder::new(usize::from(tier))?
+            };
+            Ok(MediaOut::Raw(Vec::new()))
+        }
         MediaOp::VideoClose(n) => {
             calls.video.remove(&n);
             calls.from.retain(|(c, _), _| *c != n);
@@ -194,7 +204,8 @@ fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
         | MediaOp::VideoDecode(_)
         | MediaOp::VideoClose(_)
         | MediaOp::CallMix(_)
-        | MediaOp::VideoDecodeFrom(..) => call_op(req.op, &req.bytes, calls),
+        | MediaOp::VideoDecodeFrom(..)
+        | MediaOp::VideoScreen(..) => call_op(req.op, &req.bytes, calls),
         MediaOp::Sanitize => enclave_media::sanitize(&req.bytes).map(|s| MediaOut::Sanitized {
             png: s.format == enclave_media::Format::Png,
             width: s.width,

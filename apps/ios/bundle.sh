@@ -10,7 +10,10 @@
 # the App Store and TestFlight, and IOS_NSE_PROFILE (the profile for
 # com.aricummings.enclave.nse) adds the notification service extension,
 # which shows who wrote with previews on; signed without it, the app ships
-# without the extension ("New message" only). Without them the app is
+# without the extension ("New message" only). IOS_BROADCAST_PROFILE (for
+# com.aricummings.enclave.broadcast, with the same app group) adds the
+# broadcast upload extension that shares the screen in a video call;
+# without it, Share screen says it isn't set up in this build. Without them the app is
 # signed ad hoc, with the extension,
 # which a sideloading tool (AltStore, SideStore) re-signs with its user's
 # Apple ID, and which the simulator runs. With ASC_KEY_ID, ASC_ISSUER_ID and
@@ -97,6 +100,17 @@ xcrun --sdk "$SDK" swiftc -target "$swift_target" -O -parse-as-library -applicat
 sed -e "s/@VERSION@/${V%%-*}/" -e "s/@BUILD@/$BUILD/" "$ROOT/apps/ios/nse/Info.plist" > "$nse/Info.plist"
 built "$nse/Info.plist"
 
+# The broadcast upload extension (docs/11-calls.md §8.3): sharing the
+# screen in a video call; Swift only.
+bc=$app/PlugIns/EnclaveBroadcast.appex
+mkdir -p "$bc"
+xcrun --sdk "$SDK" swiftc -target "$swift_target" -O -parse-as-library -application-extension \
+  -module-name EnclaveBroadcast "$ROOT/apps/ios/broadcast/SampleHandler.swift" \
+  -framework Foundation -framework ReplayKit -framework CoreImage -framework CoreMedia -framework CoreVideo \
+  -Xlinker -e -Xlinker _NSExtensionMain -o "$bc/EnclaveBroadcast"
+sed -e "s/@VERSION@/${V%%-*}/" -e "s/@BUILD@/$BUILD/" "$ROOT/apps/ios/broadcast/Info.plist" > "$bc/Info.plist"
+built "$bc/Info.plist"
+
 # The entitlements a profile grants, to sign with.
 entitlements() {
   security cms -D -i "$1" > "$work/$2.plist"
@@ -110,13 +124,21 @@ if [ -n "${IOS_SIGN_IDENTITY:-}" ] && [ -n "${IOS_PROFILE:-}" ] && [ "$SIM" != -
     codesign --force --timestamp --sign "$IOS_SIGN_IDENTITY" --entitlements "$(entitlements "$IOS_NSE_PROFILE" nse)" "$nse"
   else
     echo "bundle: no IOS_NSE_PROFILE; the app ships without its notification extension"
-    rm -rf "$app/PlugIns"
+    rm -rf "$nse"
+  fi
+  if [ -n "${IOS_BROADCAST_PROFILE:-}" ]; then
+    cp "$IOS_BROADCAST_PROFILE" "$bc/embedded.mobileprovision"
+    codesign --force --timestamp --sign "$IOS_SIGN_IDENTITY" --entitlements "$(entitlements "$IOS_BROADCAST_PROFILE" broadcast)" "$bc"
+  else
+    echo "bundle: no IOS_BROADCAST_PROFILE; the app ships without screen sharing"
+    rm -rf "$bc"
   fi
   cp "$IOS_PROFILE" "$app/embedded.mobileprovision"
   codesign --force --timestamp --sign "$IOS_SIGN_IDENTITY" --entitlements "$(entitlements "$IOS_PROFILE" app)" "$app"
   signed=yes
 else
   codesign --force --sign - "$nse"
+  codesign --force --sign - "$bc"
   codesign --force --sign - "$app"
   signed=no
 fi

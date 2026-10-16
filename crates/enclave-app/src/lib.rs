@@ -8,6 +8,7 @@ pub mod camera;
 pub mod format;
 pub mod i18n;
 pub mod lan;
+pub mod screen;
 pub mod shell;
 #[cfg(desktop)]
 pub mod updater;

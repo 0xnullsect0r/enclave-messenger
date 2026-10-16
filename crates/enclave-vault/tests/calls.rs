@@ -687,7 +687,10 @@ async fn a_guest_is_let_in_from_a_call_links_lobby() {
     let mut knocked_at = tokio::time::Instant::now() - Duration::from_secs(10);
     let mut eve_saw_admission = None;
     while admitted.is_none() {
-        assert!(tokio::time::Instant::now() < deadline, "Ana was never let in");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "Ana was never let in"
+        );
         if knocked_at.elapsed() > Duration::from_secs(2) {
             ana_tx.send(ana.knock("Ana").encode()).unwrap();
             knocked_at = tokio::time::Instant::now();
@@ -780,5 +783,103 @@ async fn a_guest_is_let_in_from_a_call_links_lobby() {
     }
     assert!(heard_host, "Ana heard the host");
     drop((host_tx, ana_call_tx, host_lobby_tx, ana_tx));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Screen share (`docs/11-calls.md` §8.3): in a video call, Ada switches
+/// from her camera to her screen. Ben's pictures change size (960 × 540,
+/// the screen's) while the stream on the wire stays the same: the relays
+/// carry as many packets a second before and after.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_shared_screen_goes_in_place_of_the_camera() {
+    let dir = std::env::temp_dir().join(format!("enclave-screen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, ab) = relay(&dir.join("b"), "beta").await;
+    {
+        let d = rb.lock().await.descriptor().clone();
+        ra.lock().await.add_peer(&d).unwrap();
+        let d = ra.lock().await.descriptor().clone();
+        rb.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let leg_a = calls::open_leg(&t, &la).await.unwrap();
+    let leg_b = calls::open_leg(&t, &lb).await.unwrap();
+    let mut rng = HedgedRng::new().unwrap();
+    let pending = signal::offer(Media::Video(0), Route::Relay, vec![], now(), &mut rng).unwrap();
+    let id = pending.offer().call_id;
+    let (ans, kb) = signal::answer(pending.offer(), vec![], b"conv", now(), &mut rng).unwrap();
+    let ka = pending.finish(&ans, b"conv", now()).unwrap();
+    let helpers = Helpers::in_process();
+    let (ev_tx, _ev_rx) = mpsc::unbounded_channel();
+    let mut sides = Vec::new();
+    for (leg, keys, caller, peer) in [(leg_a, ka, true, ab), (leg_b, kb, false, aa)] {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let plan = Plan {
+            id,
+            keys,
+            caller,
+            peer_relay: peer,
+            codec: helpers.open_call().await.unwrap(),
+            video: Some((helpers.open_video(0).await.unwrap(), 0)),
+        };
+        tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
+        sides.push((tx, out_rx));
+    }
+    let (_b_tx, mut b_out) = sides.pop().unwrap();
+    let (a_tx, _a_out) = sides.pop().unwrap();
+    let tier = enclave_media::callvideo::tier(0);
+    let screen = enclave_media::callvideo::screen(0);
+    assert_eq!(
+        (screen.width, screen.height),
+        (enclave_ipc::SCREEN_WIDTH, enclave_ipc::SCREEN_HEIGHT)
+    );
+    let picture = |w: u32, h: u32, n: u32| {
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                px.extend_from_slice(&[((x + n * 8) % 256) as u8, (y % 256) as u8, 90, 255]);
+            }
+        }
+        px
+    };
+    // Let the call settle, then count a phase's packets on the relays.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let carried = || async { ra.lock().await.stats().to_peer + rb.lock().await.stats().to_peer };
+    let before = carried().await;
+    let mut tick = tokio::time::interval(Duration::from_millis(1000 / u64::from(tier.fps)));
+    for n in 0..(3 * tier.fps) {
+        tick.tick().await;
+        a_tx.send(ToCall::Frame(picture(tier.width, tier.height, n)))
+            .unwrap();
+    }
+    let camera_phase = carried().await - before;
+    a_tx.send(ToCall::Screen(true)).unwrap();
+    let before = carried().await;
+    let mut tick = tokio::time::interval(Duration::from_millis(1000 / u64::from(screen.fps)));
+    for n in 0..(3 * screen.fps) {
+        tick.tick().await;
+        a_tx.send(ToCall::Frame(picture(screen.width, screen.height, n)))
+            .unwrap();
+    }
+    let screen_phase = carried().await - before;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let (mut cameras, mut screens) = (0, 0);
+    while let Ok(o) = b_out.try_recv() {
+        if let Out::CallVideo(w, h, px) = o {
+            assert_eq!(px.len(), (w * h * 4) as usize);
+            match (w, h) {
+                (w, h) if (w, h) == (tier.width, tier.height) => cameras += 1,
+                (w, h) if (w, h) == (screen.width, screen.height) => screens += 1,
+                other => panic!("a picture of {other:?}"),
+            }
+        }
+    }
+    assert!(cameras >= 3, "Ben saw {cameras} camera pictures");
+    assert!(screens >= 2, "and {screens} of the screen");
+    // The same stream on the wire (within the jitter of three seconds).
+    let (c, s) = (camera_phase as f64, screen_phase as f64);
+    assert!((s - c).abs() / c < 0.05, "packets: camera {c}, screen {s}");
     let _ = std::fs::remove_dir_all(&dir);
 }

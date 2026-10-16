@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The broadcast upload extension: sharing the screen in a video call
+     (apps/ios/bundle.sh fills in the version and build). -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Enclave</string>
+    <key>CFBundleExecutable</key>
+    <string>EnclaveBroadcast</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.aricummings.enclave.broadcast</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>EnclaveBroadcast</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@BUILD@</string>
+    <key>MinimumOSVersion</key>
+    <string>16.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.broadcast-services-upload</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>EnclaveBroadcast.SampleHandler</string>
+        <key>RPBroadcastProcessMode</key>
+        <string>RPBroadcastProcessModeSampleBuffer</string>
+    </dict>
+</dict>
+</plist>

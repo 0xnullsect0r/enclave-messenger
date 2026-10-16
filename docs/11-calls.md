@@ -95,7 +95,6 @@ PSK schedule:
 - **In the app**: the call screen can shrink to a tile over the app (picture in picture: the other person's picture, or who and for how long, with hang up); tapping it brings the call back. A call that rings or ends always takes the whole window.
 - **The system's call screens** (`enclave_platform::phone::report_*_call`, driven from the vault's snapshots in `enclave-app`'s `vault::phone`, so they work with no window open): on iOS, CallKit and PushKit (`phone/ios/calls.rs`): a call's offer is sent with `FLAG_CALL`, so the home server wakes the callee at once through the push relay as an APNs VoIP push (`apns-push-type: voip`, topic `<bundle>.voip`, 60 s expiry), which is reported to CallKit before anything else (PC-02) as "Enclave" and named once the offer is in; a push whose offer never comes stops ringing after 30 s. The PushKit token is registered as its own push token (platform 4, `FLAG_PUSH_CALL`). On Android, a self-managed `ConnectionService` (`apps/android/.../Calls.java`): the system gives the call its audio mode and holds other calling apps, a ringing call is a full-screen call notification (CallStyle, the ringtone), and the background service keeps the microphone (`phoneCall` and `microphone` foreground types) while a call is on. Both keep calls out of the phone's call history; with notification previews off the system's screens say "Enclave", not the caller. Answer, decline, hang up and mute there come back as commands; an answer given before the offer arrived is applied when it does. The window's own ringing notice is not shown on phones.
 
-Not implemented yet: screen share (C-f).
 
 ## 4. Direct mode (opt-in per call)
 
@@ -171,7 +170,7 @@ As implemented (`enclave_vault::calls::Standby`, the engine's `standby_upkeep`):
 - Each receiver has a fixed 2.5 Mbps downlink budget; the SFU fills unused budget with padding.
 - **Limits:** 64 participants; 8 cameras on at once (eight 300 kbit/s pictures fill the 2.5 Mbps budget; §8.1).
 - **Call links:** `https://<invite-host>/call#<payload>` with a capability `call_link_cap = KMAC256(call_link_secret, "", 256, "enclave/v1/calls/link-cap")` and an optional lobby.
-- Raise hand, reactions, picture-in-picture. Screen share on desktop in M8, on mobile after 1.0.
+- Raise hand, reactions, picture-in-picture, screen share (desktop and phones; §8.3).
 
 ### 8.1 As implemented
 
@@ -212,6 +211,23 @@ In a group call, **Invite with a link** makes a link (`enclave_calls::link::Call
 - **Guests** join the call as members do (their relay, the SFU), with no group: every participant announces its name on the audio stream every 10 s (`'N' ‖ name`, up to 64 bytes); a name is shown for anyone who isn't a member of the group, marked "(guest)", and members are always shown by the name the group knows. The link and its lobby last while its maker is in the call.
 
 Tests: `a_guest_is_let_in_from_a_call_links_lobby` (two relays: the host in the call and the lobby at the SFU, a guest and an eavesdropper with the same link in the lobby from the other relay; the guest knocks, is let in, joins and is heard by name; the eavesdropper can't open the admission), `links_round_trip`, `only_the_admitted_knocker_opens_the_call`.
+
+### 8.3 Screen share, as implemented
+
+In a video call (1:1 or group) **Share screen** sends the screen instead of the camera. The encoder switches to the screen picture (`enclave_media::callvideo::SCREEN`: 960 × 540 at 5 frames a second) **at the call's tier's bit rate**, so the video stream on the wire — packet size, packet rate, padding — is the one the camera's would be: an observer can't tell a shared screen from a camera, nor see it start or stop (test `a_shared_screen_goes_in_place_of_the_camera` counts the relays' packets in both phases). The switch is a mediad operation (`VideoScreen`) on the call's own encoder; the next picture is a key frame with a new sequence header, which the other side's decoder follows (pictures up to the screen's size are accepted). An audio call has no video stream, so it can't share a screen without showing that something changed; the button is only in video calls. In a group call a shared screen counts as a camera (§8.1's eight).
+
+Where the pictures come from (`enclave-app/src/screen`, `enclave_platform::phone`), each fitted into 960 × 540 letterboxed, averaging the source pixels so text stays legible:
+
+| Platform | Capture | Asking |
+|---|---|---|
+| Linux, Wayland and Flatpak | The desktop portal's ScreenCast (`ashpd`), its PipeWire stream received with `pipewire` | The portal's dialog: which screen or window |
+| Linux, X11 | The root window (`x11rb`, `GetImage`) | — (X11 has no permission) |
+| Windows | Windows Graphics Capture (`xcap`, feature `wgc`) | — |
+| macOS | ScreenCaptureKit through `xcap` | macOS's Screen Recording permission |
+| Android | MediaProjection (`Screen.java`): a 960 × 540 virtual display mirroring the screen into an `ImageReader`; the foreground service takes the media projection type first, as Android 14 requires | Android's dialog, every time; the system shows that the screen is recorded |
+| iOS | A broadcast upload extension (`apps/ios/broadcast`, ReplayKit), started from the system's broadcast picker the app opens; it leaves each fitted frame in a file in the app group's container (`"ENSC" ‖ seq ‖ w ‖ h ‖ BGRA`), which the app reads and deletes, and ends when the app leaves `screen.stop` | iOS's broadcast sheet; the status bar shows the recording |
+
+Our own preview shows what is shared; the other side shows a shared screen whole (fitted, not cropped). Refusing in the system's dialog, or stopping from the system's own controls, turns sharing off in the call.
 
 ## 9. Call check
 

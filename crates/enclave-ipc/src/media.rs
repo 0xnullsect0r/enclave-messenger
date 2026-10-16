@@ -64,6 +64,9 @@ pub enum MediaOp {
     /// Decode one temporal unit from one participant of a group call (its
     /// own decoder), as [`MediaOp::VideoDecode`].
     VideoDecodeFrom(u32, u32),
+    /// Switch a call's encoder, at its tier, to a shared screen (true;
+    /// `enclave_media::callvideo::screen`) or back to the camera.
+    VideoScreen(u32, u8, bool),
 }
 
 /// How [`MediaOp::CallDecode`] uses its bytes.
@@ -178,6 +181,7 @@ impl MediaRequest {
             MediaOp::VideoClose(n) => w.u8(17).u32(n),
             MediaOp::CallMix(n) => w.u8(18).u32(n),
             MediaOp::VideoDecodeFrom(n, sender) => w.u8(19).u32(n).u32(sender),
+            MediaOp::VideoScreen(n, tier, on) => w.u8(20).u32(n).u8(tier).bool(on),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -226,6 +230,11 @@ impl MediaRequest {
             19 => {
                 let n = r.u32()?;
                 MediaOp::VideoDecodeFrom(n, r.u32()?)
+            }
+            20 => {
+                let n = r.u32()?;
+                let tier = r.u8()?;
+                MediaOp::VideoScreen(n, tier, r.bool()?)
             }
             _ => return Err(IpcError::Malformed),
         };

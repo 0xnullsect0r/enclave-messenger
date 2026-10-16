@@ -64,6 +64,8 @@ pub(super) struct GroupCall {
     pub(super) hand: bool,
     /// Our camera waits for a free place.
     cameras_full: bool,
+    /// We share our screen instead of the camera.
+    pub(super) sharing: bool,
     pub(super) keys: CallKeys,
     pub(super) secret: Zeroizing<[u8; 64]>,
     pub(super) me: u32,
@@ -105,6 +107,7 @@ impl GroupCall {
             camera: video,
             hand: false,
             cameras_full: false,
+            sharing: false,
             keys,
             secret,
             me,
@@ -247,6 +250,7 @@ impl Engine {
             camera: video,
             hand: false,
             cameras_full: false,
+            sharing: false,
             me: keys.participant(&me),
             keys,
             secret: Zeroizing::new(*secret_copy),
@@ -326,6 +330,7 @@ impl Engine {
             camera: video,
             hand: false,
             cameras_full: false,
+            sharing: false,
             me: keys.participant(&me),
             keys,
             secret,
@@ -472,6 +477,7 @@ impl Engine {
                     camera: video,
                     hand: false,
                     cameras_full: false,
+                    sharing: false,
                     me: 0,
                     keys,
                     secret,
@@ -578,6 +584,9 @@ impl Engine {
         }
         if g.video && !g.camera {
             let _ = tx.send(ToCall::Camera(false));
+        }
+        if g.sharing {
+            let _ = tx.send(ToCall::Screen(true));
         }
         g.tx = Some(tx);
         let plan = GroupPlan {
@@ -749,6 +758,7 @@ impl Engine {
             group: true,
             hand: g.hand,
             cameras_full: g.cameras_full,
+            screen: g.sharing,
             link: g.link.as_ref().map(|l| l.text.clone()).unwrap_or_default(),
             knocks: g
                 .link

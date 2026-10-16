@@ -1165,6 +1165,10 @@ msgstr "‫Enclave may not use the camera. Allow it in System Settings → Priva
 msgid "Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block."
 msgstr "‫Enclave reaches the private network through Tor, and Tor couldn't connect from here. A bridge can get around the block.‬"
 
+#: enclave-app/src/screen/linux.rs
+msgid "Enclave screen share"
+msgstr "‫Enclave screen share‬"
+
 #: ui/app.slint
 msgid "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery."
 msgstr "‫Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery.‬"
@@ -2333,6 +2337,10 @@ msgstr "‫Scanning a code‬"
 msgid "Screen lock"
 msgstr "‫Screen lock‬"
 
+#: enclave-app/src/screen/linux.rs
+msgid "Screen sharing was cancelled."
+msgstr "‫Screen sharing was cancelled.‬"
+
 #: ui/app.slint
 msgid "Screenshots, screen recordings and screen sharing show a blank window instead of your messages."
 msgstr "‫Screenshots, screen recordings and screen sharing show a blank window instead of your messages.‬"
@@ -2482,6 +2490,10 @@ msgid "Share new invite links and codes: old ones still lead to the account unde
 msgstr "‫Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards.‬"
 
 #: ui/app.slint
+msgid "Share screen"
+msgstr "‫Share screen‬"
+
+#: ui/app.slint
 msgid "Share with {} ({} needed)"
 msgstr "‫Share with ‬{}‫ (‬{}‫ needed)‬"
 
@@ -2600,6 +2612,10 @@ msgstr "‫Stickers‬"
 #: ui/app.slint
 msgid "Stop it"
 msgstr "‫Stop it‬"
+
+#: ui/app.slint
+msgid "Stop sharing"
+msgstr "‫Stop sharing‬"
 
 #: ui/app.slint
 msgid "Stop {} being an admin"
@@ -3604,6 +3620,10 @@ msgstr "{}‫'s account moved to a new key‬"
 #: ui/app.slint
 msgid "{}'s phone should show the same three words. If it does, you scanned each other and nobody else."
 msgstr "{}‫'s phone should show the same three words. If it does, you scanned each other and nobody else.‬"
+
+#: ui/app.slint
+msgid "{}'s screen"
+msgstr "{}‫'s screen‬"
 
 #: ui/app.slint
 msgid "{}'s video"
