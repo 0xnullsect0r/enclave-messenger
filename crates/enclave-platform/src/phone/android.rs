@@ -206,6 +206,10 @@ pub(super) fn start_camera(report: Frames) {
     let _ = with(|env, a| env.call_method(a, "startScan", "()V", &[]).map(|_| ()));
 }
 
+pub(super) fn ask_microphone() {
+    let _ = with(|env, a| env.call_method(a, "askMicrophone", "()V", &[]).map(|_| ()));
+}
+
 pub(super) fn stop_camera() {
     let _ = with(|env, a| env.call_method(a, "stopScan", "()V", &[]).map(|_| ()));
     if let Ok(mut c) = CAMERA.lock() {

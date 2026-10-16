@@ -16,6 +16,8 @@ finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
+  # Calls: the microphone and speaker (ALSA through PulseAudio).
+  - --socket=pulseaudio
   - --device=dri
   # Tor and the mixnet (netd and its helpers), and history to the person's
   # other device on the local network.

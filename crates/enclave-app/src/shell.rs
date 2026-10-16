@@ -189,6 +189,31 @@ fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
     ui.on_check_updates(move || {
         let _ = t.send(Cmd::CheckUpdates);
     });
+    let t = tx.clone();
+    ui.on_start_call(move |conversation, video| {
+        // A phone asks for the microphone now, not at install.
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        enclave_platform::phone::ask_microphone();
+        let _ = t.send(Cmd::StartCall(conversation.to_string(), video));
+    });
+    let t = tx.clone();
+    ui.on_answer_call(move || {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        enclave_platform::phone::ask_microphone();
+        let _ = t.send(Cmd::AnswerCall);
+    });
+    let t = tx.clone();
+    ui.on_decline_call(move || {
+        let _ = t.send(Cmd::DeclineCall);
+    });
+    let t = tx.clone();
+    ui.on_end_call(move || {
+        let _ = t.send(Cmd::EndCall);
+    });
+    let t = tx.clone();
+    ui.on_mute_call(move |on| {
+        let _ = t.send(Cmd::CallMute(on));
+    });
     #[cfg(desktop)]
     {
         use crate::updater::{self, Install};
@@ -468,11 +493,34 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                 std::collections::HashMap::new();
             let mut to_serve: std::collections::HashMap<String, Vec<Vec<u8>>> =
                 std::collections::HashMap::new();
+            // The microphone and speaker, while a call is connecting or on.
+            let mut audio: Option<crate::audio::CallAudio> = None;
             while let Some(o) = out.blocking_recv() {
                 // Files are written here, in the UI process, where the
                 // person chooses: the vault can't reach anything outside
                 // its profile.
                 let o = match o {
+                    Out::CallAudio(pcm) => {
+                        if let Some(a) = &audio {
+                            a.play(&pcm);
+                        }
+                        continue;
+                    }
+                    Out::Snapshot(s) => {
+                        let on = matches!(s.call.state, 3 | 4);
+                        if on && audio.is_none() {
+                            let tx = lan_tx.clone();
+                            match crate::audio::CallAudio::start(move |f| {
+                                let _ = tx.send(Cmd::CallMic(f));
+                            }) {
+                                Ok(a) => audio = Some(a),
+                                Err(e) => eprintln!("enclave: call audio: {e}"),
+                            }
+                        } else if !on {
+                            audio = None;
+                        }
+                        Out::Snapshot(s)
+                    }
                     Out::File(name, bytes) => {
                         let _ = w.upgrade_in_event_loop(move |ui| save_with_dialog(&ui, name, bytes));
                         continue;
@@ -559,7 +607,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     | Out::LanChunks(..)
                     | Out::LanStop(_)
                     | Out::LanFetch(..)
-                    | Out::UpdateBundle(_) => {}
+                    | Out::UpdateBundle(_)
+                    | Out::CallAudio(_) => {}
                 });
             }
         })

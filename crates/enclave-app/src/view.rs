@@ -354,6 +354,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_update_release(s.update_release.clone().into());
     ui.set_update_required(i32::from(s.update_required));
     ui.set_build_check(crate::i18n::tr(&s.build_check).into());
+    apply_call(ui, s);
     ui.set_new_device(s.new_device.clone().into());
     ui.set_joining(s.joining.join(", ").into());
     ui.set_restore_error(crate::i18n::tr(&s.restore_error).into());
@@ -606,4 +607,32 @@ pub fn licences() -> ModelRc<crate::LicenceEntry> {
         }
     }));
     ModelRc::from(Rc::new(VecModel::from(rows)))
+}
+
+/// The call screen.
+fn apply_call(ui: &AppWindow, s: &Snapshot) {
+    let c = &s.call;
+    ui.set_call_state(i32::from(c.state));
+    ui.set_call_name(c.name.clone().into());
+    ui.set_call_initials(initials(&c.name).into());
+    let t = s
+        .contacts
+        .iter()
+        .find(|r| r.id == c.conversation)
+        .map_or(0, |r| r.tint);
+    ui.set_call_tint(tint(t));
+    ui.set_call_video(c.video);
+    ui.set_call_muted(c.muted);
+    ui.set_call_words(c.words.clone().into());
+    ui.set_call_note(crate::i18n::tr(&c.error).into());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let elapsed = if c.connected_at > 0 {
+        now.saturating_sub(c.connected_at)
+    } else {
+        0
+    };
+    ui.set_call_elapsed(i32::try_from(elapsed).unwrap_or(0));
 }

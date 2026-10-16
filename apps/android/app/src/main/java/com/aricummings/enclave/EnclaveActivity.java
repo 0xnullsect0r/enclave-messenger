@@ -49,6 +49,7 @@ public class EnclaveActivity extends android.app.NativeActivity {
     private static final int SAVE_BASE = 1 << 20;
     private static final int PERMISSION_CAMERA = 1;
     private static final int PERMISSION_NOTIFY = 2;
+    private static final int PERMISSION_MICROPHONE = 3;
     private static final String CHANNEL = "messages";
     /** How long a copied text stays on the clipboard. */
     private static final long CLIPBOARD_MS = 60_000;
@@ -334,6 +335,16 @@ public class EnclaveActivity extends android.app.NativeActivity {
     private CameraCaptureSession session;
     private ImageReader reader;
     private long lastFrame;
+
+    /** Ask for the microphone when a call starts; the call's audio keeps
+     *  trying to open it, so the answer needs no reply. */
+    public void askMicrophone() {
+        runOnUiThread(() -> {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, PERMISSION_MICROPHONE);
+            }
+        });
+    }
 
     /** Start the back camera; frames go to nativeFrame as brightness only. */
     public void startScan() {

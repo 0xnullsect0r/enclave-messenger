@@ -216,6 +216,10 @@ msgid "Animated picture"
 msgstr ""
 
 #: ui/app.slint
+msgid "Answer"
+msgstr ""
+
+#: ui/app.slint
 msgid "Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
 msgstr ""
 
@@ -336,6 +340,26 @@ msgid "Built-in"
 msgstr ""
 
 #: ui/app.slint
+msgid "Call check words: {}"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Call declined"
+msgstr ""
+
+#: ui/app.slint
+msgid "Call with {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Call {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Calling…"
+msgstr ""
+
+#: ui/app.slint
 msgid "Camera"
 msgstr ""
 
@@ -345,6 +369,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Cancel them"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Cancelled call"
 msgstr ""
 
 #: ui/app.slint
@@ -512,6 +540,10 @@ msgid "Compare these numbers with {} in person or on a call. If every group matc
 msgstr ""
 
 #: ui/app.slint
+msgid "Connecting…"
+msgstr ""
+
+#: ui/app.slint
 msgid "Contact you shared"
 msgstr ""
 
@@ -619,6 +651,10 @@ msgstr ""
 msgid "Couldn't close the poll. Check your connection."
 msgstr ""
 
+#: enclave-vault/src/calls.rs
+msgid "Couldn't connect the call."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't connect to the private network yet. Trying again in a minute."
 msgstr ""
@@ -649,6 +685,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't edit that message. Edits work for 24 hours."
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't find a private route right now. Try again later."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -709,6 +749,14 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach their server. Check your connection and try again."
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't reach them to answer. Try again."
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't reach them to call. Try again."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -823,6 +871,10 @@ msgstr ""
 msgid "Couldn't start linking. Try again."
 msgstr ""
 
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't start the call's audio."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't tell everyone yet. It goes on when you're back online."
 msgstr ""
@@ -849,6 +901,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Current PIN"
+msgstr ""
+
+#: ui/app.slint
+msgid "Decline"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Declined call"
 msgstr ""
 
 #: ui/app.slint
@@ -1188,6 +1248,10 @@ msgid "Group {}: {}"
 msgstr ""
 
 #: ui/app.slint
+msgid "Hang up"
+msgstr ""
+
+#: ui/app.slint
 msgid "Harassment or threats"
 msgstr ""
 
@@ -1273,6 +1337,18 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Include their last messages"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs ui/app.slint
+msgid "Incoming call"
+msgstr ""
+
+#: ui/app.slint
+msgid "Incoming call from {}"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs ui/app.slint
+msgid "Incoming video call"
 msgstr ""
 
 #: enclave-app/src/shell.rs
@@ -1495,6 +1571,14 @@ msgstr ""
 msgid "Met in person"
 msgstr ""
 
+#: enclave-vault/src/engine/calling.rs
+msgid "Missed call"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Missed call (you were in a call)"
+msgstr ""
+
 #: ui/app.slint
 msgid "Move it out of your list until someone writes."
 msgstr ""
@@ -1561,6 +1645,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "New passphrase"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "No answer"
 msgstr ""
 
 #: enclave-app/src/camera.rs
@@ -1921,6 +2009,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
+msgstr ""
+
+#: ui/app.slint
+msgid "Private route: two relays, run by different operators, so neither sees both of you."
 msgstr ""
 
 #: ui/app.slint
@@ -2483,6 +2575,26 @@ msgstr ""
 msgid "The backup on your server is deleted."
 msgstr ""
 
+#: enclave-vault/src/engine/calling.rs
+msgid "The call couldn't be set up."
+msgstr ""
+
+#: enclave-vault/src/calls.rs
+msgid "The call dropped."
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "The call had already ended."
+msgstr ""
+
+#: enclave-vault/src/calls.rs
+msgid "The call's connection closed."
+msgstr ""
+
+#: enclave-vault/src/calls.rs
+msgid "The call's ticket ran out."
+msgstr ""
+
 #: enclave-app/src/camera.rs
 msgid "The camera is busy or can't be opened."
 msgstr ""
@@ -2493,6 +2605,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "The group moves to that server tomorrow."
+msgstr ""
+
+#: enclave-app/src/audio.rs
+msgid "The microphone gives {} samples, which Enclave can't read."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -2509,6 +2625,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "The server's public log now shows {} pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private."
+msgstr ""
+
+#: enclave-app/src/audio.rs
+msgid "The speaker takes {} samples, which Enclave can't write."
 msgstr ""
 
 #: enclave-app/src/shell.rs
@@ -2533,6 +2653,14 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "There's no backup on your server for these words."
+msgstr ""
+
+#: enclave-app/src/audio.rs
+msgid "There's no microphone."
+msgstr ""
+
+#: enclave-app/src/audio.rs
+msgid "There's no speaker."
 msgstr ""
 
 #: ui/app.slint
@@ -2573,6 +2701,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "They'll see new messages from now on, not what was said before they joined."
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "They're in another call."
 msgstr ""
 
 #: ui/app.slint
@@ -2672,6 +2804,10 @@ msgid "Those words don't match, so nothing was linked. If you didn't start this,
 msgstr ""
 
 #: ui/app.slint
+msgid "To check the call, both of you read these out:"
+msgstr ""
+
+#: ui/app.slint
 msgid "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device."
 msgstr ""
 
@@ -2753,6 +2889,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Unlock with {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Unmute"
 msgstr ""
 
 #: ui/app.slint
@@ -2849,6 +2989,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Version {}"
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs ui/app.slint
+msgid "Video call"
+msgstr ""
+
+#: ui/app.slint
+msgid "Video call {}"
 msgstr ""
 
 #: ui/app.slint
@@ -3009,6 +3157,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
+msgstr ""
+
+#: enclave-vault/src/engine/calling.rs
+msgid "You're already in a call."
 msgstr ""
 
 #: ui/app.slint

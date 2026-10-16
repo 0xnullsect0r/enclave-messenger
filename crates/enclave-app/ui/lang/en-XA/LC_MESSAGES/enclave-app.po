@@ -218,6 +218,10 @@ msgid "Animated picture"
 msgstr "[Áñímátéd píçtúré······]"
 
 #: ui/app.slint
+msgid "Answer"
+msgstr "[Áñswér··]"
+
+#: ui/app.slint
 msgid "Any {} of the {} people you chose can help you get your account back if you lose your words and every device. None of them can do it alone."
 msgstr "[Áñý ·{} óf thé ···{} péóplé ýóú çhósé çáñ hélp ýóú gét ýóúr áççóúñt báçk íf ýóú lósé ýóúr wórds áñd évérý dévíçé. Ñóñé óf thém çáñ dó ít álóñé.·················································]"
 
@@ -338,6 +342,26 @@ msgid "Built-in"
 msgstr "[Búílt-íñ···]"
 
 #: ui/app.slint
+msgid "Call check words: {}"
+msgstr "[Çáll çhéçk wórds: ·······{}]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Call declined"
+msgstr "[Çáll déçlíñéd·····]"
+
+#: ui/app.slint
+msgid "Call with {}"
+msgstr "[Çáll wíth ····{}]"
+
+#: ui/app.slint
+msgid "Call {}"
+msgstr "[Çáll ··{}]"
+
+#: ui/app.slint
+msgid "Calling…"
+msgstr "[Çállíñg…···]"
+
+#: ui/app.slint
 msgid "Camera"
 msgstr "[Çámérá··]"
 
@@ -348,6 +372,10 @@ msgstr "[Çáñçél··]"
 #: ui/app.slint
 msgid "Cancel them"
 msgstr "[Çáñçél thém····]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Cancelled call"
+msgstr "[Çáñçélléd çáll·····]"
 
 #: ui/app.slint
 msgid "Change"
@@ -514,6 +542,10 @@ msgid "Compare these numbers with {} in person or on a call. If every group matc
 msgstr "[Çómpáré thésé ñúmbérs wíth ··········{} íñ pérsóñ ór óñ á çáll. Íf évérý gróúp mátçhés, táp Théý mátçh.·························]"
 
 #: ui/app.slint
+msgid "Connecting…"
+msgstr "[Çóññéçtíñg…····]"
+
+#: ui/app.slint
 msgid "Contact you shared"
 msgstr "[Çóñtáçt ýóú sháréd·······]"
 
@@ -621,6 +653,10 @@ msgstr "[Çóúldñ't çláím thát ñámé. Trý ágáíñ íñ á móméñt.�
 msgid "Couldn't close the poll. Check your connection."
 msgstr "[Çóúldñ't çlósé thé póll. Çhéçk ýóúr çóññéçtíóñ.··················]"
 
+#: enclave-vault/src/calls.rs
+msgid "Couldn't connect the call."
+msgstr "[Çóúldñ't çóññéçt thé çáll.··········]"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't connect to the private network yet. Trying again in a minute."
 msgstr "[Çóúldñ't çóññéçt tó thé príváté ñétwórk ýét. Trýíñg ágáíñ íñ á míñúté.····························]"
@@ -652,6 +688,10 @@ msgstr "[Çóúldñ't dówñlóád thé fílé. Çhéçk ýóúr çóññéçtí
 #: enclave-vault/src/engine.rs
 msgid "Couldn't edit that message. Edits work for 24 hours."
 msgstr "[Çóúldñ't édít thát mésságé. Édíts wórk fór 24 hóúrs.····················]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't find a private route right now. Try again later."
+msgstr "[Çóúldñ't fíñd á príváté róúté ríght ñów. Trý ágáíñ látér.······················]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't finish deleting your account. Check your connection and try again: what's done stays done."
@@ -712,6 +752,14 @@ msgstr "[Çóúldñ't réáçh thé sérvér. Stíll trýíñg…·······�
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach their server. Check your connection and try again."
 msgstr "[Çóúldñ't réáçh théír sérvér. Çhéçk ýóúr çóññéçtíóñ áñd trý ágáíñ.··························]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't reach them to answer. Try again."
+msgstr "[Çóúldñ't réáçh thém tó áñswér. Trý ágáíñ.················]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't reach them to call. Try again."
+msgstr "[Çóúldñ't réáçh thém tó çáll. Trý ágáíñ.···············]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach your server. Check your connection and try again."
@@ -825,6 +873,10 @@ msgstr "[Çóúldñ't sháré ýóúr réçóvérý. Çhóósé át léást twó
 msgid "Couldn't start linking. Try again."
 msgstr "[Çóúldñ't stárt líñkíñg. Trý ágáíñ.·············]"
 
+#: enclave-vault/src/engine/calling.rs
+msgid "Couldn't start the call's audio."
+msgstr "[Çóúldñ't stárt thé çáll's áúdíó.············]"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't tell everyone yet. It goes on when you're back online."
 msgstr "[Çóúldñ't téll évérýóñé ýét. Ít góés óñ whéñ ýóú'ré báçk óñlíñé.·························]"
@@ -852,6 +904,14 @@ msgstr "[Çréátíñg…···]"
 #: ui/app.slint
 msgid "Current PIN"
 msgstr "[Çúrréñt PÍÑ····]"
+
+#: ui/app.slint
+msgid "Decline"
+msgstr "[Déçlíñé··]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Declined call"
+msgstr "[Déçlíñéd çáll·····]"
 
 #: ui/app.slint
 msgid "Delete"
@@ -1190,6 +1250,10 @@ msgid "Group {}: {}"
 msgstr "[Gróúp ··{}: {}]"
 
 #: ui/app.slint
+msgid "Hang up"
+msgstr "[Háñg úp··]"
+
+#: ui/app.slint
 msgid "Harassment or threats"
 msgstr "[Hárássméñt ór thréáts········]"
 
@@ -1276,6 +1340,18 @@ msgstr "[Íñçlúdé phótós áñd fílés·········]"
 #: ui/app.slint
 msgid "Include their last messages"
 msgstr "[Íñçlúdé théír lást mésságés··········]"
+
+#: enclave-vault/src/engine/calling.rs ui/app.slint
+msgid "Incoming call"
+msgstr "[Íñçómíñg çáll·····]"
+
+#: ui/app.slint
+msgid "Incoming call from {}"
+msgstr "[Íñçómíñg çáll fróm ·······{}]"
+
+#: enclave-vault/src/engine/calling.rs ui/app.slint
+msgid "Incoming video call"
+msgstr "[Íñçómíñg vídéó çáll·······]"
 
 #: enclave-app/src/shell.rs
 msgid "Invite link copied. It works for one person, for 7 days, and is cleared from the clipboard after 60 seconds."
@@ -1497,6 +1573,14 @@ msgstr "[Mésságés gó tó ýóúr sérvér thróúgh Tór íñstéád óf th�
 msgid "Met in person"
 msgstr "[Mét íñ pérsóñ·····]"
 
+#: enclave-vault/src/engine/calling.rs
+msgid "Missed call"
+msgstr "[Mísséd çáll····]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "Missed call (you were in a call)"
+msgstr "[Mísséd çáll (ýóú wéré íñ á çáll)············]"
+
 #: ui/app.slint
 msgid "Move it out of your list until someone writes."
 msgstr "[Móvé ít óút óf ýóúr líst úñtíl sóméóñé wrítés.··················]"
@@ -1564,6 +1648,10 @@ msgstr "[Ñéw mésságés íñ thís çóñvérsátíóñ dísáppéár fróm b
 #: ui/app.slint
 msgid "New passphrase"
 msgstr "[Ñéw pássphrásé·····]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "No answer"
+msgstr "[Ñó áñswér···]"
 
 #: enclave-app/src/camera.rs
 msgid "No camera was found."
@@ -1924,6 +2012,10 @@ msgstr "[Pórtúgúês···]"
 #: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
 msgstr "[Príváté délívérý tákés á féw séçóñds. Thát páúsé ís párt óf whát hídés whó ýóú tálk tó.··································]"
+
+#: ui/app.slint
+msgid "Private route: two relays, run by different operators, so neither sees both of you."
+msgstr "[Príváté róúté: twó réláýs, rúñ bý dífféréñt ópérátórs, só ñéíthér séés bóth óf ýóú.·································]"
 
 #: ui/app.slint
 msgid "QR code of this device's link code"
@@ -2485,6 +2577,26 @@ msgstr "[Thát's ýóúr pássphrásé. Çhóósé áñóthér émérgéñçý P
 msgid "The backup on your server is deleted."
 msgstr "[Thé báçkúp óñ ýóúr sérvér ís délétéd.··············]"
 
+#: enclave-vault/src/engine/calling.rs
+msgid "The call couldn't be set up."
+msgstr "[Thé çáll çóúldñ't bé sét úp.···········]"
+
+#: enclave-vault/src/calls.rs
+msgid "The call dropped."
+msgstr "[Thé çáll dróppéd.······]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "The call had already ended."
+msgstr "[Thé çáll hád álréádý éñdéd.··········]"
+
+#: enclave-vault/src/calls.rs
+msgid "The call's connection closed."
+msgstr "[Thé çáll's çóññéçtíóñ çlóséd.···········]"
+
+#: enclave-vault/src/calls.rs
+msgid "The call's ticket ran out."
+msgstr "[Thé çáll's tíçkét ráñ óút.··········]"
+
 #: enclave-app/src/camera.rs
 msgid "The camera is busy or can't be opened."
 msgstr "[Thé çámérá ís búsý ór çáñ't bé ópéñéd.···············]"
@@ -2496,6 +2608,10 @@ msgstr "[Thé gróúp móvés fróm thé ñéxt dáý óñçé móré tháñ há
 #: enclave-vault/src/engine.rs
 msgid "The group moves to that server tomorrow."
 msgstr "[Thé gróúp móvés tó thát sérvér tómórrów.················]"
+
+#: enclave-app/src/audio.rs
+msgid "The microphone gives {} samples, which Enclave can't read."
+msgstr "[Thé míçróphóñé gívés ········{} sámplés, whíçh Éñçlávé çáñ't réád.··············]"
 
 #: enclave-vault/src/engine.rs
 msgid "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup."
@@ -2512,6 +2628,10 @@ msgstr "[Thé répórt góés tó thé péóplé whó rúñ ··········
 #: ui/app.slint
 msgid "The server's public log now shows {} pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private."
 msgstr "[Thé sérvér's públíç lóg ñów shóws ·············{} póíñtíñg tó sóméóñé élsé, ór tó ñó óñé. Ýóúr sérvér máý hávé çháñgéd ít. Téll ýóúr çóñtáçts tó úsé ýóúr çódé ór íñvíté líñk, áñd çhéçk séçúrítý çódés béfóré sháríñg áñýthíñg príváté.·········································································]"
+
+#: enclave-app/src/audio.rs
+msgid "The speaker takes {} samples, which Enclave can't write."
+msgstr "[Thé spéákér tákés ·······{} sámplés, whíçh Éñçlávé çáñ't wríté.··············]"
 
 #: enclave-app/src/shell.rs
 msgid "The update didn't install: {}"
@@ -2536,6 +2656,14 @@ msgstr "[Théír séçúrítý çódé çháñgéd tóó. Çhéçk ít ágáíñ
 #: enclave-vault/src/engine.rs
 msgid "There's no backup on your server for these words."
 msgstr "[Théré's ñó báçkúp óñ ýóúr sérvér fór thésé wórds.···················]"
+
+#: enclave-app/src/audio.rs
+msgid "There's no microphone."
+msgstr "[Théré's ñó míçróphóñé.········]"
+
+#: enclave-app/src/audio.rs
+msgid "There's no speaker."
+msgstr "[Théré's ñó spéákér.·······]"
 
 #: ui/app.slint
 msgid "These choices stay on this device. Nobody in the conversation sees them."
@@ -2576,6 +2704,10 @@ msgstr "[Théý úséd ýóúr réçóvérý wórds. Íf thís ísñ't ýóú, s
 #: ui/app.slint
 msgid "They'll see new messages from now on, not what was said before they joined."
 msgstr "[Théý'll séé ñéw mésságés fróm ñów óñ, ñót whát wás sáíd béfóré théý jóíñéd.······························]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "They're in another call."
+msgstr "[Théý'ré íñ áñóthér çáll.·········]"
 
 #: ui/app.slint
 msgid "Think someone may have seen them? You can replace them with new words."
@@ -2674,6 +2806,10 @@ msgid "Those words don't match, so nothing was linked. If you didn't start this,
 msgstr "[Thósé wórds dóñ't mátçh, só ñóthíñg wás líñkéd. Íf ýóú dídñ't stárt thís, sóméóñé máý bé trýíñg tó gét íñtó ýóúr áççóúñt.················································]"
 
 #: ui/app.slint
+msgid "To check the call, both of you read these out:"
+msgstr "[Tó çhéçk thé çáll, bóth óf ýóú réád thésé óút:··················]"
+
+#: ui/app.slint
 msgid "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device."
 msgstr "[Tó líñk á ñéw dévíçé, ópéñ Éñçlávé óñ ít, çhóósé \"Í álréádý hávé Éñçlávé\", áñd pásté íts líñk çódé héré. Óñlý dó thís wíth ýóúr ówñ dévíçé.·······················································]"
 
@@ -2756,6 +2892,10 @@ msgstr "[Úñlóçk Éñçlávé·····]"
 #: ui/app.slint
 msgid "Unlock with {}"
 msgstr "[Úñlóçk wíth ····{}]"
+
+#: ui/app.slint
+msgid "Unmute"
+msgstr "[Úñmúté··]"
 
 #: ui/app.slint
 msgid "Unpin"
@@ -2852,6 +2992,14 @@ msgstr "[Vérífý thís búíld······]"
 #: ui/app.slint
 msgid "Version {}"
 msgstr "[Vérsíóñ ···{}]"
+
+#: enclave-vault/src/engine/calling.rs ui/app.slint
+msgid "Video call"
+msgstr "[Vídéó çáll····]"
+
+#: ui/app.slint
+msgid "Video call {}"
+msgstr "[Vídéó çáll ····{}]"
 
 #: ui/app.slint
 msgid "Voice note"
@@ -3012,6 +3160,10 @@ msgstr "[Ýóú'll stóp géttíñg íts mésságés. Sóméóñé wóúld háv�
 #: ui/app.slint
 msgid "You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back."
 msgstr "[Ýóú'll týpé ít éáçh tímé Éñçlávé stárts. Ñóbódý çáñ rését ít; íf ýóú fórgét ít, ýóúr réçóvérý wórds bríñg ýóúr áççóúñt báçk.·················································]"
+
+#: enclave-vault/src/engine/calling.rs
+msgid "You're already in a call."
+msgstr "[Ýóú'ré álréádý íñ á çáll.··········]"
 
 #: ui/app.slint
 msgid "You: "

@@ -12,7 +12,7 @@ use objc2::{
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput,
     AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
-    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeVideo,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeVideo,
 };
 use objc2_core_media::CMSampleBuffer;
 use objc2_core_video::{
@@ -576,6 +576,22 @@ pub(super) fn start_camera(report: Frames) {
             unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(video, &answer) };
         }
         _ => camera_failed("Enclave may not use the camera. Allow it in Settings → Enclave."),
+    }
+}
+
+pub(super) fn ask_microphone() {
+    // SAFETY: a constant AVFoundation defines.
+    let Some(audio) = (unsafe { AVMediaTypeAudio }) else {
+        return;
+    };
+    // SAFETY: a plain class method.
+    if unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio) }
+        == AVAuthorizationStatus::NotDetermined
+    {
+        let answer = RcBlock::new(|_granted: Bool| {});
+        // SAFETY: a plain class method; the block lives as long as
+        // AVFoundation needs it.
+        unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(audio, &answer) };
     }
 }
 

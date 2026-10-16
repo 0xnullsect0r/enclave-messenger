@@ -12,6 +12,7 @@
 //!   the same size and leaves at the same rate whatever the content, and
 //!   quality only ever steps down.
 //! * [`ticket`]: relay tickets and the per-period link keys derived from them.
+//! * [`relay`]: the datagrams between a client and its relay.
 //! * [`route`]: choosing the two relays of a call from distinct operator
 //!   families.
 //!
@@ -20,6 +21,7 @@
 #![deny(missing_docs)]
 
 pub mod message;
+pub mod relay;
 pub mod route;
 pub mod sframe;
 pub mod shape;

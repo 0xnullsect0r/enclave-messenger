@@ -165,6 +165,28 @@ pub struct Msg {
     pub clip_ms: u32,
 }
 
+/// A call as the window shows it (`docs/11-calls.md`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CallView {
+    /// 0 none, 1 calling (ours, not answered yet), 2 ringing (theirs), 3
+    /// connecting, 4 in the call, 5 just ended (with `error` or the line).
+    pub state: u8,
+    /// The conversation.
+    pub conversation: String,
+    /// Who.
+    pub name: String,
+    /// With video.
+    pub video: bool,
+    /// Our microphone is off.
+    pub muted: bool,
+    /// When it connected (Unix seconds; 0 before).
+    pub connected_at: u64,
+    /// The two-word call check, once both have keys.
+    pub words: String,
+    /// Why it failed, or how it ended.
+    pub error: String,
+}
+
 /// Everything the window shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
@@ -274,6 +296,8 @@ pub struct Snapshot {
     pub update_required: u8,
     /// What "Verify this build" found, or empty.
     pub build_check: String,
+    /// The call, if there is one.
+    pub call: CallView,
     /// A device linked to the account in the last 7 days ("Linked device,
     /// 30 Sep 14:02"), pointed out on every device, or empty.
     pub new_device: String,
@@ -627,7 +651,22 @@ pub enum Cmd {
     VerifyBuild(Vec<FileHash>),
     /// Ask the home server for release updates now.
     CheckUpdates,
+    /// Call a contact (conversation id), with video or not.
+    StartCall(String, bool),
+    /// Take the call that is ringing.
+    AnswerCall,
+    /// Turn down the call that is ringing.
+    DeclineCall,
+    /// Hang up (or stop calling).
+    EndCall,
+    /// Turn our microphone off or on.
+    CallMute(bool),
+    /// The microphone's next 20 ms: 960 samples, 48 kHz mono.
+    CallMic(Vec<i16>),
 }
+
+/// Most samples in one [`Cmd::CallMic`] or [`Out::CallAudio`] (20 ms).
+pub const CALL_FRAME: usize = 960;
 
 /// A file's name (as release targets name it) and hashes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -699,6 +738,25 @@ pub enum Out {
     /// the window's updater to check a download against before installing
     /// it (`docs/19-ops.md` §1.5).
     UpdateBundle(Vec<u8>),
+    /// The call's next 20 ms to play: 960 samples, 48 kHz mono.
+    CallAudio(Vec<i16>),
+}
+
+/// PCM as 16-bit little-endian bytes.
+fn pcm_bytes(pcm: &[i16]) -> Vec<u8> {
+    pcm.iter()
+        .take(CALL_FRAME)
+        .flat_map(|s| s.to_le_bytes())
+        .collect()
+}
+
+fn bytes_pcm(b: &[u8]) -> Result<Vec<i16>> {
+    if !b.len().is_multiple_of(2) || b.len() > CALL_FRAME * 2 {
+        return Err(IpcError::Malformed);
+    }
+    Ok(b.chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+        .collect())
 }
 
 /// Most history chunks in one [`Out::LanChunks`] or [`Cmd::LanChunks`]
@@ -982,7 +1040,15 @@ impl Snapshot {
             .bool(self.biometric_on)
             .str(&self.update_release)
             .u8(self.update_required)
-            .str(&self.build_check);
+            .str(&self.build_check)
+            .u8(self.call.state)
+            .str(&self.call.conversation)
+            .str(&self.call.name)
+            .bool(self.call.video)
+            .bool(self.call.muted)
+            .u64(self.call.connected_at)
+            .str(&self.call.words)
+            .str(&self.call.error);
         w.0
     }
 
@@ -1233,6 +1299,16 @@ impl Snapshot {
             update_release: r.str()?,
             update_required: r.u8()?,
             build_check: r.str()?,
+            call: CallView {
+                state: r.u8()?,
+                conversation: r.str()?,
+                name: r.str()?,
+                video: r.bool()?,
+                muted: r.bool()?,
+                connected_at: r.u64()?,
+                words: r.str()?,
+                error: r.str()?,
+            },
         };
         r.end()?;
         Ok(s)
@@ -1361,6 +1437,12 @@ impl Cmd {
                 &mut w
             }
             Cmd::CheckUpdates => w.u8(97),
+            Cmd::StartCall(c, video) => w.u8(98).str(c).bool(*video),
+            Cmd::AnswerCall => w.u8(99),
+            Cmd::DeclineCall => w.u8(100),
+            Cmd::EndCall => w.u8(101),
+            Cmd::CallMute(on) => w.u8(102).bool(*on),
+            Cmd::CallMic(pcm) => w.u8(103).bytes(&pcm_bytes(pcm)),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1494,6 +1576,12 @@ impl Cmd {
                 Cmd::VerifyBuild(files)
             }
             97 => Cmd::CheckUpdates,
+            98 => Cmd::StartCall(r.str()?, r.bool()?),
+            99 => Cmd::AnswerCall,
+            100 => Cmd::DeclineCall,
+            101 => Cmd::EndCall,
+            102 => Cmd::CallMute(r.bool()?),
+            103 => Cmd::CallMic(bytes_pcm(&r.bytes()?)?),
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1568,6 +1656,11 @@ impl Out {
                 w.u8(11).bytes(b);
                 w.0
             }
+            Out::CallAudio(pcm) => {
+                let mut w = Writer::default();
+                w.u8(12).bytes(&pcm_bytes(pcm));
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -1634,6 +1727,12 @@ impl Out {
             [11, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::UpdateBundle(r.bytes()?);
+                r.end()?;
+                Ok(o)
+            }
+            [12, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::CallAudio(bytes_pcm(&r.bytes()?)?);
                 r.end()?;
                 Ok(o)
             }

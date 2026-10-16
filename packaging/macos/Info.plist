@@ -34,6 +34,8 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>GPL-3.0-only. The Enclave contributors.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Enclave uses the microphone for calls. Your voice is encrypted on this Mac before it leaves.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Enclave uses the camera to scan a contact's code or your other device's code. Nothing it sees leaves this Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>

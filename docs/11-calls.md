@@ -84,9 +84,14 @@ PSK schedule:
 - **Choosing relays** by operator family (`enclave_calls::route`): test `rt18_relays_from_distinct_operator_families`.
 - **Relay↔relay link.** Sealed with EnclaveSeal under per-direction keys from the two relays' static X448 keys, not yet WireGuard with Rosenpass (C-f). Media inside is SFrame under the call's X448 + ML-KEM keys, so this hop's classical key exchange exposes only rendezvous ids and timing, not media.
 - **Rendezvous.** Both legs of a call join with `rendezvous = KMAC256(call_secret, "", 128, "enclave/v1/calls/rendezvous")`; the join names the peer relay's address. Relays forward media only between a joined session and the named peer relay.
-- **netd** opens UDP sockets for calls (`NetRequest::UdpOpen`, `UdpSend`, `UdpClose`; datagrams come back as `SOCKET_EVENT` replies).
+- **netd** opens UDP sockets for calls (`NetRequest::UdpOpen`, `UdpSend`, `UdpClose`; datagrams come back as `SOCKET_EVENT` replies). The vault sees a socket as two channels (`Transport::open_udp`, `Datagrams`); netd's seccomp profile allows the IPv4 and IPv6 UDP sockets this needs (test `netd_profile_keeps_ip_sockets_only`).
+- **Relay descriptors.** The server list names each relay's identity, address and family; its descriptor (`RelayDescriptor` v2: link key, WireGuard key, today's and tomorrow's ticket keys, ticket effort) changes daily, so the client fetches it from the relay in parts (`T_DESC`; a request is padded to 1,100 bytes and answered with at most 1,027, so a relay never amplifies) and checks its signature, identity and address against the list (`enclave_vault::calls::fetch_descriptor`). Relays re-sign it when their ticket keys turn over at midnight.
+- **A leg** (`enclave_vault::calls::open_leg`): descriptor, ticket (the proof of work runs off the engine's thread), WireGuard link. The engine (`engine/calling.rs`) picks the caller's relay when calling and the callee's when answering, by the RT-18 rule, sends the relay's id in the offer or answer, and starts the media once it has the keys, its leg and the other relay's address.
+- **Media** (`enclave_vault::calls::run`): every 20 ms one 160-byte SFrame packet goes up (an Opus frame with a 32-bit sequence number, or padding while muted or before the microphone has sound) and one frame is played from a jitter buffer (60 ms deep; a lost frame is recovered from the next one's in-band FEC, else concealed, then silence; more than 300 ms behind skips ahead). The join is repeated each second until the other side is heard; 30 s without connecting or 20 s of silence ends the call. Test `audio_goes_both_ways_through_two_relays` runs two relays and both legs on this machine.
+- **Audio** (`enclave_media::call`, in mediad: `MediaOp::CallOpen`/`CallEncode`/`CallDecode`/`CallClose`, one helper per call): Opus CBR 32 kbit/s, 20 ms, FEC on, DTX off; the microphone goes through `sonora` (AEC3 echo cancellation against what was just played, noise suppression, AGC2) before encoding. The window captures and plays with `cpal` (`enclave-app`'s `audio`, converting the device's rate and channels) and moves 20 ms frames to and from the vault (`Cmd::CallMic`, `Out::CallAudio`); a phone asks for the microphone when a call starts. Tests `frames_are_constant_size_and_decode`, `lost_frames_are_concealed_or_recovered`, `echo_is_cancelled`, `calls_keep_their_codec_state`.
+- **Screens**: calling, ringing (with a notification), connecting, the call (time, the two check words, mute, hang up), and how it ended, over the whole window; a call and video-call button in a 1:1 conversation. Each call leaves a line ("Call, 3:02", "Missed call", "Declined call", "No answer").
 
-Not implemented yet: the media engines and capture (C-c), the call screens (C-d), direct mode (C-e), group calls, call links, screen share and the Maximum-privacy tunnel (C-f).
+Not implemented yet: video and CallKit/ConnectionService (C-c, C-d), direct mode (C-e), group calls, call links, screen share and the Maximum-privacy tunnel (C-f).
 
 ## 4. Direct mode (opt-in per call)
 
@@ -163,10 +168,9 @@ An optional 2-word code, as in ZRTP: the first two 11-bit groups of `KMAC256(cal
 | Function | Implementation | Isolation |
 |---|---|---|
 | Opus decode | Pure-Rust `opus-decoder` once it passes RFC 8251 vectors and fuzzing | mediad sandbox |
-| Opus encode | libopus (C), only on the user's own microphone, until `opus-rs` matches its quality | mediad sandbox (PLAN §22 exception) |
+| Opus encode | `opus-rs` (pure Rust), only on the user's own microphone | mediad sandbox |
 | Opus via Symphonia | Never (Symphonia cannot decode Opus) | — |
-| Echo cancellation, mobile | OS voice processing (VoiceProcessingIO; Android `VOICE_COMMUNICATION` with its AEC) | OS |
-| Echo cancellation, desktop | Pure-Rust `sonora` if it passes quality tests, otherwise `webrtc-audio-processing` | mediad sandbox |
+| Echo cancellation | Pure-Rust `sonora` (WebRTC AEC3, noise suppression, AGC2) on every platform; its echo test is `echo_is_cancelled` | mediad sandbox |
 | Video encode | AV1 via rav1e at speed 10, or an OS hardware AV1 encoder | mediad sandbox / OS |
 | Video decode | rav1d, in software, in the sandbox. Incoming video never touches hardware decoders. | mediad sandbox |
 | M8 gate | 360p at 30 fps on the reference low-end phone; if it fails, OS hardware H.264 encode as a declared exception | — |

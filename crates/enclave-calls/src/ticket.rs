@@ -43,6 +43,38 @@ pub struct TicketKey {
     pub mlkem: MlKemPublic,
 }
 
+impl TicketKey {
+    /// A key as a relay descriptor lists it (`u32 day ‖ X448 ‖
+    /// ML-KEM-1024`), for the relay `relay_id`.
+    pub fn decode(relay_id: [u8; 16], b: &[u8]) -> Result<Self> {
+        if b.len() != 4 + X448_LEN + crate::ticket::MLKEM_PK_BYTES {
+            return Err(CallError::Malformed);
+        }
+        let epoch = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
+        let mut x = [0u8; X448_LEN];
+        x.copy_from_slice(&b[4..4 + X448_LEN]);
+        Ok(Self {
+            relay_id,
+            epoch,
+            x448: X448Public(x),
+            mlkem: MlKemPublic::from_slice(&b[4 + X448_LEN..]).map_err(|_| CallError::Malformed)?,
+        })
+    }
+
+    /// The listed form [`TicketKey::decode`] reads.
+    pub fn encode(&self) -> Vec<u8> {
+        [
+            &self.epoch.to_be_bytes()[..],
+            &self.x448.0,
+            &self.mlkem.0[..],
+        ]
+        .concat()
+    }
+}
+
+/// Bytes of an ML-KEM-1024 encapsulation key.
+pub const MLKEM_PK_BYTES: usize = enclave_crypto::kem::MLKEM_PK_LEN;
+
 /// The relay's secret half.
 pub struct TicketSecretKey {
     public: TicketKey,

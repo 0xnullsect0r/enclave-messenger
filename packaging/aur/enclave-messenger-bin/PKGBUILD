@@ -10,7 +10,7 @@ pkgdesc='Private messages without a phone number, through Tor and the Nym mixnet
 arch=('x86_64' 'aarch64')
 url='https://github.com/0xnullsect0r/enclave-messenger'
 license=('GPL-3.0-only')
-depends=('glibc' 'gcc-libs' 'fontconfig' 'freetype2' 'libxkbcommon' 'libxkbcommon-x11'
+depends=('glibc' 'gcc-libs' 'alsa-lib' 'fontconfig' 'freetype2' 'libxkbcommon' 'libxkbcommon-x11'
          'wayland' 'libglvnd' 'libx11' 'libxcursor' 'libxi' 'libxrandr' 'hicolor-icon-theme')
 optdepends=('xdg-desktop-portal: system file dialogs'
             'gnome-keyring: keep the profile key in the Secret Service'

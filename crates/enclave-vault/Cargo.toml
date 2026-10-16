@@ -40,6 +40,7 @@ enclave-media = { path = "../enclave-media" }
 zeroize = "1"
 enclave-rpc = { path = "../enclave-rpc" }
 enclave-federation = { path = "../enclave-federation" }
+enclave-calls = { path = "../enclave-calls" }
 async-trait = "0.1"
 enclave-sim = { path = "../enclave-sim", optional = true }
 enclave-server = { path = "../enclave-server", optional = true }
@@ -52,6 +53,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 enclave-vault = { path = ".", features = ["demo"] }
 enclave-sim = { path = "../enclave-sim" }
 enclave-server = { path = "../enclave-server" }
+enclave-relay = { path = "../enclave-relay" }
 # The tests reach servers over the development transport.
 enclave-net = { path = "../enclave-net", features = ["dev-transport"] }
 jpeg-encoder = "0.7"

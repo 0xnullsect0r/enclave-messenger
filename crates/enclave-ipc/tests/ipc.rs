@@ -114,6 +114,16 @@ fn snapshot() -> Snapshot {
         update_release: "v1.2.3".into(),
         update_required: 1,
         build_check: "matches".into(),
+        call: enclave_ipc::CallView {
+            state: 4,
+            conversation: "c1".into(),
+            name: "Ben".into(),
+            video: false,
+            muted: true,
+            connected_at: 1_790_000_000,
+            words: "apple river".into(),
+            error: String::new(),
+        },
         new_device: "a new device, 30 Sep 14:02".into(),
         joining: vec!["Book club".into()],
         restore_error: "wrong words".into(),
@@ -259,6 +269,12 @@ fn cmds() -> Vec<Cmd> {
             sha3_512: vec![2; 64],
         }]),
         Cmd::CheckUpdates,
+        Cmd::StartCall("c1".into(), true),
+        Cmd::AnswerCall,
+        Cmd::DeclineCall,
+        Cmd::EndCall,
+        Cmd::CallMute(true),
+        Cmd::CallMic(vec![-3; 960]),
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
@@ -325,6 +341,7 @@ fn round_trips() {
         Out::LanStop("aa".into()),
         Out::LanFetch("aa".into(), vec!["10.0.0.2:4000".into()], 7),
         Out::UpdateBundle(b"ENCLUPD1".to_vec()),
+        Out::CallAudio(vec![7; 960]),
         Out::Notify(enclave_ipc::Notice {
             conversation: "ab".into(),
             title: "Priya".into(),
@@ -379,7 +396,7 @@ fn hostile_input_is_refused_not_panicked_on() {
             assert!(Cmd::decode(&e[..n]).is_err());
         }
     }
-    assert!(Cmd::decode(&[99]).is_err());
+    assert!(Cmd::decode(&[250]).is_err());
 }
 
 #[tokio::test]

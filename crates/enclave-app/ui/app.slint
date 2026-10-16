@@ -623,6 +623,59 @@ component IconButton inherits Rectangle {
     }
 }
 
+// A round button of the call screen, with its name under it.
+component CallButton inherits VerticalLayout {
+    in property <string> icon;
+    in property <string> label;
+    in property <color> tint: Tokens.surface;
+    in property <color> ink: Tokens.text;
+    callback clicked();
+    spacing: Tokens.space-xs;
+    alignment: start;
+    HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            width: 64px;
+            height: 64px;
+            border-radius: self.width / 2;
+            background: touch.pressed ? root.tint.darker(20%) : touch.has-hover ? root.tint.darker(8%) : root.tint;
+            accessible-role: button;
+            accessible-label: root.label;
+            accessible-action-default => { root.clicked(); }
+            Path {
+                width: 28px;
+                height: 28px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: root.icon;
+                stroke: root.ink;
+                stroke-width: 1.75px;
+            }
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.clicked(); }
+            }
+            focus := FocusScope {
+                key-pressed(e) => {
+                    if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
+                    reject
+                }
+            }
+            if focus.has-focus: Rectangle {
+                border-radius: parent.border-radius;
+                border-width: Tokens.icon-focus-ring-width;
+                border-color: Tokens.focus-ring;
+            }
+        }
+    }
+    Text {
+        text: root.label;
+        color: #ffffffd9;
+        font-size: Tokens.type-caption;
+        horizontal-alignment: center;
+    }
+}
+
 component SheetFrame inherits Rectangle {
     in property <string> title;
     in property <length> max-card-width: 520px;
@@ -683,6 +736,22 @@ export component AppWindow inherits Window {
 
     in-out property <Screen> screen: Screen.welcome;
     in-out property <Sheet> sheet: Sheet.none;
+    // The call (docs/11-calls.md): 0 none, 1 calling, 2 ringing, 3
+    // connecting, 4 on, 5 just ended.
+    in property <int> call-state;
+    in property <string> call-name;
+    in property <string> call-initials;
+    in property <color> call-tint: Tokens.pine;
+    in property <bool> call-video;
+    in property <bool> call-muted;
+    in property <string> call-words;
+    in property <string> call-note;
+    in-out property <int> call-elapsed;
+    callback start-call(string, bool);
+    callback answer-call();
+    callback decline-call();
+    callback end-call();
+    callback mute-call(bool);
     in property <string> my-name;
     in property <string> my-initials;
     in property <color> my-tint: Tokens.pine;
@@ -1642,6 +1711,23 @@ export component AppWindow inherits Window {
                         }
                         if root.current.state == 2 && root.current.kind == 0: VerticalLayout {
                             alignment: center;
+                            IconButton {
+                                icon: Icons.phone;
+                                label: @tr("Call {}", root.current.name);
+                                clicked => { root.start-call(root.current-id, false); }
+                            }
+                        }
+                        // On a phone, video calls start from the conversation sheet.
+                        if root.wide && root.current.state == 2 && root.current.kind == 0: VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.video;
+                                label: @tr("Video call {}", root.current.name);
+                                clicked => { root.start-call(root.current-id, true); }
+                            }
+                        }
+                        if root.current.state == 2 && root.current.kind == 0: VerticalLayout {
+                            alignment: center;
                             QuietButton {
                                 text: !root.wide ? @tr("Code") : root.current.verified ? @tr("Security code") : @tr("Check code");
                                 clicked => { root.open-sheet(Sheet.check-code); }
@@ -2069,6 +2155,14 @@ export component AppWindow inherits Window {
         if root.finishing: Notice {
             title: @tr("Extra protection: finishing…");
             text: @tr("Maximum privacy holds what you write until all three kinds of encryption protect this conversation. It goes out on its own once {}'s app has finished setting it up.", root.current.name);
+        }
+        if root.current.kind == 0 && root.current.state == 2: HorizontalLayout {
+            spacing: Tokens.space-s;
+            alignment: start;
+            QuietButton {
+                text: @tr("Video call");
+                clicked => { root.sheet = Sheet.none; root.start-call(root.current-id, true); }
+            }
         }
         if root.current.kind == 0: SwitchRow {
             label: @tr("On the record");
@@ -3705,6 +3799,108 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 alignment: center;
                 PrimaryButton { text: @tr("Cancel"); clicked => { root.stop-scan(); } }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------- the call
+    if root.call-state != 0: Rectangle {
+        background: #101914;
+        accessible-role: groupbox;
+        accessible-label: root.call-state == 2 ? @tr("Incoming call from {}", root.call-name) : @tr("Call with {}", root.call-name);
+        TouchArea { }
+        // The time on the call, counted here between snapshots.
+        Timer {
+            interval: 1s;
+            running: root.call-state == 4;
+            triggered => { root.call-elapsed += 1; }
+        }
+        VerticalLayout {
+            alignment: center;
+            padding: Tokens.space-xl;
+            spacing: Tokens.space-m;
+            HorizontalLayout {
+                alignment: center;
+                Avatar { initials: root.call-initials; tint: root.call-tint; size: 112px; }
+            }
+            Text {
+                text: root.call-name;
+                color: #ffffff;
+                font-size: Tokens.type-screen-title;
+                font-weight: 600;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: root.call-state == 1 ? (root.call-note != "" ? root.call-note : @tr("Calling…"))
+                    : root.call-state == 2 ? (root.call-video ? @tr("Incoming video call") : @tr("Incoming call"))
+                    : root.call-state == 3 ? @tr("Connecting…")
+                    : root.call-state == 4 ? (Math.floor(root.call-elapsed / 60) + ":" + (Math.mod(root.call-elapsed, 60) < 10 ? "0" : "") + Math.mod(root.call-elapsed, 60))
+                    : root.call-note;
+                color: #ffffffbf;
+                font-size: Tokens.type-body;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                accessible-role: text;
+            }
+            if root.call-words != "" && root.call-state >= 3 && root.call-state <= 4: VerticalLayout {
+                spacing: Tokens.space-xs;
+                padding-top: Tokens.space-s;
+                Text {
+                    text: @tr("To check the call, both of you read these out:");
+                    color: #ffffff99;
+                    font-size: Tokens.type-caption;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.call-words;
+                    color: Tokens.saffron;
+                    font-family: "Atkinson Hyperlegible Mono";
+                    font-size: Tokens.type-mono-code;
+                    horizontal-alignment: center;
+                    accessible-label: @tr("Call check words: {}", root.call-words);
+                }
+            }
+            if root.call-state != 5: Text {
+                text: @tr("Private route: two relays, run by different operators, so neither sees both of you.");
+                color: #ffffff73;
+                font-size: Tokens.type-caption;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: Tokens.space-xl;
+                padding-top: Tokens.space-l;
+                if root.call-state == 2: CallButton {
+                    icon: Icons.close;
+                    label: @tr("Decline");
+                    tint: #b3261e;
+                    ink: #ffffff;
+                    clicked => { root.decline-call(); }
+                }
+                if root.call-state == 2: CallButton {
+                    icon: root.call-video ? Icons.video : Icons.phone;
+                    label: @tr("Answer");
+                    tint: #1f6f50;
+                    ink: #ffffff;
+                    clicked => { root.answer-call(); }
+                }
+                if root.call-state == 3 || root.call-state == 4: CallButton {
+                    icon: root.call-muted ? Icons.mic-off : Icons.voice;
+                    label: root.call-muted ? @tr("Unmute") : @tr("Mute");
+                    tint: root.call-muted ? #ffffff : #ffffff26;
+                    ink: root.call-muted ? #101914 : #ffffff;
+                    clicked => { root.mute-call(!root.call-muted); }
+                }
+                if root.call-state == 1 || root.call-state == 3 || root.call-state == 4: CallButton {
+                    icon: Icons.phone;
+                    label: @tr("Hang up");
+                    tint: #b3261e;
+                    ink: #ffffff;
+                    clicked => { root.end-call(); }
+                }
             }
         }
     }

@@ -118,7 +118,7 @@ jobs:
         run: |
           dnf -y install --setopt=install_weak_deps=False \
             git gcc gcc-c++ make perl-core pkgconf-pkg-config clang file findutils \
-            fontconfig-devel freetype-devel libxkbcommon-devel golang xz bzip2 python3 which
+            fontconfig-devel freetype-devel libxkbcommon-devel alsa-lib-devel golang xz bzip2 python3 which
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -657,7 +657,7 @@ jobs:
         run: |
           dnf -y install --setopt=install_weak_deps=False \
             git gcc gcc-c++ make perl-core pkgconf-pkg-config clang file findutils \
-            fontconfig-devel freetype-devel libxkbcommon-devel golang xz bzip2 python3 which
+            fontconfig-devel freetype-devel libxkbcommon-devel alsa-lib-devel golang xz bzip2 python3 which
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

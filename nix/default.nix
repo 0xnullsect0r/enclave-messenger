@@ -62,6 +62,8 @@ let
       dontStrip = true;
       CARGO_INCREMENTAL = "0";
       CARGO_TERM_COLOR = "never";
+      # Calls: cpal links ALSA (found by pkg-config).
+      PKG_CONFIG_PATH = lib.makeSearchPath "lib/pkgconfig" [ pkgs.alsa-lib.dev ];
       buildPhase = ''
         runHook preBuild
         export CARGO_HOME=$TMPDIR/cargo
@@ -120,6 +122,7 @@ let
     libGL
     libxkbcommon
     wayland
+    alsa-lib
     fontconfig
     freetype
     xorg.libX11

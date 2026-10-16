@@ -9,7 +9,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Scanning codes; asked for when a scan starts. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Calls: the microphone (asked when a call starts), and the call
+         audio mode. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- "New message" notifications (Android 13 and later ask). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Staying connected with the app closed, and being woken by a push

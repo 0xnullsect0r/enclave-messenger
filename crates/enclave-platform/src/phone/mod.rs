@@ -115,6 +115,13 @@ pub fn stop_camera() {
     imp::stop_camera();
 }
 
+/// Ask for the microphone (a call is starting), if it hasn't been allowed
+/// yet. The answer isn't reported: the call's audio keeps trying to open
+/// the microphone for a while (`enclave-app`'s `audio`).
+pub fn ask_microphone() {
+    imp::ask_microphone();
+}
+
 /// Screen security (Settings → Hide from screenshots, on until a profile
 /// says otherwise): Android's `FLAG_SECURE`; on iOS, which can't block
 /// screenshots, a blur over the app switcher's snapshot and over the

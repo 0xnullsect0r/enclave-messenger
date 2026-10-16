@@ -14,6 +14,8 @@ use enclave_store::MemoryKeystore;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+
+mod calling;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -397,6 +399,13 @@ struct Engine {
     bridges_at_start: String,
     bridges: String,
     bridges_error: String,
+    /// The call in progress, and how the last one ended (shown briefly).
+    call: Option<calling::Call>,
+    call_ended: Option<(enclave_ipc::CallView, std::time::Instant)>,
+    /// Where call legs and running calls report.
+    call_tx: mpsc::UnboundedSender<crate::calls::CallEvent>,
+    /// The call relays in the build's server list.
+    listed_relays: Vec<enclave_federation::ListedRelay>,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -960,6 +969,7 @@ pub async fn run_with(
         Mode::Server { profile, .. } => crate::keystore::uses_files(profile),
         Mode::Demo => false,
     };
+    let (call_tx, mut call_rx) = mpsc::unbounded_channel();
     let mut e = Engine {
         mode,
         media: helpers
@@ -1040,6 +1050,10 @@ pub async fn run_with(
         bridges_at_start: String::new(),
         bridges: String::new(),
         bridges_error: String::new(),
+        call: None,
+        call_ended: None,
+        call_tx,
+        listed_relays: Vec::new(),
         out,
     };
     e.load_list();
@@ -1082,10 +1096,17 @@ pub async fn run_with(
     let mut ticks: u64 = 0;
     loop {
         tokio::select! {
+            ev = call_rx.recv() => {
+                if let Some(ev) = ev {
+                    e.on_call_event(ev).await;
+                    e.push();
+                }
+            }
             cmd = rx.recv() => {
                 let Some(cmd) = cmd else { return };
-                // Keystrokes change nothing the window shows.
-                let quiet = matches!(cmd, Cmd::Typing(..));
+                // Keystrokes and the microphone change nothing the window
+                // shows.
+                let quiet = matches!(cmd, Cmd::Typing(..) | Cmd::CallMic(_));
                 e.handle(cmd).await;
                 if !quiet {
                     e.push();
@@ -1104,6 +1125,7 @@ pub async fn run_with(
                     e.lock_now();
                     e.push();
                 }
+                e.call_upkeep().await;
                 if e.client.is_some() {
                     e.sync().await;
                     e.lan_upkeep();
@@ -2887,6 +2909,12 @@ impl Engine {
                     let _ = c.history_lan_failed(&offer.attachment);
                 }
             }
+            Cmd::StartCall(conversation, video) => self.start_call(&conversation, video).await,
+            Cmd::AnswerCall => self.answer_call().await,
+            Cmd::DeclineCall => self.decline_call().await,
+            Cmd::EndCall => self.end_call().await,
+            Cmd::CallMute(on) => self.call_mute(on),
+            Cmd::CallMic(pcm) => self.call_mic(pcm),
             Cmd::CheckUpdates => {
                 self.update_day = 0;
                 if self.client.is_some() {
@@ -3212,6 +3240,7 @@ impl Engine {
             }
         }
         self.listed = list.servers;
+        self.listed_relays = list.relays;
     }
 
     /// The servers to pick from: the profile's list (perhaps newer than the
@@ -3443,6 +3472,7 @@ impl Engine {
         {
             eprintln!("enclave-vault: mixnet tickets: {e}");
         }
+        let mut call_messages: Vec<([u8; 64], Vec<u8>)> = Vec::new();
         if let Some(c) = self.client.as_mut() {
             let result = if shaped {
                 c.sync_round_every(round, period).await
@@ -3461,6 +3491,10 @@ impl Engine {
                     if !events.is_empty() {
                         self.status.clear();
                     }
+                    call_messages.extend(events.iter().filter_map(|e| match e {
+                        Event::Call { from, message } => Some((*from, message.clone())),
+                        _ => None,
+                    }));
                     if let Some(Event::UsernameProblem { address }) = events
                         .iter()
                         .find(|e| matches!(e, Event::UsernameProblem { .. }))
@@ -3589,6 +3623,9 @@ impl Engine {
                 Some(false) => self.net_failures = self.net_failures.saturating_add(1),
                 None => {}
             }
+        }
+        for (from, message) in call_messages {
+            self.on_call_message(from, &message).await;
         }
         #[cfg(target_os = "ios")]
         self.share_notify_table();
@@ -4101,6 +4138,7 @@ impl Engine {
             _ => 0,
         };
         s.build_check = self.build_check.clone();
+        s.call = self.call_view();
         s.clock_skew = c
             .clock_skew()
             .ok()

@@ -55,6 +55,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Enclave uses the microphone for calls. Your voice is encrypted on this iPhone before it leaves.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Enclave uses the camera only to scan codes (invites, meeting in person, linking a device). Frames never leave the app.</string>
 	<key>UIBackgroundModes</key>

@@ -309,6 +309,7 @@ fn fixture() -> Snapshot {
         screen_security: true,
         biometric: String::new(),
         biometric_on: false,
+        ..Default::default()
     }
 }
 
@@ -510,6 +511,29 @@ fn main() -> Result<(), slint::PlatformError> {
         view::apply(&ui, &data);
         shot("05-conversation", desktop);
         shot("05-conversation-phone", phone);
+
+        // A call: ringing, then on with its check words.
+        let mut call = data.clone();
+        call.call = enclave_ipc::CallView {
+            state: 2,
+            conversation: data
+                .contacts
+                .first()
+                .map(|r| r.id.clone())
+                .unwrap_or_default(),
+            name: "Ben Okafor".into(),
+            ..Default::default()
+        };
+        view::apply(&ui, &call);
+        shot("60-call-ringing-phone", phone);
+        call.call.state = 4;
+        call.call.words = "harbor velvet".into();
+        call.call.connected_at = 1;
+        view::apply(&ui, &call);
+        ui.set_call_elapsed(182);
+        shot("61-call-on", desktop);
+        shot("61-call-on-phone", phone);
+        view::apply(&ui, &data);
 
         // The mixnet unreachable for a minute: the backup route offered.
         let mut offline = empty.clone();

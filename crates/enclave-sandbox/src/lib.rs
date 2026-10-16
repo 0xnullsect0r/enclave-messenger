@@ -592,17 +592,26 @@ mod seccomp_tests {
     fn netd_profile_keeps_ip_sockets_only() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
-        let (status, tcp, unix, exec) = in_thread(move || {
+        let peer = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let udp_to = peer.local_addr().unwrap();
+        let (status, tcp, unix, exec, udp) = in_thread(move || {
             let status = syscalls(Profile::Netd, true);
+            // Calls: a connected UDP socket to a relay.
+            let udp = std::net::UdpSocket::bind("127.0.0.1:0")
+                .and_then(|s| s.connect(udp_to).map(|_| s))
+                .and_then(|s| s.send(b"call"))
+                .is_ok();
             (
                 status,
                 std::net::TcpStream::connect(addr).is_ok(),
                 std::os::unix::net::UnixDatagram::unbound().is_ok(),
                 std::process::Command::new("/bin/true").status().is_ok(),
+                udp,
             )
         });
         assert_eq!(status, "filtered");
         assert!(tcp, "netd must reach servers");
+        assert!(udp, "netd must carry calls");
         assert!(!unix && !exec);
     }
 

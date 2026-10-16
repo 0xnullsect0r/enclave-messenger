@@ -15,6 +15,7 @@
 pub mod built {
     include!(concat!(env!("OUT_DIR"), "/federation.rs"));
 }
+pub mod calls;
 pub mod engine;
 pub mod harden;
 pub mod helpers;

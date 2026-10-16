@@ -83,6 +83,7 @@ bypass = [
 allow-build-scripts = [
     "ahash",
     "akd_core",
+    "alsa-sys",  # links ALSA via pkg-config (call audio through cpal, Linux)
     "android-activity",  # Android entry point (Slint backend)
     "anyhow",
     "ash",
@@ -94,6 +95,7 @@ allow-build-scripts = [
     "borsh",
     "clang-sys",
     "classic-mceliece-rust",
+    "cpal",  # target cfgs only (call audio)
     "core-foundation-sys",  # links CoreFoundation (camera, via nokhwa on macOS)
     "crabgrind",  # constant-time tests under valgrind only (cfg(valgrind_ct_test))
     "crc32fast",

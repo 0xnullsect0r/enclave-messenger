@@ -72,7 +72,7 @@ license = "GPL-3.0-only"
 url = "https://github.com/0xnullsect0r/enclave-messenger"
 # As for the deb: what the window loads at run time, beyond what the
 # programs link (found by `auto-req`).
-requires = { libxkbcommon = "*", libxkbcommon-x11 = "*", libwayland-client = "*", libwayland-egl = "*", libglvnd-egl = "*", libglvnd-glx = "*", libX11 = "*", libX11-xcb = "*", libXcursor = "*", libXi = "*", libXrandr = "*" }
+requires = { alsa-lib = "*", libxkbcommon = "*", libxkbcommon-x11 = "*", libwayland-client = "*", libwayland-egl = "*", libglvnd-egl = "*", libglvnd-glx = "*", libX11 = "*", libX11-xcb = "*", libXcursor = "*", libXi = "*", libXrandr = "*" }
 assets = [
   { source = "target/release/dist/enclave", dest = "/usr/lib/enclave-messenger/enclave", mode = "755" },
   { source = "target/release/dist/enclave-vault", dest = "/usr/lib/enclave-messenger/enclave-vault", mode = "755" },
@@ -122,6 +122,7 @@ sys-locale = "0.3"
 # Reading QR codes from the camera's frames (every platform).
 rqrr = "0.11"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util", "macros"] }
+cpal = "0.18"
 
 # Desktop: winit with OpenGL (femtovg, the software renderer as fallback),
 # and the system's dialogs, notifications, camera and clipboard.
