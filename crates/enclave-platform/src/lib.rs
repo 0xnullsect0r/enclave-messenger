@@ -17,6 +17,8 @@
 //!   the app lock.
 //! - `phone` (feature `phone`, Android and iOS): file pickers, the camera,
 //!   notifications, the clipboard, screen security.
+//! - [`video`] (feature `video`): reading the person's own video files
+//!   with the platform's decoder.
 //! - `seatbelt` (macOS): each helper process confines itself.
 //! - `appcontainer` (Windows): mediad starts in an AppContainer.
 //!
@@ -31,7 +33,10 @@ pub mod backup;
 pub mod biometric;
 pub mod dit;
 pub mod fatal;
-#[cfg(all(target_os = "android", any(feature = "keystores", feature = "phone")))]
+#[cfg(all(
+    target_os = "android",
+    any(feature = "keystores", feature = "phone", feature = "video")
+))]
 mod jvm;
 #[cfg(feature = "keystores")]
 pub mod keystore;
@@ -43,5 +48,7 @@ pub mod phone;
 pub mod process;
 #[cfg(target_os = "macos")]
 pub mod seatbelt;
+#[cfg(feature = "video")]
+pub mod video;
 #[cfg(feature = "window")]
 pub mod window;

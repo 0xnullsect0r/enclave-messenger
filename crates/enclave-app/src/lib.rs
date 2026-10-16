@@ -15,6 +15,7 @@ pub mod shell;
 #[cfg(desktop)]
 pub mod updater;
 pub mod vault;
+pub mod video;
 pub mod view;
 
 /// Code generated from `ui/*.slint`. The only place `unsafe` is allowed.

@@ -32,6 +32,120 @@ struct Calls {
     >,
     /// A group call's video decoders, one per other participant.
     from: std::collections::HashMap<(u32, u32), enclave_media::callvideo::VideoDecoder>,
+    /// Videos being encoded, and finished ones waiting to be read.
+    writers: std::collections::HashMap<u32, enclave_media::movie::VideoWriter>,
+    written: std::collections::HashMap<u32, Vec<u8>>,
+    /// Videos being loaded, and playing.
+    loading: std::collections::HashMap<u32, Vec<u8>>,
+    players: std::collections::HashMap<u32, enclave_media::movie::VideoPlayer>,
+}
+
+/// Most videos being encoded or played at once.
+const MAX_VIDEOS: usize = 2;
+
+fn video_op(op: MediaOp, bytes: &[u8], s: &mut Calls) -> enclave_media::Result<MediaOut> {
+    use enclave_media::MediaError;
+    use enclave_media::movie::{MAX_VIDEO_RECORDS, VideoPlayer, VideoWriter};
+    use enclave_media::video::RECORD;
+    let none = || MediaOut::Raw(Vec::new());
+    let be = |v: &[u32]| MediaOut::Raw(v.iter().flat_map(|x| x.to_be_bytes()).collect());
+    match op {
+        MediaOp::WriterOpen(n, w, h) => {
+            if s.writers.len() + s.written.len() >= MAX_VIDEOS {
+                return Err(MediaError::TooLarge);
+            }
+            s.writers
+                .insert(n, VideoWriter::new(u32::from(w), u32::from(h))?);
+            Ok(none())
+        }
+        MediaOp::WriterFrame(n) => {
+            s.writers
+                .get_mut(&n)
+                .ok_or(MediaError::Unsupported)?
+                .frame(bytes)?;
+            Ok(none())
+        }
+        MediaOp::WriterSound(n) => {
+            s.writers
+                .get_mut(&n)
+                .ok_or(MediaError::Unsupported)?
+                .sound(&bytes_pcm(bytes))?;
+            Ok(none())
+        }
+        MediaOp::WriterFinish(n) => {
+            let clip = s
+                .writers
+                .remove(&n)
+                .ok_or(MediaError::Unsupported)?
+                .finish()?;
+            let out = be(&[
+                clip.bytes.len() as u32,
+                clip.width,
+                clip.height,
+                clip.duration_ms,
+            ]);
+            s.written.insert(n, clip.bytes);
+            Ok(out)
+        }
+        MediaOp::WriterRead(n, at) => {
+            let b = s.written.get(&n).ok_or(MediaError::Unsupported)?;
+            let at = (at as usize).min(b.len());
+            let end = (at + enclave_ipc::media::VIDEO_READ).min(b.len());
+            Ok(MediaOut::Raw(b[at..end].to_vec()))
+        }
+        MediaOp::WriterDrop(n) => {
+            s.writers.remove(&n);
+            s.written.remove(&n);
+            Ok(none())
+        }
+        MediaOp::PlayerLoad(n) => {
+            if !s.loading.contains_key(&n) && s.loading.len() + s.players.len() >= MAX_VIDEOS {
+                return Err(MediaError::TooLarge);
+            }
+            let b = s.loading.entry(n).or_default();
+            if b.len() + bytes.len() > MAX_VIDEO_RECORDS * RECORD {
+                s.loading.remove(&n);
+                return Err(MediaError::TooLarge);
+            }
+            b.extend_from_slice(bytes);
+            Ok(none())
+        }
+        MediaOp::PlayerStart(n, side) => {
+            let b = s.loading.remove(&n).ok_or(MediaError::Unsupported)?;
+            let p = VideoPlayer::new(b, u32::from(side))?;
+            let (w, h, fps, ms) = p.info();
+            s.players.insert(n, p);
+            Ok(be(&[w, h, fps, ms]))
+        }
+        MediaOp::PlayerPiece(n, ms) => {
+            let piece = s
+                .players
+                .get_mut(&n)
+                .ok_or(MediaError::Unsupported)?
+                .piece(u32::from(ms))?;
+            let (width, height) = piece.frames.first().map_or((0, 0), |f| (f.width, f.height));
+            if piece
+                .frames
+                .iter()
+                .any(|f| (f.width, f.height) != (width, height))
+            {
+                return Err(MediaError::Damaged);
+            }
+            Ok(MediaOut::Piece {
+                width,
+                height,
+                frames: piece.frames.into_iter().map(|f| f.pixels).collect(),
+                pcm: piece.pcm,
+                done: piece.done,
+            })
+        }
+        MediaOp::PlayerDrop(n) => {
+            s.loading.remove(&n);
+            s.players.remove(&n);
+            Ok(none())
+        }
+        _ => Err(MediaError::Unsupported),
+    }
 }
 
 /// Most calls at once.
@@ -212,6 +326,16 @@ fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
         | MediaOp::CallLoss(..)
         | MediaOp::VideoDecodeFrom(..)
         | MediaOp::VideoScreen(..) => call_op(req.op, &req.bytes, calls),
+        MediaOp::WriterOpen(..)
+        | MediaOp::WriterFrame(_)
+        | MediaOp::WriterSound(_)
+        | MediaOp::WriterFinish(_)
+        | MediaOp::WriterRead(..)
+        | MediaOp::WriterDrop(_)
+        | MediaOp::PlayerLoad(_)
+        | MediaOp::PlayerStart(..)
+        | MediaOp::PlayerPiece(..)
+        | MediaOp::PlayerDrop(_) => video_op(req.op, &req.bytes, calls),
         MediaOp::Sanitize => enclave_media::sanitize(&req.bytes).map(|s| MediaOut::Sanitized {
             png: s.format == enclave_media::Format::Png,
             width: s.width,
@@ -434,5 +558,80 @@ mod tests {
         ask(MediaOp::CallClose(7), Vec::new(), &mut calls).unwrap();
         assert!(ask(MediaOp::CallEncode(7), vec![0; 1920], &mut calls).is_err());
         ask(MediaOp::CallOpen(11), Vec::new(), &mut calls).unwrap();
+    }
+
+    #[test]
+    fn a_video_written_read_back_and_played() {
+        let mut s = Calls::default();
+        let (w, h) = (64u16, 48u16);
+        ask(MediaOp::WriterOpen(3, w, h), Vec::new(), &mut s).unwrap();
+        assert!(
+            ask(MediaOp::WriterOpen(4, 63, 48), Vec::new(), &mut s).is_err(),
+            "odd size"
+        );
+        for i in 0..20u32 {
+            let rgba: Vec<u8> = (0..u32::from(w) * u32::from(h))
+                .flat_map(|p| {
+                    if (p % u32::from(w) / 8 + i) % 2 == 0 {
+                        [200, 30, 30, 255]
+                    } else {
+                        [20, 60, 180, 255]
+                    }
+                })
+                .collect();
+            ask(MediaOp::WriterFrame(3), rgba, &mut s).unwrap();
+            let pcm: Vec<u8> = (0..1600i16)
+                .flat_map(|k| ((k % 40) * 400).to_le_bytes())
+                .collect();
+            ask(MediaOp::WriterSound(3), pcm, &mut s).unwrap();
+        }
+        let Ok(MediaOut::Raw(head)) = ask(MediaOp::WriterFinish(3), Vec::new(), &mut s) else {
+            panic!("finished");
+        };
+        let be = |i: usize| u32::from_be_bytes([head[i], head[i + 1], head[i + 2], head[i + 3]]);
+        assert_eq!((be(4), be(8), be(12)), (64, 48, 666));
+        let mut video = Vec::new();
+        while (video.len() as u32) < be(0) {
+            let Ok(MediaOut::Raw(b)) = ask(
+                MediaOp::WriterRead(3, video.len() as u32),
+                Vec::new(),
+                &mut s,
+            ) else {
+                panic!("read");
+            };
+            video.extend_from_slice(&b);
+        }
+        ask(MediaOp::WriterDrop(3), Vec::new(), &mut s).unwrap();
+        assert!(s.written.is_empty());
+
+        for part in video.chunks(100_000) {
+            ask(MediaOp::PlayerLoad(9), part.to_vec(), &mut s).unwrap();
+        }
+        let Ok(MediaOut::Raw(info)) = ask(MediaOp::PlayerStart(9, 32), Vec::new(), &mut s) else {
+            panic!("started");
+        };
+        assert_eq!(info.len(), 16);
+        let Ok(MediaOut::Piece {
+            width,
+            height,
+            frames,
+            pcm,
+            done,
+        }) = ask(MediaOp::PlayerPiece(9, 500), Vec::new(), &mut s)
+        else {
+            panic!("a piece");
+        };
+        assert_eq!((width, height, frames.len(), done), (32, 24, 15, false));
+        assert_eq!(pcm.len(), 24_000);
+        let Ok(MediaOut::Piece { frames, done, .. }) =
+            ask(MediaOp::PlayerPiece(9, 500), Vec::new(), &mut s)
+        else {
+            panic!("the rest");
+        };
+        assert_eq!((frames.len(), done), (5, true));
+        ask(MediaOp::PlayerDrop(9), Vec::new(), &mut s).unwrap();
+        // Damaged bytes don't play.
+        ask(MediaOp::PlayerLoad(10), vec![7; 70_000], &mut s).unwrap();
+        assert!(ask(MediaOp::PlayerStart(10, 32), Vec::new(), &mut s).is_err());
     }
 }

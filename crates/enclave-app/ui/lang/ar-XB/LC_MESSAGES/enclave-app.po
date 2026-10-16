@@ -630,6 +630,14 @@ msgid "Choose a server"
 msgstr "‫Choose a server‬"
 
 #: ui/app.slint
+msgid "Choose a video file to send"
+msgstr "‫Choose a video file to send‬"
+
+#: enclave-app/src/shell.rs
+msgid "Choose a video to send"
+msgstr "‫Choose a video to send‬"
+
+#: ui/app.slint
 msgid "Choose again"
 msgstr "‫Choose again‬"
 
@@ -913,6 +921,10 @@ msgstr "‫Couldn't make an invite link. Check your connection and try again.‬
 msgid "Couldn't make the folder."
 msgstr "‫Couldn't make the folder.‬"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't make the video. Try again."
+msgstr "‫Couldn't make the video. Try again.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't move your account."
 msgstr "‫Couldn't move your account.‬"
@@ -1077,6 +1089,10 @@ msgstr "‫Couldn't send the report. Check your connection.‬"
 msgid "Couldn't send the sticker. Check your connection."
 msgstr "‫Couldn't send the sticker. Check your connection.‬"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't send the video. Check your connection."
+msgstr "‫Couldn't send the video. Check your connection.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't send to the group yet. We'll keep trying."
 msgstr "‫Couldn't send to the group yet. We'll keep trying.‬"
@@ -1116,6 +1132,10 @@ msgstr "‫Couldn't start linking. Try again.‬"
 #: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't start the call's audio."
 msgstr "‫Couldn't start the call's audio.‬"
+
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't start the video."
+msgstr "‫Couldn't start the video.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't take it down everywhere yet. We'll keep trying."
@@ -1234,6 +1254,10 @@ msgid "Disappearing messages: on"
 msgstr "‫Disappearing messages: on‬"
 
 #: ui/app.slint
+msgid "Discard"
+msgstr "‫Discard‬"
+
+#: ui/app.slint
 msgid "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working."
 msgstr "‫Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working.‬"
 
@@ -1345,6 +1369,10 @@ msgstr "‫Enclave couldn't open this one.‬"
 msgid "Enclave couldn't open this pack."
 msgstr "‫Enclave couldn't open this pack.‬"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Enclave couldn't play this one."
+msgstr "‫Enclave couldn't play this one.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
 msgstr "‫Enclave couldn't read that GIF, so it wasn't sent. Try another file.‬"
@@ -1360,6 +1388,10 @@ msgstr "‫Enclave couldn't read that picture. Try another one.‬"
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit WAV file."
 msgstr "‫Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit WAV file.‬"
+
+#: enclave-app/src/video.rs
+msgid "Enclave couldn't read that video. Try another file."
+msgstr "‫Enclave couldn't read that video. Try another file.‬"
 
 #: ui/app.slint
 msgid "Enclave is built with the work of these projects, under the licences below."
@@ -1525,6 +1557,10 @@ msgstr "‫Files can contain harmful content, and another app may not protect it
 msgid "Finding where you are…"
 msgstr "‫Finding where you are…‬"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Finishing the video…"
+msgstr "‫Finishing the video…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr "‫First device‬"
@@ -1584,6 +1620,14 @@ msgstr "‫Getting it ready…‬"
 #: ui/app.slint
 msgid "Getting the pack…"
 msgstr "‫Getting the pack…‬"
+
+#: enclave-app/src/video.rs
+msgid "Getting the video ready…"
+msgstr "‫Getting the video ready…‬"
+
+#: enclave-app/src/video.rs
+msgid "Getting the video ready… {}%"
+msgstr "‫Getting the video ready… ‬{}‫%‬"
 
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
@@ -2133,6 +2177,10 @@ msgstr "‫No maps app here opens places.‬"
 msgid "No messages found. Search only looks on this device."
 msgstr "‫No messages found. Search only looks on this device.‬"
 
+#: enclave-app/src/video.rs
+msgid "No microphone: the video will be silent."
+msgstr "‫No microphone: the video will be silent.‬"
+
 #: ui/app.slint
 msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr "‫No phone number. No email. Only the people you choose can reach you.‬"
@@ -2566,8 +2614,16 @@ msgid "Play animated picture, {}"
 msgstr "‫Play animated picture, ‬{}"
 
 #: ui/app.slint
+msgid "Play the video {}"
+msgstr "‫Play the video ‬{}"
+
+#: ui/app.slint
 msgid "Play the voice note"
 msgstr "‫Play the voice note‬"
+
+#: ui/app.slint
+msgid "Play video"
+msgstr "‫Play video‬"
 
 #: ui/app.slint
 msgid "Play · {}"
@@ -2644,6 +2700,14 @@ msgstr "‫Read receipts‬"
 #: ui/app.slint
 msgid "Read the report"
 msgstr "‫Read the report‬"
+
+#: ui/app.slint
+msgid "Record"
+msgstr "‫Record‬"
+
+#: ui/app.slint
+msgid "Record a video"
+msgstr "‫Record a video‬"
 
 #: ui/app.slint
 msgid "Record a voice note"
@@ -2941,6 +3005,10 @@ msgstr "‫Send‬"
 msgid "Send a file"
 msgstr "‫Send a file‬"
 
+#: ui/app.slint
+msgid "Send a video file…"
+msgstr "‫Send a video file…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Send history now"
 msgstr "‫Send history now‬"
@@ -3190,6 +3258,10 @@ msgid "Stickers"
 msgstr "‫Stickers‬"
 
 #: ui/app.slint
+msgid "Stop and send"
+msgstr "‫Stop and send‬"
+
+#: ui/app.slint
 msgid "Stop it"
 msgstr "‫Stop it‬"
 
@@ -3309,6 +3381,10 @@ msgstr "‫That name is taken, or looks too much like one that is. Try another.�
 msgid "That passphrase doesn't open this profile."
 msgstr "‫That passphrase doesn't open this profile.‬"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "That video is too large to send."
+msgstr "‫That video is too large to send.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "That voice note couldn't be played."
 msgstr "‫That voice note couldn't be played.‬"
@@ -3320,6 +3396,14 @@ msgstr "‫That voice note couldn't be read.‬"
 #: enclave-vault/src/engine.rs
 msgid "That's an in-person code. It only works in Meet in person, with them next to you."
 msgstr "‫That's an in-person code. It only works in Meet in person, with them next to you.‬"
+
+#: enclave-app/src/video.rs
+msgid "That's as long as a video can be."
+msgstr "‫That's as long as a video can be.‬"
+
+#: enclave-vault/src/engine/videos.rs
+msgid "That's as long as a video can be. Send it, or start again."
+msgstr "‫That's as long as a video can be. Send it, or start again.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "That's too long: at most 280 bytes."
@@ -3374,6 +3458,10 @@ msgid "The camera is busy or can't be opened."
 msgstr "‫The camera is busy or can't be opened.‬"
 
 #: ui/app.slint
+msgid "The camera starts when you press Record."
+msgstr "‫The camera starts when you press Record.‬"
+
+#: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
 msgstr "‫The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are.‬"
 
@@ -3420,6 +3508,10 @@ msgstr "‫The transcription model couldn't be opened. Turn transcription off an
 #: enclave-app/src/shell.rs
 msgid "The update didn't install: {}"
 msgstr "‫The update didn't install: ‬{}"
+
+#: enclave-app/src/video.rs
+msgid "The video was longer than 10 minutes, so only the start is sent."
+msgstr "‫The video was longer than 10 minutes, so only the start is sent.‬"
 
 #: ui/app.slint
 msgid "Their app deletes it if it cooperates. Someone may already have copied, saved or seen it."
@@ -3593,6 +3685,14 @@ msgstr "‫This message was deleted.‬"
 msgid "This network seems to block Tor"
 msgstr "‫This network seems to block Tor‬"
 
+#: enclave-app/src/video.rs
+msgid "This system can't read videos."
+msgstr "‫This system can't read videos.‬"
+
+#: enclave-app/src/video.rs
+msgid "This system has no video decoder. Install GStreamer to send videos."
+msgstr "‫This system has no video decoder. Install GStreamer to send videos.‬"
+
 #: ui/app.slint
 msgid "This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap."
 msgstr "‫This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap.‬"
@@ -3746,6 +3846,10 @@ msgid "Unpin for everyone"
 msgstr "‫Unpin for everyone‬"
 
 #: ui/app.slint
+msgid "Up to 10 minutes. It's encoded again on this device before it's sent, and sealed like any file."
+msgstr "‫Up to 10 minutes. It's encoded again on this device before it's sent, and sealed like any file.‬"
+
+#: ui/app.slint
 msgid "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them."
 msgstr "‫Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them.‬"
 
@@ -3849,6 +3953,10 @@ msgstr "‫Verify this build‬"
 msgid "Version {}"
 msgstr "‫Version ‬{}"
 
+#: ui/app.slint
+msgid "Video"
+msgstr "‫Video‬"
+
 #: enclave-vault/src/engine/calling.rs ui/app.slint
 msgid "Video call"
 msgstr "‫Video call‬"
@@ -3860,6 +3968,10 @@ msgstr "‫Video call the group‬"
 #: ui/app.slint
 msgid "Video call {}"
 msgstr "‫Video call ‬{}"
+
+#: ui/app.slint
+msgid "Video, {}"
+msgstr "‫Video, ‬{}"
 
 #: ui/app.slint
 msgid "View"
@@ -3944,6 +4056,10 @@ msgstr "‫Wants to talk‬"
 #: ui/app.slint
 msgid "What should people call you?"
 msgstr "‫What should people call you?‬"
+
+#: ui/app.slint
+msgid "What the camera sees"
+msgstr "‫What the camera sees‬"
 
 #: ui/app.slint
 msgid "When you send a link, this device fetches the page's title and picture through Tor and sends them with your message, so the other side fetches nothing. The site sees a Tor connection, not you. Off, links go as plain text."

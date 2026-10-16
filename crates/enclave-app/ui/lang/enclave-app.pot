@@ -628,6 +628,14 @@ msgid "Choose a server"
 msgstr ""
 
 #: ui/app.slint
+msgid "Choose a video file to send"
+msgstr ""
+
+#: enclave-app/src/shell.rs
+msgid "Choose a video to send"
+msgstr ""
+
+#: ui/app.slint
 msgid "Choose again"
 msgstr ""
 
@@ -911,6 +919,10 @@ msgstr ""
 msgid "Couldn't make the folder."
 msgstr ""
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't make the video. Try again."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't move your account."
 msgstr ""
@@ -1075,6 +1087,10 @@ msgstr ""
 msgid "Couldn't send the sticker. Check your connection."
 msgstr ""
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't send the video. Check your connection."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't send to the group yet. We'll keep trying."
 msgstr ""
@@ -1113,6 +1129,10 @@ msgstr ""
 
 #: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't start the call's audio."
+msgstr ""
+
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't start the video."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -1232,6 +1252,10 @@ msgid "Disappearing messages: on"
 msgstr ""
 
 #: ui/app.slint
+msgid "Discard"
+msgstr ""
+
+#: ui/app.slint
 msgid "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working."
 msgstr ""
 
@@ -1343,6 +1367,10 @@ msgstr ""
 msgid "Enclave couldn't open this pack."
 msgstr ""
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Enclave couldn't play this one."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
 msgstr ""
@@ -1357,6 +1385,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit WAV file."
+msgstr ""
+
+#: enclave-app/src/video.rs
+msgid "Enclave couldn't read that video. Try another file."
 msgstr ""
 
 #: ui/app.slint
@@ -1523,6 +1555,10 @@ msgstr ""
 msgid "Finding where you are…"
 msgstr ""
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Finishing the video…"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr ""
@@ -1581,6 +1617,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Getting the pack…"
+msgstr ""
+
+#: enclave-app/src/video.rs
+msgid "Getting the video ready…"
+msgstr ""
+
+#: enclave-app/src/video.rs
+msgid "Getting the video ready… {}%"
 msgstr ""
 
 #: ui/app.slint
@@ -2131,6 +2175,10 @@ msgstr ""
 msgid "No messages found. Search only looks on this device."
 msgstr ""
 
+#: enclave-app/src/video.rs
+msgid "No microphone: the video will be silent."
+msgstr ""
+
 #: ui/app.slint
 msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr ""
@@ -2564,7 +2612,15 @@ msgid "Play animated picture, {}"
 msgstr ""
 
 #: ui/app.slint
+msgid "Play the video {}"
+msgstr ""
+
+#: ui/app.slint
 msgid "Play the voice note"
+msgstr ""
+
+#: ui/app.slint
+msgid "Play video"
 msgstr ""
 
 #: ui/app.slint
@@ -2641,6 +2697,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Read the report"
+msgstr ""
+
+#: ui/app.slint
+msgid "Record"
+msgstr ""
+
+#: ui/app.slint
+msgid "Record a video"
 msgstr ""
 
 #: ui/app.slint
@@ -2939,6 +3003,10 @@ msgstr ""
 msgid "Send a file"
 msgstr ""
 
+#: ui/app.slint
+msgid "Send a video file…"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Send history now"
 msgstr ""
@@ -3188,6 +3256,10 @@ msgid "Stickers"
 msgstr ""
 
 #: ui/app.slint
+msgid "Stop and send"
+msgstr ""
+
+#: ui/app.slint
 msgid "Stop it"
 msgstr ""
 
@@ -3307,6 +3379,10 @@ msgstr ""
 msgid "That passphrase doesn't open this profile."
 msgstr ""
 
+#: enclave-vault/src/engine/videos.rs
+msgid "That video is too large to send."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "That voice note couldn't be played."
 msgstr ""
@@ -3317,6 +3393,14 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "That's an in-person code. It only works in Meet in person, with them next to you."
+msgstr ""
+
+#: enclave-app/src/video.rs
+msgid "That's as long as a video can be."
+msgstr ""
+
+#: enclave-vault/src/engine/videos.rs
+msgid "That's as long as a video can be. Send it, or start again."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3372,6 +3456,10 @@ msgid "The camera is busy or can't be opened."
 msgstr ""
 
 #: ui/app.slint
+msgid "The camera starts when you press Record."
+msgstr ""
+
+#: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
 msgstr ""
 
@@ -3417,6 +3505,10 @@ msgstr ""
 
 #: enclave-app/src/shell.rs
 msgid "The update didn't install: {}"
+msgstr ""
+
+#: enclave-app/src/video.rs
+msgid "The video was longer than 10 minutes, so only the start is sent."
 msgstr ""
 
 #: ui/app.slint
@@ -3591,6 +3683,14 @@ msgstr ""
 msgid "This network seems to block Tor"
 msgstr ""
 
+#: enclave-app/src/video.rs
+msgid "This system can't read videos."
+msgstr ""
+
+#: enclave-app/src/video.rs
+msgid "This system has no video decoder. Install GStreamer to send videos."
+msgstr ""
+
 #: ui/app.slint
 msgid "This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap."
 msgstr ""
@@ -3744,6 +3844,10 @@ msgid "Unpin for everyone"
 msgstr ""
 
 #: ui/app.slint
+msgid "Up to 10 minutes. It's encoded again on this device before it's sent, and sealed like any file."
+msgstr ""
+
+#: ui/app.slint
 msgid "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them."
 msgstr ""
 
@@ -3847,6 +3951,10 @@ msgstr ""
 msgid "Version {}"
 msgstr ""
 
+#: ui/app.slint
+msgid "Video"
+msgstr ""
+
 #: enclave-vault/src/engine/calling.rs ui/app.slint
 msgid "Video call"
 msgstr ""
@@ -3857,6 +3965,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Video call {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Video, {}"
 msgstr ""
 
 #: ui/app.slint
@@ -3941,6 +4053,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "What should people call you?"
+msgstr ""
+
+#: ui/app.slint
+msgid "What the camera sees"
 msgstr ""
 
 #: ui/app.slint

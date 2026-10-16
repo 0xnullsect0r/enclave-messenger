@@ -38,6 +38,10 @@ biometric = ["dep:objc2", "dep:objc2-local-authentication", "dep:objc2-foundatio
 # for codes, notifications, the clipboard, screen security. The app turns
 # this on; on Android it also gives the keystore its Android Keystore.
 phone = ["dep:jni", "dep:ndk-context", "dep:objc2", "dep:objc2-foundation", "dep:objc2-ui-kit", "dep:objc2-user-notifications", "dep:objc2-av-foundation", "dep:objc2-core-media", "dep:objc2-core-video", "dep:objc2-uniform-type-identifiers", "dep:block2", "dep:dispatch2", "dep:objc2-call-kit", "dep:objc2-push-kit", "dep:objc2-avf-audio"]
+# Reading the person's own video files with the platform's decoder
+# (`video`): GStreamer (loaded at run time), AVFoundation, Media
+# Foundation, MediaCodec. The app turns this on.
+video = ["dep:libloading", "dep:objc2", "dep:objc2-foundation", "dep:objc2-av-foundation", "dep:objc2-core-media", "dep:objc2-core-video", "dep:objc2-core-foundation", "dep:objc2-avf-audio", "dep:windows", "dep:jni", "dep:ndk-context"]
 
 [dependencies]
 zeroize = "1"
@@ -47,8 +51,14 @@ raw-window-handle = { version = "0.6", optional = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = { version = "3", optional = true, features = ["OSX_10_15"] }
 objc2 = { version = "0.6", optional = true }
+# Video files (`video`): AVFoundation's asset reader.
+objc2-av-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "objc2-core-media", "objc2-core-video", "objc2-core-foundation", "AVAsset", "AVAssetReader", "AVAssetReaderOutput", "AVAssetTrack", "AVMediaFormat"] }
+objc2-core-media = { version = "0.3", optional = true, default-features = false, features = ["std", "objc2-core-video", "CMSampleBuffer", "CMBlockBuffer", "CMTime"] }
+objc2-core-video = { version = "0.3", optional = true, default-features = false, features = ["std", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
+objc2-core-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "CFString", "CFCGTypes"] }
+objc2-avf-audio = { version = "0.3", optional = true, default-features = false, features = ["std", "AVAudioSettings"] }
 objc2-local-authentication = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "LAContext", "LAError"] }
-objc2-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "NSString", "NSError", "NSURL", "NSDictionary", "NSValue", "NSArray"] }
 block2 = { version = "0.6", optional = true }
 
 # iOS: the Keychain (with Secure Enclave keys) and UIKit.
@@ -58,15 +68,16 @@ objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "NSString", "NSError", "NSArray", "NSURL", "NSData", "NSDate", "NSDictionary", "NSNotification", "NSOperation", "NSObject", "NSFileManager", "NSValue", "NSPathUtilities", "NSEnumerator", "NSUUID", "NSSet"] }
 objc2-ui-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "UIApplication", "UIResponder", "UIView", "UIWindow", "UIViewController", "UIScreen", "UIPasteboard", "UIDocumentPickerViewController", "UIActivityViewController", "UIActivity", "UIVisualEffectView", "UIVisualEffect", "UIBlurEffect", "UIScene", "UIWindowScene", "objc2-uniform-type-identifiers", "objc2-core-foundation"] }
 objc2-user-notifications = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationRequest", "UNNotificationContent", "UNNotificationSound", "UNNotificationTrigger", "UNNotification"] }
-objc2-av-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-video", "AVCaptureSession", "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureVideoDataOutput", "AVMediaFormat"] }
-objc2-core-media = { version = "0.3", optional = true, default-features = false, features = ["std", "objc2-core-video", "CMSampleBuffer"] }
+objc2-av-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-video", "objc2-core-foundation", "AVCaptureSession", "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureVideoDataOutput", "AVMediaFormat", "AVAsset", "AVAssetReader", "AVAssetReaderOutput", "AVAssetTrack"] }
+objc2-core-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "CFString", "CFCGTypes"] }
+objc2-core-media = { version = "0.3", optional = true, default-features = false, features = ["std", "objc2-core-video", "CMSampleBuffer", "CMBlockBuffer", "CMTime"] }
 objc2-core-video = { version = "0.3", optional = true, default-features = false, features = ["std", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-uniform-type-identifiers = { version = "0.3", optional = true, default-features = false, features = ["std", "UTType", "UTCoreTypes"] }
 block2 = { version = "0.6", optional = true }
 dispatch2 = { version = "0.3", optional = true, default-features = false, features = ["std", "objc2"] }
 # Calls: CallKit (the system's call screens) and PushKit (VoIP wakes).
 objc2-call-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "CXProvider", "CXProviderConfiguration", "CXCallUpdate", "CXHandle", "CXAction", "CXCallAction", "CXAnswerCallAction", "CXEndCallAction", "CXSetMutedCallAction", "CXStartCallAction", "CXCallController", "CXTransaction", "CXError"] }
-objc2-avf-audio = { version = "0.3", optional = true, default-features = false, features = ["std", "bitflags", "AVAudioSession", "AVAudioSessionTypes"] }
+objc2-avf-audio = { version = "0.3", optional = true, default-features = false, features = ["std", "bitflags", "AVAudioSession", "AVAudioSessionTypes", "AVAudioSettings"] }
 objc2-push-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "PKDefines", "PKPushRegistry", "PKPushCredentials", "PKPushPayload"] }
 
 # Android: JNI to the app's activity (apps/android, EnclaveActivity).
@@ -78,6 +89,7 @@ ndk-context = { version = "0.1", optional = true }
 # portal). async-io rather than tokio, like the file dialogs' portal client,
 # so neither needs a tokio runtime.
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
+libloading = { version = "0.8", optional = true }
 oo7 = { version = "0.6", optional = true, default-features = false, features = ["async-std", "native_crypto"] }
 zbus = { version = "5", optional = true }
 
@@ -86,5 +98,5 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-future = { version = "0.3", optional = true }
-windows = { version = "0.62", optional = true, features = ["Security_Credentials_UI", "Win32_Foundation", "Win32_System_WinRT", "Foundation"] }
+windows = { version = "0.62", optional = true, features = ["Security_Credentials_UI", "Win32_Foundation", "Win32_System_WinRT", "Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Isolation", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Pipes", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }

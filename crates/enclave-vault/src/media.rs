@@ -150,6 +150,164 @@ impl Proc {
     }
 }
 
+/// A video being encoded (`enclave_media::movie::VideoWriter`): in a
+/// helper, or here without one (it encodes only our own frames).
+pub struct VideoWrite {
+    n: u32,
+    at: WriteAt,
+}
+
+enum WriteAt {
+    Helper(Arc<Proc>),
+    Here(Option<Box<enclave_media::movie::VideoWriter>>),
+}
+
+impl VideoWrite {
+    /// The next frame (RGBA at the video's size).
+    pub async fn frame(&mut self, rgba: Vec<u8>) -> Result<(), String> {
+        match &mut self.at {
+            WriteAt::Helper(p) => p.call(MediaOp::WriterFrame(self.n), rgba).await.map(|_| ()),
+            WriteAt::Here(w) => w
+                .as_mut()
+                .ok_or("finished")?
+                .frame(&rgba)
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    /// More sound (48 kHz mono).
+    pub async fn sound(&mut self, pcm: &[i16]) -> Result<(), String> {
+        match &mut self.at {
+            WriteAt::Helper(p) => p
+                .call(
+                    MediaOp::WriterSound(self.n),
+                    pcm.iter().flat_map(|s| s.to_le_bytes()).collect(),
+                )
+                .await
+                .map(|_| ()),
+            WriteAt::Here(w) => w
+                .as_mut()
+                .ok_or("finished")?
+                .sound(pcm)
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    /// The video: the file, and its size and length (ms).
+    pub async fn finish(mut self) -> Result<(Vec<u8>, u32, u32, u32), String> {
+        match &mut self.at {
+            WriteAt::Helper(p) => {
+                let p = Arc::clone(p);
+                let head = match p.call(MediaOp::WriterFinish(self.n), Vec::new()).await? {
+                    MediaOut::Raw(b) if b.len() == 16 => b,
+                    _ => return Err("unexpected reply".into()),
+                };
+                let be =
+                    |i: usize| u32::from_be_bytes([head[i], head[i + 1], head[i + 2], head[i + 3]]);
+                let (len, w, h, ms) = (be(0) as usize, be(4), be(8), be(12));
+                let mut out = Vec::with_capacity(len);
+                while out.len() < len {
+                    match p
+                        .call(MediaOp::WriterRead(self.n, out.len() as u32), Vec::new())
+                        .await?
+                    {
+                        MediaOut::Raw(b) if !b.is_empty() => out.extend_from_slice(&b),
+                        _ => return Err("unexpected reply".into()),
+                    }
+                }
+                Ok((out, w, h, ms))
+            }
+            WriteAt::Here(w) => {
+                let c = w
+                    .take()
+                    .ok_or("finished")?
+                    .finish()
+                    .map_err(|e| e.to_string())?;
+                Ok((c.bytes, c.width, c.height, c.duration_ms))
+            }
+        }
+    }
+}
+
+impl Drop for VideoWrite {
+    fn drop(&mut self) {
+        if let WriteAt::Helper(p) = &self.at {
+            let (p, n) = (Arc::clone(p), self.n);
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                rt.spawn(async move {
+                    let _ = p.call(MediaOp::WriterDrop(n), Vec::new()).await;
+                });
+            }
+        }
+    }
+}
+
+/// A video playing, in a helper (or, in the demo only, here: other
+/// people's AV1 is decoded in mediad).
+pub struct VideoPlay {
+    n: u32,
+    at: PlayAt,
+    /// Width, height, frames a second, length (ms).
+    pub info: (u32, u32, u32, u32),
+}
+
+enum PlayAt {
+    Helper(Arc<Proc>),
+    #[cfg(feature = "demo")]
+    Here(Box<enclave_media::movie::VideoPlayer>),
+}
+
+impl VideoPlay {
+    /// The next `ms` of it: frames (`width × height` RGBA), the sound, and
+    /// whether it ended.
+    pub async fn piece(
+        &mut self,
+        ms: u16,
+    ) -> Result<(u32, u32, Vec<Vec<u8>>, Vec<i16>, bool), String> {
+        match &mut self.at {
+            PlayAt::Helper(p) => {
+                match p.call(MediaOp::PlayerPiece(self.n, ms), Vec::new()).await? {
+                    MediaOut::Piece {
+                        width,
+                        height,
+                        frames,
+                        pcm,
+                        done,
+                    } => Ok((width, height, frames, pcm, done)),
+                    _ => Err("unexpected reply".into()),
+                }
+            }
+            #[cfg(feature = "demo")]
+            PlayAt::Here(v) => {
+                let p = v.piece(u32::from(ms)).map_err(|e| e.to_string())?;
+                let (w, h) = p.frames.first().map_or((0, 0), |f| (f.width, f.height));
+                Ok((
+                    w,
+                    h,
+                    p.frames.into_iter().map(|f| f.pixels).collect(),
+                    p.pcm,
+                    p.done,
+                ))
+            }
+        }
+    }
+}
+
+impl Drop for VideoPlay {
+    // Without `demo` a player is always in a helper.
+    #[allow(irrefutable_let_patterns)]
+    fn drop(&mut self) {
+        if let PlayAt::Helper(p) = &self.at {
+            let (p, n) = (Arc::clone(p), self.n);
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                rt.spawn(async move {
+                    let _ = p.call(MediaOp::PlayerDrop(n), Vec::new()).await;
+                });
+            }
+        }
+    }
+}
+
 /// One call's audio: its encoder, decoder and echo canceller live in one
 /// helper (or, without helpers, here) until it is dropped.
 pub struct CallCodec {
@@ -544,6 +702,68 @@ impl Media {
         })
     }
 
+    /// Start encoding a video `width × height` (as
+    /// `enclave_media::movie::video_size` gives).
+    pub async fn write_video(&self, width: u16, height: u16) -> Result<VideoWrite, String> {
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let Some(p) = self.procs.iter().find(|p| p.alive.load(Ordering::SeqCst)) else {
+            let w = enclave_media::movie::VideoWriter::new(u32::from(width), u32::from(height))
+                .map_err(|e| e.to_string())?;
+            return Ok(VideoWrite {
+                n,
+                at: WriteAt::Here(Some(Box::new(w))),
+            });
+        };
+        p.call(MediaOp::WriterOpen(n, width, height), Vec::new())
+            .await?;
+        Ok(VideoWrite {
+            n,
+            at: WriteAt::Helper(Arc::clone(p)),
+        })
+    }
+
+    /// Get a video ready to play (frames at most `side` pixels). Without
+    /// helpers, only the demo can.
+    pub async fn play_video(&self, video: Vec<u8>, side: u16) -> Result<VideoPlay, String> {
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let Some(p) = self.procs.iter().find(|p| p.alive.load(Ordering::SeqCst)) else {
+            #[cfg(feature = "demo")]
+            {
+                let v = enclave_media::movie::VideoPlayer::new(video, u32::from(side))
+                    .map_err(|e| e.to_string())?;
+                let info = v.info();
+                return Ok(VideoPlay {
+                    n,
+                    at: PlayAt::Here(Box::new(v)),
+                    info,
+                });
+            }
+            #[cfg(not(feature = "demo"))]
+            {
+                let _ = (video, side);
+                return Err("playing videos needs the media process".into());
+            }
+        };
+        let mut play = VideoPlay {
+            n,
+            at: PlayAt::Helper(Arc::clone(p)),
+            info: (0, 0, 0, 0),
+        };
+        for part in video.chunks(enclave_ipc::media::VIDEO_READ) {
+            p.call(MediaOp::PlayerLoad(n), part.to_vec()).await?;
+        }
+        match p.call(MediaOp::PlayerStart(n, side), Vec::new()).await? {
+            MediaOut::Raw(b) if b.len() == 16 => {
+                let be = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+                play.info = (be(0), be(4), be(8), be(12));
+                Ok(play)
+            }
+            _ => Err("unexpected reply".into()),
+        }
+    }
+
     /// Start a call's audio (`enclave_media::call`). It goes to the last
     /// helper still running, so pictures (on the first) don't hold up its
     /// frames; with one helper they share it.
@@ -891,6 +1111,19 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         | MediaOp::VideoDecodeFrom(..)
         | MediaOp::VideoScreen(..) => {
             return Err("calls go through Media::open_call and open_video".into());
+        }
+        // Videos keep state too (`Media::write_video`, `play_video`).
+        MediaOp::WriterOpen(..)
+        | MediaOp::WriterFrame(_)
+        | MediaOp::WriterSound(_)
+        | MediaOp::WriterFinish(_)
+        | MediaOp::WriterRead(..)
+        | MediaOp::WriterDrop(_)
+        | MediaOp::PlayerLoad(_)
+        | MediaOp::PlayerStart(..)
+        | MediaOp::PlayerPiece(..)
+        | MediaOp::PlayerDrop(_) => {
+            return Err("videos go through Media::write_video and play_video".into());
         }
     }
     .map_err(|e| e.to_string())

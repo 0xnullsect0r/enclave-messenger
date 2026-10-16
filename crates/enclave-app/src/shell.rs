@@ -551,6 +551,12 @@ fn put_paths(ui: &AppWindow, what: i32, paths: &[String]) {
         // Our profile photo: used at once.
         4 => ui.invoke_set_photo(paths[0].clone().into()),
         5 => ui.set_story_path(paths[0].clone().into()),
+        // A video to send: read and sent at once, with the caption.
+        6 => {
+            ui.invoke_send_video_file(paths[0].clone().into(), ui.get_attach_caption());
+            ui.set_attach_caption("".into());
+            ui.set_sheet(crate::Sheet::None);
+        }
         _ => ui.set_attach_path(joined),
     }
 }
@@ -643,6 +649,16 @@ fn browse(ui: &AppWindow, what: i32) {
                     &["png", "jpg", "jpeg", "gif", "webp"],
                 )
                 .set_title(crate::i18n::tr("Choose a picture for your story"))
+                .pick_file()
+                .await
+                .into_iter()
+                .collect(),
+            6 => d
+                .add_filter(
+                    crate::i18n::tr("Videos"),
+                    &["mp4", "m4v", "mov", "mkv", "webm", "avi", "3gp", "wmv"],
+                )
+                .set_title(crate::i18n::tr("Choose a video to send"))
                 .pick_file()
                 .await
                 .into_iter()
@@ -772,6 +788,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // Outputs from the vault, applied on the UI thread.
     let w = ui.as_weak();
     let lan_tx = tx.clone();
+    let video_tx = tx.clone();
     // The voice note playing, shared with its Stop button.
     let playing: Playing = Arc::default();
     voice_notes(&ui, tx.clone(), Arc::clone(&playing));
@@ -1015,6 +1032,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         });
                         continue;
                     }
+                    Out::RecordProgress(n) => {
+                        crate::video::progress(n);
+                        continue;
+                    }
                     Out::Invite(link) => {
                         let copied = copy_with_timeout(link.clone());
                         let _ = w.upgrade_in_event_loop(move |ui| {
@@ -1031,7 +1052,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     }
                     other => other,
                 };
+                let vt = video_tx.clone();
                 let _ = w.upgrade_in_event_loop(move |ui| match o {
+                    Out::VideoPiece(p) => crate::video::piece(&ui, p, &vt),
                     Out::Snapshot(s) => {
                         view::apply(&ui, &s);
                         if smoke {
@@ -1076,7 +1099,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     | Out::CallAudio(_)
                     | Out::CallVideo(..)
                     | Out::CallTile(..)
-                    | Out::VoiceAudio(..) => {}
+                    | Out::VoiceAudio(..)
+                    | Out::RecordProgress(_) => {}
                 });
             }
         })
@@ -1604,6 +1628,47 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::AllFiles);
     });
     let t = tx.clone();
+    ui.on_stop_video(move || crate::video::stop(&t));
+    let recording: std::rc::Rc<std::cell::RefCell<Option<crate::video::Recording>>> =
+        std::rc::Rc::default();
+    let (t, w, r) = (tx.clone(), ui.as_weak(), std::rc::Rc::clone(&recording));
+    ui.on_start_recording(move |conv| {
+        if let Some(ui) = w.upgrade() {
+            ui.set_record_time("".into());
+            ui.set_record_note("".into());
+            ui.set_record_preview(slint::Image::default());
+        }
+        *r.borrow_mut() = Some(crate::video::Recording::start(
+            conv.to_string(),
+            t.clone(),
+            w.clone(),
+        ));
+    });
+    let (t, r) = (tx.clone(), std::rc::Rc::clone(&recording));
+    ui.on_finish_recording(move |caption| {
+        if let Some(rec) = r.borrow_mut().take() {
+            rec.finish(caption.trim().to_string(), &t);
+        }
+    });
+    let (t, r) = (tx.clone(), std::rc::Rc::clone(&recording));
+    ui.on_cancel_recording(move || {
+        if let Some(rec) = r.borrow_mut().take() {
+            rec.cancel(&t);
+        }
+    });
+    let (t, w) = (tx.clone(), ui.as_weak());
+    ui.on_send_video_file(move |path, caption| {
+        let Some(ui) = w.upgrade() else { return };
+        let conv = ui.get_current_id().to_string();
+        crate::video::send_file(
+            path.trim().into(),
+            conv,
+            caption.trim().to_string(),
+            t.clone(),
+            w.clone(),
+        );
+    });
+    let t = tx.clone();
     let w = ui.as_weak();
     ui.on_open_stories(move |who| {
         if let Some(ui) = w.upgrade() {
@@ -2099,6 +2164,8 @@ mod phone {
         let kind = match what {
             0 | 1 => Pick::Backup,
             3..=5 => Pick::Pictures,
+            // Any file: the platform's decoder says whether it's a video.
+            6 => Pick::File,
             _ => Pick::File,
         };
         let w = ui.as_weak();

@@ -311,18 +311,25 @@ public class EnclaveActivity extends android.app.NativeActivity {
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 lm.getCurrentLocation(gps, null, getMainExecutor(), report);
             } else {
-                lm.requestSingleUpdate(gps, new android.location.LocationListener() {
-                    @Override
-                    public void onLocationChanged(android.location.Location loc) {
-                        report.accept(loc);
-                    }
-                }, android.os.Looper.getMainLooper());
+                singleUpdate(lm, gps, report);
             }
         } catch (SecurityException e) {
             Native.event(Native.LOCATION_FAILED, "Enclave may not use your location. Allow it in Settings → Apps → Enclave → Permissions.");
         } catch (Exception e) {
             Native.event(Native.LOCATION_FAILED, e.toString());
         }
+    }
+
+    /** Android 9 and 10 have no getCurrentLocation: the older one-shot request. */
+    @SuppressWarnings("deprecation")
+    private static void singleUpdate(android.location.LocationManager lm, String provider,
+            java.util.function.Consumer<android.location.Location> report) {
+        lm.requestSingleUpdate(provider, new android.location.LocationListener() {
+            @Override
+            public void onLocationChanged(android.location.Location loc) {
+                report.accept(loc);
+            }
+        }, android.os.Looper.getMainLooper());
     }
 
     /** A geo: link in the chooser, so the person picks the maps app. */
@@ -498,6 +505,16 @@ public class EnclaveActivity extends android.app.NativeActivity {
                 requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, PERMISSION_MICROPHONE);
             }
         });
+    }
+
+    /** The person's own video file, to read with the system's decoders
+     *  (null if it can't be read). */
+    public VideoReader openVideo(String path) {
+        try {
+            return VideoReader.open(path);
+        } catch (java.io.IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     /** Share the screen in a video call (Android asks first); pictures go to

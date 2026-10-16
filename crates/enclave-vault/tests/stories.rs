@@ -26,7 +26,9 @@ fn snapshot(want: impl Fn(&Snapshot) -> bool) -> impl FnMut(Out) -> Option<Snaps
 }
 
 fn photo() -> Vec<u8> {
-    let px: Vec<u8> = (0..48u32 * 32).flat_map(|i| [(i % 251) as u8, 120, 200]).collect();
+    let px: Vec<u8> = (0..48u32 * 32)
+        .flat_map(|i| [(i % 251) as u8, 120, 200])
+        .collect();
     let mut out = Vec::new();
     jpeg_encoder::Encoder::new(&mut out, 90)
         .encode(&px, 48, 32, jpeg_encoder::ColorType::Rgb)
@@ -47,11 +49,21 @@ async fn stories_through_the_engine() {
     )
     .await;
     assert!(s.stories.is_empty());
-    assert!(s.story_audience.iter().find(|p| p.id == sam).unwrap().selected);
+    assert!(
+        s.story_audience
+            .iter()
+            .find(|p| p.id == sam)
+            .unwrap()
+            .selected
+    );
 
     // Words: ours, going to Sam.
-    tx.send(Cmd::PostStory("At the lake".into(), String::new(), Vec::new()))
-        .unwrap();
+    tx.send(Cmd::PostStory(
+        "At the lake".into(),
+        String::new(),
+        Vec::new(),
+    ))
+    .unwrap();
     let s = next(&mut rx, snapshot(|s| !s.stories.is_empty())).await;
     let ours = &s.stories[0];
     assert_eq!((ours.who.as_str(), ours.text.as_str()), ("", "At the lake"));

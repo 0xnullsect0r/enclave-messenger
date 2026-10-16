@@ -82,9 +82,11 @@ pub fn is_gif(bytes: &[u8]) -> bool {
     bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")
 }
 
-/// Whether `bytes` look like a clip (checked properly by [`parse_clip`]).
+/// Whether `bytes` look like a clip, an animation or a video (checked
+/// properly by [`parse_clip`] and [`crate::movie::parse_video`]).
 pub fn is_clip(bytes: &[u8]) -> bool {
-    bytes.len() >= RECORD && bytes.get(RECORD_HEAD..RECORD_HEAD + 4) == Some(&MAGIC[..])
+    (bytes.len() >= RECORD && bytes.get(RECORD_HEAD..RECORD_HEAD + 4) == Some(&MAGIC[..]))
+        || crate::movie::is_video(bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +585,7 @@ pub fn parse_clip(bytes: &[u8]) -> Result<ClipInfo<'_>> {
 /// A clip's poster decoded and shrunk to `max_side`, and its length (ms).
 /// No AV1 is decoded: the poster is the JPEG in the header.
 pub fn clip_poster(bytes: &[u8], max_side: u32) -> Result<(Rgba, u32)> {
-    let info = parse_clip(bytes)?;
+    let info = crate::movie::parse_video(bytes)?;
     let img = crate::thumbnail(info.poster, max_side)?;
     Ok((img, info.duration_ms))
 }

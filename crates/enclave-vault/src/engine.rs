@@ -20,6 +20,7 @@ mod calling;
 mod group_calling;
 mod stories;
 mod transcribing;
+mod videos;
 mod web;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -325,6 +326,9 @@ struct Engine {
     view_once_next: bool,
     /// The last GIF search's results: name and the GIF itself.
     gifs: Vec<(String, Vec<u8>)>,
+    /// A video being made, and one playing.
+    recording: Option<videos::Recording>,
+    playing: Option<videos::Playing>,
     picked: BTreeSet<[u8; 64]>,
     link_offer: Option<enclave_core::LinkOffer>,
     link_status: String,
@@ -750,6 +754,8 @@ fn display(m: &enclave_core::Message, now: u64) -> Msg {
     } else if let Some(a) = &m.attachment {
         let kind = if a.mime.starts_with("image/") {
             "Photo"
+        } else if a.mime == enclave_media::video::CLIP_MIME {
+            "Video"
         } else {
             "File"
         };
@@ -821,6 +827,11 @@ fn display(m: &enclave_core::Message, now: u64) -> Msg {
 fn is_picture(a: &enclave_core::files::Attachment) -> bool {
     (matches!(a.mime.as_str(), "image/jpeg" | "image/png") || is_clip(a))
         && a.size <= PREVIEW_MAX_BYTES
+}
+
+/// A video too large to preview on its own: played when asked.
+fn is_big_video(a: &enclave_core::files::Attachment) -> bool {
+    a.mime == enclave_media::video::CLIP_MIME && a.size > PREVIEW_MAX_BYTES
 }
 
 /// An animated picture (a short AV1 clip): previewed by its poster.
@@ -1210,6 +1221,8 @@ pub async fn run_with(
         staged: Vec::new(),
         view_once_next: false,
         gifs: Vec::new(),
+        recording: None,
+        playing: None,
         picked: BTreeSet::new(),
         link_offer: None,
         link_status: String::new(),
@@ -1879,6 +1892,7 @@ impl Engine {
                 | Cmd::PreviewPack(..)
                 | Cmd::SetPhoto(..)
                 | Cmd::PostStory(..)
+                | Cmd::RecordEnd(..)
                 | Cmd::LoadStickers
                 | Cmd::SendHistory(..)
                 | Cmd::StartJoin
@@ -2595,6 +2609,13 @@ impl Engine {
                 }
             }
             Cmd::OpenStory(key) => self.open_story(&key).await,
+            Cmd::RecordStart(conv, name, w, h) => self.record_start(&conv, &name, w, h).await,
+            Cmd::RecordFrame(rgba) => self.record_frame(rgba).await,
+            Cmd::RecordSound(pcm) => self.record_sound(&pcm).await,
+            Cmd::RecordEnd(caption) => self.record_end(&caption).await,
+            Cmd::RecordCancel => self.recording = None,
+            Cmd::VideoMore(key) => self.video_more(&key).await,
+            Cmd::StopVideo => self.playing = None,
             Cmd::StoryHidden(id, hidden) => {
                 if let (Some(root), Some(c)) = (self.root_of(&id), self.client.as_mut()) {
                     let _ = c.set_story_hidden(&root, hidden);
@@ -3455,12 +3476,23 @@ impl Engine {
                                 (b, clip)
                             });
                         }
-                        (Some(a), None) if is_picture(&a) => {
-                            let clip = is_clip(&a);
+                        // A video plays whatever its size.
+                        (Some(a), None)
+                            if is_picture(&a) || a.mime == enclave_media::video::CLIP_MIME =>
+                        {
+                            let clip = a.mime == enclave_media::video::CLIP_MIME;
                             bytes = c.fetch_file(&a).await.ok().map(|b| (b, clip));
                         }
                         _ => {}
                     }
+                }
+                if let Some((b, true)) = &bytes
+                    && enclave_media::movie::is_video(b)
+                {
+                    let Some((b, _)) = bytes else { return };
+                    self.busy = false;
+                    self.play_video(format!("{id}:{seq}"), b).await;
+                    return;
                 }
                 let clip = self.viewer_frames(bytes).await;
                 let _ = self.out.send(Out::Clip(clip));
@@ -5410,6 +5442,7 @@ impl Engine {
                     row.view_once_ready = m.once.is_some();
                     if !m.deleted {
                         fill_link(row, m.link.as_ref());
+                        row.video = m.attachment.as_ref().is_some_and(is_big_video);
                     }
                     row.my_reaction = m
                         .reactions
@@ -5664,6 +5697,7 @@ impl Engine {
                     row.view_once_ready = m.once.is_some();
                     if !m.deleted {
                         fill_link(row, m.link.as_ref());
+                        row.video = m.attachment.as_ref().is_some_and(is_big_video);
                     }
                     row.my_reaction = m
                         .reactions

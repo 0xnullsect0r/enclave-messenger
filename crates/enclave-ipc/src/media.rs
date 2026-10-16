@@ -86,7 +86,34 @@ pub enum MediaOp {
     /// A GIF's first frame, shrunk to at most this many pixels
     /// ([`MediaOut::Rgba`]; search results).
     GifPoster(u16),
+    /// Start encoding a video (`enclave_media::movie::VideoWriter`) with
+    /// this number, `width × height`.
+    WriterOpen(u32, u16, u16),
+    /// The video's next frame (RGBA at its size).
+    WriterFrame(u32),
+    /// More of its sound (48 kHz mono, 16-bit little-endian).
+    WriterSound(u32),
+    /// Finish it: [`MediaOut::Raw`] `u32 length ‖ u32 width ‖ u32 height ‖
+    /// u32 duration_ms`, big-endian; the file stays to be read.
+    WriterFinish(u32),
+    /// Up to [`VIDEO_READ`] bytes of the finished file from this offset.
+    WriterRead(u32, u32),
+    /// Forget the video.
+    WriterDrop(u32),
+    /// Add bytes to a video to play (this number), in order.
+    PlayerLoad(u32),
+    /// Check the loaded video and get ready to play it, frames at most
+    /// this many pixels: [`MediaOut::Raw`] `u32 width ‖ u32 height ‖ u32
+    /// fps ‖ u32 duration_ms`.
+    PlayerStart(u32, u16),
+    /// The next this-many milliseconds of it ([`MediaOut::Piece`]).
+    PlayerPiece(u32, u16),
+    /// Stop playing it.
+    PlayerDrop(u32),
 }
+
+/// Most of a finished video read at once ([`MediaOp::WriterRead`]).
+pub const VIDEO_READ: usize = 8 << 20;
 
 /// How [`MediaOp::CallDecode`] uses its bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,6 +178,20 @@ pub enum MediaOut {
     /// Bytes as they are (call audio; empty when there is nothing to
     /// say).
     Raw(Vec<u8>),
+    /// A piece of a video playing: frames (all `width × height` RGBA),
+    /// the sound for them (48 kHz mono), and whether it ended.
+    Piece {
+        /// Width.
+        width: u32,
+        /// Height.
+        height: u32,
+        /// Frames.
+        frames: Vec<Vec<u8>>,
+        /// Sound.
+        pcm: Vec<i16>,
+        /// No more after this.
+        done: bool,
+    },
     /// 8-bit RGBA pixels.
     Rgba {
         /// Width.
@@ -207,6 +248,18 @@ impl MediaRequest {
             MediaOp::PageMeta => w.u8(24),
             MediaOp::GifHits => w.u8(25),
             MediaOp::GifPoster(side) => w.u8(26).u32(u32::from(side)),
+            MediaOp::WriterOpen(n, width, height) => {
+                w.u8(27).u32(n).u32(u32::from(width)).u32(u32::from(height))
+            }
+            MediaOp::WriterFrame(n) => w.u8(28).u32(n),
+            MediaOp::WriterSound(n) => w.u8(29).u32(n),
+            MediaOp::WriterFinish(n) => w.u8(30).u32(n),
+            MediaOp::WriterRead(n, at) => w.u8(31).u32(n).u32(at),
+            MediaOp::WriterDrop(n) => w.u8(32).u32(n),
+            MediaOp::PlayerLoad(n) => w.u8(33).u32(n),
+            MediaOp::PlayerStart(n, side) => w.u8(34).u32(n).u32(u32::from(side)),
+            MediaOp::PlayerPiece(n, ms) => w.u8(35).u32(n).u32(u32::from(ms)),
+            MediaOp::PlayerDrop(n) => w.u8(36).u32(n),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -267,6 +320,30 @@ impl MediaRequest {
             24 => MediaOp::PageMeta,
             25 => MediaOp::GifHits,
             26 => MediaOp::GifPoster(u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?),
+            27 => {
+                let n = r.u32()?;
+                let width = u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?;
+                let height = u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?;
+                MediaOp::WriterOpen(n, width, height)
+            }
+            28 => MediaOp::WriterFrame(r.u32()?),
+            29 => MediaOp::WriterSound(r.u32()?),
+            30 => MediaOp::WriterFinish(r.u32()?),
+            31 => {
+                let n = r.u32()?;
+                MediaOp::WriterRead(n, r.u32()?)
+            }
+            32 => MediaOp::WriterDrop(r.u32()?),
+            33 => MediaOp::PlayerLoad(r.u32()?),
+            34 => {
+                let n = r.u32()?;
+                MediaOp::PlayerStart(n, u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?)
+            }
+            35 => {
+                let n = r.u32()?;
+                MediaOp::PlayerPiece(n, u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?)
+            }
+            36 => MediaOp::PlayerDrop(r.u32()?),
             _ => return Err(IpcError::Malformed),
         };
         let bytes = r.bytes()?;
@@ -324,6 +401,22 @@ impl MediaReply {
             }
             Ok(MediaOut::Raw(bytes)) if bytes.len() <= MAX_BYTES => {
                 w.u8(5).bytes(bytes);
+            }
+            Ok(MediaOut::Piece {
+                width,
+                height,
+                frames,
+                pcm,
+                done,
+            }) if frames.iter().map(Vec::len).sum::<usize>() + pcm.len() * 2 <= MAX_BYTES
+                && frames.len() <= MAX_CLIP_FRAMES =>
+            {
+                w.u8(6).u32(*width).u32(*height).u32(frames.len() as u32);
+                for f in frames {
+                    w.bytes(f);
+                }
+                let pcm: Vec<u8> = pcm.iter().flat_map(|s| s.to_le_bytes()).collect();
+                w.bytes(&pcm).bool(*done);
             }
             Ok(_) => {
                 w.u8(0).str("too large");
@@ -395,6 +488,35 @@ impl MediaReply {
                 })
             }
             5 => Ok(MediaOut::Raw(r.bytes()?)),
+            6 => {
+                let (width, height) = (r.u32()?, r.u32()?);
+                let n = r.u32()? as usize;
+                if n > MAX_CLIP_FRAMES {
+                    return Err(IpcError::Malformed);
+                }
+                let mut frames = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let f = r.bytes()?;
+                    if crate::rgba_len(width, height) != Some(f.len()) {
+                        return Err(IpcError::Malformed);
+                    }
+                    frames.push(f);
+                }
+                let pcm = r.bytes()?;
+                if pcm.len() % 2 != 0 {
+                    return Err(IpcError::Malformed);
+                }
+                Ok(MediaOut::Piece {
+                    width,
+                    height,
+                    frames,
+                    pcm: pcm
+                        .chunks_exact(2)
+                        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                        .collect(),
+                    done: r.bool()?,
+                })
+            }
             _ => return Err(IpcError::Malformed),
         };
         r.end()?;

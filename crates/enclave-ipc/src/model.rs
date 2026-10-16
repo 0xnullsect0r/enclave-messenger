@@ -219,6 +219,8 @@ pub struct Msg {
     pub view_once: bool,
     /// ...that this device can still open ([`Cmd::OpenViewOnce`]).
     pub view_once_ready: bool,
+    /// A video too large to preview: shown with a Play button only.
+    pub video: bool,
     /// The sender's link preview: the page's title (empty: none), its
     /// description and site, and whether it has a picture (which comes as
     /// an [`Out::Preview`] for this message, like a picture's).
@@ -783,6 +785,22 @@ pub enum Cmd {
     OpenStory(String),
     /// Hide our stories from a contact (true) or not.
     StoryHidden(String, bool),
+    /// Start a video for a conversation (its name, and the size from
+    /// `enclave_media::movie::video_size`): frames and sound follow, from
+    /// the camera or a video file.
+    RecordStart(String, String, u32, u32),
+    /// The video's next frame: RGBA at its size, 30 a second.
+    RecordFrame(Vec<u8>),
+    /// More of its sound: 48 kHz mono, 16-bit little-endian.
+    RecordSound(Vec<u8>),
+    /// Finish it and send it, with this caption.
+    RecordEnd(String),
+    /// Throw it away.
+    RecordCancel,
+    /// Ask for the next piece of the video playing ([`Out::VideoPiece`]).
+    VideoMore(String),
+    /// Stop the video playing.
+    StopVideo,
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -1035,7 +1053,39 @@ pub enum Out {
     /// A GIF search's results ([`Cmd::GifSearch`]): each one's name, in
     /// order (empty: none found).
     Gifs(Vec<String>),
+    /// A piece of the video playing (after [`Cmd::PlayClip`] on a video,
+    /// then [`Cmd::VideoMore`]).
+    VideoPiece(VideoPiece),
+    /// Frames of the video being made encoded so far (so a file is read
+    /// no faster than that).
+    RecordProgress(u32),
 }
+
+/// A piece of a video playing: about half a second of frames and sound.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VideoPiece {
+    /// Which video (`conversation:seq`), to ask for more.
+    pub key: String,
+    /// Frames a second.
+    pub fps: u32,
+    /// Its whole length (ms).
+    pub duration_ms: u32,
+    /// Width of the frames.
+    pub width: u32,
+    /// Height of the frames.
+    pub height: u32,
+    /// The frames, RGBA.
+    pub frames: Vec<Vec<u8>>,
+    /// The sound for them: 48 kHz mono.
+    pub pcm: Vec<i16>,
+    /// The first piece (start playing).
+    pub first: bool,
+    /// The last piece.
+    pub done: bool,
+}
+
+/// Most frames in a [`VideoPiece`].
+pub const MAX_PIECE_FRAMES: usize = 30;
 
 /// The conversation name a pack preview's pictures come under.
 pub const PACK_PREVIEW: &str = "pack-preview";
@@ -1262,6 +1312,7 @@ impl Snapshot {
                 .str(&m.my_reaction)
                 .bool(m.view_once)
                 .bool(m.view_once_ready)
+                .bool(m.video)
                 .str(&m.link_title)
                 .str(&m.link_description)
                 .str(&m.link_site)
@@ -1520,6 +1571,7 @@ impl Snapshot {
                     my_reaction: r.str()?,
                     view_once: r.bool()?,
                     view_once_ready: r.bool()?,
+                    video: r.bool()?,
                     link_title: r.str()?,
                     link_description: r.str()?,
                     link_site: r.str()?,
@@ -1928,6 +1980,15 @@ impl Cmd {
             Cmd::DeleteStory(k) => w.u8(143).str(k),
             Cmd::OpenStory(k) => w.u8(144).str(k),
             Cmd::StoryHidden(c, on) => w.u8(145).str(c).bool(*on),
+            Cmd::RecordStart(c, n, width, height) => {
+                w.u8(146).str(c).str(n).u32(*width).u32(*height)
+            }
+            Cmd::RecordFrame(b) => w.u8(147).bytes(b),
+            Cmd::RecordSound(b) => w.u8(148).bytes(b),
+            Cmd::RecordEnd(cap) => w.u8(149).str(cap),
+            Cmd::RecordCancel => w.u8(150),
+            Cmd::VideoMore(k) => w.u8(151).str(k),
+            Cmd::StopVideo => w.u8(152),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -2100,6 +2161,13 @@ impl Cmd {
             143 => Cmd::DeleteStory(r.str()?),
             144 => Cmd::OpenStory(r.str()?),
             145 => Cmd::StoryHidden(r.str()?, r.bool()?),
+            146 => Cmd::RecordStart(r.str()?, r.str()?, r.u32()?, r.u32()?),
+            147 => Cmd::RecordFrame(r.bytes()?),
+            148 => Cmd::RecordSound(r.bytes()?),
+            149 => Cmd::RecordEnd(r.str()?),
+            150 => Cmd::RecordCancel,
+            151 => Cmd::VideoMore(r.str()?),
+            152 => Cmd::StopVideo,
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
@@ -2301,6 +2369,28 @@ impl Out {
                 w.u8(21).strs(&names[..names.len().min(MAX_GIFS)]);
                 w.0
             }
+            Out::RecordProgress(n) => {
+                let mut w = Writer::default();
+                w.u8(23).u32(*n);
+                w.0
+            }
+            Out::VideoPiece(p) => {
+                let mut w = Writer::default();
+                let frames = &p.frames[..p.frames.len().min(MAX_PIECE_FRAMES)];
+                w.u8(22)
+                    .str(&p.key)
+                    .u32(p.fps)
+                    .u32(p.duration_ms)
+                    .u32(p.width)
+                    .u32(p.height)
+                    .u32(frames.len() as u32);
+                for f in frames {
+                    w.bytes(f);
+                }
+                let pcm: Vec<u8> = p.pcm.iter().flat_map(|s| s.to_le_bytes()).collect();
+                w.bytes(&pcm).bool(p.first).bool(p.done);
+                w.0
+            }
             Out::Gallery(rows) => {
                 let mut w = Writer::default();
                 let rows = &rows[..rows.len().min(MAX_GALLERY)];
@@ -2434,6 +2524,49 @@ impl Out {
             [20, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::PackPreview(r.str()?, r.u32()?);
+                r.end()?;
+                Ok(o)
+            }
+            [23, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::RecordProgress(r.u32()?);
+                r.end()?;
+                Ok(o)
+            }
+            [22, ..] => {
+                let mut r = Reader(&b[1..]);
+                let key = r.str()?;
+                let (fps, duration_ms, width, height) = (r.u32()?, r.u32()?, r.u32()?, r.u32()?);
+                let n = r.u32()? as usize;
+                if n > MAX_PIECE_FRAMES {
+                    return Err(IpcError::Malformed);
+                }
+                let mut frames = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let f = r.bytes()?;
+                    if crate::rgba_len(width, height) != Some(f.len()) {
+                        return Err(IpcError::Malformed);
+                    }
+                    frames.push(f);
+                }
+                let pcm = r.bytes()?;
+                if pcm.len() % 2 != 0 {
+                    return Err(IpcError::Malformed);
+                }
+                let o = Out::VideoPiece(VideoPiece {
+                    key,
+                    fps,
+                    duration_ms,
+                    width,
+                    height,
+                    frames,
+                    pcm: pcm
+                        .chunks_exact(2)
+                        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                        .collect(),
+                    first: r.bool()?,
+                    done: r.bool()?,
+                });
                 r.end()?;
                 Ok(o)
             }

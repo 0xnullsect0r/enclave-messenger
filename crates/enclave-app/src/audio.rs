@@ -344,6 +344,46 @@ mod tests {
     }
 }
 
+/// The microphone, streaming: every 20 ms frame (48 kHz mono) goes to the
+/// callback until this is dropped (a video's sound).
+pub struct Mic {
+    stop: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl Mic {
+    /// Open the default microphone and start.
+    pub fn start(frame: impl FnMut(Vec<i16>) + Send + 'static) -> Result<Self, String> {
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let (ready, started) = std::sync::mpsc::channel::<Result<(), String>>();
+        let sink: Sink = Arc::new(Mutex::new(Box::new(frame)));
+        std::thread::Builder::new()
+            .name("enclave-video-sound".into())
+            .spawn(move || match microphone(sink) {
+                Ok(input) => {
+                    let _ = ready.send(Ok(()));
+                    let _ = stopped.recv();
+                    drop(input);
+                }
+                Err(e) => {
+                    let _ = ready.send(Err(e));
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        started
+            .recv()
+            .map_err(|_| "the microphone stopped".to_string())??;
+        Ok(Self { stop: Some(stop) })
+    }
+}
+
+impl Drop for Mic {
+    fn drop(&mut self) {
+        if let Some(s) = self.stop.take() {
+            let _ = s.send(());
+        }
+    }
+}
+
 /// Longest voice note (`enclave_media::voice`: 15 minutes).
 pub const MAX_NOTE_SAMPLES: usize = RATE as usize * 15 * 60;
 

@@ -464,6 +464,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
             link_description: m.link_description.clone().into(),
             link_site: m.link_site.clone().into(),
             link_image: m.link_image,
+            video: m.video,
             voice_time: if m.voice_ms > 0 {
                 let s = m.voice_ms.div_ceil(1000);
                 format!("{}:{:02}", s / 60, s % 60).into()

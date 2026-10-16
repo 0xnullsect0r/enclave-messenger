@@ -630,6 +630,14 @@ msgid "Choose a server"
 msgstr "[Çhóósé á sérvér······]"
 
 #: ui/app.slint
+msgid "Choose a video file to send"
+msgstr "[Çhóósé á vídéó fílé tó séñd··········]"
+
+#: enclave-app/src/shell.rs
+msgid "Choose a video to send"
+msgstr "[Çhóósé á vídéó tó séñd········]"
+
+#: ui/app.slint
 msgid "Choose again"
 msgstr "[Çhóósé ágáíñ····]"
 
@@ -913,6 +921,10 @@ msgstr "[Çóúldñ't máké áñ íñvíté líñk. Çhéçk ýóúr çóññé
 msgid "Couldn't make the folder."
 msgstr "[Çóúldñ't máké thé fóldér.··········]"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't make the video. Try again."
+msgstr "[Çóúldñ't máké thé vídéó. Trý ágáíñ.··············]"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't move your account."
 msgstr "[Çóúldñ't móvé ýóúr áççóúñt.··········]"
@@ -1077,6 +1089,10 @@ msgstr "[Çóúldñ't séñd thé répórt. Çhéçk ýóúr çóññéçtíóñ
 msgid "Couldn't send the sticker. Check your connection."
 msgstr "[Çóúldñ't séñd thé stíçkér. Çhéçk ýóúr çóññéçtíóñ.···················]"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't send the video. Check your connection."
+msgstr "[Çóúldñ't séñd thé vídéó. Çhéçk ýóúr çóññéçtíóñ.··················]"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't send to the group yet. We'll keep trying."
 msgstr "[Çóúldñ't séñd tó thé gróúp ýét. Wé'll kéép trýíñg.····················]"
@@ -1116,6 +1132,10 @@ msgstr "[Çóúldñ't stárt líñkíñg. Trý ágáíñ.···········�
 #: enclave-vault/src/engine/calling.rs enclave-vault/src/engine/group_calling.rs
 msgid "Couldn't start the call's audio."
 msgstr "[Çóúldñ't stárt thé çáll's áúdíó.············]"
+
+#: enclave-vault/src/engine/videos.rs
+msgid "Couldn't start the video."
+msgstr "[Çóúldñ't stárt thé vídéó.··········]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't take it down everywhere yet. We'll keep trying."
@@ -1234,6 +1254,10 @@ msgid "Disappearing messages: on"
 msgstr "[Dísáppéáríñg mésságés: óñ··········]"
 
 #: ui/app.slint
+msgid "Discard"
+msgstr "[Dísçárd··]"
+
+#: ui/app.slint
 msgid "Do this if someone may have seen your words. You'll get 24 new words, and the old ones stop working."
 msgstr "[Dó thís íf sóméóñé máý hávé sééñ ýóúr wórds. Ýóú'll gét 24 ñéw wórds, áñd thé óld óñés stóp wórkíñg.········································]"
 
@@ -1345,6 +1369,10 @@ msgstr "[Éñçlávé çóúldñ't ópéñ thís óñé.············
 msgid "Enclave couldn't open this pack."
 msgstr "[Éñçlávé çóúldñ't ópéñ thís páçk.············]"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Enclave couldn't play this one."
+msgstr "[Éñçlávé çóúldñ't pláý thís óñé.············]"
+
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that GIF, so it wasn't sent. Try another file."
 msgstr "[Éñçlávé çóúldñ't réád thát GÍF, só ít wásñ't séñt. Trý áñóthér fílé.···························]"
@@ -1360,6 +1388,10 @@ msgstr "[Éñçlávé çóúldñ't réád thát píçtúré. Trý áñóthér ó
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit WAV file."
 msgstr "[Éñçlávé çóúldñ't réád thát réçórdíñg, só ít wásñ't séñt. Úsé á 16-bít WÁV fílé.·······························]"
+
+#: enclave-app/src/video.rs
+msgid "Enclave couldn't read that video. Try another file."
+msgstr "[Éñçlávé çóúldñ't réád thát vídéó. Trý áñóthér fílé.····················]"
 
 #: ui/app.slint
 msgid "Enclave is built with the work of these projects, under the licences below."
@@ -1525,6 +1557,10 @@ msgstr "[Fílés çáñ çóñtáíñ hármfúl çóñtéñt, áñd áñóthér 
 msgid "Finding where you are…"
 msgstr "[Fíñdíñg whéré ýóú áré…········]"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "Finishing the video…"
+msgstr "[Fíñíshíñg thé vídéó…········]"
+
 #: enclave-vault/src/engine.rs
 msgid "First device"
 msgstr "[Fírst dévíçé····]"
@@ -1584,6 +1620,14 @@ msgstr "[Géttíñg ít réádý…······]"
 #: ui/app.slint
 msgid "Getting the pack…"
 msgstr "[Géttíñg thé páçk…······]"
+
+#: enclave-app/src/video.rs
+msgid "Getting the video ready…"
+msgstr "[Géttíñg thé vídéó réádý…·········]"
+
+#: enclave-app/src/video.rs
+msgid "Getting the video ready… {}%"
+msgstr "[Géttíñg thé vídéó réádý… ··········{}%]"
 
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
@@ -2133,6 +2177,10 @@ msgstr "[Ñó máps ápp héré ópéñs pláçés.············]"
 msgid "No messages found. Search only looks on this device."
 msgstr "[Ñó mésságés fóúñd. Séárçh óñlý lóóks óñ thís dévíçé.····················]"
 
+#: enclave-app/src/video.rs
+msgid "No microphone: the video will be silent."
+msgstr "[Ñó míçróphóñé: thé vídéó wíll bé síléñt.················]"
+
 #: ui/app.slint
 msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr "[Ñó phóñé ñúmbér. Ñó émáíl. Óñlý thé péóplé ýóú çhóósé çáñ réáçh ýóú.···························]"
@@ -2566,8 +2614,16 @@ msgid "Play animated picture, {}"
 msgstr "[Pláý áñímátéd píçtúré, ·········{}]"
 
 #: ui/app.slint
+msgid "Play the video {}"
+msgstr "[Pláý thé vídéó ······{}]"
+
+#: ui/app.slint
 msgid "Play the voice note"
 msgstr "[Pláý thé vóíçé ñóté·······]"
+
+#: ui/app.slint
+msgid "Play video"
+msgstr "[Pláý vídéó····]"
 
 #: ui/app.slint
 msgid "Play · {}"
@@ -2644,6 +2700,14 @@ msgstr "[Réád réçéípts·····]"
 #: ui/app.slint
 msgid "Read the report"
 msgstr "[Réád thé répórt······]"
+
+#: ui/app.slint
+msgid "Record"
+msgstr "[Réçórd··]"
+
+#: ui/app.slint
+msgid "Record a video"
+msgstr "[Réçórd á vídéó·····]"
 
 #: ui/app.slint
 msgid "Record a voice note"
@@ -2941,6 +3005,10 @@ msgstr "[Séñd·]"
 msgid "Send a file"
 msgstr "[Séñd á fílé····]"
 
+#: ui/app.slint
+msgid "Send a video file…"
+msgstr "[Séñd á vídéó fílé…·······]"
+
 #: enclave-vault/src/engine.rs
 msgid "Send history now"
 msgstr "[Séñd hístórý ñów······]"
@@ -3190,6 +3258,10 @@ msgid "Stickers"
 msgstr "[Stíçkérs···]"
 
 #: ui/app.slint
+msgid "Stop and send"
+msgstr "[Stóp áñd séñd·····]"
+
+#: ui/app.slint
 msgid "Stop it"
 msgstr "[Stóp ít··]"
 
@@ -3309,6 +3381,10 @@ msgstr "[Thát ñámé ís tákéñ, ór lóóks tóó múçh líké óñé thá
 msgid "That passphrase doesn't open this profile."
 msgstr "[Thát pássphrásé dóésñ't ópéñ thís prófílé.················]"
 
+#: enclave-vault/src/engine/videos.rs
+msgid "That video is too large to send."
+msgstr "[Thát vídéó ís tóó lárgé tó séñd.············]"
+
 #: enclave-vault/src/engine.rs
 msgid "That voice note couldn't be played."
 msgstr "[Thát vóíçé ñóté çóúldñ't bé pláýéd.··············]"
@@ -3320,6 +3396,14 @@ msgstr "[Thát vóíçé ñóté çóúldñ't bé réád.···········�
 #: enclave-vault/src/engine.rs
 msgid "That's an in-person code. It only works in Meet in person, with them next to you."
 msgstr "[Thát's áñ íñ-pérsóñ çódé. Ít óñlý wórks íñ Méét íñ pérsóñ, wíth thém ñéxt tó ýóú.································]"
+
+#: enclave-app/src/video.rs
+msgid "That's as long as a video can be."
+msgstr "[Thát's ás lóñg ás á vídéó çáñ bé.·············]"
+
+#: enclave-vault/src/engine/videos.rs
+msgid "That's as long as a video can be. Send it, or start again."
+msgstr "[Thát's ás lóñg ás á vídéó çáñ bé. Séñd ít, ór stárt ágáíñ.·······················]"
 
 #: enclave-vault/src/engine.rs
 msgid "That's too long: at most 280 bytes."
@@ -3374,6 +3458,10 @@ msgid "The camera is busy or can't be opened."
 msgstr "[Thé çámérá ís búsý ór çáñ't bé ópéñéd.···············]"
 
 #: ui/app.slint
+msgid "The camera starts when you press Record."
+msgstr "[Thé çámérá stárts whéñ ýóú préss Réçórd.················]"
+
+#: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
 msgstr "[Thé gróúp móvés fróm thé ñéxt dáý óñçé móré tháñ hálf óf íts ádmíñs vóté fór thé sámé sérvér. Vótés çóúñt fór 7 dáýs, áñd éárlíér mésságés stáý whéré théý áré.·······························································]"
 
@@ -3420,6 +3508,10 @@ msgstr "[Thé tráñsçríptíóñ módél çóúldñ't bé ópéñéd. Túrñ t
 #: enclave-app/src/shell.rs
 msgid "The update didn't install: {}"
 msgstr "[Thé úpdáté dídñ't íñstáll: ··········{}]"
+
+#: enclave-app/src/video.rs
+msgid "The video was longer than 10 minutes, so only the start is sent."
+msgstr "[Thé vídéó wás lóñgér tháñ 10 míñútés, só óñlý thé stárt ís séñt.·························]"
 
 #: ui/app.slint
 msgid "Their app deletes it if it cooperates. Someone may already have copied, saved or seen it."
@@ -3593,6 +3685,14 @@ msgstr "[Thís mésságé wás délétéd.··········]"
 msgid "This network seems to block Tor"
 msgstr "[Thís ñétwórk sééms tó blóçk Tór············]"
 
+#: enclave-app/src/video.rs
+msgid "This system can't read videos."
+msgstr "[Thís sýstém çáñ't réád vídéós.············]"
+
+#: enclave-app/src/video.rs
+msgid "This system has no video decoder. Install GStreamer to send videos."
+msgstr "[Thís sýstém hás ñó vídéó déçódér. Íñstáll GStréámér tó séñd vídéós.··························]"
+
 #: ui/app.slint
 msgid "This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap."
 msgstr "[Thís sýstém's kérñél dóésñ't súppórt Láñdlóçk, só Éñçlávé çáñ't fúllý límít whíçh fílés íts kéý-hóldíñg párt çáñ réáçh. Ít stíll rúñs wíth íts óthér prótéçtíóñs. Á kérñél fróm 5.13 óñ, wíth Láñdlóçk túrñéd óñ, çlósés thís gáp.··························································································]"
@@ -3746,6 +3846,10 @@ msgid "Unpin for everyone"
 msgstr "[Úñpíñ fór évérýóñé·······]"
 
 #: ui/app.slint
+msgid "Up to 10 minutes. It's encoded again on this device before it's sent, and sealed like any file."
+msgstr "[Úp tó 10 míñútés. Ít's éñçódéd ágáíñ óñ thís dévíçé béfóré ít's séñt, áñd séáléd líké áñý fílé.······································]"
+
+#: ui/app.slint
 msgid "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them."
 msgstr "[Úp tó 10, ás ýóú séé thém. Thís çhát ís óff thé réçórd, só thé ópérátór çáñ't çóñfírm whó wróté thém.········································]"
 
@@ -3849,6 +3953,10 @@ msgstr "[Vérífý thís búíld······]"
 msgid "Version {}"
 msgstr "[Vérsíóñ ···{}]"
 
+#: ui/app.slint
+msgid "Video"
+msgstr "[Vídéó··]"
+
 #: enclave-vault/src/engine/calling.rs ui/app.slint
 msgid "Video call"
 msgstr "[Vídéó çáll····]"
@@ -3860,6 +3968,10 @@ msgstr "[Vídéó çáll thé gróúp········]"
 #: ui/app.slint
 msgid "Video call {}"
 msgstr "[Vídéó çáll ····{}]"
+
+#: ui/app.slint
+msgid "Video, {}"
+msgstr "[Vídéó, ··{}]"
 
 #: ui/app.slint
 msgid "View"
@@ -3944,6 +4056,10 @@ msgstr "[Wáñts tó tálk·····]"
 #: ui/app.slint
 msgid "What should people call you?"
 msgstr "[Whát shóúld péóplé çáll ýóú?···········]"
+
+#: ui/app.slint
+msgid "What the camera sees"
+msgstr "[Whát thé çámérá séés········]"
 
 #: ui/app.slint
 msgid "When you send a link, this device fetches the page's title and picture through Tor and sends them with your message, so the other side fetches nothing. The site sees a Tor connection, not you. Off, links go as plain text."

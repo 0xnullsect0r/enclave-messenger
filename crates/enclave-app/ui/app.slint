@@ -146,6 +146,8 @@ export struct MessageRow {
     link-description: string,
     link-site: string,
     link-image: bool,
+    // A video too large to preview: played when asked.
+    video: bool,
 }
 
 // Someone with stories showing (the strip above the conversations).
@@ -240,7 +242,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, story, my-story, story-audience, gifs, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, record, story, my-story, story-audience, gifs, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -566,6 +568,14 @@ component Bubble inherits HorizontalLayout {
                         accessible-label: @tr("Open {} in a maps app", root.msg.location);
                         clicked => { root.open-map(); }
                     }
+                }
+            }
+            if root.msg.video && root.msg.clip-time == "" && !root.msg.deleted: HorizontalLayout {
+                alignment: start;
+                QuietButton {
+                    text: @tr("Play video");
+                    accessible-label: @tr("Play the video {}", root.msg.file);
+                    clicked => { root.play-clip(); }
                 }
             }
             if root.msg.clip-time != "" && !root.msg.deleted: HorizontalLayout {
@@ -1332,6 +1342,21 @@ export component AppWindow inherits Window {
     in property <int> moved;
     callback change-words();
     callback play-clip(string, string);
+    // A video playing (frames come from the vault a piece at a time).
+    in property <image> video-frame;
+    in property <bool> video-has-frame;
+    in property <string> video-time;
+    callback stop-video();
+    // Recording a video from the camera, and sending a video file.
+    in property <image> record-preview;
+    in-out property <bool> recording;
+    in property <string> record-time;
+    in property <string> record-note;
+    in-out property <string> record-caption;
+    callback start-recording(string);
+    callback finish-recording(string);
+    callback cancel-recording();
+    callback send-video-file(string, string);
     in-out property <[image]> player-frames;
     in-out property <int> player-index;
     in property <duration> player-interval: 66ms;
@@ -1486,7 +1511,7 @@ export component AppWindow inherits Window {
     callback set-server-backup(bool);
     // Open the system's file dialog for a path field: 0 the backup to
     // restore, 1 a backup to check, 2 a file to send, 3 sticker pictures,
-    // 4 our profile photo, 5 a story's picture.
+    // 4 our profile photo, 5 a story's picture, 6 a video to send.
     callback browse(int);
     // Scanning a code with the camera into a field: 1 add, 2 meet in
     // person, 3 a friend's new device (recovery share), 4 linking a device,
@@ -3436,12 +3461,63 @@ export component AppWindow inherits Window {
                 clicked => { root.sheet = Sheet.location; }
             }
         }
-        if root.gif-search: HorizontalLayout {
+        HorizontalLayout {
+            spacing: Tokens.space-s;
             alignment: start;
             QuietButton {
+                text: @tr("Record a video");
+                outlined: true;
+                clicked => { root.record-caption = root.attach-caption; root.sheet = Sheet.record; }
+            }
+            QuietButton {
+                text: @tr("Send a video file…");
+                outlined: true;
+                accessible-label: @tr("Choose a video file to send");
+                clicked => { root.browse(6); }
+            }
+            if root.gif-search: QuietButton {
                 text: @tr("Search GIFs");
                 outlined: true;
                 clicked => { root.sheet = Sheet.gifs; }
+            }
+        }
+    }
+
+    if root.sheet == Sheet.record: SheetFrame {
+        title: @tr("Record a video");
+        close => { if root.recording { root.cancel-recording(); root.recording = false; } root.sheet = Sheet.attach; }
+        Secondary { text: @tr("Up to 10 minutes. It's encoded again on this device before it's sent, and sealed like any file."); }
+        Rectangle {
+            height: 240px;
+            border-radius: Tokens.radius-control;
+            background: #1b1f1d;
+            clip: true;
+            if root.recording: Image { source: root.record-preview; width: parent.width; height: parent.height; image-fit: contain; accessible-role: image; accessible-label: @tr("What the camera sees"); }
+            if !root.recording: Text { text: @tr("The camera starts when you press Record."); color: #F6F3EC; horizontal-alignment: center; vertical-alignment: center; wrap: word-wrap; width: parent.width - 2 * Tokens.space-m; }
+        }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            if root.recording: Rectangle { width: 10px; height: 10px; border-radius: 5px; background: Tokens.danger; y: (parent.height - self.height) / 2; }
+            Caption { text: root.recording ? (root.record-time == "" ? "0:00" : root.record-time) : ""; vertical-alignment: center; }
+            if root.record-note != "": Caption { text: root.record-note; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+        }
+        Field { placeholder: @tr("Add a caption (optional)"); text <=> root.record-caption; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            alignment: start;
+            if !root.recording: PrimaryButton {
+                text: @tr("Record");
+                enabled: !root.busy;
+                clicked => { root.recording = true; root.start-recording(root.current-id); }
+            }
+            if root.recording: PrimaryButton {
+                text: @tr("Stop and send");
+                clicked => { root.recording = false; root.finish-recording(root.record-caption); root.record-caption = ""; root.sheet = Sheet.none; }
+            }
+            if root.recording: QuietButton {
+                text: @tr("Discard");
+                danger: true;
+                clicked => { root.recording = false; root.cancel-recording(); }
             }
         }
     }
@@ -5291,13 +5367,28 @@ export component AppWindow inherits Window {
     }
 
     if root.sheet == Sheet.player: SheetFrame {
-        title: root.player-once ? @tr("View once") : root.player-frames.length == 1 ? @tr("Picture") : @tr("Animated picture");
-        // A view-once picture goes with the sheet.
+        title: root.video-has-frame ? @tr("Video") : root.player-once ? @tr("View once") : root.player-frames.length == 1 ? @tr("Picture") : @tr("Animated picture");
+        // A view-once picture goes with the sheet; a video stops.
         close => {
             if root.player-once { root.player-frames = []; root.player-once = false; }
+            root.stop-video();
             root.sheet = Sheet.none;
         }
-        if root.player-frames.length == 0: Secondary { text: root.busy ? @tr("Getting it ready…") : @tr("Enclave couldn't open this one."); }
+        if root.video-has-frame: Rectangle {
+            height: self.width * root.video-frame.height / max(1, root.video-frame.width);
+            border-radius: Tokens.radius-control;
+            clip: true;
+            Image {
+                source: root.video-frame;
+                width: parent.width;
+                height: parent.height;
+                image-fit: contain;
+                accessible-role: image;
+                accessible-label: @tr("Video, {}", root.video-time);
+            }
+        }
+        if root.video-has-frame: Caption { text: root.video-time; }
+        if root.player-frames.length == 0 && !root.video-has-frame: Secondary { text: root.busy ? @tr("Getting it ready…") : @tr("Enclave couldn't open this one."); }
         if root.player-frames.length > 0: Rectangle {
             height: self.width * root.player-frames[0].height / max(1, root.player-frames[0].width);
             border-radius: Tokens.radius-control;

@@ -107,7 +107,9 @@ dev-transport = ["enclave-vault/dev-transport"]
 demo = ["enclave-vault/demo"]
 
 [dependencies]
-enclave-platform = { path = "../enclave-platform", features = ["window"] }
+enclave-platform = { path = "../enclave-platform", features = ["window", "video"] }
+# Videos: their size and limits (`src/video.rs`).
+enclave-media = { path = "../enclave-media" }
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-vault = { path = "../enclave-vault" }
 enclave-crash = { path = "../enclave-crash" }
@@ -168,13 +170,13 @@ x11rb = "0.13"
 [target.'cfg(target_os = "android")'.dependencies]
 slint = { version = "1.18", default-features = false, features = ["backend-android-activity-06", "renderer-femtovg"] }
 # The phone's pickers, camera, notifications, clipboard (enclave_platform::phone).
-enclave-platform = { path = "../enclave-platform", features = ["window", "phone"] }
+enclave-platform = { path = "../enclave-platform", features = ["window", "phone", "video"] }
 
 # iOS: winit with the software renderer (no OpenGL on iOS, and no Skia
 # binaries to download).
 [target.'cfg(target_os = "ios")'.dependencies]
 slint = { version = "1.18", default-features = false, features = ["backend-winit", "unstable-winit-030"] }
-enclave-platform = { path = "../enclave-platform", features = ["window", "phone"] }
+enclave-platform = { path = "../enclave-platform", features = ["window", "phone", "video"] }
 
 [dev-dependencies]
 # The tests run the demo.
