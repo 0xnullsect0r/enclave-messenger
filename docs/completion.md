@@ -70,5 +70,6 @@ Work that code alone cannot finish. Each is made ready so that it needs one acti
 | G12 | FIPS 207 (HQC) final | Draft-based implementation behind a flag | NIST | open |
 | G13 | Post-quantum Sphinx in nym-sdk | Adapter behind a feature | Nym | open |
 | G14 | Licence grant for equix/hashx (LGPL-3.0-only) | Not needed: the proof of work is Enclave's own Equihash⟨60,3⟩ over BLAKE2b (ADR 0004) | — | resolved |
+| G15 | Human `cargo vet` audits of the crypto, randomness, TLS, parser and Tor crates | `supply-chain/` (imports from six organisations; every other crate exempted at its locked version; CI job `cargo-vet`), the list of crates to audit in `supply-chain/README.md` | Reviewers who read each crate and run `cargo vet certify` | prepared |
 
 Signing credentials the release pipeline needs (Apple Developer account, Android keystore, AUR SSH key) are provided by the maintainers as CI secrets; a Windows code-signing certificate is not, so Windows installers ship unsigned until one is added (`ENCLAVE_WIN_SIGN_CMD`).

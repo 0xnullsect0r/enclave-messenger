@@ -89,6 +89,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
 
+  vet:
+    name: cargo-vet
+    runs-on: ubuntu-24.04
+    # Every dependency is audited (ours or imported) or listed as an
+    # exemption in supply-chain/config.toml; supply-chain/README.md says
+    # which exemptions still need a human audit.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: cargo install --locked cargo-vet@0.10.2
+      - run: cargo vet --locked
+
   deny-ios:
     name: cargo-deny (iOS licences)
     runs-on: ubuntu-24.04
