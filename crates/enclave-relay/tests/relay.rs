@@ -241,9 +241,18 @@ fn tickets_cost_their_proof_of_work() {
     let mut relay = Relay::new([0xC; 16], "c", addr("203.0.113.5:4000"), day).unwrap();
     relay.set_ticket_effort(4);
     let (_, public) = wg_key(&mut rng);
-    // Work done at a lower effort than the relay asks is refused.
-    let (cheap, _) = ticket::request(relay.ticket_key(), public, 600, 1, &mut rng).unwrap();
-    assert!(relay.issue_ticket(&cheap, NOW).is_err());
+    // Work done at a lower effort than the relay asks is refused, except
+    // by luck: a proof at effort 1 meets effort 4 one time in four, since
+    // effort scales the expected work. Of 16, about 12 are refused; fewer
+    // than 4 has a chance under 4 × 10⁻⁶, while a relay that ignored the
+    // effort would refuse none.
+    let refused = (0..16)
+        .filter(|_| {
+            let (cheap, _) = ticket::request(relay.ticket_key(), public, 600, 1, &mut rng).unwrap();
+            relay.issue_ticket(&cheap, NOW).is_err()
+        })
+        .count();
+    assert!(refused >= 4, "only {refused} of 16 cheap proofs refused");
     let (paid, client) = ticket::request(relay.ticket_key(), public, 600, 4, &mut rng).unwrap();
     let reply = relay.issue_ticket(&paid, NOW).unwrap();
     let issued = client.finish(&reply, NOW - 30).unwrap();

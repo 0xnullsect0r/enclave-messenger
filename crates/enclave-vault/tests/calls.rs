@@ -13,6 +13,11 @@ use enclave_vault::calls::{self, CallEvent, FromCall, Plan, ToCall};
 use enclave_vault::media::Media as Helpers;
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+/// These tests run calls in real time (20 ms frames, jitter buffers,
+/// relays): run at once, they starve each other on a small CI runner, so
+/// they take turns.
+static REALTIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 
@@ -71,6 +76,7 @@ fn tone(frame: usize) -> Vec<i16> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn audio_goes_both_ways_through_two_relays() {
+    let _turn = REALTIME.lock().await;
     let dir = std::env::temp_dir().join(format!("enclave-call-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
@@ -188,6 +194,7 @@ async fn audio_goes_both_ways_through_two_relays() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn video_goes_through_two_relays() {
+    let _turn = REALTIME.lock().await;
     let dir = std::env::temp_dir().join(format!("enclave-video-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
@@ -259,6 +266,7 @@ async fn video_goes_through_two_relays() {
 /// relays kept as the fallback.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn audio_goes_directly_once_both_agree() {
+    let _turn = REALTIME.lock().await;
     let dir = std::env::temp_dir().join(format!("enclave-direct-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
@@ -350,6 +358,7 @@ async fn audio_goes_directly_once_both_agree() {
 /// the audio rate until a call takes the leg over, which then carries it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_standby_tunnel_carries_the_call_that_takes_it() {
+    let _turn = REALTIME.lock().await;
     let dir = std::env::temp_dir().join(format!("enclave-standby-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
@@ -420,6 +429,7 @@ async fn a_standby_tunnel_carries_the_call_that_takes_it() {
 /// reaction reach the others.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn a_group_call_through_an_sfu_relay() {
+    let _turn = REALTIME.lock().await;
     use enclave_calls::signal::CallKeys;
     let dir = std::env::temp_dir().join(format!("enclave-group-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -621,6 +631,7 @@ async fn a_group_call_through_an_sfu_relay() {
 /// Someone else in the lobby, with the same link, can't open the admission.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn a_guest_is_let_in_from_a_call_links_lobby() {
+    let _turn = REALTIME.lock().await;
     use enclave_calls::link::{self, CallLink, CallSecret, Knocker, LobbyMessage};
     use enclave_calls::signal::CallKeys;
     let dir = std::env::temp_dir().join(format!("enclave-lobby-{}", std::process::id()));
@@ -827,6 +838,7 @@ async fn a_guest_is_let_in_from_a_call_links_lobby() {
 /// carry as many packets a second before and after.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_shared_screen_goes_in_place_of_the_camera() {
+    let _turn = REALTIME.lock().await;
     let dir = std::env::temp_dir().join(format!("enclave-screen-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
@@ -1059,6 +1071,7 @@ async fn watched_call(name: &str) -> (Seen, Vec<std::time::Instant>) {
 /// sizes, each at the same rate.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rt19_call_packets_constant_size_and_rate() {
+    let _turn = REALTIME.lock().await;
     let (seen, m) = watched_call("rt19-shape").await;
     let talking = per_second(&seen, m[0], m[1]);
     let silent = per_second(&seen, m[1], m[2]);
@@ -1074,6 +1087,7 @@ async fn rt19_call_packets_constant_size_and_rate() {
 /// RT-19: muting keeps the rate: the muted phase looks like talking.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rt19_mute_keeps_rate() {
+    let _turn = REALTIME.lock().await;
     let (seen, m) = watched_call("rt19-mute").await;
     same_shape(
         &per_second(&seen, m[0], m[1]),
@@ -1086,6 +1100,7 @@ async fn rt19_mute_keeps_rate() {
 /// starting on it (and its end) shows nothing on the link.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rt18_max_mode_tunnel_constant() {
+    let _turn = REALTIME.lock().await;
     let dir = std::env::temp_dir().join(format!("enclave-rt18-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
@@ -1273,6 +1288,7 @@ fn write_wav(path: &std::path::Path, pcm: &[i16]) {
 /// are written there as WAVs, for the nightly job's PESQ score.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn call_quality_under_loss() {
+    let _turn = REALTIME.lock().await;
     const FRAMES: usize = 400; // 8 s
     let talk = speech(FRAMES);
     let reference = envelope(&talk);

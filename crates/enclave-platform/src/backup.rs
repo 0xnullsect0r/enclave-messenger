@@ -10,9 +10,14 @@
 //!   Specification), which restic, borg, tar `--exclude-caches` and others
 //!   skip.
 //!
-//! Android (`allowBackup="false"`) and iOS (`NSURLIsExcludedFromBackupKey`)
-//! set theirs in the app shells. Windows has no per-folder exclusion for
-//! File History; the profile lives under the local (not roaming) AppData.
+//! - **iOS**: the directory's `NSURLIsExcludedFromBackupKey` resource
+//!   value (iCloud and computer backups skip it), with the `phone` feature
+//!   the app turns on.
+//!
+//! Android sets its exclusion in the manifest (`allowBackup="false"`,
+//! `fullBackupContent="false"` and `dataExtractionRules`). Windows has no
+//! per-folder exclusion for File History; the profile lives under the
+//! local (not roaming) AppData.
 
 use std::path::Path;
 
@@ -95,12 +100,76 @@ fn os_is_excluded(dir: &Path) -> bool {
     usize::try_from(n).is_ok_and(|n| buf.get(..n) == Some(mac::VALUE))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(target_os = "ios", feature = "phone"))]
+mod ios {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSNumber, NSString, NSURL, NSURLIsExcludedFromBackupKey};
+    use std::path::Path;
+
+    fn url(dir: &Path) -> Option<Retained<NSURL>> {
+        let p = dir.to_str()?;
+        Some(NSURL::fileURLWithPath_isDirectory(
+            &NSString::from_str(p),
+            true,
+        ))
+    }
+
+    pub fn exclude(dir: &Path) -> bool {
+        let Some(url) = url(dir) else {
+            return false;
+        };
+        let yes = NSNumber::new_bool(true);
+        // SAFETY: a file URL, Foundation's constant key, and an NSNumber,
+        // the type the key takes.
+        unsafe {
+            url.setResourceValue_forKey_error(Some(&yes), NSURLIsExcludedFromBackupKey)
+                .is_ok()
+        }
+    }
+
+    pub fn is_excluded(dir: &Path) -> bool {
+        let Some(url) = url(dir) else {
+            return false;
+        };
+        let mut value: Option<Retained<AnyObject>> = None;
+        // SAFETY: as in `exclude`; the value comes back as an NSNumber.
+        let read =
+            unsafe { url.getResourceValue_forKey_error(&mut value, NSURLIsExcludedFromBackupKey) };
+        read.is_ok()
+            && value
+                .and_then(|v| v.downcast::<NSNumber>().ok())
+                .is_some_and(|n| n.as_bool())
+    }
+}
+
+#[cfg(all(target_os = "ios", feature = "phone"))]
+fn os_exclude(dir: &Path) -> bool {
+    ios::exclude(dir)
+}
+
+#[cfg(all(target_os = "ios", feature = "phone"))]
+fn os_is_excluded(dir: &Path) -> bool {
+    ios::is_excluded(dir)
+}
+
+/// iOS without the app's `phone` feature can't mark the directory.
+#[cfg(all(target_os = "ios", not(feature = "phone")))]
+fn os_exclude(_dir: &Path) -> bool {
+    false
+}
+
+#[cfg(all(target_os = "ios", not(feature = "phone")))]
+fn os_is_excluded(_dir: &Path) -> bool {
+    false
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn os_exclude(_dir: &Path) -> bool {
     true
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn os_is_excluded(_dir: &Path) -> bool {
     true
 }
