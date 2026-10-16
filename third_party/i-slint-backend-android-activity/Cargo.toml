@@ -87,12 +87,23 @@ features = [
     "std",
     "image-decoders",
     "svg",
+    # ENCLAVE PATCH: text inputs in the AccessKit tree.
+    "accessibility-text",
 ]
 default-features = false
 
 [target.'cfg(target_os = "android")'.dependencies.i-slint-renderer-skia]
 version = "=1.18.1"
 default-features = false
+
+# ENCLAVE PATCH: AccessKit on Android (`accesskit.rs`), the versions the
+# desktop backends use.
+[target.'cfg(target_os = "android")'.dependencies.accesskit]
+version = "0.24.1"
+
+[target.'cfg(target_os = "android")'.dependencies.accesskit_android]
+version = "=0.7.5"
+features = ["embedded-dex"]
 
 [target.'cfg(target_os = "android")'.dependencies.jni]
 version = "0.22"

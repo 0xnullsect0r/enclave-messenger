@@ -49,6 +49,11 @@ pub struct AndroidWindowAdapter {
 
     long_press: RefCell<Option<LongPressDetection>>,
     last_pressed_state: Cell<ButtonState>,
+
+    // ENCLAVE PATCH: the AccessKit bridge (`accesskit.rs`), made when the
+    // native window first appears.
+    self_weak: std::rc::Weak<Self>,
+    accesskit: std::cell::OnceCell<RefCell<crate::accesskit::AccessKitAdapter>>,
 }
 
 impl WindowAdapter for AndroidWindowAdapter {
@@ -164,6 +169,40 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
         });
     }
 
+    fn handle_focus_change(
+        &self,
+        _old: Option<i_slint_core::items::ItemRc>,
+        _new: Option<i_slint_core::items::ItemRc>,
+    ) {
+        if let Some(a) = self.accesskit.get()
+            && let Ok(mut a) = a.try_borrow_mut()
+        {
+            a.handle_focus_item_change();
+        }
+    }
+
+    fn register_item_tree(&self, _: i_slint_core::item_tree::ItemTreeRefPin) {
+        // Already borrowed: the new items were made while the tree was being
+        // built, so they are in it.
+        if let Some(a) = self.accesskit.get()
+            && let Ok(mut a) = a.try_borrow_mut()
+        {
+            a.reload_tree();
+        }
+    }
+
+    fn unregister_item_tree(
+        &self,
+        component: i_slint_core::item_tree::ItemTreeRef,
+        _: &mut dyn Iterator<Item = core::pin::Pin<i_slint_core::items::ItemRef<'_>>>,
+    ) {
+        if let Some(a) = self.accesskit.get()
+            && let Ok(mut a) = a.try_borrow_mut()
+        {
+            a.unregister_item_tree(component);
+        }
+    }
+
     fn safe_area_inset(&self) -> PhysicalEdges {
         if self.fullscreen.get() {
             Default::default()
@@ -194,6 +233,8 @@ impl AndroidWindowAdapter {
             show_cursor_handles: Cell::new(false),
             long_press: RefCell::default(),
             last_pressed_state: Cell::new(ButtonState(0)),
+            self_weak: w.clone(),
+            accesskit: Default::default(),
         })
     }
 
@@ -229,6 +270,7 @@ impl AndroidWindowAdapter {
                         false,
                     )?;
                     self.resize()?;
+                    self.start_accesskit();
 
                     // Fixes a problem for old Android versions: the soft input always prompt out on startup.
                     #[cfg(feature = "native-activity")]
@@ -511,6 +553,59 @@ impl AndroidWindowAdapter {
         );
         self.offset.set(Default::default());
         Ok(())
+    }
+
+    /// ENCLAVE PATCH: start the AccessKit bridge once there is a window.
+    fn start_accesskit(&self) {
+        if self.accesskit.get().is_none()
+            && let Some(a) = crate::accesskit::AccessKitAdapter::new(
+                self.self_weak.clone(),
+                &self.app,
+                self.event_queue.clone(),
+            )
+        {
+            let _ = self.accesskit.set(RefCell::new(a));
+        }
+    }
+
+    /// Where Slint draws in the native window, in logical pixels (the
+    /// bridge's bounds are relative to the window's origin).
+    pub(crate) fn accesskit_origin(&self) -> i_slint_core::lengths::LogicalPoint {
+        let o = self.offset.get();
+        let s = self.window.scale_factor();
+        i_slint_core::lengths::LogicalPoint::new(o.x as f32 / s, o.y as f32 / s)
+    }
+
+    pub(crate) fn with_access_kit_adapter_from_weak_window_adapter(
+        w: std::rc::Weak<Self>,
+        callback: impl FnOnce(&RefCell<crate::accesskit::AccessKitAdapter>),
+    ) {
+        if let Some(w) = w.upgrade()
+            && let Some(a) = w.accesskit.get()
+        {
+            callback(a);
+        }
+    }
+
+    /// AccessKit asked for the tree (posted from the UI thread).
+    pub(crate) fn accesskit_initial_tree(&self) {
+        if let Some(a) = self.accesskit.get()
+            && let Ok(mut a) = a.try_borrow_mut()
+        {
+            a.initial_tree_requested();
+        }
+    }
+
+    /// AccessKit asked for an action (posted from the UI thread).
+    pub(crate) fn accesskit_action(&self, request: ::accesskit::ActionRequest) {
+        let deferred = self
+            .accesskit
+            .get()
+            .and_then(|a| a.try_borrow_mut().ok())
+            .and_then(|mut a| a.action_requested(request));
+        if let Some(d) = deferred {
+            d.invoke(&self.window);
+        }
     }
 
     pub fn do_render(&self) -> Result<(), PlatformError> {
