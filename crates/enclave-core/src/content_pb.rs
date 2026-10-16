@@ -173,6 +173,8 @@ pub struct Attachment {
     pub caption: String,
     #[prost(uint32, tag = "4")]
     pub expires: u32,
+    #[prost(bool, tag = "5")]
+    pub view_once: bool,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -375,11 +377,13 @@ pub fn to_pb(c: &Content) -> Pb {
             attachment,
             caption,
             expires,
+            view_once,
         } => Kind::Attachment(Attachment {
             id: id.to_vec(),
             attachment,
             caption,
             expires,
+            view_once,
         }),
         Content::React { target, emoji } => Kind::React(React {
             target: target.to_vec(),
@@ -541,6 +545,7 @@ pub fn from_pb(p: Pb) -> Result<Content> {
             attachment: a.attachment,
             caption: a.caption,
             expires: a.expires,
+            view_once: a.view_once,
         },
         Kind::React(r) => Content::React {
             target: id(r.target)?,

@@ -130,6 +130,10 @@ pub struct GroupMessage {
     pub forwarded: bool,
     /// It mentions us (`@` and our name; the sender lists who).
     pub mentions_me: bool,
+    /// View once (`group_files.rs`): each member can open it once.
+    pub view_once: bool,
+    /// A view-once file not opened yet, never in `attachment`.
+    pub once: Option<Attachment>,
 }
 
 fn put_who(w: &mut Writer, who: &Option<[u8; 64]>) {
@@ -163,7 +167,7 @@ impl GroupMessage {
 
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(10).u64(self.seq);
+        w.u8(11).u64(self.seq);
         put_who(&mut w, &self.from);
         w.bytes(self.from_name.as_bytes())
             .bytes(self.text.as_bytes())
@@ -202,14 +206,23 @@ impl GroupMessage {
             Some(r) => w.u8(1).fixed(r),
             None => w.u8(0),
         };
-        w.u8(u8::from(self.forwarded) | (u8::from(self.mentions_me) << 1));
+        w.u8(u8::from(self.forwarded)
+            | (u8::from(self.mentions_me) << 1)
+            | (u8::from(self.view_once) << 2));
+        w.bytes(
+            &self
+                .once
+                .as_ref()
+                .map(Attachment::encode)
+                .unwrap_or_default(),
+        );
         w.finish()
     }
 
     fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=10).contains(&version) {
+        if !(1..=11).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let seq = r.u64()?;
@@ -267,16 +280,26 @@ impl GroupMessage {
         } else {
             String::new()
         };
-        let (reply_to, forwarded, mentions_me) = if version >= 10 {
+        let (reply_to, forwarded, mentions_me, view_once) = if version >= 10 {
             let reply = match r.u8()? {
                 0 => None,
                 1 => Some(r.array()?),
                 _ => return Err(ProtoError::Decode),
             };
             let f = r.u8()?;
-            (reply, f & 1 != 0, f & 2 != 0)
+            (reply, f & 1 != 0, f & 2 != 0, f & 4 != 0)
         } else {
-            (None, false, false)
+            (None, false, false, false)
+        };
+        let once = if version >= 11 {
+            let b = r.bytes(crate::content::MAX_ATTACHMENT_REF)?;
+            if b.is_empty() {
+                None
+            } else {
+                Some(Attachment::decode(b)?)
+            }
+        } else {
+            None
         };
         r.end()?;
         Ok(Self {
@@ -299,6 +322,8 @@ impl GroupMessage {
             reply_to,
             forwarded,
             mentions_me,
+            view_once,
+            once,
         })
     }
 }
@@ -1617,6 +1642,8 @@ impl Client {
             reply_to: None,
             forwarded: false,
             mentions_me: false,
+            view_once: false,
+            once: None,
         };
         self.put_group_message(gid, &m)?;
         self.save_group(gid)?;

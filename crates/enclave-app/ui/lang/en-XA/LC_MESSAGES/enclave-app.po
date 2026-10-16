@@ -869,6 +869,10 @@ msgstr "[Çóúldñ't máké thé fóldér.··········]"
 msgid "Couldn't move your account."
 msgstr "[Çóúldñ't móvé ýóúr áççóúñt.··········]"
 
+#: enclave-vault/src/engine.rs
+msgid "Couldn't open it. It may have been opened already, on this device or another."
+msgstr "[Çóúldñ't ópéñ ít. Ít máý hávé bééñ ópéñéd álréádý, óñ thís dévíçé ór áñóthér.······························]"
+
 #: enclave-app/src/shell.rs
 msgid "Couldn't open that file."
 msgstr "[Çóúldñ't ópéñ thát fílé.·········]"
@@ -1444,6 +1448,10 @@ msgstr "[Fóldérs··]"
 #: ui/app.slint
 msgid "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through."
 msgstr "[Fór á móñth, áñýóñé séñdíñg ýóú á mésságé réqúést hás théír dévíçé dó móré wórk fírst. Ít slóws dówñ péóplé whó séñd máñý; óñé mésságé fróm á fríéñd stíll góés thróúgh.···································································]"
+
+#: ui/app.slint
+msgid "For a picture or animation: it can be opened once, and isn't kept, on either side. A screenshot or another camera can still capture it."
+msgstr "[Fór á píçtúré ór áñímátíóñ: ít çáñ bé ópéñéd óñçé, áñd ísñ't képt, óñ éíthér sídé. Á sçrééñshót ór áñóthér çámérá çáñ stíll çáptúré ít.······················································]"
 
 #: ui/app.slint
 msgid "Forward"
@@ -2050,6 +2058,10 @@ msgid "Nothing in this folder yet. Open a conversation's details to add it."
 msgstr "[Ñóthíñg íñ thís fóldér ýét. Ópéñ á çóñvérsátíóñ's détáíls tó ádd ít.···························]"
 
 #: ui/app.slint
+msgid "Nothing stops a screenshot or another camera, and the sender isn't told if you take one."
+msgstr "[Ñóthíñg stóps á sçrééñshót ór áñóthér çámérá, áñd thé séñdér ísñ't tóld íf ýóú táké óñé.···································]"
+
+#: ui/app.slint
 msgid "Notifications"
 msgstr "[Ñótífíçátíóñs·····]"
 
@@ -2146,6 +2158,10 @@ msgid "Only people you talk to can see this."
 msgstr "[Óñlý péóplé ýóú tálk tó çáñ séé thís.··············]"
 
 #: enclave-vault/src/engine.rs
+msgid "Only pictures and animations can be sent to view once."
+msgstr "[Óñlý píçtúrés áñd áñímátíóñs çáñ bé séñt tó víéw óñçé.·····················]"
+
+#: enclave-vault/src/engine.rs
 msgid "Only the device that holds your recovery words can delete your account."
 msgstr "[Óñlý thé dévíçé thát hólds ýóúr réçóvérý wórds çáñ délété ýóúr áççóúñt.····························]"
 
@@ -2184,6 +2200,10 @@ msgstr "[Ópéñ wíth…····]"
 #: ui/app.slint
 msgid "Open-source licences"
 msgstr "[Ópéñ-sóúrçé líçéñçés········]"
+
+#: ui/app.slint
+msgid "Opened"
+msgstr "[Ópéñéd··]"
 
 #: ui/app.slint
 msgid "Opening…"
@@ -2304,6 +2324,18 @@ msgstr "[Péóplé whó úsé thé líñk wáít úñtíl ýóú lét thém íñ
 #: ui/app.slint
 msgid "Photo"
 msgstr "[Phótó··]"
+
+#: ui/app.slint
+msgid "Photo to view once, not opened yet. "
+msgstr "[Phótó tó víéw óñçé, ñót ópéñéd ýét. ··············]"
+
+#: ui/app.slint
+msgid "Photo to view once, opened. "
+msgstr "[Phótó tó víéw óñçé, ópéñéd. ···········]"
+
+#: ui/app.slint
+msgid "Photo to view once. Tap to open."
+msgstr "[Phótó tó víéw óñçé. Táp tó ópéñ.············]"
 
 #: ui/app.slint
 msgid "Photo: "
@@ -2716,6 +2748,14 @@ msgstr "[Séñdíñg…···]"
 #: enclave-vault/src/engine.rs
 msgid "Sent a file"
 msgstr "[Séñt á fílé····]"
+
+#: ui/app.slint
+msgid "Sent to view once"
+msgstr "[Séñt tó víéw óñçé······]"
+
+#: ui/app.slint
+msgid "Sent to view once. "
+msgstr "[Séñt tó víéw óñçé. ·······]"
 
 #: ui/app.slint
 msgid "Set"
@@ -3546,6 +3586,10 @@ msgid "Video call {}"
 msgstr "[Vídéó çáll ····{}]"
 
 #: ui/app.slint
+msgid "View once"
+msgstr "[Víéw óñçé···]"
+
+#: ui/app.slint
 msgid "Voice note"
 msgstr "[Vóíçé ñóté····]"
 
@@ -3688,6 +3732,10 @@ msgstr "[Ýóú blóçkéd ····{}]"
 #: enclave-vault/src/engine.rs
 msgid "You can link up to 4 devices. Remove one first."
 msgstr "[Ýóú çáñ líñk úp tó 4 dévíçés. Rémóvé óñé fírst.··················]"
+
+#: ui/app.slint
+msgid "You can look at this once. Enclave doesn't keep it, here or on your other devices, and it can't be saved or forwarded."
+msgstr "[Ýóú çáñ lóók át thís óñçé. Éñçlávé dóésñ't kéép ít, héré ór óñ ýóúr óthér dévíçés, áñd ít çáñ't bé sávéd ór fórwárdéd.···············································]"
 
 #: enclave-vault/src/engine.rs
 msgid "You can pin {} conversations. Unpin one first."

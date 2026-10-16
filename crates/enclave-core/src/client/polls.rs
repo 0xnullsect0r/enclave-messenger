@@ -114,6 +114,8 @@ pub(crate) enum Rich {
         id: [u8; 16],
         attachment: Vec<u8>,
         caption: String,
+        /// View once (`group_files.rs`).
+        view_once: bool,
     },
     /// A sticker (`stickers.rs`): the pack's reference and an index.
     Sticker {
@@ -209,11 +211,13 @@ impl Rich {
                 id,
                 attachment,
                 caption,
+                view_once,
             } => {
                 w.u8(K_ATTACHMENT)
                     .fixed(id)
                     .bytes(attachment)
-                    .bytes(caption.as_bytes());
+                    .bytes(caption.as_bytes())
+                    .u8(u8::from(*view_once));
             }
             Rich::Sticker { id, pack, index } => {
                 w.u8(K_STICKER).fixed(id).bytes(pack).u8(*index);
@@ -320,6 +324,11 @@ impl Rich {
                 id: r.array()?,
                 attachment: r.bytes(MAX_ATTACHMENT_REF)?.to_vec(),
                 caption: get_str(&mut r, MAX_TEXT)?,
+                view_once: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(ProtoError::Decode),
+                },
             },
             K_HOST_VOTE => Rich::HostVote { host: r.array()? },
             K_CALL => Rich::Call {
@@ -1081,7 +1090,10 @@ impl Client {
                 id,
                 attachment,
                 caption,
-            } => self.on_group_attachment(gid, from, name, id, &attachment, &caption, now),
+                view_once,
+            } => {
+                self.on_group_attachment(gid, from, name, id, &attachment, &caption, view_once, now)
+            }
             Rich::Sticker { id, pack, index } => {
                 self.on_group_sticker(gid, from, name, id, &pack, index, now)
             }

@@ -284,6 +284,8 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
             poll_anonymous: m.poll_anonymous,
             poll_voters: i32::try_from(m.poll_voters).unwrap_or(i32::MAX),
             my_reaction: m.my_reaction.clone().into(),
+            view_once: m.view_once,
+            view_once_ready: m.view_once_ready,
             voice_time: if m.voice_ms > 0 {
                 let s = m.voice_ms.div_ceil(1000);
                 format!("{}:{:02}", s / 60, s % 60).into()

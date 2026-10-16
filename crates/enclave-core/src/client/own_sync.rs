@@ -67,6 +67,7 @@ const T_HISTORY_ASK: u8 = 8;
 const T_GROUP_SENT: u8 = 9;
 const T_HISTORY_LAN: u8 = 10;
 const T_HISTORY_DONE: u8 = 11;
+const T_VIEWED: u8 = 12;
 /// Most addresses a LAN offer lists.
 const MAX_LAN_ADDRS: usize = 8;
 
@@ -134,6 +135,12 @@ pub(crate) enum SyncItem {
     HistoryDone {
         hash: [u8; 16],
         ok: bool,
+    },
+    /// A view-once file was opened (`c ‖ root` or `g ‖ group id`, and the
+    /// message id): our other devices drop it too.
+    Viewed {
+        place: Vec<u8>,
+        id: [u8; 16],
     },
 }
 
@@ -203,6 +210,9 @@ impl SyncItem {
             }
             SyncItem::HistoryDone { hash, ok } => {
                 w.u8(T_HISTORY_DONE).fixed(hash).u8(u8::from(*ok));
+            }
+            SyncItem::Viewed { place, id } => {
+                w.u8(T_VIEWED).bytes(place).fixed(id);
             }
             SyncItem::GroupSent { group, ids } => {
                 w.u8(T_GROUP_SENT).fixed(group).u8(ids.len() as u8);
@@ -287,6 +297,10 @@ impl SyncItem {
                     addrs,
                 }
             }
+            T_VIEWED => SyncItem::Viewed {
+                place: r.bytes(65).ok()?.to_vec(),
+                id: r.array().ok()?,
+            },
             T_HISTORY_DONE => SyncItem::HistoryDone {
                 hash: r.array().ok()?,
                 ok: r.u8().ok()? == 1,
@@ -325,6 +339,7 @@ impl SyncItem {
             SyncItem::HistoryAsk => b"h".to_vec(),
             SyncItem::HistoryLan { device, .. } => [&b"hl"[..], device].concat(),
             SyncItem::HistoryDone { hash, .. } => [&b"hd"[..], hash].concat(),
+            SyncItem::Viewed { place, id } => [&b"v"[..], place, id].concat(),
             SyncItem::GroupSent { group, .. } => [&b"m"[..], group].concat(),
         }
     }
@@ -429,6 +444,19 @@ impl Client {
             .store
             .get(NS_OWN_QUEUE, &probe.queue_key())?
             .and_then(|b| SyncItem::decode(&b)))
+    }
+
+    /// Tell our other devices a view-once file was opened.
+    pub(crate) fn queue_viewed(
+        &mut self,
+        place: &super::search::Place,
+        id: [u8; 16],
+    ) -> Result<()> {
+        let place = match place {
+            super::search::Place::Contact(r) => [&b"c"[..], &r[..]].concat(),
+            super::search::Place::Group(g) => [&b"g"[..], &g[..]].concat(),
+        };
+        self.queue_own(SyncItem::Viewed { place, id })
     }
 
     /// Queue `ids` of `to` as read for our other devices, with what is
@@ -647,6 +675,22 @@ impl Client {
                 }
                 SyncItem::HistoryDone { hash, ok } => {
                     self.on_history_done(dev, &hash, ok)?;
+                }
+                SyncItem::Viewed { place, id } => {
+                    let gone = match (place.first(), place.get(1..)) {
+                        (Some(b'c'), Some(r)) => match <[u8; 64]>::try_from(r) {
+                            Ok(root) => self.viewed_elsewhere(&root, &id)?,
+                            Err(_) => false,
+                        },
+                        (Some(b'g'), Some(g)) => match <[u8; 32]>::try_from(g) {
+                            Ok(gid) => self.group_viewed_elsewhere(&gid, &id)?,
+                            Err(_) => false,
+                        },
+                        _ => false,
+                    };
+                    if gone {
+                        events.push(Event::Synced);
+                    }
                 }
                 SyncItem::GroupSent { group, ids } => {
                     let now = self.now();

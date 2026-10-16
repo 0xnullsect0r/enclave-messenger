@@ -107,6 +107,8 @@ pub enum Content {
         caption: String,
         /// Disappearing timer.
         expires: u32,
+        /// View once: the recipient can open it once, and it isn't kept.
+        view_once: bool,
     },
     /// Set (or, with an empty emoji, remove) our reaction to a message.
     React {
@@ -555,6 +557,7 @@ impl Content {
                 attachment,
                 caption,
                 expires,
+                view_once,
             } => {
                 if attachment.len() > MAX_ATTACHMENT_REF
                     || caption.len() > MAX_TEXT
@@ -566,7 +569,8 @@ impl Content {
                     .fixed(id)
                     .bytes(attachment)
                     .bytes(caption.as_bytes())
-                    .u32(*expires);
+                    .u32(*expires)
+                    .u8(u8::from(*view_once));
             }
             Content::React { target, emoji } => {
                 if emoji.len() > MAX_REACTION {
@@ -837,6 +841,11 @@ impl Content {
                 attachment: r.bytes(MAX_ATTACHMENT_REF)?.to_vec(),
                 caption: get_str(&mut r, MAX_TEXT)?,
                 expires: timer(r.u32()?)?,
+                view_once: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(ProtoError::Decode),
+                },
             },
             K_REACT => Content::React {
                 target: r.array()?,
@@ -1020,6 +1029,7 @@ mod tests {
                 attachment: vec![3; 300],
                 caption: "look".into(),
                 expires: 0,
+                view_once: true,
             },
             Content::React {
                 target: [4; 16],

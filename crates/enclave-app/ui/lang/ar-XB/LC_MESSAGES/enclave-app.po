@@ -869,6 +869,10 @@ msgstr "‫Couldn't make the folder.‬"
 msgid "Couldn't move your account."
 msgstr "‫Couldn't move your account.‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Couldn't open it. It may have been opened already, on this device or another."
+msgstr "‫Couldn't open it. It may have been opened already, on this device or another.‬"
+
 #: enclave-app/src/shell.rs
 msgid "Couldn't open that file."
 msgstr "‫Couldn't open that file.‬"
@@ -1444,6 +1448,10 @@ msgstr "‫Folders‬"
 #: ui/app.slint
 msgid "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through."
 msgstr "‫For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through.‬"
+
+#: ui/app.slint
+msgid "For a picture or animation: it can be opened once, and isn't kept, on either side. A screenshot or another camera can still capture it."
+msgstr "‫For a picture or animation: it can be opened once, and isn't kept, on either side. A screenshot or another camera can still capture it.‬"
 
 #: ui/app.slint
 msgid "Forward"
@@ -2050,6 +2058,10 @@ msgid "Nothing in this folder yet. Open a conversation's details to add it."
 msgstr "‫Nothing in this folder yet. Open a conversation's details to add it.‬"
 
 #: ui/app.slint
+msgid "Nothing stops a screenshot or another camera, and the sender isn't told if you take one."
+msgstr "‫Nothing stops a screenshot or another camera, and the sender isn't told if you take one.‬"
+
+#: ui/app.slint
 msgid "Notifications"
 msgstr "‫Notifications‬"
 
@@ -2146,6 +2158,10 @@ msgid "Only people you talk to can see this."
 msgstr "‫Only people you talk to can see this.‬"
 
 #: enclave-vault/src/engine.rs
+msgid "Only pictures and animations can be sent to view once."
+msgstr "‫Only pictures and animations can be sent to view once.‬"
+
+#: enclave-vault/src/engine.rs
 msgid "Only the device that holds your recovery words can delete your account."
 msgstr "‫Only the device that holds your recovery words can delete your account.‬"
 
@@ -2184,6 +2200,10 @@ msgstr "‫Open with…‬"
 #: ui/app.slint
 msgid "Open-source licences"
 msgstr "‫Open-source licences‬"
+
+#: ui/app.slint
+msgid "Opened"
+msgstr "‫Opened‬"
 
 #: ui/app.slint
 msgid "Opening…"
@@ -2304,6 +2324,18 @@ msgstr "‫People who use the link wait until you let them in.‬"
 #: ui/app.slint
 msgid "Photo"
 msgstr "‫Photo‬"
+
+#: ui/app.slint
+msgid "Photo to view once, not opened yet. "
+msgstr "‫Photo to view once, not opened yet. ‬"
+
+#: ui/app.slint
+msgid "Photo to view once, opened. "
+msgstr "‫Photo to view once, opened. ‬"
+
+#: ui/app.slint
+msgid "Photo to view once. Tap to open."
+msgstr "‫Photo to view once. Tap to open.‬"
 
 #: ui/app.slint
 msgid "Photo: "
@@ -2716,6 +2748,14 @@ msgstr "‫Sending…‬"
 #: enclave-vault/src/engine.rs
 msgid "Sent a file"
 msgstr "‫Sent a file‬"
+
+#: ui/app.slint
+msgid "Sent to view once"
+msgstr "‫Sent to view once‬"
+
+#: ui/app.slint
+msgid "Sent to view once. "
+msgstr "‫Sent to view once. ‬"
 
 #: ui/app.slint
 msgid "Set"
@@ -3546,6 +3586,10 @@ msgid "Video call {}"
 msgstr "‫Video call ‬{}"
 
 #: ui/app.slint
+msgid "View once"
+msgstr "‫View once‬"
+
+#: ui/app.slint
 msgid "Voice note"
 msgstr "‫Voice note‬"
 
@@ -3688,6 +3732,10 @@ msgstr "‫You blocked ‬{}"
 #: enclave-vault/src/engine.rs
 msgid "You can link up to 4 devices. Remove one first."
 msgstr "‫You can link up to 4 devices. Remove one first.‬"
+
+#: ui/app.slint
+msgid "You can look at this once. Enclave doesn't keep it, here or on your other devices, and it can't be saved or forwarded."
+msgstr "‫You can look at this once. Enclave doesn't keep it, here or on your other devices, and it can't be saved or forwarded.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "You can pin {} conversations. Unpin one first."

@@ -29,6 +29,9 @@ fn today(now: u64) -> u32 {
 fn preview_of(content: &Content) -> Option<String> {
     Some(match content {
         Content::Text { text, .. } => text.clone(),
+        Content::Attachment {
+            view_once: true, ..
+        } => "Sent a photo to view once".into(),
         Content::Attachment { caption, .. } if !caption.is_empty() => caption.clone(),
         Content::Attachment { .. } => "Sent a file".into(),
         Content::Sticker { .. } => "Sent a sticker".into(),
@@ -48,6 +51,9 @@ pub(crate) fn group_preview(content: &[u8], flags: u8) -> Option<String> {
     if flags & FLAG_RICH != 0 {
         return match super::polls::Rich::decode(content).ok()? {
             super::polls::Rich::Poll { question, .. } => Some(format!("Poll: {question}")),
+            super::polls::Rich::Attachment {
+                view_once: true, ..
+            } => Some("Sent a photo to view once".into()),
             super::polls::Rich::Attachment { caption, .. } if !caption.is_empty() => Some(caption),
             super::polls::Rich::Attachment { .. } => Some("Sent a file".into()),
             super::polls::Rich::Sticker { .. } => Some("Sent a sticker".into()),

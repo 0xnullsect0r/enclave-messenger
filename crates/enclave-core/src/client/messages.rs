@@ -109,6 +109,12 @@ pub struct Message {
     pub mentions_me: bool,
     /// The poll this message asks ([`Client::poll_in`]).
     pub poll: Option<MsgId>,
+    /// View once: the file can be opened once ([`Client::open_view_once`]),
+    /// by its recipient only.
+    pub view_once: bool,
+    /// A view-once file not opened yet. It is never in `attachment`, so
+    /// nothing else downloads, previews or keeps it; gone once opened.
+    pub once: Option<Attachment>,
 }
 
 /// How a text is sent: as an answer to another message, or forwarded.
@@ -149,12 +155,14 @@ impl Message {
             forwarded: false,
             mentions_me: false,
             poll: None,
+            view_once: false,
+            once: None,
         }
     }
 
     pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(8).u64(self.seq).fixed(&self.id);
+        w.u8(9).u64(self.seq).fixed(&self.id);
         w.u8(u8::from(self.outgoing))
             .u8(u8::from(self.delivered))
             .u8(u8::from(self.read))
@@ -204,18 +212,27 @@ impl Message {
             Some(r) => w.u8(1).fixed(r),
             None => w.u8(0),
         };
-        w.u8(u8::from(self.forwarded) | (u8::from(self.mentions_me) << 1));
+        w.u8(u8::from(self.forwarded)
+            | (u8::from(self.mentions_me) << 1)
+            | (u8::from(self.view_once) << 2));
         match &self.poll {
             Some(p) => w.u8(1).fixed(p),
             None => w.u8(0),
         };
+        w.bytes(
+            &self
+                .once
+                .as_ref()
+                .map(Attachment::encode)
+                .unwrap_or_default(),
+        );
         w.finish()
     }
 
     pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(2..=8).contains(&version) {
+        if !(2..=9).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let s = |r: &mut Reader<'_>, n| {
@@ -279,19 +296,29 @@ impl Message {
         } else {
             String::new()
         };
-        let (reply_to, forwarded, mentions_me) = if version >= 8 {
+        let (reply_to, forwarded, mentions_me, view_once) = if version >= 8 {
             let reply = match r.u8()? {
                 0 => None,
                 1 => Some(r.array()?),
                 _ => return Err(ProtoError::Decode),
             };
             let f = r.u8()?;
-            (reply, f & 1 != 0, f & 2 != 0)
+            (reply, f & 1 != 0, f & 2 != 0, f & 4 != 0)
         } else {
-            (None, false, false)
+            (None, false, false, false)
         };
         let poll = if version >= 8 && r.u8()? == 1 {
             Some(r.array()?)
+        } else {
+            None
+        };
+        let once = if version >= 9 {
+            let b = r.bytes(crate::content::MAX_ATTACHMENT_REF)?;
+            if b.is_empty() {
+                None
+            } else {
+                Some(Attachment::decode(b)?)
+            }
         } else {
             None
         };
@@ -323,6 +350,8 @@ impl Message {
             forwarded,
             mentions_me,
             poll,
+            view_once,
+            once,
         })
     }
 
@@ -671,6 +700,34 @@ impl Client {
         data: &[u8],
         caption: &str,
     ) -> Result<Message> {
+        self.send_file_message(root, name, mime, data, caption, false)
+            .await
+    }
+
+    /// Send a file to be viewed once: the recipient can open it once
+    /// ([`Client::open_view_once`]) and keeps nothing; we keep no copy
+    /// either, so our message only says it was sent.
+    pub async fn send_view_once(
+        &mut self,
+        root: &[u8; 64],
+        name: &str,
+        mime: &str,
+        data: &[u8],
+        caption: &str,
+    ) -> Result<Message> {
+        self.send_file_message(root, name, mime, data, caption, true)
+            .await
+    }
+
+    async fn send_file_message(
+        &mut self,
+        root: &[u8; 64],
+        name: &str,
+        mime: &str,
+        data: &[u8],
+        caption: &str,
+        view_once: bool,
+    ) -> Result<Message> {
         if caption.len() > MAX_TEXT {
             return Err(CoreError::TooLong);
         }
@@ -688,16 +745,21 @@ impl Client {
         }
         let id: MsgId = self.rng.array("core/msg-id")?;
         let mut m = self.new_message(root, id, true, caption, timer, now)?;
-        m.attachment = Some(att.clone());
+        if view_once {
+            m.view_once = true;
+        } else {
+            m.attachment = Some(att.clone());
+            // Keep our own copy so we never download what we sent.
+            self.store
+                .put(NS_FILES, &att.hash[..32], data, &mut self.rng)?;
+        }
         self.put_message(root, &m)?;
-        // Keep our own copy so we never download what we sent.
-        self.store
-            .put(NS_FILES, &att.hash[..32], data, &mut self.rng)?;
         let content = Content::Attachment {
             id,
             attachment: att.encode(),
             caption: caption.to_string(),
             expires: timer,
+            view_once,
         };
         let sent = self.send_tracked(root, id, &content, now).await?;
         self.send_self_copy(root, &content, now).await?;
@@ -713,6 +775,33 @@ impl Client {
         let m = self.get_message(root, seq)?;
         let att = m.attachment.ok_or(CoreError::NotFound)?;
         self.fetch_file(&att).await
+    }
+
+    /// Open a view-once file, once: downloaded and verified but never
+    /// cached, then its reference is dropped here and on our other devices,
+    /// so it can't be opened again. Screenshots and cameras remain possible;
+    /// the app says so.
+    pub async fn open_view_once(&mut self, root: &[u8; 64], seq: u64) -> Result<Vec<u8>> {
+        let mut m = self.get_message(root, seq)?;
+        let att = m.once.take().ok_or(CoreError::NotFound)?;
+        // Gone before the download: a crash or a second tap can't reopen it.
+        self.put_message(root, &m)?;
+        self.queue_viewed(&Place::Contact(*root), m.id)?;
+        let now = self.now();
+        let parts = self.fetch_chunks(&att, now).await?;
+        Ok(files::finish(&att, &parts)?)
+    }
+
+    /// A view-once file opened on another of our devices.
+    pub(crate) fn viewed_elsewhere(&mut self, root: &[u8; 64], id: &MsgId) -> Result<bool> {
+        let Ok(mut m) = self.find(root, id) else {
+            return Ok(false);
+        };
+        if m.once.take().is_none() {
+            return Ok(false);
+        }
+        self.put_message(root, &m)?;
+        Ok(true)
     }
 
     /// A file's bytes: from the local cache, or downloaded (every chunk of
@@ -773,6 +862,7 @@ impl Client {
                 attachment,
                 caption,
                 expires,
+                view_once,
             } => {
                 self.note_receipt(root, id);
                 if self.find(root, &id).is_ok() {
@@ -780,7 +870,12 @@ impl Client {
                 }
                 let att = Attachment::decode(&attachment)?;
                 let mut m = self.new_message(root, id, false, &caption, expires, now)?;
-                m.attachment = Some(att);
+                if view_once {
+                    m.view_once = true;
+                    m.once = Some(att);
+                } else {
+                    m.attachment = Some(att);
+                }
                 self.put_message(root, &m)?;
                 self.bump_unread(root)?;
                 events.push(Event::Message {
@@ -955,10 +1050,16 @@ impl Client {
                 attachment,
                 caption,
                 expires,
+                view_once,
             } => {
                 if self.find(to, &id).is_err() {
                     let mut m = self.new_message(to, id, true, &caption, expires, now)?;
-                    m.attachment = Some(Attachment::decode(&attachment)?);
+                    // Sent as view once from another of our devices: nothing
+                    // to open here either.
+                    m.view_once = view_once;
+                    if !view_once {
+                        m.attachment = Some(Attachment::decode(&attachment)?);
+                    }
                     m.sent = true;
                     self.put_message(to, &m)?;
                     events.push(Event::Message {

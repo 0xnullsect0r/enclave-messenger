@@ -867,6 +867,10 @@ msgstr ""
 msgid "Couldn't move your account."
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Couldn't open it. It may have been opened already, on this device or another."
+msgstr ""
+
 #: enclave-app/src/shell.rs
 msgid "Couldn't open that file."
 msgstr ""
@@ -1441,6 +1445,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "For a month, anyone sending you a message request has their device do more work first. It slows down people who send many; one message from a friend still goes through."
+msgstr ""
+
+#: ui/app.slint
+msgid "For a picture or animation: it can be opened once, and isn't kept, on either side. A screenshot or another camera can still capture it."
 msgstr ""
 
 #: ui/app.slint
@@ -2048,6 +2056,10 @@ msgid "Nothing in this folder yet. Open a conversation's details to add it."
 msgstr ""
 
 #: ui/app.slint
+msgid "Nothing stops a screenshot or another camera, and the sender isn't told if you take one."
+msgstr ""
+
+#: ui/app.slint
 msgid "Notifications"
 msgstr ""
 
@@ -2144,6 +2156,10 @@ msgid "Only people you talk to can see this."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "Only pictures and animations can be sent to view once."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "Only the device that holds your recovery words can delete your account."
 msgstr ""
 
@@ -2181,6 +2197,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Open-source licences"
+msgstr ""
+
+#: ui/app.slint
+msgid "Opened"
 msgstr ""
 
 #: ui/app.slint
@@ -2301,6 +2321,18 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Photo"
+msgstr ""
+
+#: ui/app.slint
+msgid "Photo to view once, not opened yet. "
+msgstr ""
+
+#: ui/app.slint
+msgid "Photo to view once, opened. "
+msgstr ""
+
+#: ui/app.slint
+msgid "Photo to view once. Tap to open."
 msgstr ""
 
 #: ui/app.slint
@@ -2713,6 +2745,14 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Sent a file"
+msgstr ""
+
+#: ui/app.slint
+msgid "Sent to view once"
+msgstr ""
+
+#: ui/app.slint
+msgid "Sent to view once. "
 msgstr ""
 
 #: ui/app.slint
@@ -3544,6 +3584,10 @@ msgid "Video call {}"
 msgstr ""
 
 #: ui/app.slint
+msgid "View once"
+msgstr ""
+
+#: ui/app.slint
 msgid "Voice note"
 msgstr ""
 
@@ -3685,6 +3729,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "You can link up to 4 devices. Remove one first."
+msgstr ""
+
+#: ui/app.slint
+msgid "You can look at this once. Enclave doesn't keep it, here or on your other devices, and it can't be saved or forwarded."
 msgstr ""
 
 #: enclave-vault/src/engine.rs

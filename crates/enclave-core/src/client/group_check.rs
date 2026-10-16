@@ -335,6 +335,8 @@ impl Client {
                 reply_to: None,
                 forwarded: false,
                 mentions_me: false,
+                view_once: false,
+                once: None,
             };
             self.put_group_message(gid, &m)?;
         }

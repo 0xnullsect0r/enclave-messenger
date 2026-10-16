@@ -137,6 +137,8 @@ After a shred, any earlier copy of the keyring (for example in a disk image or i
 
 Opening a store with no shred generation starts at generation 0 with an empty keyring and rewraps once (generation 1).
 
+**View once** (`16-features.md`): a view-once file is never written to the file cache (`NS_FILES`). Its reference is kept apart from the message's attachment, and opening it removes that reference from the sealed record before the file is shown from memory, so nothing on the device can open it again; the sender keeps no copy. Its chunks stay on the sender's server until they expire, sealed under a key nothing holds any more.
+
 ## 4. Backups
 
 - `backup_key = KMAC256(rs, "", 256, "enclave/v1/backup/key")`, where `rs` is the 256-bit recovery secret (PLAN: `KMAC(recovery, "backup")`).

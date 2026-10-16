@@ -132,6 +132,10 @@ export struct MessageRow {
     mentions-me: bool,
     // Our reaction to it (empty: none).
     my-reaction: string,
+    // A view-once picture or clip, and whether this device can still open
+    // it.
+    view-once: bool,
+    view-once-ready: bool,
 }
 
 // A crash report on this device (enclave-crash): which process, when, and
@@ -184,7 +188,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -238,6 +242,7 @@ component Bubble inherits HorizontalLayout {
     callback copy(string);
     callback add-pack();
     callback play-clip();
+    callback open-view-once();
     // A voice note: playing now, and play or stop.
     in property <bool> playing;
     callback play-voice();
@@ -276,7 +281,7 @@ component Bubble inherits HorizontalLayout {
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
         border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
         accessible-role: text;
-        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.forwarded ? @tr("Forwarded. ") : "") + (root.msg.mentions-me ? @tr("Mentions you. ") : "") + (root.msg.quoted ? @tr("Answering {}: {}. ", root.msg.quote-who, root.msg.quote-text) : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
+        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.forwarded ? @tr("Forwarded. ") : "") + (root.msg.view-once ? (root.msg.outgoing ? @tr("Sent to view once. ") : root.msg.view-once-ready ? @tr("Photo to view once, not opened yet. ") : @tr("Photo to view once, opened. ")) : "") + (root.msg.mentions-me ? @tr("Mentions you. ") : "") + (root.msg.quoted ? @tr("Answering {}: {}. ", root.msg.quote-who, root.msg.quote-text) : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
         accessible-action-default => { root.tapped(); }
         VerticalLayout {
             padding-left: Tokens.space-sm;
@@ -295,6 +300,31 @@ component Bubble inherits HorizontalLayout {
                 font-size: Tokens.type-caption;
                 font-italic: true;
                 color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
+            }
+            // View once: a plain card, opened (once) on a tap.
+            if root.msg.view-once: Rectangle {
+                min-width: 200px;
+                height: 44px;
+                border-radius: Tokens.radius-control;
+                border-width: 1px;
+                border-color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.hairline;
+                HorizontalLayout {
+                    padding-left: Tokens.space-s;
+                    padding-right: Tokens.space-s;
+                    spacing: Tokens.space-xs;
+                    Text {
+                        vertical-alignment: center;
+                        text: root.msg.outgoing ? @tr("Sent to view once")
+                            : root.msg.view-once-ready ? @tr("Photo to view once. Tap to open.")
+                            : @tr("Opened");
+                        font-size: Tokens.type-secondary;
+                        font-weight: root.msg.view-once-ready && !root.msg.outgoing ? 600 : 400;
+                        color: root.msg.outgoing ? Tokens.meta-on-bubble-out : root.msg.view-once-ready ? Tokens.text : Tokens.text-muted;
+                    }
+                }
+                if !root.msg.outgoing && root.msg.view-once-ready: TouchArea {
+                    clicked => { root.open-view-once(); }
+                }
             }
             // The message it answers: tap to go to it.
             if root.msg.quoted: Rectangle {
@@ -1164,7 +1194,7 @@ export component AppWindow inherits Window {
     in property <int> moved;
     callback change-words();
     callback play-clip(string, string);
-    in property <[image]> player-frames;
+    in-out property <[image]> player-frames;
     in-out property <int> player-index;
     in property <duration> player-interval: 66ms;
     callback draft-changed(string, bool);
@@ -1478,7 +1508,15 @@ export component AppWindow inherits Window {
     callback edit-message(string, string, string);
     callback delete-message(string, string);
     callback set-timer(string, int);
-    callback send-file(string, string, string);
+    callback send-file(string, string, string, bool);
+    // Open a view-once picture (conversation, seq), after the sheet that
+    // says what it means.
+    callback open-view-once(string, string);
+    in-out property <string> view-once-seq;
+    // The next file goes to be viewed once.
+    in-out property <bool> attach-view-once;
+    // The player shows a view-once picture: nothing to keep.
+    in-out property <bool> player-once;
     callback save-file(string, string);
     in property <int> timer;
     in-out property <string> selected-seq;
@@ -2343,6 +2381,10 @@ export component AppWindow inherits Window {
                             copy(t) => { root.copy-text(t); }
                             add-pack => { root.add-pack(root.current-id, m.seq); }
                             play-clip => { root.play-clip(root.current-id, m.seq); }
+                            open-view-once => {
+                                root.view-once-seq = m.seq;
+                                root.sheet = Sheet.view-once;
+                            }
                             playing: root.voice-playing == root.current-id + ":" + m.seq;
                             jump: root.jump-seq == m.seq;
                             show-quote(seq) => { root.jump-seq = seq; root.selected-seq = seq; }
@@ -3135,6 +3177,12 @@ export component AppWindow inherits Window {
             QuietButton { text: @tr("Choose…"); outlined: true; accessible-label: @tr("Choose a file to send"); clicked => { root.browse(2); } }
         }
         Field { placeholder: @tr("Add a caption (optional)"); text <=> root.attach-caption; }
+        SwitchRow {
+            label: @tr("View once");
+            detail: @tr("For a picture or animation: it can be opened once, and isn't kept, on either side. A screenshot or another camera can still capture it.");
+            on: root.attach-view-once;
+            toggled => { root.attach-view-once = !root.attach-view-once; }
+        }
         if root.attach-error != "": Text {
             text: root.attach-error;
             color: Tokens.danger;
@@ -3146,7 +3194,7 @@ export component AppWindow inherits Window {
             PrimaryButton {
                 text: root.busy ? @tr("Sending…") : @tr("Send");
                 enabled: root.attach-path != "" && !root.busy;
-                clicked => { root.send-file(root.current-id, root.attach-path, root.attach-caption); }
+                clicked => { root.send-file(root.current-id, root.attach-path, root.attach-caption, root.attach-view-once); }
             }
             if root.current.kind == 0: QuietButton {
                 text: @tr("Share a contact instead");
@@ -4640,9 +4688,29 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.sheet == Sheet.player: SheetFrame {
-        title: root.player-frames.length == 1 ? @tr("Picture") : @tr("Animated picture");
+    if root.sheet == Sheet.view-once: SheetFrame {
+        title: @tr("View once");
         close => { root.sheet = Sheet.none; }
+        Body { text: @tr("You can look at this once. Enclave doesn't keep it, here or on your other devices, and it can't be saved or forwarded."); }
+        Secondary { text: @tr("Nothing stops a screenshot or another camera, and the sender isn't told if you take one."); }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            PrimaryButton {
+                text: @tr("Open");
+                clicked => { root.open-view-once(root.current-id, root.view-once-seq); }
+            }
+            QuietButton { text: @tr("Not now"); clicked => { root.sheet = Sheet.none; } }
+        }
+    }
+
+    if root.sheet == Sheet.player: SheetFrame {
+        title: root.player-once ? @tr("View once") : root.player-frames.length == 1 ? @tr("Picture") : @tr("Animated picture");
+        // A view-once picture goes with the sheet.
+        close => {
+            if root.player-once { root.player-frames = []; root.player-once = false; }
+            root.sheet = Sheet.none;
+        }
         if root.player-frames.length == 0: Secondary { text: root.busy ? @tr("Getting it ready…") : @tr("Enclave couldn't open this one."); }
         if root.player-frames.length > 0: Rectangle {
             height: self.width * root.player-frames[0].height / max(1, root.player-frames[0].width);

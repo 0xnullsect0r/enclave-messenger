@@ -313,6 +313,8 @@ struct Engine {
     /// A large file or backup the window is handing over in parts
     /// ([`Cmd::Stage`]).
     staged: Vec<u8>,
+    /// The file being sent is to be viewed once ([`Cmd::SendViewOnce`]).
+    view_once_next: bool,
     picked: BTreeSet<[u8; 64]>,
     link_offer: Option<enclave_core::LinkOffer>,
     link_status: String,
@@ -1087,6 +1089,7 @@ pub async fn run_with(
         folder: String::new(),
         opened_link: None,
         staged: Vec::new(),
+        view_once_next: false,
         picked: BTreeSet::new(),
         link_offer: None,
         link_status: String::new(),
@@ -1394,6 +1397,37 @@ impl Engine {
             .ok()
     }
 
+    /// What the player shows: a clip's frames, or a still picture full
+    /// size as one frame (decoded in the sandbox like its preview); no
+    /// frames when it couldn't be read (the player says so).
+    async fn viewer_frames(&mut self, bytes: Option<(Vec<u8>, bool)>) -> enclave_ipc::ClipFrames {
+        let played = match bytes {
+            Some((b, true)) => self.media.clip_frames(b, PLAYER_SIDE).await.ok(),
+            Some((b, false)) => self
+                .media
+                .thumbnail(b, VIEWER_SIDE)
+                .await
+                .ok()
+                .map(|f| (vec![f], 0)),
+            None => None,
+        };
+        match played {
+            Some((frames, ms)) if !frames.is_empty() => enclave_ipc::ClipFrames {
+                width: frames[0].width,
+                height: frames[0].height,
+                interval_ms: ms / frames.len().max(1) as u32,
+                frames: frames.into_iter().map(|f| f.pixels).collect(),
+            },
+            // The player then says it couldn't play it.
+            _ => enclave_ipc::ClipFrames {
+                width: 0,
+                height: 0,
+                interval_ms: 0,
+                frames: Vec::new(),
+            },
+        }
+    }
+
     /// Play a voice note: its sound to the window, ten seconds at a time.
     async fn play_voice(&mut self, id: &str, seq: u64) {
         let Some(note) = self.attachment_bytes(id, seq).await else {
@@ -1549,6 +1583,10 @@ impl Engine {
                 return;
             }
             Cmd::SendStaged(c, n, cap) => {
+                Cmd::SendFile(c, n, std::mem::take(&mut self.staged), cap)
+            }
+            Cmd::SendViewOnce(c, n, cap) => {
+                self.view_once_next = true;
                 Cmd::SendFile(c, n, std::mem::take(&mut self.staged), cap)
             }
             Cmd::OpenFile(c, seq) => {
@@ -2554,17 +2592,35 @@ impl Engine {
                     (name, mime, bytes)
                 };
                 let (root, gid) = (self.root_of(&id), self.group_of(&id));
+                let once = std::mem::take(&mut self.view_once_next);
+                // Only something the viewer can show is sent to be viewed
+                // once (pictures, as re-encoded above, and clips).
+                if once && !(mime.starts_with("image/") || mime == enclave_media::video::CLIP_MIME)
+                {
+                    self.status = "Only pictures and animations can be sent to view once.".into();
+                    self.busy = false;
+                    return;
+                }
                 if let Some(c) = self.client.as_mut() {
-                    let r = match (root, gid) {
-                        (Some(root), _) => c
-                            .send_attachment(&root, &name, mime, &bytes, caption.trim())
+                    let caption = caption.trim();
+                    let r = match (root, gid, once) {
+                        (Some(root), _, false) => c
+                            .send_attachment(&root, &name, mime, &bytes, caption)
                             .await
                             .map(|_| ()),
-                        (None, Some(gid)) => c
-                            .send_group_file(&gid, &name, mime, &bytes, caption.trim())
+                        (Some(root), _, true) => c
+                            .send_view_once(&root, &name, mime, &bytes, caption)
                             .await
                             .map(|_| ()),
-                        (None, None) => Err(CoreError::NotFound),
+                        (None, Some(gid), false) => c
+                            .send_group_file(&gid, &name, mime, &bytes, caption)
+                            .await
+                            .map(|_| ()),
+                        (None, Some(gid), true) => c
+                            .send_group_view_once(&gid, &name, mime, &bytes, caption)
+                            .await
+                            .map(|_| ()),
+                        (None, None, _) => Err(CoreError::NotFound),
                     };
                     match r {
                         Ok(_) => self.effect(Effect::FileSent),
@@ -2994,34 +3050,51 @@ impl Engine {
                         bytes = c.fetch_file(&a).await.ok().map(|b| (b, clip));
                     }
                 }
-                // A clip plays; a still picture shows full size, as one
-                // frame (decoded in the sandbox like its preview).
-                let played = match bytes {
-                    Some((b, true)) => self.media.clip_frames(b, PLAYER_SIDE).await.ok(),
-                    Some((b, false)) => self
-                        .media
-                        .thumbnail(b, VIEWER_SIDE)
-                        .await
-                        .ok()
-                        .map(|f| (vec![f], 0)),
-                    None => None,
-                };
-                let clip = match played {
-                    Some((frames, ms)) if !frames.is_empty() => enclave_ipc::ClipFrames {
-                        width: frames[0].width,
-                        height: frames[0].height,
-                        interval_ms: ms / frames.len().max(1) as u32,
-                        frames: frames.into_iter().map(|f| f.pixels).collect(),
-                    },
-                    // The player then says it couldn't play it.
-                    _ => enclave_ipc::ClipFrames {
-                        width: 0,
-                        height: 0,
-                        interval_ms: 0,
-                        frames: Vec::new(),
-                    },
-                };
+                let clip = self.viewer_frames(bytes).await;
                 let _ = self.out.send(Out::Clip(clip));
+                self.busy = false;
+            }
+            Cmd::OpenViewOnce(id, seq) => {
+                self.busy = true;
+                self.push();
+                let (root, gid) = (self.root_of(&id), self.group_of(&id));
+                let mut bytes = None;
+                if let Some(c) = self.client.as_mut() {
+                    // Whether it's a clip, from the reference, before
+                    // opening drops it.
+                    let clip = match (root, gid) {
+                        (Some(r), _) => c
+                            .messages(&r)
+                            .ok()
+                            .and_then(|v| v.into_iter().find(|m| m.seq == seq))
+                            .and_then(|m| m.once)
+                            .map(|a| a.mime == enclave_media::video::CLIP_MIME),
+                        (None, Some(g)) => c
+                            .group_messages(&g)
+                            .ok()
+                            .and_then(|v| v.into_iter().find(|m| m.seq == seq))
+                            .and_then(|m| m.once)
+                            .map(|a| a.mime == enclave_media::video::CLIP_MIME),
+                        _ => None,
+                    };
+                    if let Some(clip) = clip {
+                        let opened = match (root, gid) {
+                            (Some(r), _) => c.open_view_once(&r, seq).await,
+                            (None, Some(g)) => c.open_group_view_once(&g, seq).await,
+                            _ => Err(CoreError::NotFound),
+                        };
+                        match opened {
+                            Ok(b) => bytes = Some((b, clip)),
+                            Err(_) => {
+                                self.status = "Couldn't open it. It may have been opened already, on this device or another.".into();
+                            }
+                        }
+                    }
+                }
+                if bytes.is_some() {
+                    let clip = self.viewer_frames(bytes).await;
+                    let _ = self.out.send(Out::Clip(clip));
+                }
                 self.busy = false;
             }
             Cmd::ChangeWords => {
@@ -3396,7 +3469,7 @@ impl Engine {
                 }
             }
             // Turned into other commands before they get here (`handle`).
-            Cmd::Stage(_) | Cmd::SendStaged(..) | Cmd::OpenFile(..) => {}
+            Cmd::Stage(_) | Cmd::SendStaged(..) | Cmd::SendViewOnce(..) | Cmd::OpenFile(..) => {}
         }
     }
 
@@ -4848,6 +4921,8 @@ impl Engine {
                     .collect();
                 for (row, m) in s.messages.iter_mut().zip(msgs.iter()) {
                     row.forwarded = m.forwarded && !m.deleted;
+                    row.view_once = m.view_once;
+                    row.view_once_ready = m.once.is_some();
                     row.my_reaction = m
                         .reactions
                         .iter()
@@ -5097,6 +5172,8 @@ impl Engine {
                 for (row, m) in s.messages.iter_mut().zip(msgs.iter()) {
                     row.forwarded = m.forwarded && !m.deleted;
                     row.mentions_me = m.mentions_me && !m.deleted;
+                    row.view_once = m.view_once;
+                    row.view_once_ready = m.once.is_some();
                     row.my_reaction = m
                         .reactions
                         .iter()

@@ -3441,3 +3441,83 @@ async fn announcement_only_group() {
             .any(|m| m.text == "thanks")
     );
 }
+
+/// View once (F1): the recipient opens the file once, nothing keeps it
+/// (no cache, no reference), and the sender keeps no copy; the same in a
+/// group, for each member.
+#[tokio::test(flavor = "multi_thread")]
+async fn view_once_opens_once() {
+    let net = network();
+    let mut cs = Vec::new();
+    for (name, server) in [("Ada", S1), ("Mo", S2), ("Jo", S1)] {
+        cs.push(
+            Client::create(memory(), Arc::new(net.clone()), server, name)
+                .await
+                .unwrap()
+                .0,
+        );
+    }
+    let [mut ada, mut mo, mut jo] = <[Client; 3]>::try_from(cs).ok().unwrap();
+    connect(&mut ada, &mut mo).await;
+    connect(&mut ada, &mut jo).await;
+    let photo: Vec<u8> = (0..40_000u32).map(|i| (i % 249) as u8).collect();
+
+    let sent = ada
+        .send_view_once(&mo.root(), "now.jpg", "image/jpeg", &photo, "")
+        .await
+        .unwrap();
+    assert!(sent.view_once && sent.attachment.is_none() && sent.once.is_none());
+    assert!(ada.fetch_attachment(&mo.root(), sent.seq).await.is_err());
+    mo.sync().await.unwrap();
+    let got = mo
+        .messages(&ada.root())
+        .unwrap()
+        .into_iter()
+        .find(|m| m.id == sent.id)
+        .expect("arrived");
+    assert!(got.view_once && got.attachment.is_none() && got.once.is_some());
+    assert!(
+        mo.fetch_attachment(&ada.root(), got.seq).await.is_err(),
+        "never through the cached path"
+    );
+    assert_eq!(
+        mo.open_view_once(&ada.root(), got.seq).await.unwrap(),
+        photo
+    );
+    assert!(matches!(
+        mo.open_view_once(&ada.root(), got.seq).await,
+        Err(CoreError::NotFound)
+    ));
+    let after = mo
+        .messages(&ada.root())
+        .unwrap()
+        .into_iter()
+        .find(|m| m.id == sent.id)
+        .unwrap();
+    assert!(after.view_once && after.once.is_none() && after.attachment.is_none());
+
+    // In a group, each member opens it once.
+    let gid = ada
+        .create_group("Now", &[mo.root(), jo.root()])
+        .await
+        .unwrap();
+    settle(&mut [&mut ada, &mut mo, &mut jo], 3).await;
+    let gs = ada
+        .send_group_view_once(&gid, "now.jpg", "image/jpeg", &photo, "")
+        .await
+        .unwrap();
+    assert!(gs.view_once && gs.attachment.is_none());
+    settle(&mut [&mut ada, &mut mo, &mut jo], 2).await;
+    for c in [&mut mo, &mut jo] {
+        let m = c
+            .group_messages(&gid)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.id == gs.id)
+            .expect("arrived");
+        assert!(m.view_once && m.attachment.is_none());
+        assert!(c.fetch_group_attachment(&gid, m.seq).await.is_err());
+        assert_eq!(c.open_group_view_once(&gid, m.seq).await.unwrap(), photo);
+        assert!(c.open_group_view_once(&gid, m.seq).await.is_err());
+    }
+}

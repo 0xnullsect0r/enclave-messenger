@@ -72,6 +72,7 @@ async fn rt25_request_media_stripped() {
             attachment: file.clone(),
             caption: "look at this".into(),
             expires: 0,
+            view_once: false,
         },
         Content::Sticker {
             id: [2; 16],

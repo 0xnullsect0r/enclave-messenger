@@ -184,6 +184,10 @@ pub struct Msg {
     pub poll_voters: u32,
     /// Our reaction to it (empty: none).
     pub my_reaction: String,
+    /// A view-once picture or clip.
+    pub view_once: bool,
+    /// ...that this device can still open ([`Cmd::OpenViewOnce`]).
+    pub view_once_ready: bool,
 }
 
 /// A call as the window shows it (`docs/11-calls.md`).
@@ -686,6 +690,12 @@ pub enum Cmd {
     /// "Open with…" the file at a message (after the window's warning): it
     /// comes back like a save, after [`Out::OpenNext`].
     OpenFile(String, u64),
+    /// Send what was staged as a picture or clip to be viewed once:
+    /// conversation, name, caption.
+    SendViewOnce(String, String, String),
+    /// Open a view-once picture or clip, once: it comes back as a viewer
+    /// clip ([`Out::Clip`]) and is gone from here and our other devices.
+    OpenViewOnce(String, u64),
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -1118,7 +1128,9 @@ impl Snapshot {
                 .bool(m.mentions_me)
                 .bool(m.poll_anonymous)
                 .u32(m.poll_voters)
-                .str(&m.my_reaction);
+                .str(&m.my_reaction)
+                .bool(m.view_once)
+                .bool(m.view_once_ready);
         }
         w.strs(&self.code_groups)
             .strs(&self.code_words)
@@ -1349,6 +1361,8 @@ impl Snapshot {
                     poll_anonymous: r.bool()?,
                     poll_voters: r.u32()?,
                     my_reaction: r.str()?,
+                    view_once: r.bool()?,
+                    view_once_ready: r.bool()?,
                 })
             })
             .collect::<Result<_>>()?;
@@ -1702,6 +1716,8 @@ impl Cmd {
             Cmd::Stage(b) => w.u8(127).bytes(b),
             Cmd::SendStaged(c, n, cap) => w.u8(128).str(c).str(n).str(cap),
             Cmd::OpenFile(c, seq) => w.u8(129).str(c).u64(*seq),
+            Cmd::SendViewOnce(c, n, cap) => w.u8(130).str(c).str(n).str(cap),
+            Cmd::OpenViewOnce(c, seq) => w.u8(131).str(c).u64(*seq),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -1858,6 +1874,8 @@ impl Cmd {
             127 => Cmd::Stage(r.bytes()?),
             128 => Cmd::SendStaged(r.str()?, r.str()?, r.str()?),
             129 => Cmd::OpenFile(r.str()?, r.u64()?),
+            130 => Cmd::SendViewOnce(r.str()?, r.str()?, r.str()?),
+            131 => Cmd::OpenViewOnce(r.str()?, r.u64()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),

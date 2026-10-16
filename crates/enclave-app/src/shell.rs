@@ -1440,9 +1440,23 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         };
         if let Some(ui) = w.upgrade() {
             ui.set_player_frames(slint::ModelRc::default());
+            ui.set_player_once(false);
             ui.set_sheet(Sheet::Player);
         }
         let _ = t.send(Cmd::PlayClip(id.to_string(), seq));
+    });
+    let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_open_view_once(move |id, seq| {
+        let Ok(seq) = seq.parse() else {
+            return;
+        };
+        if let Some(ui) = w.upgrade() {
+            ui.set_player_frames(slint::ModelRc::default());
+            ui.set_player_once(true);
+            ui.set_sheet(Sheet::Player);
+        }
+        let _ = t.send(Cmd::OpenViewOnce(id.to_string(), seq));
     });
     let t = tx.clone();
     ui.on_change_words(move || {
@@ -1594,7 +1608,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     });
     let t = tx.clone();
     let w = ui.as_weak();
-    ui.on_send_file(move |id, path, caption| {
+    ui.on_send_file(move |id, path, caption, view_once| {
         let path = std::path::PathBuf::from(path.trim());
         let result = std::fs::metadata(&path).and_then(|m| {
             if m.len() > MAX_FILE {
@@ -1609,7 +1623,16 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "file".into());
-                if stage(&t, &bytes) {
+                if view_once {
+                    // Always staged: the vault sends what it holds.
+                    for part in bytes.chunks(enclave_ipc::FILE_PART) {
+                        let _ = t.send(Cmd::Stage(part.to_vec()));
+                    }
+                    let _ = t.send(Cmd::SendViewOnce(id.to_string(), name, caption.to_string()));
+                    if let Some(ui) = w.upgrade() {
+                        ui.set_attach_view_once(false);
+                    }
+                } else if stage(&t, &bytes) {
                     let _ = t.send(Cmd::SendStaged(id.to_string(), name, caption.to_string()));
                 } else {
                     let _ = t.send(Cmd::SendFile(
