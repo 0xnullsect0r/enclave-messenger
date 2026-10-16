@@ -84,6 +84,7 @@ fn chain(
         version,
         expires,
         release: "v1.0.0".into(),
+        minimum: String::new(),
         targets: files.iter().map(|(n, f)| Target::of(n, f)).collect(),
     };
     let mut ts = Signed::targets(&t);
@@ -184,6 +185,7 @@ fn rt13_update_rejected_without_2_of_3() {
         version: 1,
         expires: NOW + DAY,
         release: "v1".into(),
+        minimum: String::new(),
         targets: vec![Target::of("f", b"x")],
     };
     let mut tsg = Signed::targets(&tgt);
@@ -384,5 +386,49 @@ fn rt13_update_rejected_without_sigsum_inclusion() {
     assert_eq!(
         c.check(&rel, "Other.dmg", file, &proof),
         Err(UpdateError::Target)
+    );
+}
+
+#[test]
+fn a_bundle_carries_new_roots_and_the_release() {
+    let r1 = root(1, roles(), &keys()[..4], policy());
+    let mut c = Client::new(&signed_root(&r1, &[0, 1]), [0; 3]).unwrap();
+    let mut r2 = r1.clone();
+    r2.version = 2;
+    let (timestamp, snapshot, targets) =
+        chain(1, &[("enclave.tar.gz", b"files")], &[0, 1], NOW + 30 * DAY);
+    let bundle = Bundle {
+        roots: vec![signed_root(&r2, &[0, 1])],
+        timestamp,
+        snapshot,
+        targets,
+        proofs: vec![("enclave.tar.gz".into(), "proof".into())],
+    };
+    let decoded = Bundle::decode(&bundle.encode()).unwrap();
+    assert_eq!(decoded.timestamp_version(), Some(1));
+    let release = decoded.apply(&mut c, NOW).unwrap();
+    assert_eq!(release.release, "v1.0.0");
+    assert_eq!(c.root().version, 2);
+    assert_eq!(c.seen(), [1, 1, 1]);
+    // The same bundle again: the root is already there; nothing goes back.
+    decoded.apply(&mut c, NOW).unwrap();
+    // A bundle whose targets one maintainer signed changes nothing.
+    let (timestamp, snapshot, targets) =
+        chain(2, &[("enclave.tar.gz", b"evil")], &[1], NOW + 30 * DAY);
+    let bad = Bundle {
+        timestamp,
+        snapshot,
+        targets,
+        ..decoded.clone()
+    };
+    assert!(matches!(
+        bad.apply(&mut c, NOW),
+        Err(UpdateError::Threshold(Role::Targets, 1, 2))
+    ));
+    assert_eq!(c.seen(), [1, 1, 1]);
+    // Held back: once the timestamp expires the client says so.
+    assert_eq!(
+        decoded.apply(&mut c, NOW + 8 * DAY),
+        Err(UpdateError::Expired(Role::Timestamp))
     );
 }

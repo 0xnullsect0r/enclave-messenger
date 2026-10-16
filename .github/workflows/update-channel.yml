@@ -1,0 +1,115 @@
+name: Update channel
+# Publishes what clients check before they update (docs/19-ops.md §1):
+# the release's targets, which two maintainers signed offline and attached
+# to the release as enclave-targets.bin; a snapshot and a short-lived
+# timestamp signed here with the online key; each file's Sigsum inclusion
+# proof; all as one enclave-update.bin attached to the release. Operators'
+# fronts fetch it from releases/latest and their servers relay it to
+# clients over the mixnet.
+#
+# Run by hand after the maintainers have attached enclave-targets.bin, and
+# every Monday to re-sign the timestamp before it expires (7 days), so a
+# client can tell a fresh "nothing new" from being kept from releases.
+#
+# Needs, in environment `update-channel`: UPDATE_ONLINE_KEY (base64 of the
+# online key from `enclave-admin release keygen`) and SIGSUM_SUBMIT_KEY (the
+# submitter's Ed25519 key, sigsum-key format); in the repository: the
+# signed root (packaging/update/root.bin, and root.N.bin for later ones)
+# and the Sigsum policy (packaging/update/sigsum-policy). Until the
+# maintainers' ceremony made them (External Gate G2) it stops and says so.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (default the newest release)
+        required: false
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions: {}
+
+concurrency:
+  group: update-channel
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Sign the timestamp, gather proofs, publish the bundle
+    runs-on: ubuntu-24.04
+    environment: update-channel
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release and keys
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          ONLINE: ${{ secrets.UPDATE_ONLINE_KEY }}
+        run: |
+          set -euo pipefail
+          tag=${TAG:-$(gh release view --json tagName -q .tagName)}
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          ready=true
+          [ -f packaging/update/root.bin ] || { echo "::notice::No release root yet (packaging/update/root.bin, External Gate G2)."; ready=false; }
+          [ -f packaging/update/sigsum-policy ] || { echo "::notice::No Sigsum policy yet (packaging/update/sigsum-policy)."; ready=false; }
+          [ -n "$ONLINE" ] || { echo "::notice::No online key (UPDATE_ONLINE_KEY)."; ready=false; }
+          mkdir -p dist
+          if [ "$ready" = true ]; then
+            gh release download "$tag" -D dist
+            [ -f dist/enclave-targets.bin ] || { echo "::notice::$tag has no maintainer-signed enclave-targets.bin yet."; ready=false; }
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - name: Sigsum proofs (once per release; kept with it)
+        if: steps.rel.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rel.outputs.tag }}
+          SUBMIT: ${{ secrets.SIGSUM_SUBMIT_KEY }}
+          GOTOOLCHAIN: auto
+        run: |
+          set -euo pipefail
+          mkdir -p proofs
+          if [ -f dist/enclave-sigsum-proofs.tar.gz ]; then
+            tar -xzf dist/enclave-sigsum-proofs.tar.gz -C proofs
+            exit 0
+          fi
+          go install sigsum.org/sigsum-go/cmd/sigsum-submit@v0.14.1
+          key="$RUNNER_TEMP/submit.key"
+          printf '%s\n' "$SUBMIT" > "$key"
+          chmod 600 "$key"
+          ci/release/update-targets.sh "${TAG#v}" dist "$RUNNER_TEMP/targets"
+          for f in "$RUNNER_TEMP"/targets/*; do
+            "$(go env GOPATH)/bin/sigsum-submit" -k "$key" -p packaging/update/sigsum-policy "$f"
+            mv "$f.proof" "proofs/$(basename "$f").sigsum"
+          done
+          rm -f "$key"
+          tar -czf dist/enclave-sigsum-proofs.tar.gz -C proofs .
+          gh release upload "$TAG" dist/enclave-sigsum-proofs.tar.gz
+      - name: Snapshot, timestamp and the bundle
+        if: steps.rel.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rel.outputs.tag }}
+          ONLINE: ${{ secrets.UPDATE_ONLINE_KEY }}
+          ONLINE_INDEX: ${{ vars.UPDATE_ONLINE_INDEX || '3' }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/online.key"
+          printf '%s' "$ONLINE" | base64 -d > "$key"
+          chmod 600 "$key"
+          mkdir out
+          cp dist/enclave-targets.bin out/targets.bin
+          cargo run -q --release -p enclave-admin -- release online out/targets.bin \
+            --key "$key" --index "$ONLINE_INDEX" --out-dir out \
+            --timestamp-version "$(( $(date +%s) / 60 ))"
+          rm -f "$key"
+          for r in packaging/update/root.*.bin; do [ -f "$r" ] && cp "$r" out/; done
+          cp proofs/*.sigsum out/
+          cargo run -q --release -p enclave-admin -- release bundle --dir out --out dist/enclave-update.bin
+          # Checked as a client would before it goes out.
+          cargo run -q --release -p enclave-admin -- release verify \
+            --root packaging/update/root.bin --bundle dist/enclave-update.bin
+          gh release upload "$TAG" dist/enclave-update.bin --clobber

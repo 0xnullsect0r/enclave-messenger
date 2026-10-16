@@ -167,6 +167,36 @@ fn release_ceremony() {
     assert!(
         String::from_utf8_lossy(&o.stdout).contains("release v1.0.0 (targets version 1): 2 files")
     );
+    // The bundle servers relay: the documents and each file's proof.
+    std::fs::write(d.join("out/Enclave-1.0.0.tar.gz.sigsum"), b"version=2\n").unwrap();
+    ok(
+        d,
+        &["release", "bundle", "--dir", "out", "--out", "update.bin"],
+    );
+    let b = enclave_update::Bundle::decode(&std::fs::read(d.join("update.bin")).unwrap()).unwrap();
+    assert!(b.roots.is_empty());
+    assert_eq!(b.proof("Enclave-1.0.0.tar.gz"), Some("version=2\n"));
+    let mut c =
+        enclave_update::Client::new(&std::fs::read(d.join("root.bin")).unwrap(), [0; 3]).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    assert_eq!(b.apply(&mut c, now).unwrap().release, "v1.0.0");
+    // A bundle missing a file's proof is refused by `verify --bundle`.
+    let o = admin(
+        d,
+        &[
+            "release",
+            "verify",
+            "--root",
+            "root.bin",
+            "--bundle",
+            "update.bin",
+        ],
+    );
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("no Sigsum proof for SHA256SUMS"));
     // A root signed by one maintainer isn't one.
     let o = admin(
         d,

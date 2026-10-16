@@ -276,7 +276,7 @@ impl Client {
         )
         .await?;
         let mut prekeys = PrekeyStore::default();
-        let publication = prekeys.publish(&device, now, &mut rng)?;
+        let publication = prekeys.publish(&device, manifest.bundle_epoch, now, &mut rng)?;
         rpc.dir_put(
             &profile.server,
             DirKind::Bundle,
@@ -363,6 +363,7 @@ impl Client {
             group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
+            group_events: Vec::new(),
         };
         // Never reuse a token pool: its tokens may have been handed out
         // after the backup was taken. (Pools are not backed up; this is

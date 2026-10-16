@@ -279,6 +279,7 @@ Using the public suite key as the KMAC key in the extract step is the SP 800-56C
 
 - `kem::tests::combine_binds_everything`: changing the suite, any secret, any public item, or the PSK presence changes the output; identical inputs give identical output.
 - `kem::tests::x448_agreement_and_low_order_rejection`: an all-zero X448 result is rejected.
+- `rt07_stripped_mceliece_rejected`, `rt07_kem2_kem3_label_confusion_rejected`, `rt07_psk_flag_downgrade_rejected` (`enclave-proto/tests/redteam.rs`): the combiner outputs differ without the McEliece secret, across suites and between no PSK and an all-zero PSK, and initial messages stripped, relabeled or with the PSK flag flipped fail at the responder.
 - Not yet written: a test that a responder expecting the 3-KEM suite rejects a 2-KEM initial message when the braid rules do not allow it (`04-eqxdh.md` §7).
 
 ## 6. Hedged RNG

@@ -161,6 +161,10 @@ pub enum DirKind {
     /// put by a client that found it, kept and passed on to the witnesses;
     /// get to see it.
     Equivocation = 11,
+    /// The newest release's update bundle as this server relays it
+    /// (`enclave_update::Bundle`, `docs/19-ops.md` §1.3); get only, key
+    /// ignored. Signed throughout; clients check it.
+    Update = 12,
 }
 
 /// Directory action.
@@ -226,6 +230,7 @@ impl DirRequest {
             9 => DirKind::Moved,
             10 => DirKind::Tombstone,
             11 => DirKind::Equivocation,
+            12 => DirKind::Update,
             _ => return Err(RpcError::Malformed),
         };
         let action = match b[1] {

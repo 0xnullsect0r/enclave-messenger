@@ -7,6 +7,12 @@
 //!   composite signature over a Merkle root, so a batch of 100 costs one
 //!   signature instead of 100; each served prekey carries its Merkle path;
 //! * a **last-resort PQ prekey** (7-day expiry) for when one-time prekeys run out.
+//!
+//! Every signature also covers the **bundle epoch** of the device's
+//! manifest, which the manifest commits to and the prekeys don't carry: a
+//! verifier supplies the epoch from the verified manifest, so prekeys signed
+//! for another epoch (a directory replaying ones from before the account
+//! moved its epoch on) don't verify (RT-05).
 
 use crate::codec::{Reader, Writer};
 use crate::error::{ProtoError, Result};
@@ -121,22 +127,24 @@ impl PqKeyBytes {
 }
 
 impl SignedPrekey {
-    fn signed_bytes(&self) -> Vec<u8> {
+    fn signed_bytes(&self, bundle_epoch: u64) -> Vec<u8> {
         let mut w = Writer::new();
         w.fixed(&self.device)
             .u32(self.id)
             .fixed(&self.x448.0)
             .fixed(&self.pq.0[..])
-            .u64(self.expires_at);
+            .u64(self.expires_at)
+            .u64(bundle_epoch);
         w.finish()
     }
 
-    /// Verify against the device's composite key and the current time.
-    pub fn verify(&self, signer: &CompositePublic, now: u64) -> Result<()> {
+    /// Verify against the device's composite key, the bundle epoch of its
+    /// manifest and the current time.
+    pub fn verify(&self, signer: &CompositePublic, bundle_epoch: u64, now: u64) -> Result<()> {
         signer
             .verify(
                 labels::CTX_SIGNED_PREKEY.as_bytes(),
-                &self.signed_bytes(),
+                &self.signed_bytes(bundle_epoch),
                 &self.signature,
             )
             .map_err(|_| ProtoError::BadSignature)?;
@@ -163,21 +171,22 @@ pub struct OpkBatchHeader {
 }
 
 impl OpkBatchHeader {
-    fn signed_bytes(&self) -> Vec<u8> {
+    fn signed_bytes(&self, bundle_epoch: u64) -> Vec<u8> {
         let mut w = Writer::new();
         w.fixed(&self.device)
             .u32(self.batch_id)
             .u16(self.count)
-            .fixed(&self.root);
+            .fixed(&self.root)
+            .u64(bundle_epoch);
         w.finish()
     }
 
-    /// Verify the batch signature.
-    pub fn verify(&self, signer: &CompositePublic) -> Result<()> {
+    /// Verify the batch signature for the manifest's bundle epoch.
+    pub fn verify(&self, signer: &CompositePublic, bundle_epoch: u64) -> Result<()> {
         signer
             .verify(
                 labels::CTX_OPK_BATCH.as_bytes(),
-                &self.signed_bytes(),
+                &self.signed_bytes(bundle_epoch),
                 &self.signature,
             )
             .map_err(|_| ProtoError::BadSignature)
@@ -235,21 +244,23 @@ pub struct LastResortPrekey {
 }
 
 impl LastResortPrekey {
-    fn signed_bytes(&self) -> Vec<u8> {
+    fn signed_bytes(&self, bundle_epoch: u64) -> Vec<u8> {
         let mut w = Writer::new();
         w.fixed(&self.device)
             .u32(self.id)
             .fixed(&self.pq.0[..])
-            .u64(self.expires_at);
+            .u64(self.expires_at)
+            .u64(bundle_epoch);
         w.finish()
     }
 
-    /// Verify.
-    pub fn verify(&self, signer: &CompositePublic, now: u64) -> Result<()> {
+    /// Verify against the device key, the manifest's bundle epoch and the
+    /// current time.
+    pub fn verify(&self, signer: &CompositePublic, bundle_epoch: u64, now: u64) -> Result<()> {
         signer
             .verify(
                 labels::CTX_LAST_RESORT.as_bytes(),
-                &self.signed_bytes(),
+                &self.signed_bytes(bundle_epoch),
                 &self.signature,
             )
             .map_err(|_| ProtoError::BadSignature)?;
@@ -272,12 +283,13 @@ pub struct Bundle {
 }
 
 impl Bundle {
-    /// Verify every part against the device's composite key.
-    pub fn verify(&self, signer: &CompositePublic, now: u64) -> Result<()> {
-        self.spk.verify(signer, now)?;
-        self.last_resort.verify(signer, now)?;
+    /// Verify every part against the device's composite key and the bundle
+    /// epoch of the verified manifest that lists the device.
+    pub fn verify(&self, signer: &CompositePublic, bundle_epoch: u64, now: u64) -> Result<()> {
+        self.spk.verify(signer, bundle_epoch, now)?;
+        self.last_resort.verify(signer, bundle_epoch, now)?;
         if let Some((h, o)) = &self.opk {
-            h.verify(signer)?;
+            h.verify(signer, bundle_epoch)?;
             o.verify(h)?;
             if h.device != self.spk.device {
                 return Err(ProtoError::BadSignature);
@@ -510,11 +522,12 @@ impl Publication {
         })
     }
 
-    /// Verify every part against the device key.
-    pub fn verify(&self, signer: &CompositePublic, now: u64) -> Result<()> {
-        self.spk.verify(signer, now)?;
-        self.last_resort.verify(signer, now)?;
-        self.batch.verify(signer)?;
+    /// Verify every part against the device key and the manifest's bundle
+    /// epoch.
+    pub fn verify(&self, signer: &CompositePublic, bundle_epoch: u64, now: u64) -> Result<()> {
+        self.spk.verify(signer, bundle_epoch, now)?;
+        self.last_resort.verify(signer, bundle_epoch, now)?;
+        self.batch.verify(signer, bundle_epoch)?;
         for o in &self.opks {
             o.verify(&self.batch)?;
         }
@@ -610,10 +623,12 @@ impl PrekeyStore {
         self.next_id
     }
 
-    /// Generate a fresh signed prekey, one-time batch and last-resort prekey.
+    /// Generate a fresh signed prekey, one-time batch and last-resort
+    /// prekey, signed for `bundle_epoch` (the device's current manifest's).
     pub fn publish(
         &mut self,
         device: &DeviceKeys,
+        bundle_epoch: u64,
         now: u64,
         rng: &mut HedgedRng,
     ) -> Result<Publication> {
@@ -631,7 +646,7 @@ impl PrekeyStore {
         };
         spk.signature = device.signing.sign(
             labels::CTX_SIGNED_PREKEY.as_bytes(),
-            &spk.signed_bytes(),
+            &spk.signed_bytes(bundle_epoch),
             rng,
         )?;
         self.signed.insert(
@@ -675,10 +690,11 @@ impl PrekeyStore {
             root,
             signature: Vec::new(),
         };
-        batch.signature =
-            device
-                .signing
-                .sign(labels::CTX_OPK_BATCH.as_bytes(), &batch.signed_bytes(), rng)?;
+        batch.signature = device.signing.sign(
+            labels::CTX_OPK_BATCH.as_bytes(),
+            &batch.signed_bytes(bundle_epoch),
+            rng,
+        )?;
         let opks = pubs
             .into_iter()
             .map(|(index, xp, qp)| {
@@ -710,7 +726,7 @@ impl PrekeyStore {
         };
         last_resort.signature = device.signing.sign(
             labels::CTX_LAST_RESORT.as_bytes(),
-            &last_resort.signed_bytes(),
+            &last_resort.signed_bytes(bundle_epoch),
             rng,
         )?;
         self.last_resort.insert(
@@ -748,7 +764,7 @@ mod tests {
         let mut rng = HedgedRng::new().unwrap();
         let dev = DeviceKeys::generate(&mut rng).unwrap();
         let mut store = PrekeyStore::default();
-        let p = store.publish(&dev, 1_000, &mut rng).unwrap();
+        let p = store.publish(&dev, 1, 1_000, &mut rng).unwrap();
         assert_eq!(p.opks.len(), OPK_BATCH);
         for o in [&p.opks[0], &p.opks[57], &p.opks[99]] {
             let b = Bundle {
@@ -756,7 +772,7 @@ mod tests {
                 opk: Some((p.batch.clone(), o.clone())),
                 last_resort: p.last_resort.clone(),
             };
-            b.verify(dev.signing.public(), 2_000).unwrap();
+            b.verify(dev.signing.public(), 1, 2_000).unwrap();
             let enc = b.encode();
             assert_eq!(Bundle::decode(&enc).unwrap(), b);
         }
@@ -767,14 +783,14 @@ mod tests {
         // Expired signed prekey fails.
         assert_eq!(
             p.spk
-                .verify(dev.signing.public(), 1_000 + SPK_LIFETIME_SECS + 1),
+                .verify(dev.signing.public(), 1, 1_000 + SPK_LIFETIME_SECS + 1),
             Err(ProtoError::Expired)
         );
         // Tampered key fails.
         let mut t = p.spk.clone();
         t.x448.0[0] ^= 1;
         assert_eq!(
-            t.verify(dev.signing.public(), 2_000),
+            t.verify(dev.signing.public(), 1, 2_000),
             Err(ProtoError::BadSignature)
         );
     }

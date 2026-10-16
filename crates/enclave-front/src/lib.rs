@@ -15,11 +15,13 @@
 //! SecP384r1MLKEM1024 only). Certificates come from ACME ([`acme`]), from
 //! files, or (development) are self-signed; they're swapped in place on
 //! renewal ([`CertStore`]). The front logs no requests and keeps no client
-//! addresses.
+//! addresses. It also fetches the release update bundle for the server to
+//! relay to clients over the mixnet ([`updates`]).
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod acme;
+pub mod updates;
 
 use axum::Router;
 use axum::body::Body;

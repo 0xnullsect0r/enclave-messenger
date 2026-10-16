@@ -151,7 +151,7 @@ Opening a store with no shred generation starts at generation 0 with an empty ke
 - **Kept on the server** (Settings → Keep a backup on my server): the archive (without files) goes up as an ordinary blob, renewed every 7 days from sync so it never reaches the blobs' 30-day expiry, and a pointer sealed under a key from `s = KMAC256(recovery, "", 256, "enclave/v1/store/backup-blob-id")` (the blob reference) is kept as a `DirKind::Vault` object, which doesn't expire, at a locator from `s`, replaceable and deletable only with an owner secret from `s`. A new device with only the words and the server finds and restores it (`Client::fetch_server_backup`, `restore_from_server`; "Restore from my server" when no file is given). Turning it off deletes the pointer.
 - **Check my backup**: the words written down open the archive (a file, or the server's) in memory, without restoring anything; it reports the contacts and messages in it and whether its keys are this account's (`Client::check_backup`, `check_archive`).
 - **Restoring** builds the search index afresh (it is never backed up) and doesn't stop at a contact it can't start a session with yet (say, their prekeys lapsed while they were away): they reach the new device when they next write.
-- Test: `backups_local_and_on_the_server` (`tests/backups.rs`), `backups_exclude_sessions_and_need_the_recovery_secret` (`enclave-store`).
+- Test: `backups_local_and_on_the_server` (`tests/backups.rs`), `backups_exclude_sessions_and_need_the_recovery_secret` and `rt08_backup_contains_no_ratchet_state` (`enclave-store`).
 
 ## 5. Device protections
 

@@ -22,6 +22,7 @@ Operators write `server.toml` (`config.rs`, `FileConfig`). Every key can be over
 | | `public_dir` | `/var/lib/enclave/public` | Files the front serves (KT pins, descriptor) |
 | | `nym_address` | empty | The ingress's Nym address, published in the descriptor |
 | | `server_list` | none | A copy of the foundation's signed list to serve (`DirKind::ServerList`), re-read when it changes |
+| | `update_bundle` | none | The release update bundle to relay (`DirKind::Update`), re-read when it changes; the front's `update_dir` keeps it (compose volume `updates`) |
 | `[policy]` | `effort_request`, `effort_claim`, `blob_tokens_per_day`, `effort_username`, `effort_inbox`, `inbox_quota`, `request_quota`, `token_quota`, `ttl_days` | as `Config` below | Abuse controls |
 | `[kt]` | `enabled` | `true` | Username log (`data_dir/kt.redb`, §3.1) |
 | `[push]` | `forward` | none | Push egress address for due wakes |
@@ -143,6 +144,7 @@ enclave-server dev [ADDR] [--domain NAME] [--kt-pins FILE] [--push-relay ADDR]
 | 9 `Moved` | Like the manifest | Root-signed `ServerMove` (§4.4) | The account, leaving | Contacts |
 | 10 `Tombstone` | Like the manifest | Root-signed `Tombstone` (§3.5) | The account, deleting itself | Anyone |
 | 11 `Equivocation` | The log's server id, zero-padded | Two heads of one epoch (§3.8) | A client that found them | Anyone |
+| 12 `Update` | Ignored | The release update bundle (`enclave_update::Bundle`, `19-ops.md` §1.3) the front fetched; never uploaded | The maintainers (signed), relayed by the operator | Clients |
 
 Objects travel in `DirRequest`/`DirReply` payloads as chunks of at most 14,000 B (`08-envelope.md` §9.3).
 
@@ -275,7 +277,7 @@ Test `withdrawn_usernames`. Releasing a name when its owner takes another (a bar
 
 ### 3.6 The device clock (RT-23)
 
-Trusted time (§3.4) checks the device clock (`client/clock.rs`). Every head a client verifies gives one: username lookups and absence proofs, descriptor lookups, and every 6 hours (`CHECK_EVERY_SECS`, and whenever the clock went back past the last check) a fresh head of the home server's log, fetched like a descriptor lookup and checked for its server signature and witness quorum but not its freshness, which is what's in question. Witnesses sign at the time they cosign, so a device clock more than 10 minutes behind trusted time (`BEHIND_SECS`) is wrong. A log's heads can be up to a day old (a heartbeat every hour, refused as stale past 25 hours), so a clock ahead is only certainly wrong past 25 hours (`AHEAD_SECS`); a clock between is indistinguishable from a quiet log. The client keeps the last judgment (`Client::clock_skew`, device time minus trusted time) and raises `Event::ClockSkew { skew: Some(s) }` when the clock becomes wrong and `{ skew: None }` when it's right again, once each. The app shows "This device's clock is wrong", with how far off it is, until then. Test `rt23_clock_skew_warning_shown` (`crates/enclave-core/tests/federation.rs`: right, two hours behind, right again, days ahead). Disappearing timers already run from receipt on the device (RT-23's second test, milestone Q1).
+Trusted time (§3.4) checks the device clock (`client/clock.rs`). Every head a client verifies gives one: username lookups and absence proofs, descriptor lookups, and every 6 hours (`CHECK_EVERY_SECS`, and whenever the clock went back past the last check) a fresh head of the home server's log, fetched like a descriptor lookup and checked for its server signature and witness quorum but not its freshness, which is what's in question. Witnesses sign at the time they cosign, so a device clock more than 10 minutes behind trusted time (`BEHIND_SECS`) is wrong. A log's heads can be up to a day old (a heartbeat every hour, refused as stale past 25 hours), so a clock ahead is only certainly wrong past 25 hours (`AHEAD_SECS`); a clock between is indistinguishable from a quiet log. The client keeps the last judgment (`Client::clock_skew`, device time minus trusted time) and raises `Event::ClockSkew { skew: Some(s) }` when the clock becomes wrong and `{ skew: None }` when it's right again, once each. The app shows "This device's clock is wrong", with how far off it is, until then. Test `rt23_clock_skew_warning_shown` (`crates/enclave-core/tests/federation.rs`: right, two hours behind, right again, days ahead). Disappearing timers run from receipt on the device, on a clock that follows the device clock forward but never falls behind its last reading plus the local monotonic time since (`Rpc::timer_now`), so setting the clock back doesn't keep a started timer from running out (test `rt23_disappearing_timer_uses_monotonic`, `crates/enclave-core/tests/rt_proto.rs`). After a restart it starts again from the device clock.
 
 ### 3.7 Claims and lookups
 

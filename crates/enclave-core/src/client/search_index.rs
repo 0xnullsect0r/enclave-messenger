@@ -476,7 +476,7 @@ mod client_tests {
             "not kept in the open index"
         );
         net.advance(2 * 86_400);
-        a.purge_expired(a.now()).unwrap();
+        a.purge_expired().unwrap();
         assert!(found(&a, "rendez").is_empty());
         assert!(
             a.store

@@ -380,7 +380,7 @@ async fn run(args: &[String]) -> Result<(), String> {
         None
     };
     publish_descriptor(&cfg, &keys, &mut server)?;
-    let mut list_seen = None;
+    let mut list_seen = (None, None);
     refresh_server_list(&cfg, &mut server, &mut list_seen);
     eprintln!(
         "enclave-server {} ({}) listening on {}",
@@ -599,13 +599,31 @@ fn write_descriptor(args: &[String], out: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Serve the foundation's list from `server.server_list`, re-reading the
-/// file when its modification time changes.
+/// The largest update bundle relayed (`enclave_update::bundle::MAX_BUNDLE`).
+const MAX_UPDATE_BUNDLE: usize = 4 << 20;
+
+/// Serve the foundation's list from `server.server_list`, and the update
+/// bundle from `server.update_bundle`, re-reading each file when its
+/// modification time changes.
 fn refresh_server_list(
     cfg: &FileConfig,
     server: &mut Server,
-    seen: &mut Option<std::time::SystemTime>,
+    seen: &mut (Option<std::time::SystemTime>, Option<std::time::SystemTime>),
 ) {
+    if let Some(path) = &cfg.server.update_bundle
+        && let Ok(modified) = std::fs::metadata(path).and_then(|m| m.modified())
+        && seen.1 != Some(modified)
+    {
+        match std::fs::read(path) {
+            Ok(b) if b.len() <= MAX_UPDATE_BUNDLE => {
+                server.set_update_bundle(b);
+                seen.1 = Some(modified);
+            }
+            Ok(_) => eprintln!("{}: too large", path.display()),
+            Err(e) => eprintln!("{}: {e}", path.display()),
+        }
+    }
+    let seen = &mut seen.0;
     let Some(path) = &cfg.server.server_list else {
         return;
     };

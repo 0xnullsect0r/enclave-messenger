@@ -3652,6 +3652,7 @@ name = "enclave-app"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "bytes",
  "chrono",
  "directories 6.0.0",
  "enclave-crash",
@@ -3659,7 +3660,13 @@ dependencies = [
  "enclave-design",
  "enclave-ipc",
  "enclave-platform",
+ "enclave-tls",
+ "enclave-update",
  "enclave-vault",
+ "http-body-util",
+ "hyper 1.11.1",
+ "hyper-rustls 0.27.10",
+ "hyper-util",
  "image",
  "nokhwa",
  "notify-rust",
@@ -3667,10 +3674,12 @@ dependencies = [
  "qrcodegen",
  "rfd",
  "rqrr",
+ "rustls 0.23.46",
  "slint",
  "slint-build",
  "sys-locale",
  "tokio",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -3697,6 +3706,7 @@ dependencies = [
  "enclave-slip39",
  "enclave-store",
  "enclave-tokens",
+ "enclave-update",
  "enclave-wire",
  "prost 0.14.4",
  "subtle 2.6.1",
@@ -4098,6 +4108,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "enclave-update"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "enclave-crypto",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "enclave-vault"
 version = "0.1.0"
 dependencies = [
@@ -4115,6 +4136,7 @@ dependencies = [
  "enclave-rpc",
  "enclave-sandbox",
  "enclave-store",
+ "enclave-update",
  "subtle 2.6.1",
  "tokio",
  "zeroize",
@@ -5729,6 +5751,7 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.26.6",
  "tower-service",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

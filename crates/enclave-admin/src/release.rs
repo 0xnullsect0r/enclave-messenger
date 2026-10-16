@@ -9,7 +9,8 @@
 //! enclave-admin release targets DIR --tag vX.Y.Z --version N [--valid-days 90] --out UNSIGNED [--now UNIX]
 //! enclave-admin release sign DOC --key SECRET --index N --out DOC
 //! enclave-admin release online TARGETS --key ONLINE_SECRET --index N --out-dir DIR [--valid-days 7] [--now UNIX]
-//! enclave-admin release verify --root ROOT --dir DIR [--file F --proof P] [--now UNIX]
+//! enclave-admin release verify --root ROOT (--dir DIR [--file F --proof P] | --bundle FILE) [--now UNIX]
+//! enclave-admin release bundle --dir DIR --out FILE
 //! ```
 //!
 //! `ROOT.toml`:
@@ -33,7 +34,10 @@
 //! `online` writes `snapshot.bin` and `timestamp.bin` for a signed
 //! `targets.bin` (the release workflow holds that key); `verify` checks
 //! `timestamp.bin`, `snapshot.bin` and `targets.bin` in DIR against a root
-//! as a client would, and a file with its Sigsum proof.
+//! as a client would, and a file with its Sigsum proof. `bundle` packs
+//! what servers relay to clients (`enclave_update::Bundle`): DIR's
+//! `root.N.bin` (N ≥ 2, the roots after the one built in), the three role
+//! documents, and each `FILE.sigsum` proof.
 
 use crate::{need, now_or, positional, read};
 use enclave_crypto::rng::HedgedRng;
@@ -237,6 +241,7 @@ fn targets(args: &[String]) -> Result<(), String> {
         version,
         expires: now + days * DAY,
         release: need(args, "--tag")?,
+        minimum: flag(args, "--minimum").unwrap_or_default(),
         targets: files,
     };
     let doc = Signed::targets(&t);
@@ -314,9 +319,32 @@ fn online(args: &[String]) -> Result<(), String> {
 
 fn verify(args: &[String]) -> Result<(), String> {
     let root = read(Path::new(&need(args, "--root")?))?;
-    let dir = PathBuf::from(need(args, "--dir")?);
     let now = now_or(args)?;
     let mut c = Client::new(&root, [0; 3]).map_err(|e| format!("root: {e}"))?;
+    // A bundle: checked as a client checks one, through any newer roots.
+    if let Some(b) = flag(args, "--bundle") {
+        let bundle = enclave_update::Bundle::decode(&read(Path::new(&b))?)
+            .map_err(|e| format!("{b}: {e}"))?;
+        let release = bundle.apply(&mut c, now).map_err(|e| e.to_string())?;
+        let missing: Vec<&str> = release
+            .targets
+            .iter()
+            .filter(|t| bundle.proof(&t.name).is_none())
+            .map(|t| t.name.as_str())
+            .collect();
+        if !missing.is_empty() {
+            return Err(format!("no Sigsum proof for {}", missing.join(", ")));
+        }
+        println!(
+            "bundle for {} (targets version {}, root version {}): {} files, each with a proof",
+            release.release,
+            release.version,
+            c.root().version,
+            release.targets.len()
+        );
+        return Ok(());
+    }
+    let dir = PathBuf::from(need(args, "--dir")?);
     let release = c
         .refresh(
             &read(&dir.join("timestamp.bin"))?,
@@ -342,6 +370,55 @@ fn verify(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn bundle(args: &[String]) -> Result<(), String> {
+    let dir = PathBuf::from(need(args, "--dir")?);
+    let mut roots: Vec<(u32, Vec<u8>)> = Vec::new();
+    let mut proofs: Vec<(String, String)> = Vec::new();
+    for e in std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let Ok(name) = e.map_err(|e| e.to_string())?.file_name().into_string() else {
+            continue;
+        };
+        if let Some(n) = name
+            .strip_prefix("root.")
+            .and_then(|r| r.strip_suffix(".bin"))
+            .and_then(|n| n.parse::<u32>().ok())
+            && n >= 2
+        {
+            roots.push((n, read(&dir.join(&name))?));
+        } else if let Some(file) = name.strip_suffix(".sigsum") {
+            let proof =
+                std::fs::read_to_string(dir.join(&name)).map_err(|e| format!("{name}: {e}"))?;
+            proofs.push((file.to_string(), proof));
+        }
+    }
+    roots.sort_by_key(|r| r.0);
+    proofs.sort();
+    let b = enclave_update::Bundle {
+        roots: roots.into_iter().map(|r| r.1).collect(),
+        timestamp: read(&dir.join("timestamp.bin"))?,
+        snapshot: read(&dir.join("snapshot.bin"))?,
+        targets: read(&dir.join("targets.bin"))?,
+        proofs,
+    };
+    let bytes = b.encode();
+    if bytes.len() > enclave_update::bundle::MAX_BUNDLE {
+        return Err(format!(
+            "the bundle is {} bytes, over the limit",
+            bytes.len()
+        ));
+    }
+    let out = PathBuf::from(need(args, "--out")?);
+    std::fs::write(&out, &bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+    eprintln!(
+        "{} bytes ({} roots, {} proofs) written to {}",
+        bytes.len(),
+        b.roots.len(),
+        b.proofs.len(),
+        out.display()
+    );
+    Ok(())
+}
+
 /// `enclave-admin release …`.
 pub fn run(args: &[String]) -> Result<(), String> {
     match args.get(1).map(String::as_str) {
@@ -351,6 +428,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         Some("sign") => sign(args),
         Some("online") => online(args),
         Some("verify") => verify(args),
-        _ => Err("usage: enclave-admin release keygen | root | targets | sign | online | verify (see the module docs)".into()),
+        Some("bundle") => bundle(args),
+        _ => Err("usage: enclave-admin release keygen | root | targets | sign | online | verify | bundle (see the module docs)".into()),
     }
 }

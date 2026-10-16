@@ -8,6 +8,8 @@ pub mod format;
 pub mod i18n;
 pub mod lan;
 pub mod shell;
+#[cfg(desktop)]
+pub mod updater;
 pub mod vault;
 pub mod view;
 

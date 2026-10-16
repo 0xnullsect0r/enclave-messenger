@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use enclave_ipc::frame::{self, TOKEN_LEN};
-use enclave_ipc::{Cmd, Device, Effect, Msg, Out, Pick, Row, Snapshot};
+use enclave_ipc::{Cmd, Device, Effect, FileHash, Msg, Out, Pick, Row, Snapshot};
 
 fn snapshot() -> Snapshot {
     let row = Row {
@@ -111,6 +111,9 @@ fn snapshot() -> Snapshot {
         username_problem: "@robin@enclave.example".into(),
         kt_split: "enclave.example".into(),
         clock_skew: "3 hours behind".into(),
+        update_release: "v1.2.3".into(),
+        update_required: 1,
+        build_check: "matches".into(),
         new_device: "a new device, 30 Sep 14:02".into(),
         joining: vec!["Book club".into()],
         restore_error: "wrong words".into(),
@@ -249,6 +252,13 @@ fn cmds() -> Vec<Cmd> {
         Cmd::PushToken(1, "https://push.example/x".into()),
         Cmd::Wake,
         Cmd::Reattach,
+        Cmd::VerifyBuild(vec![FileHash {
+            name: "enclave@x86_64-unknown-linux-gnu".into(),
+            length: 7,
+            sha256: vec![1; 32],
+            sha3_512: vec![2; 64],
+        }]),
+        Cmd::CheckUpdates,
         Cmd::SaveBackup(true),
         Cmd::SetEmergencyPin("1357".into()),
         Cmd::SetGroupAdmin("g".into(), "m".into(), true),
@@ -314,6 +324,7 @@ fn round_trips() {
         Out::LanChunks("aa".into(), vec![vec![1; 10], vec![2; 3]], false),
         Out::LanStop("aa".into()),
         Out::LanFetch("aa".into(), vec!["10.0.0.2:4000".into()], 7),
+        Out::UpdateBundle(b"ENCLUPD1".to_vec()),
         Out::Notify(enclave_ipc::Notice {
             conversation: "ab".into(),
             title: "Priya".into(),
@@ -441,6 +452,15 @@ fn net_messages_round_trip_and_refuse_garbage() {
         NetRequest::UseFallback { on: true },
         NetRequest::UseFallback { on: false },
         NetRequest::TorStatus { id: 15 },
+        NetRequest::UdpOpen {
+            id: 16,
+            remote: "203.0.113.7:51820".into(),
+        },
+        NetRequest::UdpSend {
+            socket: 3,
+            bytes: vec![9; 160],
+        },
+        NetRequest::UdpClose { socket: 3 },
         NetRequest::SetPacing {
             pacing: vec![0, 0, 11, 184, 1, 0, 0, 58, 152, 0, 0, 117, 48],
         },

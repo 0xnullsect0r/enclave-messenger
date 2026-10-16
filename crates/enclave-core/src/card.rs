@@ -199,7 +199,7 @@ impl ContactCard {
     /// Parse a scanned or pasted link.
     pub fn from_link(s: &str) -> Result<Self, LinkError> {
         let s = s.trim();
-        if s.starts_with(LINK_PREFIX) {
+        if is_device_link(s) {
             return Err(LinkError::DeviceLinkCode);
         }
         if s.starts_with(crate::client::MEET_PREFIX) {
@@ -224,6 +224,41 @@ impl ContactCard {
         };
         Self::decode(&b64url_decode(body).ok_or(LinkError::Malformed)?)
     }
+}
+
+/// A device-link code (`enclave:link#…`), whatever the case of its
+/// scheme (URI schemes are case-insensitive).
+fn is_device_link(s: &str) -> bool {
+    s.get(..LINK_PREFIX.len())
+        .is_some_and(|p| p.eq_ignore_ascii_case(LINK_PREFIX))
+}
+
+/// What a link opened from outside the app may do: a tapped `enclave:`
+/// link, or an `https://<host>/i#…` invite (`03-identity.md` §4.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeepLink {
+    /// A contact invite: the Add screen, filled in.
+    Contact(Box<ContactCard>),
+    /// A group invite link (`enclave:join#…`), for the Add screen.
+    Join(String),
+}
+
+/// Route a deep link (`03-identity.md` §4.2, RT-09). A device-link code is
+/// refused with [`LinkError::DeviceLinkCode`]: linking starts only from
+/// Settings → Your devices, where the link scanner reads the code, so a
+/// link someone sends can never start it. In-person and account-recovery
+/// codes are refused too: they only work on their own screens, with the
+/// other person there.
+pub fn open_deep_link(uri: &str) -> Result<DeepLink, LinkError> {
+    let s = uri.trim();
+    if is_device_link(s) {
+        return Err(LinkError::DeviceLinkCode);
+    }
+    if s.starts_with(crate::client::JOIN_PREFIX) {
+        crate::client::JoinLink::parse(s)?;
+        return Ok(DeepLink::Join(s.to_string()));
+    }
+    ContactCard::from_link(s).map(|c| DeepLink::Contact(Box::new(c)))
 }
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

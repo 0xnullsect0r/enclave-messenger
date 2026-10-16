@@ -34,7 +34,8 @@ impl Party {
         for _ in 0..n_devices {
             let d = DeviceKeys::generate(rng).unwrap();
             let mut store = PrekeyStore::default();
-            publications.push(store.publish(&d, NOW, rng).unwrap());
+            // Genesis manifests are at bundle epoch 1.
+            publications.push(store.publish(&d, 1, NOW, rng).unwrap());
             prekeys.push(store);
             devices.push(d);
         }
@@ -97,7 +98,11 @@ fn handshake(
 ) -> (Session, Session) {
     let bundle = bob.bundle(bob_dev, Some(7));
     bundle
-        .verify(bob.devices[bob_dev].signing.public(), NOW)
+        .verify(
+            bob.devices[bob_dev].signing.public(),
+            bob.manifest.bundle_epoch,
+            NOW,
+        )
         .unwrap();
     let peer = Peer {
         manifest: &bob.manifest,

@@ -1,6 +1,10 @@
 name: Nightly
 # Long checks that don't run on every push.
 #
+# repro-nix: the Nix build (nix/default.nix) of the desktop programs, the
+# server's and the Nym ingress, on two machines (different runner images);
+# their outputs must be byte-identical (docs/19-ops.md §2).
+#
 # flathub: the Flathub submission (packaging/flatpak/flathub.sh, External
 # Gate G4) built from source with no network, as Flathub builds it, and
 # started.
@@ -15,6 +19,8 @@ on:
     branches: ['**']
     paths:
       - packaging/flatpak/**
+      - nix/**
+      - flake.nix
       - .github/workflows/nightly.yml
 
 permissions:
@@ -82,3 +88,55 @@ jobs:
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/
+
+  nix-build:
+    name: Nix build (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Nix (pinned installer)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o "$RUNNER_TEMP/install" https://releases.nixos.org/nix/nix-2.31.2/install
+          echo "078e2ffeddf6a9c1f22adf41458ccc46a58bb26911a9e01579645314f9982994  $RUNNER_TEMP/install" | sha256sum -c
+          sh "$RUNNER_TEMP/install" --daemon --yes --nix-extra-conf-file /dev/stdin <<'CONF'
+          experimental-features = nix-command flakes
+          sandbox = true
+          CONF
+          echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p hashes
+          for p in enclave enclave-server enclave-nym; do
+            nix build -L --no-link --print-out-paths ".#$p" > "hashes/$p.path"
+            nix path-info --json "$(cat "hashes/$p.path")" > "hashes/$p.json"
+            nix hash path "$(cat "hashes/$p.path")" > "hashes/$p.nar"
+            echo "$p: $(cat "hashes/$p.path") $(cat "hashes/$p.nar")"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nix-${{ matrix.runner }}
+          path: hashes
+
+  repro-nix:
+    name: Two Nix rebuilders agree
+    needs: nix-build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: nix-*
+      - name: Same outputs, byte for byte
+        run: |
+          set -euo pipefail
+          for p in enclave enclave-server enclave-nym; do
+            a=$(cat "nix-ubuntu-24.04/$p.nar") b=$(cat "nix-ubuntu-22.04/$p.nar")
+            echo "$p: $a / $b"
+            [ "$a" = "$b" ] || { echo "::error::$p differs between the two builds"; exit 1; }
+          done

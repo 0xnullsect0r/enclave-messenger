@@ -12,6 +12,10 @@
 //!   renewed when 30 days are left (checked twice a day).
 //! - `files`: `front.cert` and `front.key` (PEM), re-read hourly.
 //! - `self-signed`: made at start (development only).
+//!
+//! Every `front.update_every_hours` (6) it fetches `front.update_url` (the
+//! newest release's `enclave-update.bin`) into `front.update_dir` for the
+//! server to relay (`enclave_front::updates`).
 
 use enclave_front::acme::{self, AcmeConfig};
 use enclave_front::{CertStore, Challenges, Site};
@@ -55,6 +59,13 @@ struct FrontSection {
     key: Option<PathBuf>,
     /// ACME account and certificate.
     data_dir: PathBuf,
+    /// Where releases attach the update bundle (`enclave-update.bin`);
+    /// empty to not fetch it.
+    update_url: String,
+    /// Where it is kept for the server (`server.update_bundle` reads it).
+    update_dir: PathBuf,
+    /// Hours between fetches.
+    update_every_hours: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -82,6 +93,9 @@ impl Default for FrontSection {
             cert: None,
             key: None,
             data_dir: PathBuf::from("/var/lib/enclave/front"),
+            update_url: enclave_front::updates::DEFAULT_URL.into(),
+            update_dir: PathBuf::from("/var/lib/enclave/updates"),
+            update_every_hours: 6,
         }
     }
 }
@@ -164,6 +178,13 @@ async fn run(args: &[String]) -> Result<(), String> {
         tasks.spawn(async move { axum::serve(http, router).await });
     }
 
+    if !cfg.update_url.is_empty() {
+        tokio::spawn(enclave_front::updates::run(
+            cfg.update_url.clone(),
+            cfg.update_dir.clone(),
+            Duration::from_secs(cfg.update_every_hours.max(1) * 3600),
+        ));
+    }
     match cfg.tls {
         TlsMode::SelfSigned => {
             let (chain, key) = enclave_front::self_signed(&cfg.domain)?;

@@ -105,12 +105,14 @@ mod backup;
 mod blobs;
 mod blocks;
 mod braid;
+mod calls;
 pub mod clock;
 mod closing;
 mod closing_own;
 mod devices;
 mod gaps;
 mod gossip;
+mod group_check;
 mod group_devices;
 mod group_edits;
 mod group_files;
@@ -141,6 +143,8 @@ mod polls;
 mod prefs;
 mod push;
 mod record;
+#[cfg(test)]
+mod redteam_tests;
 mod reports;
 mod root_wrap;
 mod search;
@@ -153,6 +157,7 @@ mod social;
 mod stickers;
 mod tokens;
 mod typing;
+mod updates;
 mod usernames;
 mod wallet;
 
@@ -161,10 +166,11 @@ pub use backup::{BackupCheck, check_archive};
 pub use blobs::fetch_due;
 pub use braid::BRAID_DEADLINE_SECS;
 pub use gossip::{GossipItem, KtAlert};
+pub use group_check::DIVERGE_SECS;
 pub use group_hosts::{HOST_VOTE_SECS, HostVotes};
 pub use groups::{GroupInfo, GroupMessage, GroupReaction};
 pub use guard::{RecoveryAlert, RecoveryHold};
-pub use history::{HistoryServe, LAN_WAIT_SECS, LanHistory};
+pub use history::{HISTORY_DELAY_SECS, HistoryServe, LAN_WAIT_SECS, LanHistory};
 pub use invites::{InviteInfo, JOIN_PREFIX, JoinLink};
 pub use link::{DeviceInfo, LinkCode, LinkOffer, LinkProgress, LinkingDevice};
 pub use location::{Location, MAX_LOCATION_LABEL};
@@ -187,6 +193,7 @@ pub use social::{
 };
 pub use stickers::{InstalledPack, MAX_STICKERS, PACK_MIME, StickerPack};
 pub use typing::{TYPING_RESERVE, TYPING_SHOW_SECS};
+pub use updates::{RECEIVE_GRACE, UpdateStatus};
 pub use usernames::AUDIT_EVERY_SECS;
 pub use wallet::{BOOK_LIFETIME, REFILL_BELOW, TOKENS_PER_PROOF, TicketWallet};
 
@@ -344,6 +351,14 @@ pub enum Event {
         /// Group.
         group_id: [u8; 32],
     },
+    /// Some members of the group seem to see a different group state or
+    /// different messages, for more than ten minutes (RT-11,
+    /// `07-groups.md` §7.4): the chat says "Some people in this group may
+    /// be seeing different messages."
+    GroupDiverged {
+        /// Group.
+        group_id: [u8; 32],
+    },
     /// Another of our devices wrote or deleted a note to self.
     NotesChanged,
     /// A reaction, edit or delete changed a group message.
@@ -392,6 +407,14 @@ pub enum Event {
     /// archived, pinned or muted, a setting, a contact added or blocked
     /// (`own_sync.rs`).
     Synced,
+    /// Call signalling from a contact (`enclave_calls::message::CallMessage`,
+    /// encoded; [`Client::send_call`]).
+    Call {
+        /// The contact.
+        from: [u8; 64],
+        /// The message.
+        message: Vec<u8>,
+    },
 }
 
 /// The profile schema this version writes (`Store::schema`): 1 the wrapped
@@ -486,6 +509,9 @@ pub struct Client {
     /// the braid), as a client that doesn't have it would.
     #[cfg(test)]
     pub(crate) two_kem_for_tests: bool,
+    /// Group events raised beside a message's own (`group_check.rs`), for
+    /// the sync that read it.
+    pub(crate) group_events: Vec<Event>,
 }
 
 /// A group's place in the group rounds (`docs/09-transport.md` §5).
@@ -609,7 +635,6 @@ impl Client {
         let account = AccountKeys::create(&recovery, &mut rng)?;
         let device = DeviceKeys::generate(&mut rng)?;
         let mut prekeys = PrekeyStore::default();
-        let publication = prekeys.publish(&device, now, &mut rng)?;
         let mut profile = Profile {
             server,
             inbox_seed: rng.array("core/inbox-seed")?,
@@ -624,6 +649,7 @@ impl Client {
         };
         let manifest = Manifest::genesis(&account, &device, now, profile.request_inbox.to_vec());
         let signed = manifest.sign(&account, &mut rng)?;
+        let publication = prekeys.publish(&device, manifest.bundle_epoch, now, &mut rng)?;
 
         let mut rpc = Rpc::new(transport);
         rpc.create_inbox(
@@ -749,6 +775,7 @@ impl Client {
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
+            group_events: Vec::new(),
         };
         let mut client = client;
         client.search_index_new()?;
@@ -871,6 +898,7 @@ impl Client {
             group_polls: HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
+            group_events: Vec::new(),
         };
         client.resume_rename()?;
         // Schema 2: the search index (also built for a restored or linked
@@ -1243,7 +1271,7 @@ impl Client {
                 .claim_bundle(&server, device_key(&dev.id), now, &mut self.rng)
                 .await?;
             let bundle = Bundle::decode(&bb)?;
-            bundle.verify(&dev.signing, now)?;
+            bundle.verify(&dev.signing, peer_manifest.bundle_epoch, now)?;
             let (session, env) = {
                 let local = Local {
                     account: &self.account,
@@ -1691,7 +1719,7 @@ impl Client {
         // Messages that seem missing (keys skipped, now stamped).
         events.append(&mut self.check_gaps()?);
 
-        self.purge_expired(now)?;
+        self.purge_expired()?;
         self.expire_invites(now).await?;
         Ok(events)
     }
@@ -2315,6 +2343,12 @@ impl Client {
                 Content::Closed => {
                     events.extend(self.on_closed(&root)?);
                 }
+                Content::Call(message) => {
+                    events.push(Event::Call {
+                        from: root,
+                        message,
+                    });
+                }
                 Content::NotifyKey { key, day, previews } => {
                     self.on_notify_key(&root, key, day, previews)?;
                 }
@@ -2342,6 +2376,7 @@ impl Client {
     async fn send_content(&mut self, root: &[u8; 64], content: &Content, now: u64) -> Result<()> {
         if content.is_personal() {
             self.require_not_held()?;
+            self.require_current()?;
         }
         // On the record, what a person writes is signed (`record.rs`).
         let content = &self.sign_for(root, content)?;
@@ -2491,7 +2526,9 @@ impl Client {
         {
             return Ok(());
         }
-        let publication = self.prekeys.publish(&self.device, now, &mut self.rng)?;
+        let publication =
+            self.prekeys
+                .publish(&self.device, self.manifest.bundle_epoch, now, &mut self.rng)?;
         self.save_prekeys()?;
         let server = self.profile.server;
         self.rpc

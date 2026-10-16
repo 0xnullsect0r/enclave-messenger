@@ -116,7 +116,9 @@ impl Client {
             return Ok(());
         }
         // Fresh signed prekeys, published where we are.
-        let publication = self.prekeys.publish(&self.device, now, &mut self.rng)?;
+        let publication =
+            self.prekeys
+                .publish(&self.device, self.manifest.bundle_epoch, now, &mut self.rng)?;
         self.save_prekeys()?;
         let server = self.profile.server;
         self.rpc

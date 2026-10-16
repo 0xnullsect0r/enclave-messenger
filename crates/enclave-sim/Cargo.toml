@@ -23,3 +23,6 @@ enclave-net = { path = "../enclave-net" }
 enclave-kt = { path = "../enclave-kt" }
 enclave-federation = { path = "../enclave-federation" }
 async-trait = "0.1"
+
+[dev-dependencies]
+zeroize = "1"

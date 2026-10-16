@@ -169,6 +169,14 @@ msgstr "[Ádd thís stíçkér páçk········]"
 msgid "Add to group"
 msgstr "[Ádd tó gróúp····]"
 
+#: enclave-app/src/updater.rs
+msgid "Add-AppxPackage -Path '{}' -AllowUnsigned -ForceApplicationShutdown"
+msgstr "[Ádd-ÁppxPáçkágé -Páth '·········{}' -ÁllówÚñsígñéd -FórçéÁpplíçátíóñShútdówñ················]"
+
+#: enclave-app/src/updater.rs
+msgid "Add-AppxPackage: {}"
+msgstr "[Ádd-ÁppxPáçkágé: ······{}]"
+
 #: enclave-vault/src/engine.rs
 msgid "Added the pack {}."
 msgstr "[Áddéd thé páçk ······{}.]"
@@ -282,6 +290,10 @@ msgid "Backups are made on the device that holds your recovery words."
 msgstr "[Báçkúps áré mádé óñ thé dévíçé thát hólds ýóúr réçóvérý wórds.························]"
 
 #: ui/app.slint
+msgid "Before it is installed, the download is checked against the release its maintainers signed and the public log."
+msgstr "[Béfóré ít ís íñstálléd, thé dówñlóád ís çhéçkéd ágáíñst thé réléásé íts máíñtáíñérs sígñéd áñd thé públíç lóg.············································]"
+
+#: ui/app.slint
 msgid "Block"
 msgstr "[Blóçk··]"
 
@@ -362,6 +374,10 @@ msgid "Check code"
 msgstr "[Çhéçk çódé····]"
 
 #: ui/app.slint
+msgid "Check for updates"
+msgstr "[Çhéçk fór úpdátés······]"
+
+#: ui/app.slint
 msgid "Check it's really {}"
 msgstr "[Çhéçk ít's réállý ·······{}]"
 
@@ -392,6 +408,10 @@ msgstr "[Çhéçkéd íñ pérsóñ······]"
 #: enclave-vault/src/engine.rs
 msgid "Checked, but couldn't reach the server to update your conversation. It will finish when you're back online."
 msgstr "[Çhéçkéd, bút çóúldñ't réáçh thé sérvér tó úpdáté ýóúr çóñvérsátíóñ. Ít wíll fíñísh whéñ ýóú'ré báçk óñlíñé.··········································]"
+
+#: enclave-app/src/updater.rs
+msgid "Checking the download…"
+msgstr "[Çhéçkíñg thé dówñlóád…········]"
 
 #: ui/app.slint
 msgid "Checking…"
@@ -893,6 +913,14 @@ msgstr "[Dó ýóú bóth séé thésé wórds?···········]"
 msgid "Done"
 msgstr "[Dóñé·]"
 
+#: enclave-app/src/updater.rs
+msgid "Downloading {}…"
+msgstr "[Dówñlóádíñg ····{}…]"
+
+#: enclave-app/src/updater.rs
+msgid "Downloading… {}%"
+msgstr "[Dówñlóádíñg… ·····{}%]"
+
 #: ui/app.slint
 msgid "Each link works for one person, for 7 days. You approve them before they join, and they see only new messages."
 msgstr "[Éáçh líñk wórks fór óñé pérsóñ, fór 7 dáýs. Ýóú áppróvé thém béfóré théý jóíñ, áñd théý séé óñlý ñéw mésságés.············································]"
@@ -1008,6 +1036,14 @@ msgstr "[Éñçlávé réáçhés thé príváté ñétwórk thróúgh Tór, á�
 #: ui/app.slint
 msgid "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery."
 msgstr "[Éñçlávé stáýs çóññéçtéd íñ thé báçkgróúñd, só mésságés árrívé át óñçé, áñd Áñdróíd shóws thát ít's rúññíñg. Á púsh sérvíçé úsés léss báttérý.························································]"
+
+#: enclave-app/src/updater.rs
+msgid "Enclave updates through Flathub: open your software center, or run flatpak update."
+msgstr "[Éñçlávé úpdátés thróúgh Fláthúb: ópéñ ýóúr sóftwáré çéñtér, ór rúñ flátpák úpdáté.································]"
+
+#: ui/app.slint
+msgid "Enclave {} is available"
+msgstr "[Éñçlávé ···{} ís áváíláblé·····]"
 
 #: enclave-app/src/vault.rs
 msgid "Enclave's vault stopped ({}). Restart Enclave."
@@ -1540,6 +1576,14 @@ msgstr "[Ñó mésságés fóúñd. Séárçh óñlý lóóks óñ thís déví�
 #: ui/app.slint
 msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr "[Ñó phóñé ñúmbér. Ñó émáíl. Óñlý thé péóplé ýóú çhóósé çáñ réáçh ýóú.···························]"
+
+#: enclave-vault/src/engine.rs
+msgid "No programs to check."
+msgstr "[Ñó prógráms tó çhéçk.········]"
+
+#: enclave-vault/src/engine.rs
+msgid "No release information yet. It comes from your server once a day; check again later."
+msgstr "[Ñó réléásé íñfórmátíóñ ýét. Ít çómés fróm ýóúr sérvér óñçé á dáý; çhéçk ágáíñ látér.·································]"
 
 #: ui/app.slint
 msgid "No reports."
@@ -2457,6 +2501,10 @@ msgstr "[Thé gróúp móvés tó thát sérvér tómórrów.·········�
 msgid "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup."
 msgstr "[Thé réçóvérý wórds ór thé báçkúp dóñ't mátçh. Çhéçk thé wórds, áñd thát thé fílé ís ýóúr Éñçlávé báçkúp.·········································]"
 
+#: enclave-vault/src/engine.rs
+msgid "The release information couldn't be checked: {}."
+msgstr "[Thé réléásé íñfórmátíóñ çóúldñ't bé çhéçkéd: ··················{}.]"
+
 #: ui/app.slint
 msgid "The report goes to the people who run {}'s server. It doesn't say who you are. They can close the account's message requests; they can't read your conversations."
 msgstr "[Thé répórt góés tó thé péóplé whó rúñ ···············{}'s sérvér. Ít dóésñ't sáý whó ýóú áré. Théý çáñ çlósé thé áççóúñt's mésságé réqúésts; théý çáñ't réád ýóúr çóñvérsátíóñs.················································]"
@@ -2464,6 +2512,10 @@ msgstr "[Thé répórt góés tó thé péóplé whó rúñ ··········
 #: ui/app.slint
 msgid "The server's public log now shows {} pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private."
 msgstr "[Thé sérvér's públíç lóg ñów shóws ·············{} póíñtíñg tó sóméóñé élsé, ór tó ñó óñé. Ýóúr sérvér máý hávé çháñgéd ít. Téll ýóúr çóñtáçts tó úsé ýóúr çódé ór íñvíté líñk, áñd çhéçk séçúrítý çódés béfóré sháríñg áñýthíñg príváté.·········································································]"
+
+#: enclave-app/src/shell.rs
+msgid "The update didn't install: {}"
+msgstr "[Thé úpdáté dídñ't íñstáll: ··········{}]"
 
 #: ui/app.slint
 msgid "Their code: enclave:meet#…"
@@ -2530,8 +2582,16 @@ msgid "Think someone may have seen them? You can replace them with new words."
 msgstr "[Thíñk sóméóñé máý hávé sééñ thém? Ýóú çáñ répláçé thém wíth ñéw wórds.····························]"
 
 #: enclave-vault/src/engine.rs
+msgid "This build has no release keys to check against (a development build)."
+msgstr "[Thís búíld hás ñó réléásé kéýs tó çhéçk ágáíñst (á dévélópméñt búíld).····························]"
+
+#: enclave-vault/src/engine.rs
 msgid "This build has no server to set up on. Start it with --server, or with a server list."
 msgstr "[Thís búíld hás ñó sérvér tó sét úp óñ. Stárt ít wíth --sérvér, ór wíth á sérvér líst.··································]"
+
+#: enclave-vault/src/engine.rs
+msgid "This build is Enclave {}: all {} programs match the release its maintainers signed, and each is in the public Sigsum log."
+msgstr "[Thís búíld ís Éñçlávé ········{}: áll ··{} prógráms mátçh thé réléásé íts máíñtáíñérs sígñéd, áñd éáçh ís íñ thé públíç Sígsúm lóg.···································]"
 
 #: enclave-vault/src/engine.rs
 msgid "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one."
@@ -2544,6 +2604,10 @@ msgstr "[Thís çómpútér hás ñó Tóúçh ÍD ór Wíñdóws Hélló sét �
 #: ui/app.slint
 msgid "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files."
 msgstr "[Thís çómpútér hás ñó kéýríñg fór Éñçlávé's kéýs, só théý áré képt íñ fílés. Á pássphrásé prótéçts thém íf sóméóñé çópíés thósé fílés.·····················································]"
+
+#: enclave-app/src/updater.rs
+msgid "This copy of Enclave isn't an installed app. Download the newest release from the Enclave website."
+msgstr "[Thís çópý óf Éñçlávé ísñ't áñ íñstálléd ápp. Dówñlóád thé ñéwést réléásé fróm thé Éñçlávé wébsíté.·······································]"
 
 #: ui/app.slint
 msgid "This deletes your account for everyone. Your contacts see that you closed it, you leave every group, your username is withdrawn for good, and your server deletes your inboxes. Then everything on this device is erased, and your other devices erase themselves. It can't be undone."
@@ -2592,6 +2656,14 @@ msgstr "[Thís ñétwórk sééms tó blóçk Tór············]"
 #: enclave-app/src/shell.rs
 msgid "This takes a few seconds."
 msgstr "[Thís tákés á féw séçóñds.··········]"
+
+#: ui/app.slint
+msgid "This version has a serious problem fixed in a newer one. It no longer sends or receives messages until you update."
+msgstr "[Thís vérsíóñ hás á séríóús próblém fíxéd íñ á ñéwér óñé. Ít ñó lóñgér séñds ór réçéívés mésságés úñtíl ýóú úpdáté.·············································]"
+
+#: ui/app.slint
+msgid "This version has a serious problem fixed in a newer one. Until you update, you can read new messages for 30 days but not send."
+msgstr "[Thís vérsíóñ hás á séríóús próblém fíxéd íñ á ñéwér óñé. Úñtíl ýóú úpdáté, ýóú çáñ réád ñéw mésságés fór 30 dáýs bút ñót séñd.··················································]"
 
 #: enclave-vault/src/engine.rs
 msgid "Those shares don't fit together, or there aren't enough of them. Check each one, or ask one more friend."
@@ -2697,6 +2769,26 @@ msgstr "[Úñpíñ fór évérýóñé·······]"
 msgid "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them."
 msgstr "[Úp tó 10, ás ýóú séé thém. Thís çhát ís óff thé réçórd, só thé ópérátór çáñ't çóñfírm whó wróté thém.········································]"
 
+#: ui/app.slint
+msgid "Update"
+msgstr "[Úpdáté··]"
+
+#: enclave-app/src/shell.rs
+msgid "Update Enclave from the store you installed it from."
+msgstr "[Úpdáté Éñçlávé fróm thé stóré ýóú íñstálléd ít fróm.····················]"
+
+#: enclave-vault/src/engine.rs
+msgid "Update Enclave to keep receiving messages."
+msgstr "[Úpdáté Éñçlávé tó kéép réçéívíñg mésságés.················]"
+
+#: ui/app.slint
+msgid "Update Enclave to keep sending messages."
+msgstr "[Úpdáté Éñçlávé tó kéép séñdíñg mésságés.················]"
+
+#: enclave-app/src/updater.rs
+msgid "Update Enclave with your system's package manager or software center."
+msgstr "[Úpdáté Éñçlávé wíth ýóúr sýstém's páçkágé máñágér ór sóftwáré çéñtér.···························]"
+
 #: enclave-vault/src/engine.rs
 msgid "Use 3 to 32 letters, numbers or _, starting with a letter."
 msgstr "[Úsé 3 tó 32 léttérs, ñúmbérs ór _, stártíñg wíth á léttér.·······················]"
@@ -2752,6 +2844,10 @@ msgstr "[Úsíñg Tór's búílt-íñ brídgés.···········]"
 #: ui/app.slint
 msgid "Using your own bridges."
 msgstr "[Úsíñg ýóúr ówñ brídgés.·········]"
+
+#: ui/app.slint
+msgid "Verify this build"
+msgstr "[Vérífý thís búíld······]"
 
 #: ui/app.slint
 msgid "Version {}"

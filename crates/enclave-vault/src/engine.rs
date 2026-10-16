@@ -312,6 +312,13 @@ struct Engine {
     list: Option<Vec<u8>>,
     /// The day the server list was last refreshed from the home server.
     list_day: u64,
+    /// The day release updates were last checked (0: check at the next
+    /// sync).
+    update_day: u64,
+    /// What the last check found.
+    update: Option<enclave_core::UpdateStatus>,
+    /// What "Verify this build" found.
+    build_check: String,
     /// This device, while it is being linked to an existing account.
     joining: Option<enclave_core::LinkingDevice>,
     join_code: String,
@@ -424,6 +431,11 @@ pub fn spawn(mode: Mode) -> (mpsc::UnboundedSender<Cmd>, mpsc::UnboundedReceiver
         })
         .ok();
     (tx, out_rx)
+}
+
+/// "enclave-vault" from "enclave-vault@x86_64-unknown-linux-gnu".
+fn program_name(target: &str) -> &str {
+    target.split('@').next().unwrap_or(target)
 }
 
 fn hex_id(root: &[u8; 64]) -> String {
@@ -803,6 +815,21 @@ fn with_extension(name: &str, ext: &str) -> String {
     format!("{stem}.{ext}")
 }
 
+/// The traffic-shaping profile (`docs/09-transport.md` §6.5, RT-12). It
+/// depends on the window's visibility and the Maximum privacy setting and
+/// on nothing else, so it changes only at a foreground/background
+/// transition or when the person toggles Maximum privacy, never with what
+/// the device is doing (messages, syncs, bulk transfers).
+fn shaping_profile(maximum: bool, visible: bool) -> Profile {
+    if maximum {
+        Profile::Maximum
+    } else if visible {
+        Profile::Foreground
+    } else {
+        Profile::Background
+    }
+}
+
 fn link_error(e: &CoreError) -> String {
     use enclave_core::UsernameError as U;
     match e {
@@ -967,6 +994,9 @@ pub async fn run_with(
         foundation,
         list,
         list_day: 0,
+        update_day: 0,
+        update: None,
+        build_check: String::new(),
         joining: None,
         join_code: String::new(),
         join_words: String::new(),
@@ -2857,6 +2887,15 @@ impl Engine {
                     let _ = c.history_lan_failed(&offer.attachment);
                 }
             }
+            Cmd::CheckUpdates => {
+                self.update_day = 0;
+                if self.client.is_some() {
+                    self.sync().await;
+                }
+            }
+            Cmd::VerifyBuild(files) => {
+                self.build_check = self.verify_build(&files);
+            }
             Cmd::SetScreenSecurity(on) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_setting(SCREEN_SECURITY, if on { &[] } else { &[0] });
@@ -3102,13 +3141,7 @@ impl Engine {
             self.transport.use_fallback(false);
         }
         if let Some(s) = &self.shaper {
-            s.set_shaping(Shaping::On(if maximum {
-                Profile::Maximum
-            } else if self.visible {
-                Profile::Foreground
-            } else {
-                Profile::Background
-            }));
+            s.set_shaping(Shaping::On(shaping_profile(maximum, self.visible)));
         }
     }
 
@@ -3289,6 +3322,61 @@ impl Engine {
         }
     }
 
+    /// "Verify this build" (`docs/19-ops.md` §1.3): the running programs'
+    /// hashes against the newest release checked, and each one's Sigsum
+    /// proof.
+    fn verify_build(&self, files: &[enclave_ipc::FileHash]) -> String {
+        let Some(root) = crate::built::UPDATE_ROOT else {
+            return "This build has no release keys to check against (a development build).".into();
+        };
+        let Some(c) = self.client.as_ref() else {
+            return String::new();
+        };
+        let Ok(Some((bundle, mut checker))) = c.update_bundle(root) else {
+            return "No release information yet. It comes from your server once a day; check again later.".into();
+        };
+        let release = match bundle.apply(&mut checker, self.transport.now()) {
+            Ok(r) => r,
+            Err(e) => return format!("The release information couldn't be checked: {e}."),
+        };
+        if files.is_empty() {
+            return "No programs to check.".into();
+        }
+        for f in files {
+            let (Ok(sha256), Ok(sha3_512)) = (
+                <[u8; 32]>::try_from(f.sha256.as_slice()),
+                <[u8; 64]>::try_from(f.sha3_512.as_slice()),
+            ) else {
+                return "No programs to check.".into();
+            };
+            let got = enclave_update::Target {
+                name: f.name.clone(),
+                length: f.length,
+                sha256,
+                sha3_512,
+            };
+            let Some(proof) = bundle.proof(&f.name) else {
+                return format!(
+                    "{} isn't part of Enclave {}, the newest release. If you haven't updated yet, update and check again.",
+                    program_name(&f.name),
+                    release.release
+                );
+            };
+            if let Err(e) = checker.check_target(&release, &got, proof) {
+                return format!(
+                    "{} doesn't match Enclave {}: {e}. Reinstall Enclave from its official download.",
+                    program_name(&f.name),
+                    release.release
+                );
+            }
+        }
+        format!(
+            "This build is Enclave {}: all {} programs match the release its maintainers signed, and each is in the public Sigsum log.",
+            release.release,
+            files.len()
+        )
+    }
+
     /// Start or end a bulk transfer (files, account setup, previews): the
     /// shaper may then skip its clock, except in Maximum.
     fn bulk(&self, on: bool) {
@@ -3311,6 +3399,32 @@ impl Engine {
                 Ok(_) | Err(CoreError::Server(enclave_rpc::api::Status::NotFound)) => {}
                 Err(e) => eprintln!("enclave-vault: server list: {e}"),
             }
+        }
+        // Once a day: release updates the home server relays, checked
+        // against the root built in (docs/19-ops.md §1.3).
+        if let Some(root) = crate::built::UPDATE_ROOT
+            && day != self.update_day
+            && let Some(c) = self.client.as_mut()
+        {
+            self.update_day = day;
+            match c.check_updates(root, env!("CARGO_PKG_VERSION")).await {
+                Ok(Some(u)) => self.update = Some(u),
+                Ok(None) => {}
+                Err(e) => eprintln!("enclave-vault: updates: {e}"),
+            }
+            // The newest bundle checked (this time or before), for the
+            // window's updater.
+            if let Ok(Some((b, _))) = c.update_bundle(root) {
+                let _ = self.out.send(Out::UpdateBundle(b.encode()));
+            }
+        }
+        // 30 days below a release's minimum version: no more receiving
+        // until Enclave is updated (docs/19-ops.md §4).
+        if let Some(c) = self.client.as_ref()
+            && c.receiving_stopped().unwrap_or(false)
+        {
+            self.status = "Update Enclave to keep receiving messages.".into();
+            return;
         }
         // Groups get one round in this many (fewer in Background).
         let period = match self.shaper.as_ref().map(|s| s.shaping()) {
@@ -3405,6 +3519,17 @@ impl Engine {
                                 } else {
                                     format!("{who} took {group} off the record.")
                                 };
+                            }
+                            Event::GroupDiverged { group_id } => {
+                                let group = c
+                                    .groups()
+                                    .into_iter()
+                                    .find(|g| g.id == *group_id)
+                                    .map(|g| g.name)
+                                    .unwrap_or_default();
+                                self.status = format!(
+                                    "Some people in {group} may be seeing different messages."
+                                );
                             }
                             Event::ContactClosed { root } => {
                                 let name = c
@@ -3964,6 +4089,18 @@ impl Engine {
                 s.share_release_words = r.words.join(" ");
             }
         }
+        s.update_release = self
+            .update
+            .as_ref()
+            .filter(|u| u.newer)
+            .map(|u| u.release.clone())
+            .unwrap_or_default();
+        s.update_required = match c.update_required_since() {
+            Ok(Some(_)) if c.receiving_stopped().unwrap_or(false) => 2,
+            Ok(Some(_)) => 1,
+            _ => 0,
+        };
+        s.build_check = self.build_check.clone();
         s.clock_skew = c
             .clock_skew()
             .ok()
@@ -4171,7 +4308,9 @@ impl Engine {
                 name: g.name.clone(),
                 preview: last
                     .map(|m| {
-                        if m.from.is_none() {
+                        if m.notice {
+                            m.text.clone()
+                        } else if m.from.is_none() {
                             format!("You: {}", group_text(m))
                         } else {
                             format!("{}: {}", m.from_name, group_text(m))
@@ -4263,20 +4402,28 @@ impl Engine {
                 s.messages = msgs
                     .iter()
                     .map(|m| {
+                        // A membership line (`GroupMessage::notice`) is
+                        // the group's, not its author's: no sender, no
+                        // actions.
                         let mut msg = Msg {
                             text: group_text(m),
-                            outgoing: m.from.is_none(),
+                            outgoing: m.from.is_none() && !m.notice,
                             time: if m.from.is_some() && m.signed == Some(false) {
                                 format!("{} · not signed", clock(m.at))
                             } else {
                                 clock(m.at)
                             },
                             status: if m.delivered { 1 } else { 0 },
-                            sender: m.from_name.clone(),
+                            sender: if m.notice {
+                                String::new()
+                            } else {
+                                m.from_name.clone()
+                            },
                             seq: m.seq,
                             pinned: !m.deleted && pinned.contains(&m.id),
                             deleted: m.deleted,
                             can_edit: m.from.is_none()
+                                && !m.notice
                                 && !m.deleted
                                 && m.poll.is_none()
                                 && m.attachment.is_none()
@@ -4385,12 +4532,8 @@ impl Engine {
             .collect();
         let can_link = c.can_link();
         let own = c.own_devices();
-        let now = c.now();
         s.new_device = c
-            .devices()
-            .into_iter()
-            .filter(|d| !d.primary && d.added_at + enclave_core::client::NEW_DEVICE_SECS > now)
-            .max_by_key(|d| d.added_at)
+            .new_device_notice()
             .map(|d| {
                 let who = if d.this_device {
                     "this device"
@@ -4495,4 +4638,70 @@ fn describe_skew(skew: i64) -> String {
     };
     let way = if skew < 0 { "behind" } else { "ahead" };
     format!("{n} {unit}{} {way}", if n == 1 { "" } else { "s" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// RT-12: the profile changes only at a foreground/background transition
+    /// (or a Maximum privacy toggle). Activity in between (messages, syncs,
+    /// bulk transfers, a window shown again while already shown) never
+    /// changes it.
+    #[test]
+    fn rt12_profile_change_only_on_visibility_transition() {
+        enum Step {
+            Visible(bool),
+            Maximum(bool),
+            /// Anything else the engine does: it re-applies the setting.
+            Activity,
+        }
+        use Step::*;
+        let steps = [
+            Activity,
+            Activity,
+            Visible(false),
+            Activity,
+            Visible(false),
+            Activity,
+            Visible(true),
+            Visible(true),
+            Activity,
+            Maximum(true),
+            Visible(false),
+            Activity,
+            Visible(true),
+            Maximum(false),
+            Activity,
+        ];
+        let (mut visible, mut maximum) = (true, false);
+        let mut profile = shaping_profile(maximum, visible);
+        assert_eq!(profile, Profile::Foreground, "the window starts shown");
+        let mut changes = Vec::new();
+        for (i, step) in steps.iter().enumerate() {
+            let transition = match step {
+                Visible(on) => std::mem::replace(&mut visible, *on) != *on,
+                Maximum(on) => std::mem::replace(&mut maximum, *on) != *on,
+                Activity => false,
+            };
+            let next = shaping_profile(maximum, visible);
+            if next != profile {
+                assert!(transition, "step {i} changed the profile");
+                changes.push((i, next));
+            }
+            profile = next;
+        }
+        assert_eq!(
+            changes,
+            [
+                (2, Profile::Background),
+                (6, Profile::Foreground),
+                (9, Profile::Maximum),
+                // Maximum stays Maximum in the background and back.
+                (13, Profile::Foreground),
+            ]
+        );
+        assert_eq!(shaping_profile(false, false), Profile::Background);
+        assert_eq!(shaping_profile(true, false), Profile::Maximum);
+    }
 }

@@ -11,6 +11,8 @@ keys_dir = "/var/lib/enclave/keys"
 public_dir = "/var/lib/enclave/public"
 # The foundation's signed list, served to clients as is.
 server_list = "/etc/enclave/foundation/server-list.bin"
+# The release update bundle the front fetches, relayed to clients.
+update_bundle = "/var/lib/enclave/updates/enclave-update.bin"
 # This server's Nym address. Empty: the ingress's own, which it writes to
 # public_dir/ingress.addr and the server publishes in its descriptor.
 nym_address = ""

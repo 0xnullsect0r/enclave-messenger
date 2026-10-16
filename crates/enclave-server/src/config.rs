@@ -79,6 +79,9 @@ pub struct ServerSection {
     /// A copy of the foundation's signed server list to serve to clients
     /// (`DirKind::ServerList`); re-read when it changes.
     pub server_list: Option<PathBuf>,
+    /// The release update bundle the front fetches (`front.update_dir`),
+    /// relayed to clients as `DirKind::Update`; re-read when it changes.
+    pub update_bundle: Option<PathBuf>,
 }
 
 impl Default for ServerSection {
@@ -93,6 +96,7 @@ impl Default for ServerSection {
             public_dir: PathBuf::from("/var/lib/enclave/public"),
             nym_address: String::new(),
             server_list: None,
+            update_bundle: None,
         }
     }
 }

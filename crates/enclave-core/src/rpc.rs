@@ -9,7 +9,8 @@ use enclave_rpc::api::{
 };
 use enclave_wire::{Op, RequestHeader};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// Reply to one call.
 pub(crate) struct Reply {
@@ -44,6 +45,9 @@ const STATUS_TRIES: u32 = 120;
 pub(crate) struct Rpc {
     transport: Arc<dyn Transport>,
     keys: HashMap<ServerId, ServerKey>,
+    /// The disappearing-timer clock's last reading, and when it was taken
+    /// (`Rpc::timer_now`).
+    timer: Mutex<Option<(u64, Instant)>>,
 }
 
 /// Envelopes read in a row from one mailbox before the rest is read as a
@@ -54,6 +58,7 @@ impl Rpc {
         Self {
             transport,
             keys: HashMap::new(),
+            timer: Mutex::new(None),
         }
     }
 
@@ -71,6 +76,39 @@ impl Rpc {
     /// Current time, from the transport (simulations move it).
     pub fn now(&self) -> u64 {
         self.transport.now()
+    }
+
+    /// The time disappearing timers run on (RT-23, `docs/12-servers.md`
+    /// §3.5): the device clock while it moves forward, but never behind
+    /// its last reading plus the local monotonic time since. Setting the
+    /// clock back doesn't stop a timer that has started, or bring back a
+    /// message that has gone; the timer keeps running at the monotonic
+    /// rate until the clock catches up. (A restart starts again from the
+    /// device clock: the matrix's residual of a tampered offline device.)
+    pub fn timer_now(&self) -> u64 {
+        let wall = self.now();
+        let Ok(mut last) = self.timer.lock() else {
+            return wall;
+        };
+        let at = Instant::now();
+        let (t, mark) = match *last {
+            Some((t0, at0)) => {
+                let secs = at.duration_since(at0).as_secs();
+                let run = t0.saturating_add(secs);
+                if wall > run {
+                    (wall, at)
+                } else {
+                    // Whole seconds only, so no fraction of one is lost.
+                    let mark = at0
+                        .checked_add(std::time::Duration::from_secs(secs))
+                        .unwrap_or(at);
+                    (run, mark)
+                }
+            }
+            None => (wall, at),
+        };
+        *last = Some((t, mark));
+        t
     }
 
     /// Start or end a bulk transfer ([`Transport::set_bulk`]).

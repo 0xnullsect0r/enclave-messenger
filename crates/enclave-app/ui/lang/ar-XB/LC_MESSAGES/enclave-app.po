@@ -169,6 +169,14 @@ msgstr "‫Add this sticker pack‬"
 msgid "Add to group"
 msgstr "‫Add to group‬"
 
+#: enclave-app/src/updater.rs
+msgid "Add-AppxPackage -Path '{}' -AllowUnsigned -ForceApplicationShutdown"
+msgstr "‫Add-AppxPackage -Path '‬{}‫' -AllowUnsigned -ForceApplicationShutdown‬"
+
+#: enclave-app/src/updater.rs
+msgid "Add-AppxPackage: {}"
+msgstr "‫Add-AppxPackage: ‬{}"
+
 #: enclave-vault/src/engine.rs
 msgid "Added the pack {}."
 msgstr "‫Added the pack ‬{}‫.‬"
@@ -282,6 +290,10 @@ msgid "Backups are made on the device that holds your recovery words."
 msgstr "‫Backups are made on the device that holds your recovery words.‬"
 
 #: ui/app.slint
+msgid "Before it is installed, the download is checked against the release its maintainers signed and the public log."
+msgstr "‫Before it is installed, the download is checked against the release its maintainers signed and the public log.‬"
+
+#: ui/app.slint
 msgid "Block"
 msgstr "‫Block‬"
 
@@ -362,6 +374,10 @@ msgid "Check code"
 msgstr "‫Check code‬"
 
 #: ui/app.slint
+msgid "Check for updates"
+msgstr "‫Check for updates‬"
+
+#: ui/app.slint
 msgid "Check it's really {}"
 msgstr "‫Check it's really ‬{}"
 
@@ -392,6 +408,10 @@ msgstr "‫Checked in person‬"
 #: enclave-vault/src/engine.rs
 msgid "Checked, but couldn't reach the server to update your conversation. It will finish when you're back online."
 msgstr "‫Checked, but couldn't reach the server to update your conversation. It will finish when you're back online.‬"
+
+#: enclave-app/src/updater.rs
+msgid "Checking the download…"
+msgstr "‫Checking the download…‬"
 
 #: ui/app.slint
 msgid "Checking…"
@@ -893,6 +913,14 @@ msgstr "‫Do you both see these words?‬"
 msgid "Done"
 msgstr "‫Done‬"
 
+#: enclave-app/src/updater.rs
+msgid "Downloading {}…"
+msgstr "‫Downloading ‬{}‫…‬"
+
+#: enclave-app/src/updater.rs
+msgid "Downloading… {}%"
+msgstr "‫Downloading… ‬{}‫%‬"
+
 #: ui/app.slint
 msgid "Each link works for one person, for 7 days. You approve them before they join, and they see only new messages."
 msgstr "‫Each link works for one person, for 7 days. You approve them before they join, and they see only new messages.‬"
@@ -1008,6 +1036,14 @@ msgstr "‫Enclave reaches the private network through Tor, and Tor couldn't con
 #: ui/app.slint
 msgid "Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery."
 msgstr "‫Enclave stays connected in the background, so messages arrive at once, and Android shows that it's running. A push service uses less battery.‬"
+
+#: enclave-app/src/updater.rs
+msgid "Enclave updates through Flathub: open your software center, or run flatpak update."
+msgstr "‫Enclave updates through Flathub: open your software center, or run flatpak update.‬"
+
+#: ui/app.slint
+msgid "Enclave {} is available"
+msgstr "‫Enclave ‬{}‫ is available‬"
 
 #: enclave-app/src/vault.rs
 msgid "Enclave's vault stopped ({}). Restart Enclave."
@@ -1540,6 +1576,14 @@ msgstr "‫No messages found. Search only looks on this device.‬"
 #: ui/app.slint
 msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr "‫No phone number. No email. Only the people you choose can reach you.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "No programs to check."
+msgstr "‫No programs to check.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "No release information yet. It comes from your server once a day; check again later."
+msgstr "‫No release information yet. It comes from your server once a day; check again later.‬"
 
 #: ui/app.slint
 msgid "No reports."
@@ -2457,6 +2501,10 @@ msgstr "‫The group moves to that server tomorrow.‬"
 msgid "The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup."
 msgstr "‫The recovery words or the backup don't match. Check the words, and that the file is your Enclave backup.‬"
 
+#: enclave-vault/src/engine.rs
+msgid "The release information couldn't be checked: {}."
+msgstr "‫The release information couldn't be checked: ‬{}‫.‬"
+
 #: ui/app.slint
 msgid "The report goes to the people who run {}'s server. It doesn't say who you are. They can close the account's message requests; they can't read your conversations."
 msgstr "‫The report goes to the people who run ‬{}‫'s server. It doesn't say who you are. They can close the account's message requests; they can't read your conversations.‬"
@@ -2464,6 +2512,10 @@ msgstr "‫The report goes to the people who run ‬{}‫'s server. It doesn't s
 #: ui/app.slint
 msgid "The server's public log now shows {} pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private."
 msgstr "‫The server's public log now shows ‬{}‫ pointing to someone else, or to no one. Your server may have changed it. Tell your contacts to use your code or invite link, and check security codes before sharing anything private.‬"
+
+#: enclave-app/src/shell.rs
+msgid "The update didn't install: {}"
+msgstr "‫The update didn't install: ‬{}"
 
 #: ui/app.slint
 msgid "Their code: enclave:meet#…"
@@ -2530,8 +2582,16 @@ msgid "Think someone may have seen them? You can replace them with new words."
 msgstr "‫Think someone may have seen them? You can replace them with new words.‬"
 
 #: enclave-vault/src/engine.rs
+msgid "This build has no release keys to check against (a development build)."
+msgstr "‫This build has no release keys to check against (a development build).‬"
+
+#: enclave-vault/src/engine.rs
 msgid "This build has no server to set up on. Start it with --server, or with a server list."
 msgstr "‫This build has no server to set up on. Start it with --server, or with a server list.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "This build is Enclave {}: all {} programs match the release its maintainers signed, and each is in the public Sigsum log."
+msgstr "‫This build is Enclave ‬{}‫: all ‬{}‫ programs match the release its maintainers signed, and each is in the public Sigsum log.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one."
@@ -2544,6 +2604,10 @@ msgstr "‫This computer has no Touch ID or Windows Hello set up.‬"
 #: ui/app.slint
 msgid "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files."
 msgstr "‫This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files.‬"
+
+#: enclave-app/src/updater.rs
+msgid "This copy of Enclave isn't an installed app. Download the newest release from the Enclave website."
+msgstr "‫This copy of Enclave isn't an installed app. Download the newest release from the Enclave website.‬"
 
 #: ui/app.slint
 msgid "This deletes your account for everyone. Your contacts see that you closed it, you leave every group, your username is withdrawn for good, and your server deletes your inboxes. Then everything on this device is erased, and your other devices erase themselves. It can't be undone."
@@ -2592,6 +2656,14 @@ msgstr "‫This network seems to block Tor‬"
 #: enclave-app/src/shell.rs
 msgid "This takes a few seconds."
 msgstr "‫This takes a few seconds.‬"
+
+#: ui/app.slint
+msgid "This version has a serious problem fixed in a newer one. It no longer sends or receives messages until you update."
+msgstr "‫This version has a serious problem fixed in a newer one. It no longer sends or receives messages until you update.‬"
+
+#: ui/app.slint
+msgid "This version has a serious problem fixed in a newer one. Until you update, you can read new messages for 30 days but not send."
+msgstr "‫This version has a serious problem fixed in a newer one. Until you update, you can read new messages for 30 days but not send.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Those shares don't fit together, or there aren't enough of them. Check each one, or ask one more friend."
@@ -2697,6 +2769,26 @@ msgstr "‫Unpin for everyone‬"
 msgid "Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them."
 msgstr "‫Up to 10, as you see them. This chat is off the record, so the operator can't confirm who wrote them.‬"
 
+#: ui/app.slint
+msgid "Update"
+msgstr "‫Update‬"
+
+#: enclave-app/src/shell.rs
+msgid "Update Enclave from the store you installed it from."
+msgstr "‫Update Enclave from the store you installed it from.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Update Enclave to keep receiving messages."
+msgstr "‫Update Enclave to keep receiving messages.‬"
+
+#: ui/app.slint
+msgid "Update Enclave to keep sending messages."
+msgstr "‫Update Enclave to keep sending messages.‬"
+
+#: enclave-app/src/updater.rs
+msgid "Update Enclave with your system's package manager or software center."
+msgstr "‫Update Enclave with your system's package manager or software center.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Use 3 to 32 letters, numbers or _, starting with a letter."
 msgstr "‫Use 3 to 32 letters, numbers or _, starting with a letter.‬"
@@ -2752,6 +2844,10 @@ msgstr "‫Using Tor's built-in bridges.‬"
 #: ui/app.slint
 msgid "Using your own bridges."
 msgstr "‫Using your own bridges.‬"
+
+#: ui/app.slint
+msgid "Verify this build"
+msgstr "‫Verify this build‬"
 
 #: ui/app.slint
 msgid "Version {}"

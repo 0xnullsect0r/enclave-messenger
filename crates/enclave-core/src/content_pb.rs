@@ -18,7 +18,7 @@ use prost::Message as _;
 pub struct Pb {
     #[prost(
         oneof = "Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36"
     )]
     pub kind: Option<Kind>,
 }
@@ -96,6 +96,8 @@ pub enum Kind {
     Closed(bool),
     #[prost(message, tag = "35")]
     NotifyKey(NotifyKey),
+    #[prost(bytes, tag = "36")]
+    Call(Vec<u8>),
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -481,6 +483,7 @@ pub fn to_pb(c: &Content) -> Pb {
             tokens: toks(&tokens),
         }),
         Content::Closed => Kind::Closed(true),
+        Content::Call(b) => Kind::Call(b.clone()),
         Content::NotifyKey { key, day, previews } => Kind::NotifyKey(NotifyKey {
             key: key.to_vec(),
             day,
@@ -600,6 +603,12 @@ pub fn from_pb(p: Pb) -> Result<Content> {
             tokens: arrs(s.tokens)?,
         },
         Kind::Closed(_) => Content::Closed,
+        Kind::Call(b) => {
+            if b.len() > crate::content::MAX_CALL {
+                return Err(ProtoError::Decode);
+            }
+            Content::Call(b)
+        }
         Kind::NotifyKey(n) => Content::NotifyKey {
             key: arr(n.key)?,
             day: n.day,

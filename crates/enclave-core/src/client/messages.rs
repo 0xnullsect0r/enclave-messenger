@@ -5,8 +5,10 @@
 //!   can refer to it.
 //! * A disappearing message is sealed under the conversation's crypto-shred
 //!   key for the day it expires. Its timer starts when it is sent (ours) or
-//!   read (theirs). Each sync shreds the keys of past days, so expired
-//!   messages are unrecoverable even from an image of the disk taken later.
+//!   read (theirs) and runs on the timer clock (`Rpc::timer_now`), which
+//!   setting the device clock back doesn't stop (RT-23). Each sync shreds the
+//!   keys of past days, so expired messages are unrecoverable even from an
+//!   image of the disk taken later.
 //! * Edits and deletes for everyone are advisory: they apply only to the
 //!   author's own messages, edits only within 24 hours.
 
@@ -90,6 +92,9 @@ pub struct Message {
     pub location: Option<Location>,
     /// A sticker: its index in the pack, which is `attachment`.
     pub sticker: Option<u8>,
+    /// A line this device wrote into the conversation (a call: "Missed
+    /// call", "Call, 3:02"), not a message anyone sent.
+    pub notice: bool,
 }
 
 impl Message {
@@ -115,6 +120,7 @@ impl Message {
             expires_at: None,
             location: None,
             sticker: None,
+            notice: false,
         }
     }
 
@@ -156,7 +162,8 @@ impl Message {
             | (u8::from(self.stalled) << 1)
             | (u8::from(self.late) << 2)
             | (u8::from(self.signed.is_some()) << 3)
-            | (u8::from(self.signed == Some(true)) << 4));
+            | (u8::from(self.signed == Some(true)) << 4)
+            | (u8::from(self.notice) << 5));
         w.bytes(
             &self
                 .evidence
@@ -212,12 +219,12 @@ impl Message {
             None
         };
         // Before receipts, "delivered" meant accepted by the server.
-        let (sent, stalled, late, signed) = if version >= 5 {
+        let (sent, stalled, late, signed, notice) = if version >= 5 {
             let f = r.u8()?;
             let signed = (f & 8 != 0).then_some(f & 16 != 0);
-            (f & 1 != 0, f & 2 != 0, f & 4 != 0, signed)
+            (f & 1 != 0, f & 2 != 0, f & 4 != 0, signed, f & 32 != 0)
         } else {
-            (delivered, false, false, None)
+            (delivered, false, false, None, false)
         };
         let evidence = if version >= 6 {
             let e = r.bytes(crate::content::MAX_SIG + crate::content::MAX_SPLIT_CONTENT + 64)?;
@@ -251,6 +258,7 @@ impl Message {
             expires_at,
             location,
             sticker,
+            notice,
         })
     }
 
@@ -304,7 +312,7 @@ impl Client {
 
     /// Messages with `root`, oldest first. Expired messages are skipped.
     pub fn messages(&self, root: &[u8; 64]) -> Result<Vec<Message>> {
-        let now = self.now();
+        let now = self.rpc.timer_now();
         let mut rng = HedgedRng::new()?;
         let shred = Shredder::open(&self.store, &mut rng)?;
         let mut v: Vec<Message> = self
@@ -367,7 +375,7 @@ impl Client {
         };
         let mut rng = HedgedRng::new()?;
         let shred = Shredder::open(&self.store, &mut rng)?;
-        let now = self.now();
+        let now = self.rpc.timer_now();
         Ok(Self::decode_record(&shred, root, &b).filter(|m| m.expires_at.is_none_or(|t| t > now)))
     }
 
@@ -414,7 +422,7 @@ impl Client {
         }
         m.expires_secs = expires_secs;
         if outgoing && expires_secs > 0 {
-            m.expires_at = Some(now + u64::from(expires_secs));
+            m.expires_at = Some(self.rpc.timer_now() + u64::from(expires_secs));
         }
         self.put_message(root, &m)?;
         Ok(m)
@@ -440,8 +448,10 @@ impl Client {
         self.new_message(root, id, outgoing, text, timer, now)
     }
 
-    /// Delete expired messages and shred the keys of past days.
-    pub(crate) fn purge_expired(&mut self, now: u64) -> Result<usize> {
+    /// Delete expired messages and shred the keys of past days, by the
+    /// timer clock.
+    pub(crate) fn purge_expired(&mut self) -> Result<usize> {
+        let now = self.rpc.timer_now();
         let today = now / 86_400;
         let roots: Vec<[u8; 64]> = self.contacts.keys().copied().collect();
         let mut removed = 0;
@@ -501,7 +511,7 @@ impl Client {
         {
             m.read = true;
             if m.expires_secs > 0 && m.expires_at.is_none() {
-                m.expires_at = Some(now + u64::from(m.expires_secs));
+                m.expires_at = Some(self.rpc.timer_now() + u64::from(m.expires_secs));
                 // Re-seal under the new day, then drop the old record's day.
             }
             self.put_message(root, &m)?;

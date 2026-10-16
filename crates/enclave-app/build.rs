@@ -11,6 +11,15 @@ fn main() {
     if os != "android" && os != "ios" {
         println!("cargo::rustc-cfg=desktop");
     }
+    // The name release targets give this build's programs
+    // (`program@triple`, "Verify this build"): macOS ships one universal
+    // build for both architectures.
+    let target = if os == "macos" {
+        "universal2-apple-darwin".to_string()
+    } else {
+        std::env::var("TARGET").unwrap_or_default()
+    };
+    println!("cargo:rustc-env=ENCLAVE_RELEASE_TARGET={target}");
     let tokens_path = "../../design/tokens.toml";
     println!("cargo:rerun-if-changed={tokens_path}");
     let text = std::fs::read_to_string(tokens_path).expect("design/tokens.toml");

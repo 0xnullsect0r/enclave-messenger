@@ -64,6 +64,10 @@ pub struct GroupInfo {
     /// Members whose change of recovery words is on hold here (their old
     /// roots; `Client::held_moves`).
     pub held_moves: Vec<[u8; 64]>,
+    /// Some members seem to see a different group state or different
+    /// messages (`group_check.rs`, RT-11): the chat says "Some people in
+    /// this group may be seeing different messages."
+    pub diverged: bool,
 }
 
 /// A reaction to a group message.
@@ -112,6 +116,11 @@ pub struct GroupMessage {
     /// sender's device, `Some(false)` should have been and wasn't ("Not
     /// signed"), `None` off the record.
     pub signed: Option<bool>,
+    /// A line the group itself shows, not a message anyone wrote: a
+    /// membership change ("Ada added Ben.", `07-groups.md` §7.3), stored
+    /// for every member as it is applied, with no way to hide it. `from`
+    /// is who made the change.
+    pub notice: bool,
 }
 
 fn put_who(w: &mut Writer, who: &Option<[u8; 64]>) {
@@ -145,7 +154,7 @@ impl GroupMessage {
 
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(7).u64(self.seq);
+        w.u8(8).u64(self.seq);
         put_who(&mut w, &self.from);
         w.bytes(self.from_name.as_bytes())
             .bytes(self.text.as_bytes())
@@ -178,13 +187,14 @@ impl GroupMessage {
             Some(false) => 1,
             Some(true) => 2,
         });
+        w.u8(u8::from(self.notice));
         w.finish()
     }
 
     fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=7).contains(&version) {
+        if !(1..=8).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let seq = r.u64()?;
@@ -235,6 +245,7 @@ impl GroupMessage {
             2 => Some(true),
             _ => return Err(ProtoError::Decode),
         };
+        let notice = version >= 8 && r.u8()? == 1;
         r.end()?;
         Ok(Self {
             seq,
@@ -251,6 +262,7 @@ impl GroupMessage {
             attachment,
             sticker,
             signed,
+            notice,
         })
     }
 }
@@ -381,6 +393,7 @@ impl Client {
                         .map(|(_, m)| m.root)
                         .collect(),
                     held_moves: self.held_moves(&st.group_id),
+                    diverged: self.group_diverged(&st.group_id),
                 }
             })
             .collect()
@@ -418,7 +431,7 @@ impl Client {
         self.save_group(gid)
     }
 
-    fn member_name(&self, e: &GroupEntry, root: &[u8; 64]) -> String {
+    pub(crate) fn member_name(&self, e: &GroupEntry, root: &[u8; 64]) -> String {
         self.contacts
             .get(root)
             .map(|c| c.name.clone())
@@ -554,7 +567,7 @@ impl Client {
     /// learns, then a state update in it.
     pub async fn remove_group_member(&mut self, gid: &[u8; 32], root: &[u8; 64]) -> Result<()> {
         let now = self.now();
-        let (next, removed) = {
+        let (next, removed, prev) = {
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
             let idx = e.group.state.index_of(root).ok_or(CoreError::NotFound)?;
             let me = e.group.me;
@@ -572,9 +585,11 @@ impl Client {
                 s.remove(idx);
                 s.epoch = epoch;
             })?;
+            let prev = e.group.state.clone();
             e.group.apply_state(next.clone())?;
-            (next, (epoch, secret))
+            (next, (epoch, secret), prev)
         };
+        self.note_membership(gid, &prev, None, now)?;
         self.rotate_group(gid, Some(removed), Some(*root), now)
             .await?;
         self.post_group(gid, &next.encode(), FLAG_STATE_UPDATE, now)
@@ -596,7 +611,7 @@ impl Client {
             }
             new_cards.push(c.card.clone().ok_or(CoreError::NotFound)?);
         }
-        let (next, epoch) = {
+        let (next, epoch, prev) = {
             let e = self.groups.get_mut(gid).ok_or(CoreError::NotFound)?;
             let me = e.group.me;
             if e.left
@@ -627,12 +642,14 @@ impl Client {
                 }
                 s.epoch = epoch;
             })?;
+            let prev = e.group.state.clone();
             e.group.apply_state(next.clone())?;
             for c in &new_cards {
                 e.cards.insert(c.root, c.clone());
             }
-            (next, (epoch, secret))
+            (next, (epoch, secret), prev)
         };
+        self.note_membership(gid, &prev, None, now)?;
         self.save_group(gid)?;
         let existing: Vec<[u8; 64]> = {
             let e = self.groups.get(gid).ok_or(CoreError::NotFound)?;
@@ -734,6 +751,7 @@ impl Client {
         // A restore contacts still hold can't be read by them yet.
         if flags & FLAG_STATE_UPDATE == 0 {
             self.require_not_held()?;
+            self.require_current()?;
         }
         // What members' notifications show (under the group's key for the
         // day; `notify.rs`).
@@ -1031,6 +1049,7 @@ impl Client {
             rest.truncate(MAX_PENDING);
             e.pending = rest;
         }
+        events.append(&mut self.group_events);
         self.save_group(&gid)?;
 
         // Key members that became reachable since our last rotation.
@@ -1207,6 +1226,8 @@ impl Client {
                 Err(ProtoError::NoSession) => e.left = true,
                 Err(err) => return Err(err.into()),
             }
+            self.note_group_state(gid)?;
+            self.note_membership(gid, &prev_state, Some(sender_root), now)?;
             if let Some(on_record) = mode {
                 return Ok(Some(Event::GroupModeChanged {
                     group_id: *gid,
@@ -1216,6 +1237,8 @@ impl Client {
             }
             return Ok(Some(Event::GroupChanged { group_id: *gid }));
         }
+        // Its state hash and frontier against ours (RT-11).
+        let diverged = self.check_group_message(gid, &msg, now)?;
         // A message on the record without a good signature is shown
         // marked; one signed off the record shows as signed.
         self.group_unit_signed = match (prev_state.on_record, signed) {
@@ -1225,6 +1248,8 @@ impl Client {
         };
         let r = self.on_group_content(gid, &sender_root, msg, now);
         self.group_unit_signed = None;
+        // The mark goes out with the rest of this group's events.
+        self.group_events.extend(diverged);
         r
     }
 
@@ -1360,7 +1385,8 @@ impl Client {
             return Ok(());
         };
         let bytes = zeroize::Zeroizing::new(e.encode());
-        Ok(self.store.put(NS_GROUPS, gid, &bytes, &mut self.rng)?)
+        self.store.put(NS_GROUPS, gid, &bytes, &mut self.rng)?;
+        self.note_group_state(gid)
     }
 
     /// Save a changed group message.
@@ -1444,6 +1470,7 @@ impl Client {
             } else {
                 on_record.then_some(true)
             },
+            notice: false,
         };
         self.put_group_message(gid, &m)?;
         self.save_group(gid)?;

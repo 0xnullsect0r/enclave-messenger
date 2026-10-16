@@ -277,7 +277,12 @@ impl Client {
             save(self, step)?;
         }
         if step & M_BUNDLE == 0 {
-            let publication = self.prekeys.publish(&self.device, now, &mut self.rng)?;
+            let publication = self.prekeys.publish(
+                &self.device,
+                self.manifest.bundle_epoch,
+                now,
+                &mut self.rng,
+            )?;
             self.save_prekeys()?;
             self.rpc
                 .dir_put(
@@ -593,7 +598,12 @@ impl Client {
             self.store.delete(NS_PROFILE, KEY_IN)?;
         }
         if self.store.get(NS_PROFILE, KEY_BUNDLE)?.is_some() {
-            let publication = self.prekeys.publish(&self.device, now, &mut self.rng)?;
+            let publication = self.prekeys.publish(
+                &self.device,
+                self.manifest.bundle_epoch,
+                now,
+                &mut self.rng,
+            )?;
             self.save_prekeys()?;
             let server = self.profile.server;
             self.rpc

@@ -10,9 +10,36 @@ use crate::{IpcError, Result};
 /// Most ticketbooks one `Connect` carries.
 pub const MAX_TICKETBOOKS: usize = 64;
 
+/// A [`NetReply`] whose id has this bit set isn't an answer: it carries a
+/// datagram that arrived on the UDP socket numbered by the other bits
+/// ([`NetRequest::UdpOpen`]), or (an error) says the socket closed.
+pub const SOCKET_EVENT: u32 = 1 << 31;
+
 /// Vault → netd.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetRequest {
+    /// Open a UDP socket to a call relay (or, in direct mode, the other
+    /// person) at `remote` (`IP:PORT`; `docs/11-calls.md` §3). The reply
+    /// is the socket's number (`u32`); datagrams that arrive come as
+    /// [`SOCKET_EVENT`] replies.
+    UdpOpen {
+        /// Request number.
+        id: u32,
+        /// Where to.
+        remote: String,
+    },
+    /// Send a datagram on a socket. No reply.
+    UdpSend {
+        /// The socket.
+        socket: u32,
+        /// The datagram.
+        bytes: Vec<u8>,
+    },
+    /// Close a socket. No reply.
+    UdpClose {
+        /// The socket.
+        socket: u32,
+    },
     /// Send a sealed request to a server and return its sealed reply.
     Exchange {
         /// Request number.
@@ -171,6 +198,15 @@ impl NetRequest {
             NetRequest::TorStatus { id } => {
                 w.u8(12).u32(*id);
             }
+            NetRequest::UdpOpen { id, remote } => {
+                w.u8(13).u32(*id).str(remote);
+            }
+            NetRequest::UdpSend { socket, bytes } => {
+                w.u8(14).u32(*socket).bytes(bytes);
+            }
+            NetRequest::UdpClose { socket } => {
+                w.u8(15).u32(*socket);
+            }
         }
         w.0
     }
@@ -233,6 +269,15 @@ impl NetRequest {
             }
             10 => NetRequest::TicketsSpent { id: r.u32()? },
             12 => NetRequest::TorStatus { id: r.u32()? },
+            13 => NetRequest::UdpOpen {
+                id: r.u32()?,
+                remote: r.str()?,
+            },
+            14 => NetRequest::UdpSend {
+                socket: r.u32()?,
+                bytes: r.bytes()?,
+            },
+            15 => NetRequest::UdpClose { socket: r.u32()? },
             11 => NetRequest::UseFallback {
                 on: match r.u8()? {
                     0 => false,

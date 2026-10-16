@@ -393,7 +393,10 @@ impl SimUser {
             Status::Ok
         );
         for d in devices.iter_mut() {
-            let publication = d.prekeys.publish(&d.keys, net.now, rng).unwrap();
+            let publication = d
+                .prekeys
+                .publish(&d.keys, manifest.bundle_epoch, net.now, rng)
+                .unwrap();
             let s = net.dir_put(
                 &server,
                 DirKind::Bundle,
@@ -538,7 +541,9 @@ impl SimUser {
                 )
                 .unwrap();
             let bundle = Bundle::decode(&bb).unwrap();
-            bundle.verify(&dev.signing, net.now).unwrap();
+            bundle
+                .verify(&dev.signing, peer_manifest.bundle_epoch, net.now)
+                .unwrap();
             // Our device 0 initiates to each of their devices.
             let me = &self.devices[0];
             let local = Local {

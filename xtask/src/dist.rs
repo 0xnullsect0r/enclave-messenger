@@ -583,6 +583,122 @@ pub fn packager(args: &[String]) -> ExitCode {
     })())
 }
 
+/// The MSIX package's manifest (`docs/19-ops.md` §1.4). Unsigned, the
+/// publisher carries the OID Windows looks for to let `Add-AppxPackage
+/// -AllowUnsigned` install it; with a certificate, `ENCLAVE_MSIX_PUBLISHER`
+/// is its subject and `ENCLAVE_WIN_SIGN_CMD` signs the package.
+fn msix_manifest(version: &str, arch: &str, publisher: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap rescap">
+  <Identity Name="{APP_ID}" Publisher="{publisher}" Version="{version}.0" ProcessorArchitecture="{arch}"/>
+  <Properties>
+    <DisplayName>Enclave</DisplayName>
+    <PublisherDisplayName>The Enclave contributors</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0"/>
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us"/>
+  </Resources>
+  <Applications>
+    <Application Id="Enclave" Executable="enclave.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Enclave" Description="Private messages without a phone number"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"/>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+    <Capability Name="internetClient"/>
+  </Capabilities>
+</Package>
+"#
+    )
+}
+
+/// The publisher an unsigned MSIX may have.
+const UNSIGNED_PUBLISHER: &str =
+    "CN=The Enclave contributors, OID.2.25.311729368913984317654407730594956997722=1";
+
+/// `cargo xtask msix --target T`: the MSIX package of what `dist`
+/// gathered, `Enclave-V-ARCH.msix` (Windows, with the SDK's makeappx).
+pub fn msix(args: &[String]) -> ExitCode {
+    exit((|| {
+        let target = target_arg(args)?;
+        let v = version()?;
+        let arch = target.split('-').next().unwrap_or_default();
+        let msix_arch = if arch == "aarch64" { "arm64" } else { "x64" };
+        let stage = release_dir(&target).join("msix");
+        let _ = fs::remove_dir_all(&stage);
+        fs::create_dir_all(stage.join("Assets")).map_err(|e| e.to_string())?;
+        let dir = dist_dir(&target);
+        for p in PROGRAMS {
+            let f = format!("{p}.exe");
+            fs::copy(dir.join(&f), stage.join(&f)).map_err(|e| format!("{f}: {e}"))?;
+        }
+        fs::copy(
+            dir.join("THIRD-PARTY-NOTICES.txt"),
+            stage.join("THIRD-PARTY-NOTICES.txt"),
+        )
+        .map_err(|e| e.to_string())?;
+        let svg = fs::read(root().join("design/icon/enclave.svg")).map_err(|e| e.to_string())?;
+        for (name, size) in [
+            ("Square44x44Logo.png", 44),
+            ("Square150x150Logo.png", 150),
+            ("StoreLogo.png", 50),
+        ] {
+            let png = crate::icons::render(&svg, size)?;
+            fs::write(stage.join("Assets").join(name), png).map_err(|e| e.to_string())?;
+        }
+        let publisher = std::env::var("ENCLAVE_MSIX_PUBLISHER")
+            .ok()
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| UNSIGNED_PUBLISHER.into());
+        // MSIX versions are four numbers; a pre-release counts as its
+        // release.
+        fs::write(
+            stage.join("AppxManifest.xml"),
+            msix_manifest(numeric(&v), msix_arch, &publisher),
+        )
+        .map_err(|e| e.to_string())?;
+        let out = out_dir()?.join(format!("Enclave-{v}-{arch}.msix"));
+        run(Command::new(makeappx()?)
+            .args(["pack", "/o", "/d"])
+            .arg(&stage)
+            .arg("/p")
+            .arg(&out))?;
+        if let Ok(cmd) = std::env::var("ENCLAVE_WIN_SIGN_CMD")
+            && !cmd.is_empty()
+        {
+            let line = cmd.replace("%1", &out.display().to_string());
+            run(Command::new("cmd").args(["/C", &line]))?;
+        }
+        eprintln!("msix: {}", out.display());
+        Ok(())
+    })())
+}
+
+/// The Windows SDK's makeappx.exe (newest SDK first), or `makeappx` on the
+/// PATH.
+fn makeappx() -> Result<PathBuf, String> {
+    let kits = PathBuf::from(r"C:\Program Files (x86)\Windows Kits\10\bin");
+    let mut found: Vec<PathBuf> = fs::read_dir(&kits)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path().join("x64").join("makeappx.exe"))
+        .filter(|p| p.is_file())
+        .collect();
+    found.sort();
+    Ok(found.pop().unwrap_or_else(|| PathBuf::from("makeappx")))
+}
+
 /// SHA-256 and SHA3-512 sums of the files in `dir`, in the format of
 /// `sha256sum` (`HEX  NAME`).
 pub fn checksums(args: &[String]) -> ExitCode {

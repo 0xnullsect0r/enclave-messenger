@@ -31,13 +31,13 @@ Every table below gives offsets in bytes from the start of the object. Every tab
 | 1,660 | 72 | request header (encrypted) | §2.1 |
 | 1,732 | 14,336 | envelope region (encrypted) | §5 to §9, or an API payload (§2.3) |
 | 16,068 | 32 | seal tag `T` | |
-| 16,100 | 284 | random padding | outside the seal |
+| 16,100 | 284 | random padding | outside the seal, bound into its AD |
 
 Sum: 2 + 2 + 56 + 1,568 + 32 + 72 + 14,336 + 32 + 284 = **16,384**.
 
 Grouped: prefix 4 + server KEM 1,624 + sealed region 14,472 (`N` 32 + header 72 + envelope 14,336 + `T` 32) + padding 284 = 16,384.
 
-The sealed region is `seal(k_req, u32(key_id), header ‖ envelope)` with `k_req` from `09-transport.md` §2. The daily key ID is not on the wire; it is the associated data, so the server tries each key it holds (newest first). The seal plaintext is 72 + 14,336 = 14,408 B.
+The sealed region is `seal(k_req, u32(key_id) ‖ padding, header ‖ envelope)` with `k_req` from `09-transport.md` §2, where `padding` is the unit's last 284 B. The daily key ID is not on the wire; it is part of the associated data, so the server tries each key it holds (newest first). The seal plaintext is 72 + 14,336 = 14,408 B.
 
 Compared with PLAN §8 (4 + 1,624 + 72 seal overhead + 64 header + 14,336 + 284), the implementation has a 64 B seal overhead (no 8 B framing header) and a 72 B request header. The total and the 284 B padding are PLAN's.
 
@@ -147,7 +147,7 @@ Reply envelope region: for a `Poll` that found an envelope and for `BlobGet`, th
 
 Sum: 2 + 2 + 56 + 1,568 + 32 + 72 + 32 + 284 = **2,048**.
 
-The sealed region is 136 B: `seal(k_req, u32(key_id), header)`. The poll object is exactly the wire unit without its 14,336 B envelope region (16,384 − 14,336 = 2,048), with the same 1,628 B prefix and 284 B padding. It carries **exactly one mailbox** (D7). The reply to a poll is a full reply unit (§3). Whether a poll object plus its Nym reply SURBs fits in one or two Sphinx packets is measured in M4 (`math/cover-traffic.md` §2).
+The sealed region is 136 B: `seal(k_req, u32(key_id) ‖ padding, header)`, with the poll's last 284 B as `padding`. The poll object is exactly the wire unit without its 14,336 B envelope region (16,384 − 14,336 = 2,048), with the same 1,628 B prefix and 284 B padding. It carries **exactly one mailbox** (D7). The reply to a poll is a full reply unit (§3). Whether a poll object plus its Nym reply SURBs fits in one or two Sphinx packets is measured in M4 (`math/cover-traffic.md` §2).
 
 ## 5. Direct stored envelope: 14,336 B
 

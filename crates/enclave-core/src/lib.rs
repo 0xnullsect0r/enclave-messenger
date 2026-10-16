@@ -27,7 +27,7 @@ pub mod files;
 mod persist;
 mod rpc;
 
-pub use card::{ContactCard, Invite, LinkError};
+pub use card::{ContactCard, DeepLink, Invite, LinkError, open_deep_link};
 pub use client::{BackupCheck, SERVER_BACKUP_EVERY, check_archive};
 pub use client::{
     Client, Contact, ContactState, DeviceInfo, Event, GroupInfo, GroupMessage, GroupReaction,
@@ -41,6 +41,7 @@ pub use client::{
     HistoryServe, HostVotes, LanHistory, ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS,
     TicketWallet, fetch_due,
 };
+pub use client::{RECEIVE_GRACE, UpdateStatus};
 pub use enclave_kt::KtPolicy;
 pub use enclave_push_relay::Platform as PushPlatform;
 
@@ -113,6 +114,13 @@ pub enum CoreError {
     /// (`docs/09-transport.md` §7).
     #[error("mixnet tickets: {0}")]
     Tickets(String),
+    /// Release metadata was refused (`docs/19-ops.md` §1.5).
+    #[error("update: {0}")]
+    Update(String),
+    /// A release made this version's minimum newer than it
+    /// (`docs/19-ops.md` §4): update to keep sending.
+    #[error("Update Enclave to keep sending messages.")]
+    UpdateRequired,
 }
 
 /// Why a username operation failed, in terms the UI can explain.

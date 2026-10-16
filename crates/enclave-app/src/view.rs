@@ -351,6 +351,9 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_bridges_error(s.bridges_error.clone().into());
     ui.set_bridges_restart(s.bridges_restart);
     ui.set_clock_skew(crate::i18n::tr(&s.clock_skew).into());
+    ui.set_update_release(s.update_release.clone().into());
+    ui.set_update_required(i32::from(s.update_required));
+    ui.set_build_check(crate::i18n::tr(&s.build_check).into());
     ui.set_new_device(s.new_device.clone().into());
     ui.set_joining(s.joining.join(", ").into());
     ui.set_restore_error(crate::i18n::tr(&s.restore_error).into());

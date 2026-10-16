@@ -34,7 +34,7 @@ The manifest (`manifest.rs`) is the only object the root signs day to day (D3). 
 - the account X448 identity key (the only X448 identity key; `00-overview.md` §9, I-8);
 - `vault_hash = SHA3-512(vault_pk)`;
 - the request-inbox locator (opaque bytes, at most 256 B);
-- the bundle epoch (1 in the genesis manifest);
+- the bundle epoch (1 in the genesis manifest): every prekey signature covers it, so moving it on retires every prekey signed before (`04-eqxdh.md` §2);
 - 1 to 5 device entries (1 primary plus up to 4 linked), each with: device ID, role, time added, capability bits, composite signing public key, and ML-KEM-1024 auth key.
 
 The account inbox address, its owner secret and read credential are **never** in the manifest or in KT. Contacts receive the inbox address and tokens inside the encrypted session.
@@ -137,7 +137,7 @@ The rendezvous mailbox accepts writes and reads authorized by `link_cap` (`02b-k
 
 `crates/enclave-core/src/client/link.rs`, test `link_a_second_device`. Where this differs from §4.1–4.3 above, the code is normative:
 
-- **Code.** `enclave:link#` + base64url of `version ‖ server 16 ‖ mailbox 32 ‖ owner 32 ‖ X448 56 ‖ link_secret 32 ‖ commit 32` (201 B), not base32 with the ML-KEM key inline. The new device writes its ML-KEM ek and device keys (composite signing key, ML-KEM auth key) to the rendezvous mailbox first; `commit` is the first 32 bytes of SHA3-512 of that record, so the QR code stays small and the primary can check it read the right record. The general scanner refuses the code (`ContactCard::from_link` → `DeviceLinkCode`).
+- **Code.** `enclave:link#` + base64url of `version ‖ server 16 ‖ mailbox 32 ‖ owner 32 ‖ X448 56 ‖ link_secret 32 ‖ commit 32` (201 B), not base32 with the ML-KEM key inline. The new device writes its ML-KEM ek and device keys (composite signing key, ML-KEM auth key) to the rendezvous mailbox first, sealed under `KMAC256(link_secret, "offer", 256, "enclave/v1/proto/link-keys")` so the server can't tie the mailbox to the account whose manifest later lists those keys (RT-28); `commit` is the first 32 bytes of SHA3-512 of that record (unsealed), so the QR code stays small and the primary can check it read the right record. The general scanner refuses the code (`ContactCard::from_link` → `DeviceLinkCode`).
 - **Key.** `EnclaveCombine(TwoKem, [X448, ML-KEM-1024], [X_new, ek, X_primary, ct, transcript], psk = link_secret)` with transcript `"enclave/v1/proto/link-transcript" ‖ commit ‖ mailbox`. Both screens derive three BIP-39 words (`link-phrase`); the primary shows four choices and links only on the right one.
 - **Handover.** The primary signs and publishes manifest `version + 1` (with `prev_hash`), then uploads the account as a sealed blob: profile, shared account keys, the signed manifest, and every accepted contact's card, name, checked state, timer, inbox and **half of its write tokens** (tokens are single use, so each device needs its own). The blob reference travels sealed under `link-keys`.
 - **After linking.** The new device publishes its prekeys and opens sessions with every contact's devices (contacts accept them silently: the device is in the root-signed manifest) and with the account's other devices. Every message sent from one device is copied to the others (`Content::SelfCopy`) through the shared account inbox.

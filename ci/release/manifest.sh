@@ -15,6 +15,7 @@ Enclave-$V-$a.AppImage
 Enclave-$V-$a.flatpak
 enclave-$V-$a-pc-windows-msvc.zip
 Enclave-$V-$a.msi
+Enclave-$V-$a.msix
 Enclave-$V-$a-setup.exe
 LIST
 done

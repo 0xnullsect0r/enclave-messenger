@@ -26,6 +26,7 @@ enclave-nym = { path = "../enclave-nym" }
 enclave-store = { path = "../enclave-store" }
 enclave-kt = { path = "../enclave-kt" }
 enclave-federation = { path = "../enclave-federation" }
+enclave-update = { path = "../enclave-update" }
 prost = { version = "0.14", default-features = false, features = ["derive", "std"] }
 thiserror = "2"
 zeroize = "1"
@@ -34,5 +35,7 @@ zeroize = "1"
 enclave-sim = { path = "../enclave-sim" }
 enclave-credgate = { path = "../enclave-credgate", features = ["dev-tickets"] }
 async-trait = "0.1"
+sha2 = "0.10"
+enclave-calls = { path = "../enclave-calls" }
 enclave-server = { path = "../enclave-server", features = ["test-hooks"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

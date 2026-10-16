@@ -178,6 +178,15 @@ fn package_key(key: &[u8; 64]) -> SealKey {
     seal::derive_key(key, b"package", L_KEYS)
 }
 
+/// The offer (the new device's ML-KEM key and device entry) goes to the
+/// rendezvous mailbox sealed under a key from the link secret, which only
+/// the code carries: the server never sees the device's keys there, so it
+/// can't tie the mailbox to the account whose manifest later lists them
+/// (RT-28).
+fn offer_key(secret: &[u8; 32]) -> SealKey {
+    seal::derive_key(secret, b"offer", L_KEYS)
+}
+
 async fn write(
     rpc: &mut Rpc,
     code: &LinkCode,
@@ -283,7 +292,20 @@ impl LinkingDevice {
             commit,
         };
         let mut rpc = Rpc::new(Arc::clone(&transport));
-        write(&mut rpc, &code, &offer, now, &mut rng).await?;
+        let sealed = seal::seal(
+            &offer_key(&code.secret),
+            AD_LINK.as_bytes(),
+            &offer[1..],
+            &mut rng,
+        )?;
+        write(
+            &mut rpc,
+            &code,
+            &[&[U_OFFER][..], &sealed].concat(),
+            now,
+            &mut rng,
+        )
+        .await?;
         Ok(Self {
             opts,
             transport,
@@ -406,7 +428,8 @@ impl LinkingDevice {
             &mut self.rng,
         )?;
         let mut prekeys = PrekeyStore::default();
-        let publication = prekeys.publish(&self.device, now, &mut self.rng)?;
+        let publication =
+            prekeys.publish(&self.device, manifest.bundle_epoch, now, &mut self.rng)?;
         store.put(
             NS_SECRETS,
             b"account",
@@ -474,6 +497,7 @@ impl LinkingDevice {
             group_polls: std::collections::HashMap::new(),
             #[cfg(test)]
             two_kem_for_tests: false,
+            group_events: Vec::new(),
         };
         let own = client.card();
         for (card, name, verified, timer, inbox, server, tokens) in contacts {
@@ -576,6 +600,18 @@ impl Client {
             .collect()
     }
 
+    /// The "New device linked" notice (`03-identity.md` §4.4, RT-09): every
+    /// device of the account, the new one included, shows the newest device
+    /// linked in the last [`NEW_DEVICE_SECS`](super::NEW_DEVICE_SECS), so a
+    /// device linked by someone else is seen wherever the person looks.
+    pub fn new_device_notice(&self) -> Option<DeviceInfo> {
+        let now = self.now();
+        self.devices()
+            .into_iter()
+            .filter(|d| !d.primary && d.added_at.saturating_add(super::NEW_DEVICE_SECS) > now)
+            .max_by_key(|d| d.added_at)
+    }
+
     /// Whether this device can add devices (holds the root).
     pub fn can_link(&self) -> bool {
         self.account.root.is_some()
@@ -597,6 +633,9 @@ impl Client {
             .into_iter()
             .find(|p| p.first() == Some(&U_OFFER))
             .ok_or(CoreError::NotFound)?;
+        let body = seal::open(&offer_key(&code.secret), AD_LINK.as_bytes(), &offer[1..])
+            .map_err(|_| LinkError::Malformed)?;
+        let offer = [&[U_OFFER][..], &body].concat();
         if sha3_512(&offer)[..32] != code.commit {
             return Err(LinkError::Malformed.into());
         }

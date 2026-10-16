@@ -20,6 +20,7 @@ mod done;
 mod i18n;
 mod icons;
 mod licenses;
+mod supply;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -48,19 +49,20 @@ fn main() -> ExitCode {
             }
         },
         "licenses" => licenses::licenses(std::env::args().any(|a| a == "--check")),
-        "dist" | "packager" | "bundle-macos" | "checksums" | "version" => {
+        "dist" | "packager" | "bundle-macos" | "checksums" | "version" | "msix" => {
             let args: Vec<String> = std::env::args().skip(2).collect();
             match task.as_str() {
                 "dist" => dist::dist(&args),
                 "packager" => dist::packager(&args),
                 "bundle-macos" => dist::bundle_macos(&args),
                 "checksums" => dist::checksums(&args),
+                "msix" => dist::msix(&args),
                 _ => dist::version_task(&args),
             }
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | i18n [--check] | licenses [--check] | dist [--target T] [--no-build] | packager --target T --formats F | bundle-macos [--target T] | checksums DIR | version [TAG]"
+                "usage: cargo xtask labels | repro [package] [bin] | dudect | proverif | done [--report] | icons [--check] | i18n [--check] | licenses [--check] | dist [--target T] [--no-build] | packager --target T --formats F | bundle-macos [--target T] | checksums DIR | version [TAG] | msix --target T"
             );
             ExitCode::FAILURE
         }

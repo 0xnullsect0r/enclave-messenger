@@ -592,6 +592,8 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                 }
             }
         });
+        // UDP sockets for calls (`docs/11-calls.md` §3), by number.
+        let sockets = Udp::default();
         // One-way sends still being handed to the mixnet client, which the
         // flush at the end must come after.
         let mut oneway = tokio::task::JoinSet::new();
@@ -611,6 +613,19 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                 }
                 Ok(NetRequest::UseFallback { on }) => {
                     transport.use_fallback(on);
+                    continue;
+                }
+                Ok(NetRequest::UdpSend { socket, bytes }) => {
+                    sockets.send(socket, &bytes).await;
+                    continue;
+                }
+                Ok(NetRequest::UdpClose { socket }) => {
+                    sockets.close(socket);
+                    continue;
+                }
+                Ok(NetRequest::UdpOpen { id, remote }) => {
+                    let result = sockets.open(&remote, tx.clone()).await;
+                    let _ = tx.send(NetReply { id, result }.encode());
                     continue;
                 }
                 Ok(NetRequest::SetRoute { server, route }) => {
@@ -683,7 +698,10 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                     NetRequest::SetRoute { .. }
                     | NetRequest::SetPacing { .. }
                     | NetRequest::RequirePrivate { .. }
-                    | NetRequest::UseFallback { .. } => return,
+                    | NetRequest::UseFallback { .. }
+                    | NetRequest::UdpOpen { .. }
+                    | NetRequest::UdpSend { .. }
+                    | NetRequest::UdpClose { .. } => return,
                     NetRequest::TorStatus { id } => (
                         id,
                         t.tor_status()
@@ -712,11 +730,122 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Most UDP sockets open at once (a group call needs one).
+const MAX_SOCKETS: usize = 8;
+/// Largest datagram read.
+const MAX_DATAGRAM: usize = 2048;
+
+type Socket = (Arc<tokio::net::UdpSocket>, tokio::task::JoinHandle<()>);
+
+/// The UDP sockets calls use. Each is connected to one address; what
+/// arrives on it goes to the vault as a [`enclave_ipc::net::SOCKET_EVENT`]
+/// reply, and an error closes it.
+#[derive(Default)]
+struct Udp {
+    next: std::sync::atomic::AtomicU32,
+    open: std::sync::Mutex<HashMap<u32, Socket>>,
+}
+
+impl Udp {
+    async fn open(
+        &self,
+        remote: &str,
+        tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    ) -> Result<Vec<u8>, String> {
+        use enclave_ipc::net::SOCKET_EVENT;
+        if self.open.lock().map(|o| o.len()).unwrap_or(MAX_SOCKETS) >= MAX_SOCKETS {
+            return Err("too many call sockets".into());
+        }
+        let addr = tokio::net::lookup_host(remote)
+            .await
+            .map_err(|e| format!("{remote}: {e}"))?
+            .next()
+            .ok_or_else(|| format!("{remote}: no address"))?;
+        let local: std::net::SocketAddr = if addr.is_ipv4() {
+            ([0, 0, 0, 0], 0).into()
+        } else {
+            (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
+        };
+        let sock = tokio::net::UdpSocket::bind(local)
+            .await
+            .map_err(|e| e.to_string())?;
+        sock.connect(addr).await.map_err(|e| e.to_string())?;
+        let sock = Arc::new(sock);
+        let n = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % SOCKET_EVENT;
+        let reader = Arc::clone(&sock);
+        let task = tokio::spawn(async move {
+            let mut buf = vec![0u8; MAX_DATAGRAM];
+            loop {
+                let result = reader
+                    .recv(&mut buf)
+                    .await
+                    .map(|len| buf[..len].to_vec())
+                    .map_err(|e| e.to_string());
+                let closed = result.is_err();
+                let reply = NetReply {
+                    id: SOCKET_EVENT | n,
+                    result,
+                };
+                if tx.send(reply.encode()).is_err() || closed {
+                    break;
+                }
+            }
+        });
+        if let Ok(mut o) = self.open.lock() {
+            o.insert(n, (sock, task));
+        }
+        Ok(n.to_be_bytes().to_vec())
+    }
+
+    async fn send(&self, socket: u32, bytes: &[u8]) {
+        let sock = self
+            .open
+            .lock()
+            .ok()
+            .and_then(|o| o.get(&socket).map(|s| Arc::clone(&s.0)));
+        if let Some(s) = sock {
+            // A datagram that can't go is lost, as on the network.
+            let _ = s.send(bytes).await;
+        }
+    }
+
+    fn close(&self, socket: u32) {
+        if let Some((_, task)) = self.open.lock().ok().and_then(|mut o| o.remove(&socket)) {
+            task.abort();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
     use enclave_nym::fake::FakeMixnet;
+
+    #[tokio::test]
+    async fn udp_sockets_carry_datagrams_both_ways() {
+        let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = peer.local_addr().unwrap();
+        let udp = Udp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let n = udp.open(&addr.to_string(), tx).await.unwrap();
+        let n = u32::from_be_bytes(n.try_into().unwrap());
+        udp.send(n, b"to the relay").await;
+        let mut buf = [0u8; 64];
+        let (len, from) = peer.recv_from(&mut buf).await.unwrap();
+        assert_eq!(&buf[..len], b"to the relay");
+        peer.send_to(b"back", from).await.unwrap();
+        let reply = NetReply::decode(&rx.recv().await.unwrap()).unwrap();
+        assert_eq!(reply.id, enclave_ipc::net::SOCKET_EVENT | n);
+        assert_eq!(reply.result, Ok(b"back".to_vec()));
+        udp.close(n);
+        udp.send(n, b"gone").await;
+        assert!(
+            udp.open("not an address", tokio::sync::mpsc::unbounded_channel().0)
+                .await
+                .is_err()
+        );
+    }
 
     fn routed(tor: bool) -> (Routed, ServerId, ServerId) {
         let over_nym: ServerId = [1; 16];

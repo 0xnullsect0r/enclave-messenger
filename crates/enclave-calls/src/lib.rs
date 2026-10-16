@@ -1,5 +1,7 @@
 //! Voice and video calls (`docs/11-calls.md`).
 //!
+//! * [`message`]: the signalling messages (offer, answer, ringing, end…) as
+//!   they ride in ratchet messages.
 //! * [`signal`]: the offer/answer exchange carried in ratchet messages. Every
 //!   call does a fresh X448 + ML-KEM-1024 exchange, so call keys are
 //!   independent of chat keys.
@@ -10,12 +12,16 @@
 //!   the same size and leaves at the same rate whatever the content, and
 //!   quality only ever steps down.
 //! * [`ticket`]: relay tickets and the per-period link keys derived from them.
+//! * [`route`]: choosing the two relays of a call from distinct operator
+//!   families.
 //!
 //! No call state is ever persisted.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod link;
+pub mod message;
+pub mod route;
 pub mod sframe;
 pub mod shape;
 pub mod signal;

@@ -63,16 +63,17 @@ seal_request(server_key, header, envelope):                 # envelope is 14,336
              psk = none)
     k_req   = KMAC256(ss, "", 256, "enclave/v1/rpc/request")
     k_reply = KMAC256(ss, "", 256, "enclave/v1/rpc/reply")
-    sealed  = seal(k_req, AD = u32(key_id), header (72) ‖ envelope (14,336))       # 14,472 B
-    unit    = u16(1) ‖ u16(1) ‖ eph_pk ‖ ct ‖ sealed ‖ random padding (284)        # 16,384 B
+    pad     = random (284)
+    sealed  = seal(k_req, AD = u32(key_id) ‖ pad, header (72) ‖ envelope (14,336))  # 14,472 B
+    unit    = u16(1) ‖ u16(1) ‖ eph_pk ‖ ct ‖ sealed ‖ pad                          # 16,384 B
     keep k_reply for the reply
 
 seal_poll(server_key, header):                               # same, without the envelope
-    sealed = seal(k_req, AD = u32(key_id), header)           # 136 B
-    poll   = u16(1) ‖ u16(1) ‖ eph_pk ‖ ct ‖ sealed ‖ random padding (284)          # 2,048 B
+    sealed = seal(k_req, AD = u32(key_id) ‖ pad, header)     # 136 B
+    poll   = u16(1) ‖ u16(1) ‖ eph_pk ‖ ct ‖ sealed ‖ pad (284)                     # 2,048 B
 ```
 
-The key ID is bound into the EnclaveCombine public items and used as the seal's AD, but it is **not on the wire**: one more cleartext field would be one more linkable value.
+The key ID is bound into the EnclaveCombine public items and used as the seal's AD, but it is **not on the wire**: one more cleartext field would be one more linkable value. The padding is outside the seal but in its AD, so every byte of a request is authenticated: a unit or poll with any byte changed fails to open (RT-03, test `rt03_bitflip_in_any_unit_byte_rejected` in `enclave-rpc`).
 
 ### 2.3 Server side
 
@@ -81,7 +82,7 @@ open_request(held keys, newest first, bytes):
     require len(bytes) in {16,384, 2,048}; version 1; suite 1              else fail
     for each held key:
         ss = EnclaveCombine(…) with the server's secrets; k_req = …
-        pt = open(k_req, u32(key_id), sealed)                               else try the next key
+        pt = open(k_req, u32(key_id) ‖ pad, sealed)                         else try the next key
         header = RequestHeader::decode(pt[0..72])                           else try the next key
         return (header, envelope = pt[72..] or empty for a poll, exchange keys)
     fail

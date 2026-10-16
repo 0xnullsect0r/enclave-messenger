@@ -2781,6 +2781,7 @@ name = "enclave-app"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "bytes",
  "chrono",
  "directories 6.0.0",
  "enclave-crash",
@@ -2788,7 +2789,13 @@ dependencies = [
  "enclave-design",
  "enclave-ipc",
  "enclave-platform",
+ "enclave-tls",
+ "enclave-update",
  "enclave-vault",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
  "image",
  "nokhwa",
  "notify-rust",
@@ -2796,10 +2803,12 @@ dependencies = [
  "qrcodegen",
  "rfd",
  "rqrr",
+ "rustls",
  "slint",
  "slint-build",
  "sys-locale",
  "tokio",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -2828,6 +2837,7 @@ name = "enclave-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "enclave-calls",
  "enclave-credgate",
  "enclave-crypto",
  "enclave-federation",
@@ -2842,8 +2852,10 @@ dependencies = [
  "enclave-slip39",
  "enclave-store",
  "enclave-tokens",
+ "enclave-update",
  "enclave-wire",
  "prost",
+ "sha2 0.10.9",
  "subtle",
  "thiserror 2.0.21",
  "tokio",
@@ -2957,6 +2969,7 @@ dependencies = [
  "enclave-kt",
  "enclave-service",
  "enclave-tls",
+ "enclave-update",
  "enclave-witness",
  "http-body-util",
  "hyper",
@@ -3268,6 +3281,7 @@ dependencies = [
  "enclave-server",
  "enclave-tokens",
  "enclave-wire",
+ "zeroize",
 ]
 
 [[package]]
@@ -3369,6 +3383,7 @@ dependencies = [
  "enclave-server",
  "enclave-sim",
  "enclave-store",
+ "enclave-update",
  "enclave-vault",
  "gif",
  "jpeg-encoder",

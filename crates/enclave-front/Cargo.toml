@@ -20,6 +20,7 @@ path = "src/bin/enclave-front.rs"
 enclave-service = { path = "../enclave-service" }
 enclave-tls = { path = "../enclave-tls" }
 enclave-witness = { path = "../enclave-witness" }
+enclave-update = { path = "../enclave-update" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 bytes = "1"
 http-body-util = "0.1"

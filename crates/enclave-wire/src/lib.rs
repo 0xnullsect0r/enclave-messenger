@@ -22,7 +22,7 @@
 //! | 4      | 56     | X448 ephemeral public key (server seal)        |
 //! | 60     | 1,568  | ML-KEM-1024 ciphertext (server seal)           |
 //! | 1,628  | 14,472 | sealed(request header 72 ‖ envelope 14,336)    |
-//! | 16,100 | 284    | random padding                                 |
+//! | 16,100 | 284    | random padding (bound into the seal's AD)      |
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 

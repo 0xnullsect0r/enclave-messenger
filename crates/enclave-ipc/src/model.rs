@@ -267,6 +267,13 @@ pub struct Snapshot {
     /// How wrong the device clock is against trusted time ("3 hours
     /// behind"), or empty when it is right (RT-23).
     pub clock_skew: String,
+    /// A newer release the vault checked (`v1.2.3`), or empty.
+    pub update_release: String,
+    /// Below a release's minimum version: 0 no, 1 sending stopped, 2
+    /// receiving stopped too (`docs/19-ops.md` §4).
+    pub update_required: u8,
+    /// What "Verify this build" found, or empty.
+    pub build_check: String,
     /// A device linked to the account in the last 7 days ("Linked device,
     /// 30 Sep 14:02"), pointed out on every device, or empty.
     pub new_device: String,
@@ -615,6 +622,24 @@ pub enum Cmd {
     /// A new window joined a vault that kept running (a phone's activity
     /// made again): send it everything, pictures included.
     Reattach,
+    /// "Verify this build": the running programs' hashes, to check against
+    /// the newest release the vault has checked (`docs/19-ops.md` §1.3).
+    VerifyBuild(Vec<FileHash>),
+    /// Ask the home server for release updates now.
+    CheckUpdates,
+}
+
+/// A file's name (as release targets name it) and hashes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FileHash {
+    /// `program@target-triple`, or a release file's name.
+    pub name: String,
+    /// Length in bytes.
+    pub length: u64,
+    /// SHA-256.
+    pub sha256: Vec<u8>,
+    /// SHA3-512.
+    pub sha3_512: Vec<u8>,
 }
 
 /// One-off UI resets after a request succeeded.
@@ -670,6 +695,10 @@ pub enum Out {
     /// window's addresses, how many chunks. The chunks come back as
     /// [`Cmd::LanChunks`] (or [`Cmd::LanFailed`]).
     LanFetch(String, Vec<String>, u32),
+    /// The update bundle the vault checked (`enclave_update::Bundle`), for
+    /// the window's updater to check a download against before installing
+    /// it (`docs/19-ops.md` §1.5).
+    UpdateBundle(Vec<u8>),
 }
 
 /// Most history chunks in one [`Out::LanChunks`] or [`Cmd::LanChunks`]
@@ -950,7 +979,10 @@ impl Snapshot {
             .bool(self.file_keys)
             .bool(self.screen_security)
             .str(&self.biometric)
-            .bool(self.biometric_on);
+            .bool(self.biometric_on)
+            .str(&self.update_release)
+            .u8(self.update_required)
+            .str(&self.build_check);
         w.0
     }
 
@@ -1198,6 +1230,9 @@ impl Snapshot {
             screen_security: r.bool()?,
             biometric: r.str()?,
             biometric_on: r.bool()?,
+            update_release: r.str()?,
+            update_required: r.u8()?,
+            build_check: r.str()?,
         };
         r.end()?;
         Ok(s)
@@ -1315,6 +1350,17 @@ impl Cmd {
             Cmd::PushToken(p, t) => w.u8(93).u8(*p).str(t),
             Cmd::Wake => w.u8(94),
             Cmd::Reattach => w.u8(95),
+            Cmd::VerifyBuild(files) => {
+                w.u8(96).u32(files.len() as u32);
+                for f in files {
+                    w.str(&f.name)
+                        .u64(f.length)
+                        .bytes(&f.sha256)
+                        .bytes(&f.sha3_512);
+                }
+                &mut w
+            }
+            Cmd::CheckUpdates => w.u8(97),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1430,6 +1476,24 @@ impl Cmd {
             93 => Cmd::PushToken(r.u8()?, r.str()?),
             94 => Cmd::Wake,
             95 => Cmd::Reattach,
+            96 => {
+                let n = r.u32()? as usize;
+                if n > 64 {
+                    return Err(IpcError::Malformed);
+                }
+                let files = (0..n)
+                    .map(|_| {
+                        Ok(FileHash {
+                            name: r.str()?,
+                            length: r.u64()?,
+                            sha256: r.bytes()?,
+                            sha3_512: r.bytes()?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Cmd::VerifyBuild(files)
+            }
+            97 => Cmd::CheckUpdates,
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1499,6 +1563,11 @@ impl Out {
                 w.u8(10).str(token).strs(addrs).u32(*n);
                 w.0
             }
+            Out::UpdateBundle(b) => {
+                let mut w = Writer::default();
+                w.u8(11).bytes(b);
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -1559,6 +1628,12 @@ impl Out {
             [10, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::LanFetch(r.str()?, r.strs()?, r.u32()?);
+                r.end()?;
+                Ok(o)
+            }
+            [11, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::UpdateBundle(r.bytes()?);
                 r.end()?;
                 Ok(o)
             }

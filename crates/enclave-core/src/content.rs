@@ -23,6 +23,8 @@ pub const MAX_LONG_TEXT: usize = 60_000;
 pub const MAX_SPLIT_CONTENT: usize = 65_536;
 /// Bytes of encoded content one continuation unit carries.
 pub const MAX_PART: usize = 8_192;
+/// Longest call signalling message (an offer is about 1.7 KB).
+pub const MAX_CALL: usize = 4_096;
 /// Largest encoded card accepted.
 pub const MAX_CARD: usize = 512;
 /// Most cards in one `GroupCards` message.
@@ -193,6 +195,9 @@ pub enum Content {
     },
     /// The sender closed their account (`03-identity.md` §8.5).
     Closed,
+    /// Call signalling (`enclave_calls::message::CallMessage`, encoded;
+    /// `11-calls.md` §2).
+    Call(Vec<u8>),
     /// The sender's notification key chain for capsules sent to them, from
     /// `day` on, and whether they want previews (`10-push.md` §4).
     NotifyKey {
@@ -402,6 +407,7 @@ const K_MODE_CHANGE: u8 = 32;
 const K_SIGNED: u8 = 33;
 const K_CLOSED: u8 = 34;
 const K_NOTIFY_KEY: u8 = 35;
+const K_CALL: u8 = 36;
 /// Longest composite signature (ML-DSA-87 and Ed448).
 pub const MAX_SIG: usize = 4_741;
 /// Largest encoded location.
@@ -740,6 +746,12 @@ impl Content {
             Content::Closed => {
                 w.u8(K_CLOSED);
             }
+            Content::Call(b) => {
+                if b.len() > MAX_CALL {
+                    return too_large;
+                }
+                w.u8(K_CALL).bytes(b);
+            }
             Content::NotifyKey { key, day, previews } => {
                 w.u8(K_NOTIFY_KEY)
                     .fixed(key)
@@ -868,6 +880,7 @@ impl Content {
                 tokens: get_tokens(&mut r)?,
             },
             K_CLOSED => Content::Closed,
+            K_CALL => Content::Call(r.bytes(MAX_CALL)?.to_vec()),
             K_NOTIFY_KEY => Content::NotifyKey {
                 key: r.array()?,
                 day: r.u32()?,
@@ -1020,6 +1033,7 @@ mod tests {
                 tokens: vec![[3; 32]; 4],
             },
             Content::Closed,
+            Content::Call(vec![1; 1800]),
             Content::NotifyKey {
                 key: [3; 32],
                 day: 20_000,

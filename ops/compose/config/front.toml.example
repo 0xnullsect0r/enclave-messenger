@@ -12,3 +12,9 @@ data_dir = "/var/lib/enclave/front"
 # acme_directory = "https://acme-v02.api.letsencrypt.org/directory"
 # cert = "/etc/enclave/tls/fullchain.pem"
 # key = "/etc/enclave/tls/privkey.pem"
+# The newest release's update bundle, fetched every update_every_hours into
+# update_dir for the server to relay to clients over the mixnet. Set
+# update_url = "" to not fetch it.
+# update_url = "https://github.com/0xnullsect0r/enclave-messenger/releases/latest/download/enclave-update.bin"
+update_dir = "/var/lib/enclave/updates"
+# update_every_hours = 6

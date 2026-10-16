@@ -133,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           debv=$(echo "$ENCLAVE_VERSION" | sed 's/-/~/')
-          cargo deb -p enclave-app --no-build --target "$TARGET" --deb-version "$debv" -o target/dist/
+          cargo deb -p enclave-app --no-build --no-strip --target "$TARGET" --deb-version "$debv" -o target/dist/
           cargo generate-rpm -p crates/enclave-app --target "$TARGET" -s "version = \"$debv\"" -o target/dist/
           cargo xtask packager --target "$TARGET" --formats appimage
           ls -la target/dist
@@ -262,7 +262,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/asc.p8"; security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
 
   windows:
-    name: Windows ${{ matrix.arch }} (.msi, setup .exe, .zip)
+    name: Windows ${{ matrix.arch }} (.msi, .msix, setup .exe, .zip)
     needs: prepare
     strategy:
       fail-fast: false
@@ -299,11 +299,16 @@ jobs:
           cargo install --locked cargo-packager@0.11.8
           cargo xtask packager --target "$TARGET" --formats wix,nsis
           ls -la target/dist
+      - name: MSIX (makeappx; signed when ENCLAVE_WIN_SIGN_CMD is set)
+        env:
+          ENCLAVE_MSIX_PUBLISHER: ${{ vars.ENCLAVE_MSIX_PUBLISHER }}
+        run: cargo xtask msix --target "$TARGET"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-windows-${{ matrix.arch }}
           path: |
             target/dist/*.msi
+            target/dist/*.msix
             target/dist/*-setup.exe
             target/dist/*.zip
           if-no-files-found: error
@@ -708,6 +713,20 @@ jobs:
           [ "$missing" = 0 ]
       - name: SHA256SUMS and SHA3-512SUMS
         run: cargo xtask checksums dist
+      - name: Update channel targets, unsigned (docs/19-ops.md §1)
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        # Every release file and each desktop program, hashed; two
+        # maintainers sign this offline (`enclave-admin release sign`) and
+        # attach it as enclave-targets.bin, then update-channel.yml
+        # publishes the bundle clients fetch through their servers.
+        run: |
+          set -euo pipefail
+          ci/release/update-targets.sh "$V" dist "$RUNNER_TEMP/targets"
+          cargo run -q --release -p enclave-admin -- release targets "$RUNNER_TEMP/targets" \
+            --tag "$TAG" --version "$(( $(date +%s) / 60 ))" --valid-days 365 \
+            --out dist/enclave-targets.unsigned
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sigstore bundles for the sums (keyless)
         if: needs.prepare.outputs.dry != 'true'
@@ -769,7 +788,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kind: [msi, nsis]
+        kind: [msi, nsis, msix]
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

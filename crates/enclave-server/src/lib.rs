@@ -339,6 +339,11 @@ pub struct Server {
     /// blob chunk id fetched, in order.
     #[cfg(feature = "test-hooks")]
     blob_gets: Vec<[u8; 32]>,
+    /// A server showing readers different views of a mailbox (test hook,
+    /// RT-11): whether envelopes stored now are marked, whether polls skip
+    /// the marked ones now, and the marked `mailbox ‖ seq` keys.
+    #[cfg(feature = "test-hooks")]
+    hidden: (bool, bool, HashSet<Vec<u8>>),
     /// Chunked lookup replies by reply id.
     kt_replies: HashMap<[u8; 32], (Vec<u8>, u64)>,
     /// The day rotating inboxes were last swept for expiry.
@@ -357,6 +362,8 @@ pub struct Server {
     descriptor: Vec<u8>,
     /// The foundation's server list as mirrored here (`DirKind::ServerList`).
     server_list: Vec<u8>,
+    /// The release update bundle relayed here (`DirKind::Update`).
+    update_bundle: Vec<u8>,
     /// Head keys of the logs the list names, to check equivocation proofs.
     listed_logs: HashMap<[u8; 16], enclave_crypto::sig::CompositePublic>,
     /// URLs of the witnesses the list names.
@@ -454,6 +461,8 @@ impl Server {
             token_log: (Vec::new(), Vec::new()),
             #[cfg(feature = "test-hooks")]
             blob_gets: Vec::new(),
+            #[cfg(feature = "test-hooks")]
+            hidden: (false, false, HashSet::new()),
             kt_replies: HashMap::new(),
             swept: 0,
             deferred: HashMap::new(),
@@ -463,6 +472,7 @@ impl Server {
             key_bundle: Vec::new(),
             descriptor: Vec::new(),
             server_list: Vec::new(),
+            update_bundle: Vec::new(),
             listed_logs: HashMap::new(),
             listed_witnesses: Vec::new(),
             equivocations_out: Vec::new(),
@@ -525,6 +535,12 @@ impl Server {
             .filter(|u| !u.is_empty())
             .collect();
         self.server_list = list;
+    }
+
+    /// Set the release update bundle served as `DirKind::Update`. It is
+    /// signed throughout and clients check it; the server only relays it.
+    pub fn set_update_bundle(&mut self, bundle: Vec<u8>) {
+        self.update_bundle = bundle;
     }
 
     /// Accept equivocation proofs for `server`'s log under `head_key`
@@ -936,6 +952,22 @@ impl Server {
     #[cfg(feature = "test-hooks")]
     pub fn blob_withhold(&mut self, on: bool) {
         self.blob_withhold = on;
+    }
+
+    /// **Test hook**: mark every envelope stored from now on (true) until
+    /// turned off (false), so [`Self::hide_marked`] can keep them from some
+    /// readers.
+    #[cfg(feature = "test-hooks")]
+    pub fn mark_new(&mut self, on: bool) {
+        self.hidden.0 = on;
+    }
+
+    /// **Test hook**: polls skip the marked envelopes (true) or see them
+    /// again (false). Readers of one mailbox share its credential, so the
+    /// test turns this on around the reader it deceives.
+    #[cfg(feature = "test-hooks")]
+    pub fn hide_marked(&mut self, on: bool) {
+        self.hidden.1 = on;
     }
 
     /// The log lookups are answered from.
@@ -1541,6 +1573,17 @@ impl Server {
 
     /// After a stored envelope: counters and the owner's wake.
     fn stored(&mut self, mailbox: &[u8; 32], env: &[u8], now: u64) {
+        #[cfg(feature = "test-hooks")]
+        if self.hidden.0
+            && let Ok(Some(ib)) = self
+                .db
+                .read(|r| r.get(db::INBOXES, mailbox))
+                .map(|b| b.and_then(|b| Inbox::decode(&b)))
+        {
+            self.hidden
+                .2
+                .insert(cat(mailbox, &be(ib.next_seq.saturating_sub(1))));
+        }
         self.stats.stored += 1;
         self.stored_lengths.insert(env.len());
         self.schedule_wake(mailbox, env, now);
@@ -1835,6 +1878,8 @@ impl Server {
         );
         let next = match self.db.read(|r| {
             let next = r.next_two(db::ENVELOPES, &h.mailbox, &from)?;
+            #[cfg(feature = "test-hooks")]
+            let next = self.skip_hidden(r, &h.mailbox, next)?;
             let hint = match next.first() {
                 Some((k, _)) => r.get(db::HINTS, k)?,
                 None => None,
@@ -1865,6 +1910,24 @@ impl Server {
             }
             None => (Status::Ok, 0, none, Reply::Empty),
         }
+    }
+
+    /// Past the marked envelopes while they are hidden (test hook).
+    #[cfg(feature = "test-hooks")]
+    fn skip_hidden(
+        &self,
+        r: &db::Rx<'_>,
+        mailbox: &[u8; 32],
+        mut next: Vec<(Vec<u8>, Vec<u8>)>,
+    ) -> db::Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        while self.hidden.1
+            && let Some((k, _)) = next.first()
+            && self.hidden.2.contains(k)
+        {
+            let from = cat(mailbox, &be(head_u64(&k[32..]).saturating_add(1)));
+            next = r.next_two(db::ENVELOPES, mailbox, &from)?;
+        }
+        Ok(next)
     }
 
     fn ack(&mut self, h: &RequestHeader, now: u64) -> Status {
@@ -2108,7 +2171,10 @@ impl Server {
             (DirKind::ServerList, DirAction::Get) if !self.server_list.is_empty() => {
                 Self::chunk_reply(&self.server_list, req.index, [0; 32])
             }
-            (DirKind::Descriptor | DirKind::ServerList, DirAction::Get) => {
+            (DirKind::Update, DirAction::Get) if !self.update_bundle.is_empty() => {
+                Self::chunk_reply(&self.update_bundle, req.index, [0; 32])
+            }
+            (DirKind::Descriptor | DirKind::ServerList | DirKind::Update, DirAction::Get) => {
                 (Status::NotFound, Reply::Empty)
             }
             _ => (Status::Malformed, Reply::Empty),
@@ -2224,7 +2290,7 @@ impl Server {
             DirKind::Moved => self.accept_server_move(&req.key, &object, now),
             DirKind::Tombstone => self.accept_tombstone(&req.key, &object, now),
             DirKind::Equivocation => self.accept_equivocation(&req.key, &object),
-            DirKind::Descriptor | DirKind::ServerList => Status::Denied,
+            DirKind::Descriptor | DirKind::ServerList | DirKind::Update => Status::Denied,
         };
         if status == Status::Ok
             && matches!(
@@ -2679,9 +2745,12 @@ impl Server {
             Ok(SignedManifest::from_bytes(tail(&v))
                 .ok()
                 .and_then(|sm| Manifest::decode(&sm.body).ok())
-                .and_then(|m| m.device(&device).map(|d| d.signing.clone())))
+                .and_then(|m| {
+                    m.device(&device)
+                        .map(|d| (d.signing.clone(), m.bundle_epoch))
+                }))
         });
-        let signer = match signer {
+        let (signer, bundle_epoch) = match signer {
             Ok(Some(s)) => s,
             Ok(None) => return Status::NotFound,
             Err(e) => {
@@ -2689,7 +2758,8 @@ impl Server {
                 return Status::Unavailable;
             }
         };
-        if p.verify(&signer, now).is_err() {
+        // Signed for the stored manifest's bundle epoch (RT-05).
+        if p.verify(&signer, bundle_epoch, now).is_err() {
             return Status::Invalid;
         }
         self.tx(|t| {

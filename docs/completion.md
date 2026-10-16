@@ -57,7 +57,7 @@ Work that code alone cannot finish. Each is made ready so that it needs one acti
 | Gate | Item | Prepared by us | Needs | Status |
 |---|---|---|---|---|
 | G1 | Two external audits (crypto and protocol; app and infrastructure) | Scope documents, threat model, frozen audit tag | Funding and two audit firms | open |
-| G2 | Maintainer signing ceremony (2 of 3, two jurisdictions) | `enclave-admin` ceremony scripts, TUF root template | Three maintainers with HSMs | open |
+| G2 | Maintainer signing ceremony (2 of 3, two jurisdictions) | `enclave-admin release keygen/root/targets/sign/online/bundle/verify`, the root spec format, `update-channel.yml` (Sigsum submission, online signing, bundle), the release's unsigned targets; builds pick up `packaging/update/root.bin` | Three maintainers' keys and the signed root, a Sigsum submitter key and policy, the online key as a secret | prepared |
 | G3 | App Store and TestFlight review; export compliance (EAR §742.15(b), France) | Pipeline upload, `ITSAppUsesNonExemptEncryption`, filing drafts | Submission; counsel | open |
 | G4 | Google Play, F-Droid, Flathub listings | `.aab`, F-Droid metadata with reproducible recipe, Flathub manifest (`packaging/flatpak/flathub.sh`: the manifest and offline sources, built nightly from source without network) | Store accounts; F-Droid and Flathub review | open (Flathub part prepared; Play and F-Droid with A1) |
 | G5 | Foundation, server-list key, operator program (≥5 operators, ≥3 jurisdictions, ≥5 witnesses) | Operator kit, compose stack, `enclave-admin server-list` | People and an offline key | open |
@@ -71,5 +71,6 @@ Work that code alone cannot finish. Each is made ready so that it needs one acti
 | G13 | Post-quantum Sphinx in nym-sdk | Adapter behind a feature | Nym | open |
 | G14 | Licence grant for equix/hashx (LGPL-3.0-only) | Not needed: the proof of work is Enclave's own Equihash⟨60,3⟩ over BLAKE2b (ADR 0004) | — | resolved |
 | G15 | Human `cargo vet` audits of the crypto, randomness, TLS, parser and Tor crates | `supply-chain/` (imports from six organisations; every other crate exempted at its locked version; CI job `cargo-vet`), the list of crates to audit in `supply-chain/README.md` | Reviewers who read each crate and run `cargo vet certify` | prepared |
+| G16 | Independent rebuilders (people outside the project rebuilding releases and publishing their hashes) | `nix build .#enclave` / `.#enclave-server` / `.#enclave-nym` from the repository alone, `cargo xtask repro`, CI comparing two builds (`repro-nix`) | Two or more volunteers or organisations running the rebuild for each release | prepared |
 
 Signing credentials the release pipeline needs (Apple Developer account, Android keystore, AUR SSH key) are provided by the maintainers as CI secrets; a Windows code-signing certificate is not, so Windows installers ship unsigned until one is added (`ENCLAVE_WIN_SIGN_CMD`).

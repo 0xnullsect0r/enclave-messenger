@@ -18,13 +18,16 @@
 //! documents expire. A file is installed only if its hashes are in the
 //! targets and Sigsum logs its SHA-256 with enough witness cosignatures
 //! ([`sigsum`]); [`Client::check`] does all of it (`VerifyUpdate`, 19 §1.5).
+//! Servers relay the documents and proofs as one [`Bundle`].
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod bundle;
 pub mod metadata;
 pub mod sigsum;
 
+pub use bundle::{Bundle, older};
 pub use metadata::{
     Client, MaintainerKey, MaintainerPublic, Role, RoleKeys, Root, Signed, Snapshot, Target,
     Targets, Timestamp, UpdateError,

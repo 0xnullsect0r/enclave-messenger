@@ -61,7 +61,7 @@ pub enum UpdateError {
     Crypto,
 }
 
-type Result<T> = std::result::Result<T, UpdateError>;
+pub(crate) type Result<T> = std::result::Result<T, UpdateError>;
 
 /// The roles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -193,38 +193,38 @@ impl MaintainerPublic {
 
 // A small reader and writer for the encodings.
 
-struct W(Vec<u8>);
+pub(crate) struct W(pub(crate) Vec<u8>);
 
 impl W {
-    fn u8(&mut self, v: u8) -> &mut Self {
+    pub(crate) fn u8(&mut self, v: u8) -> &mut Self {
         self.0.push(v);
         self
     }
-    fn u16(&mut self, v: u16) -> &mut Self {
+    pub(crate) fn u16(&mut self, v: u16) -> &mut Self {
         self.0.extend_from_slice(&v.to_be_bytes());
         self
     }
-    fn u32(&mut self, v: u32) -> &mut Self {
+    pub(crate) fn u32(&mut self, v: u32) -> &mut Self {
         self.0.extend_from_slice(&v.to_be_bytes());
         self
     }
-    fn u64(&mut self, v: u64) -> &mut Self {
+    pub(crate) fn u64(&mut self, v: u64) -> &mut Self {
         self.0.extend_from_slice(&v.to_be_bytes());
         self
     }
-    fn raw(&mut self, v: &[u8]) -> &mut Self {
+    pub(crate) fn raw(&mut self, v: &[u8]) -> &mut Self {
         self.0.extend_from_slice(v);
         self
     }
-    fn bytes(&mut self, v: &[u8]) -> &mut Self {
+    pub(crate) fn bytes(&mut self, v: &[u8]) -> &mut Self {
         self.u32(u32::try_from(v.len()).unwrap_or(u32::MAX)).raw(v)
     }
 }
 
-struct R<'a>(&'a [u8]);
+pub(crate) struct R<'a>(pub(crate) &'a [u8]);
 
 impl<'a> R<'a> {
-    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8]> {
         if self.0.len() < n {
             return Err(UpdateError::Malformed);
         }
@@ -232,29 +232,29 @@ impl<'a> R<'a> {
         self.0 = b;
         Ok(a)
     }
-    fn arr<const N: usize>(&mut self) -> Result<[u8; N]> {
+    pub(crate) fn arr<const N: usize>(&mut self) -> Result<[u8; N]> {
         self.take(N)?.try_into().map_err(|_| UpdateError::Malformed)
     }
-    fn u8(&mut self) -> Result<u8> {
+    pub(crate) fn u8(&mut self) -> Result<u8> {
         Ok(self.arr::<1>()?[0])
     }
-    fn u16(&mut self) -> Result<u16> {
+    pub(crate) fn u16(&mut self) -> Result<u16> {
         Ok(u16::from_be_bytes(self.arr()?))
     }
-    fn u32(&mut self) -> Result<u32> {
+    pub(crate) fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_be_bytes(self.arr()?))
     }
-    fn u64(&mut self) -> Result<u64> {
+    pub(crate) fn u64(&mut self) -> Result<u64> {
         Ok(u64::from_be_bytes(self.arr()?))
     }
-    fn bytes(&mut self, max: usize) -> Result<&'a [u8]> {
+    pub(crate) fn bytes(&mut self, max: usize) -> Result<&'a [u8]> {
         let n = self.u32()? as usize;
         if n > max {
             return Err(UpdateError::Malformed);
         }
         self.take(n)
     }
-    fn end(&self) -> Result<()> {
+    pub(crate) fn end(&self) -> Result<()> {
         if self.0.is_empty() {
             Ok(())
         } else {
@@ -321,6 +321,10 @@ pub struct Targets {
     pub expires: u64,
     /// The release name (the tag, `v1.2.3`).
     pub release: String,
+    /// The oldest version that may keep sending (`docs/19-ops.md` §4: a
+    /// critical fix); empty when there is none. Older apps show "Update
+    /// Enclave to keep sending messages." and only receive, for 30 days.
+    pub minimum: String,
     /// Every file.
     pub targets: Vec<Target>,
 }
@@ -446,7 +450,8 @@ impl Targets {
         let mut w = W(Vec::new());
         w.u32(self.version)
             .u64(self.expires)
-            .bytes(self.release.as_bytes());
+            .bytes(self.release.as_bytes())
+            .bytes(self.minimum.as_bytes());
         w.u16(self.targets.len() as u16);
         for t in &self.targets {
             w.bytes(t.name.as_bytes())
@@ -463,6 +468,8 @@ impl Targets {
         let version = r.u32()?;
         let expires = r.u64()?;
         let release =
+            String::from_utf8(r.bytes(64)?.to_vec()).map_err(|_| UpdateError::Malformed)?;
+        let minimum =
             String::from_utf8(r.bytes(64)?.to_vec()).map_err(|_| UpdateError::Malformed)?;
         let n = r.u16()? as usize;
         if n > MAX_TARGETS {
@@ -487,6 +494,7 @@ impl Targets {
             version,
             expires,
             release,
+            minimum,
             targets,
         })
     }
@@ -806,12 +814,18 @@ impl Client {
         file: &[u8],
         sigsum_proof: &str,
     ) -> Result<()> {
+        self.check_target(release, &Target::of(name, file), sigsum_proof)
+    }
+
+    /// [`Client::check`] for a file already hashed (`got`, as
+    /// [`Target::of`] makes it): "Verify this build" hashes the running
+    /// programs where they are.
+    pub fn check_target(&self, release: &Release, got: &Target, sigsum_proof: &str) -> Result<()> {
         let want = release
             .targets
             .iter()
-            .find(|t| t.name == name)
+            .find(|t| t.name == got.name)
             .ok_or(UpdateError::Target)?;
-        let got = Target::of(name, file);
         if got.length != want.length || got.sha256 != want.sha256 || got.sha3_512 != want.sha3_512 {
             return Err(UpdateError::Target);
         }

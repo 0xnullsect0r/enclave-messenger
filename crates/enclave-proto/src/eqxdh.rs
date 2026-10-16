@@ -61,7 +61,8 @@ impl Mode {
 pub enum PqPrekeyRef {
     /// A one-time prekey (also supplies DH4).
     OneTime(u64),
-    /// The signed prekey's ML-KEM half.
+    /// The signed prekey's ML-KEM half (accepted from initiators; this
+    /// one uses the last-resort key when no one-time prekey is left).
     Signed,
     /// The last-resort prekey.
     LastResort(u32),
@@ -395,6 +396,10 @@ pub fn initiate(
     let dh1 = local.account.identity.diffie_hellman(&spk_b)?;
     let dh2 = ek_sk.diffie_hellman(&peer.manifest.identity)?;
     let dh3 = ek_sk.diffie_hellman(&spk_b)?;
+    // Without a one-time prekey (the directory ran out, or someone drained
+    // it) the ML-KEM half goes to the last-resort prekey: it rotates every
+    // 7 days, the signed prekey every 14, so the first message's forward
+    // secrecy rests on the shorter-lived key (RT-06).
     let (dh4, opk_b, pq_key, pq_ref) = match &bundle.opk {
         Some((_, o)) => (
             Some(ek_sk.diffie_hellman(&o.x448)?),
@@ -402,7 +407,12 @@ pub fn initiate(
             o.pq.to_key()?,
             PqPrekeyRef::OneTime(o.id()),
         ),
-        None => (None, None, bundle.spk.pq.to_key()?, PqPrekeyRef::Signed),
+        None => (
+            None,
+            None,
+            bundle.last_resort.pq.to_key()?,
+            PqPrekeyRef::LastResort(bundle.last_resort.id),
+        ),
     };
     let (ct_pq, ss_pq) = pq_key.encapsulate(rng)?;
     let (ct_mce, ss_mce) = match vault {

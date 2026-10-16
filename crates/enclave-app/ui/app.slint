@@ -874,6 +874,19 @@ export component AppWindow inherits Window {
     callback set-biometric(bool);
     in property <[LicenceEntry]> licences;
     callback load-licences();
+    // Release updates (docs/19-ops.md §1): a newer release the vault
+    // checked, whether this version is below a release's minimum (1: no
+    // sending; 2: no receiving either), whether this install updates
+    // itself, else how it is updated, and what the updater is doing.
+    in property <string> update-release;
+    in property <int> update-required;
+    in property <bool> can-self-update;
+    in property <string> update-how;
+    in-out property <string> update-progress;
+    in property <string> build-check;
+    callback get-update();
+    callback check-updates();
+    callback verify-build();
     // Crash reports kept on this device; nothing is sent unless chosen.
     in property <[CrashRow]> crash-reports;
     // Whether this build knows where Enclave Support is.
@@ -1400,6 +1413,31 @@ export component AppWindow inherits Window {
                         alignment: start;
                         QuietButton { text: @tr("Choose a new username"); clicked => { root.open-sheet(Sheet.settings); } }
                     }
+                }
+                if root.update-required > 0: Notice {
+                    title: @tr("Update Enclave to keep sending messages.");
+                    text: root.update-required == 2
+                        ? @tr("This version has a serious problem fixed in a newer one. It no longer sends or receives messages until you update.")
+                        : @tr("This version has a serious problem fixed in a newer one. Until you update, you can read new messages for 30 days but not send.");
+                    kind: 2;
+                    if root.can-self-update: HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: @tr("Update"); clicked => { root.get-update(); } }
+                    }
+                    if !root.can-self-update: Secondary { text: root.update-how; }
+                    if root.update-progress != "": Caption { text: root.update-progress; }
+                }
+                if root.update-required == 0 && root.update-release != "": Notice {
+                    title: @tr("Enclave {} is available", root.update-release);
+                    text: root.can-self-update
+                        ? @tr("Before it is installed, the download is checked against the release its maintainers signed and the public log.")
+                        : root.update-how;
+                    kind: 0;
+                    if root.can-self-update: HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: @tr("Update"); clicked => { root.get-update(); } }
+                    }
+                    if root.update-progress != "": Caption { text: root.update-progress; }
                 }
                 if root.crash-reports.length > 0: Notice {
                     title: @tr("Enclave closed unexpectedly");
@@ -2988,6 +3026,13 @@ export component AppWindow inherits Window {
         }
         Secondary { text: @tr("Free software under the GNU General Public License, version 3, with additional permissions for app stores. Anyone can read, build and check it: github.com/0xnullsect0r/enclave-messenger."); }
         Secondary { text: @tr("No single company runs its servers: independent operators do, and the foundation only signs the list of them."); }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Tokens.space-s;
+            QuietButton { text: @tr("Check for updates"); outlined: true; clicked => { root.check-updates(); } }
+            QuietButton { text: @tr("Verify this build"); outlined: true; clicked => { root.verify-build(); } }
+        }
+        if root.build-check != "": Secondary { text: root.build-check; }
         HorizontalLayout { alignment: start; AboutSlint { } }
         HorizontalLayout {
             alignment: start;

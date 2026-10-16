@@ -59,7 +59,7 @@ const IOS_CONTENTS: &str = r#"{
 }
 "#;
 
-fn render(svg: &[u8], size: u32) -> Result<Vec<u8>, String> {
+pub(crate) fn render(svg: &[u8], size: u32) -> Result<Vec<u8>, String> {
     use resvg::{tiny_skia, usvg};
     let tree = usvg::Tree::from_data(svg, &usvg::Options::default()).map_err(|e| e.to_string())?;
     let mut pixmap = tiny_skia::Pixmap::new(size, size).ok_or("empty icon")?;

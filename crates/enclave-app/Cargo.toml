@@ -111,6 +111,7 @@ enclave-platform = { path = "../enclave-platform", features = ["window"] }
 enclave-ipc = { path = "../enclave-ipc" }
 enclave-vault = { path = "../enclave-vault" }
 enclave-crash = { path = "../enclave-crash" }
+enclave-update = { path = "../enclave-update" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 enclave-crypto = { path = "../enclave-crypto" }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "accessibility", "raw-window-handle-06"] }
@@ -134,6 +135,15 @@ directories = "6"
 # Desktop notifications (D-Bus on Linux, NSUserNotification on macOS, toasts
 # on Windows).
 notify-rust = "4"
+# The updater's downloads (src/updater.rs), checked with enclave-update.
+enclave-tls = { path = "../enclave-tls" }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "webpki-roots"] }
+http-body-util = "0.1"
+bytes = "1"
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+webpki-roots = "1"
 # Scanning codes with the camera: capture (AVFoundation, Media Foundation,
 # V4L2; no JPEG decoder of its own, which would be C), QR reading, and
 # MJPEG frames decoded in Rust.

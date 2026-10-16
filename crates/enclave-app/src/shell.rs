@@ -182,6 +182,77 @@ fn crash_reports(
     });
 }
 
+/// Release updates: "Check for updates", "Verify this build", and (where
+/// this install updates itself) "Update" (`crate::updater`).
+fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
+    let t = tx.clone();
+    ui.on_check_updates(move || {
+        let _ = t.send(Cmd::CheckUpdates);
+    });
+    #[cfg(desktop)]
+    {
+        use crate::updater::{self, Install};
+        match updater::install() {
+            Install::Managed(how) => {
+                ui.set_can_self_update(false);
+                ui.set_update_how(crate::i18n::tr(how).into());
+            }
+            _ => ui.set_can_self_update(true),
+        }
+        let t = tx.clone();
+        ui.on_verify_build(move || {
+            let t = t.clone();
+            // Hashing the programs takes a moment: not on the UI thread.
+            let _ = std::thread::Builder::new()
+                .name("enclave-verify".into())
+                .spawn(move || {
+                    let _ = t.send(Cmd::VerifyBuild(updater::build_hashes()));
+                });
+        });
+        let w = ui.as_weak();
+        ui.on_get_update(move || {
+            let Some(ui) = w.upgrade() else {
+                return;
+            };
+            let tag = ui.get_update_release().to_string();
+            if tag.is_empty() || !ui.get_update_progress().is_empty() {
+                return;
+            }
+            ui.set_update_progress(crate::i18n::tr("Starting…").into());
+            let w = w.clone();
+            let _ = std::thread::Builder::new()
+                .name("enclave-update".into())
+                .spawn(move || {
+                    let show = {
+                        let w = w.clone();
+                        move |p: String| {
+                            let _ = w.upgrade_in_event_loop(move |ui| {
+                                ui.set_update_progress(crate::i18n::tr(&p).into());
+                            });
+                        }
+                    };
+                    match updater::update(&tag, show.clone()) {
+                        // The installer, or the new copy, takes over.
+                        Ok(()) => {
+                            let _ = slint::quit_event_loop();
+                        }
+                        Err(e) => show(format!("The update didn't install: {e}")),
+                    }
+                });
+        });
+    }
+    #[cfg(not(desktop))]
+    {
+        // Phones update from their store; Android's direct APK users get
+        // the notice and the store's or F-Droid's update.
+        ui.set_can_self_update(false);
+        ui.set_update_how(
+            crate::i18n::tr("Update Enclave from the store you installed it from.").into(),
+        );
+        let _ = tx;
+    }
+}
+
 /// "9 Oct 2026, 14:02" in local time.
 fn crash_time(at: u64) -> String {
     use chrono::TimeZone;
@@ -411,6 +482,13 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         let _ = w.upgrade_in_event_loop(move |ui| notify(&ui, n));
                         continue;
                     }
+                    Out::UpdateBundle(b) => {
+                        #[cfg(desktop)]
+                        crate::updater::set_bundle(b);
+                        #[cfg(not(desktop))]
+                        drop(b);
+                        continue;
+                    }
                     Out::LanChunks(token, chunks, last) => {
                         let all = to_serve.entry(token.clone()).or_default();
                         all.extend(chunks);
@@ -480,7 +558,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     | Out::Notify(_)
                     | Out::LanChunks(..)
                     | Out::LanStop(_)
-                    | Out::LanFetch(..) => {}
+                    | Out::LanFetch(..)
+                    | Out::UpdateBundle(_) => {}
                 });
             }
         })
@@ -628,6 +707,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::SetScreenSecurity(on));
     });
     crash_reports(&ui, crashes, tx.clone());
+    updates(&ui, tx.clone());
     let w = ui.as_weak();
     ui.on_load_licences(move || {
         if let Some(ui) = w.upgrade()

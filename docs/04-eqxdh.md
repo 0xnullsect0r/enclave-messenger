@@ -23,11 +23,13 @@ There is no negotiation in v1. The suite and mode are bound into the transcript 
 
 Each device publishes one **prekey publication** (`bundle::Publication`) to its directory (`12-servers.md` §2): a signed prekey, a batch of one-time prekeys, and a last-resort PQ prekey. Each part carries its own composite signature by the device's signing key from the manifest.
 
+Every signature also covers `u64(bundle_epoch)`, the bundle epoch of the manifest that lists the device (`03-identity.md` §3.1). It is not sent: the publisher signs for its current manifest's epoch, and the server (on upload) and the initiator (on use) verify with the epoch of the verified manifest they hold. Prekeys signed for another epoch, such as ones a directory kept from before the account moved its epoch on, fail with `BadSignature` (RT-05, test `rt05_bundle_epoch_mismatch_rejected`). The encoded sizes below do not change.
+
 ### 2.1 Signed prekey
 
 ```
 signed bytes = device_id (16) ‖ u32(spk_id) ‖ SPK X448 (56) ‖ PQSPK ML-KEM-1024 ek (1,568) ‖ u64(expires_at)
-signature    = CompositeSign(device_sk, ctx = "enclave/v1/ctx/signed-prekey", signed bytes)
+signature    = CompositeSign(device_sk, ctx = "enclave/v1/ctx/signed-prekey", signed bytes ‖ u64(bundle_epoch))
 ```
 
 Encoded as the signed bytes followed by the 4,741 B signature: 6,393 B. Lifetime 14 days (`SPK_LIFETIME_SECS`). `SignedPrekey::verify` checks the signature and `now ≤ expires_at`.
@@ -41,7 +43,7 @@ leaf_i  = SHAKE256(u8(0) ‖ "enclave/v1/prekey/merkle" ‖ u32(batch_id) ‖ u1
 empty_j = SHAKE256(u8(2) ‖ "enclave/v1/prekey/merkle" ‖ u16(j), 32)             # positions j = 100..127
 node    = SHAKE256(u8(1) ‖ "enclave/v1/prekey/merkle" ‖ left ‖ right, 32)
 header  = device_id (16) ‖ u32(batch_id) ‖ u16(count) ‖ root (32)
-signature = CompositeSign(device_sk, ctx = "enclave/v1/ctx/opk-batch", header)
+signature = CompositeSign(device_sk, ctx = "enclave/v1/ctx/opk-batch", header ‖ u64(bundle_epoch))
 ```
 
 Each served one-time prekey is `u16(index) ‖ OPK (56) ‖ PQOPK (1,568) ‖ path (7 × 32, siblings from the leaf up)` = 1,850 B. `OneTimePrekey::verify` checks that the batch IDs match, `index < count`, the path has 7 entries, and the path leads to the signed root. Its identifier is `(batch_id << 16) | index`. One signature per batch instead of 100 saves 469,359 B of signatures per batch.
@@ -50,7 +52,7 @@ Each served one-time prekey is `u16(index) ‖ OPK (56) ‖ PQOPK (1,568) ‖ pa
 
 ```
 signed bytes = device_id (16) ‖ u32(lr_id) ‖ LR ML-KEM-1024 ek (1,568) ‖ u64(expires_at)
-signature    = CompositeSign(device_sk, ctx = "enclave/v1/ctx/last-resort", signed bytes)
+signature    = CompositeSign(device_sk, ctx = "enclave/v1/ctx/last-resort", signed bytes ‖ u64(bundle_epoch))
 ```
 
 6,337 B encoded. Lifetime 7 days (`LAST_RESORT_LIFETIME_SECS`).
@@ -59,7 +61,7 @@ signature    = CompositeSign(device_sk, ctx = "enclave/v1/ctx/last-resort", sign
 
 - `PrekeyStore::publish` generates a signed prekey, a batch of 100 one-time prekeys and a last-resort prekey, keeps their secrets, and returns the `Publication` (202,527 B encoded). The signed-prekey ID, batch ID and last-resort ID are consecutive values of one per-store counter.
 - The directory serves a **bundle** per claim: the signed prekey, the next unserved one-time prekey with its batch header (if any remain), and the last-resort prekey (`Bundle`, 19,376 B with a one-time prekey, 12,731 B without).
-- `Bundle::verify(device_key, now)` checks every signature, both expiries, the Merkle path, and that all parts name the same device. The initiator MUST verify the bundle against the device key in Bob's verified manifest before `initiate`; `initiate` itself does not.
+- `Bundle::verify(device_key, bundle_epoch, now)` checks every signature (for the manifest's bundle epoch), both expiries, the Merkle path, and that all parts name the same device. An expired signed or last-resort prekey fails with `Expired`, and its expiry can't be changed without breaking its signature (test `rt05_expired_spk_rejected`). The initiator MUST verify the bundle against the device key in Bob's verified manifest before `initiate`; `initiate` itself does not.
 - The client republishes (`maintain_prekeys`, on every sync) when one-time prekeys run low **or** the signed or last-resort prekey is within 2 days of expiry. Before this rule counted the last-resort key (7 days), a quiet account's bundle stopped verifying after a week and nobody new could reach it; the invite-link test found it by advancing the clock 8 days.
 - `PrekeyStore::prune(now, grace)` deletes signed and last-resort prekeys more than `grace` seconds past expiry. A one-time prekey secret is deleted when a handshake that used it succeeds.
 
@@ -70,11 +72,11 @@ signature    = CompositeSign(device_sk, ctx = "enclave/v1/ctx/last-resort", sign
 | Bundle | X448 prekeys used | ML-KEM prekey used | `PqPrekeyRef` |
 |---|---|---|---|
 | Has a one-time prekey | `SPK`, `OPK_i` | `PQOPK_i` | `OneTime((batch_id << 16) ‖ index)` |
-| No one-time prekey | `SPK` | `PQSPK` (the signed prekey's ML-KEM half) | `Signed` |
+| No one-time prekey | `SPK` | `LR` (the last-resort prekey) | `LastResort(lr_id)` |
 
-The responder also accepts `LastResort(id)` (it looks the key up in its last-resort store), but the initiator currently never chooses the last-resort key. See Open questions.
+The responder also accepts `Signed` (the signed prekey's ML-KEM half, `PQSPK`), which earlier initiators used without a one-time prekey.
 
-RT-06: draining one-time prekeys forces the `Signed` case; forward secrecy of the first message then rests on the signed prekey's lifetime.
+RT-06: draining one-time prekeys forces the last-resort case; forward secrecy of the first message's ML-KEM part then rests on the last-resort key's 7-day lifetime rather than the signed prekey's 14 (test `rt06_last_resort_used_when_drained`).
 
 ### 2.6 Vault key
 
@@ -163,7 +165,7 @@ In this order, each framed by EnclaveCombine and `SHA3-512-parts`:
 | 7 | `IK_A` | 56 |
 | 8 | `IK_B` | 56 |
 | 9 | `SPK_B` | 56 |
-| 10 | ML-KEM prekey used (PQOPK, PQSPK, or LR) | 1,568 |
+| 10 | ML-KEM prekey used (PQOPK, LR, or PQSPK) | 1,568 |
 | 11 | `OPK_B` (empty without a one-time prekey) | 56 or 0 |
 | 12 | `EK_A` | 56 |
 | 13 | `ct_pq` | 1,568 |
@@ -248,7 +250,7 @@ Tests (`crates/enclave-proto/tests/session.rs`): `full_three_kem_conversation`, 
 
 ## Open questions
 
-1. **Last-resort prekey.** PLAN §4 has Alice encapsulate to "PQOPK_B (or to PQSPK / the last-resort key)". The responder accepts the last-resort key, but the initiator never chooses it: without a one-time prekey it always uses the signed prekey's ML-KEM half. When the last-resort key should be preferred over PQSPK (for example when one-time prekeys are exhausted) is open.
+1. **Last-resort prekey.** PLAN §4 has Alice encapsulate to "PQOPK_B (or to PQSPK / the last-resort key)". Resolved: without a one-time prekey the initiator uses the last-resort key (§2.5), the shorter-lived of the two.
 2. **PSK in stage 1.** The implementation mixes the PSK into the stage-1 key, so the responder must know the PSK (or try each candidate) before it learns who the initiator is. The M0 draft kept the PSK out of stage 1 for this reason. This needs a decision before bond PSKs are used in practice.
 3. **Transcript contents.** PLAN §4 asks the transcript to cover both manifest hashes, both capability sets and the bundle epoch. The implementation binds both root keys and both manifest versions, the auth keys and every prekey, ciphertext and the vault hash, but not manifest hashes, capabilities or the bundle epoch. This intentionally differs from PLAN.md; whether the missing items are needed is open.
 4. **Initial units and device count.** PLAN D5 and the M0 draft send session establishment toward an account as exactly 3 init units so that the responder's server cannot count devices. The implementation sends one request envelope per responder device. This hides nothing about device count yet.

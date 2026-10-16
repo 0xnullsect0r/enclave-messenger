@@ -22,8 +22,8 @@ use enclave_crypto::kem::{
 use enclave_crypto::rng::HedgedRng;
 use enclave_crypto::seal::{self, SealKey};
 use enclave_wire::{
-    ENVELOPE_LEN, POLL_LEN, POLL_SEALED_LEN, PollRequest, REQUEST_HEADER_LEN, RequestHeader,
-    SUITE_V1, UNIT_LEN, UNIT_SEALED_LEN, WireUnit,
+    ENVELOPE_LEN, POLL_LEN, POLL_PADDING_LEN, POLL_SEALED_LEN, PollRequest, REQUEST_HEADER_LEN,
+    RequestHeader, SUITE_V1, UNIT_LEN, UNIT_PADDING_LEN, UNIT_SEALED_LEN, WireUnit,
 };
 
 /// Label for the request key.
@@ -279,6 +279,15 @@ fn server_exchange(
     ))
 }
 
+/// Associated data of a request's seal: `u32(key_id) ‖ padding`. The random
+/// padding at the end of a unit or poll sits outside the seal, so it is
+/// bound here instead: a request with any byte changed, padding included,
+/// fails the seal's tag check at the server (RT-03), and nothing in a
+/// request can be altered in transit and still be accepted.
+fn request_ad(key_id: u32, padding: &[u8]) -> Vec<u8> {
+    [&key_id.to_be_bytes()[..], padding].concat()
+}
+
 /// Client: seal `header ‖ envelope` into a 16,384-byte request unit.
 pub fn seal_request(
     server: &ServerKey,
@@ -290,8 +299,10 @@ pub fn seal_request(
         return Err(RpcError::Malformed);
     }
     let (eph, ct, ex) = client_exchange(server, rng)?;
+    let mut padding = [0u8; UNIT_PADDING_LEN];
+    rng.fill("rpc/unit-padding", &mut padding)?;
     let pt = [&header.encode()[..], envelope].concat();
-    let sealed = seal::seal(&ex.request, &server.key_id.to_be_bytes(), &pt, rng)?;
+    let sealed = seal::seal(&ex.request, &request_ad(server.key_id, &padding), &pt, rng)?;
     let mut sealed_arr = Box::new([0u8; UNIT_SEALED_LEN]);
     sealed_arr.copy_from_slice(&sealed);
     let unit = WireUnit {
@@ -300,11 +311,7 @@ pub fn seal_request(
         kem_ct: ct.0,
         sealed: sealed_arr,
     };
-    let mut fill = |b: &mut [u8]| {
-        if rng.fill("rpc/unit-padding", b).is_err() {
-            b.fill(0);
-        }
-    };
+    let mut fill = |b: &mut [u8]| b.copy_from_slice(&padding);
     Ok((unit.encode(&mut fill), ex))
 }
 
@@ -315,9 +322,11 @@ pub fn seal_poll(
     rng: &mut HedgedRng,
 ) -> Result<(Vec<u8>, Exchange)> {
     let (eph, ct, ex) = client_exchange(server, rng)?;
+    let mut padding = [0u8; POLL_PADDING_LEN];
+    rng.fill("rpc/poll-padding", &mut padding)?;
     let sealed = seal::seal(
         &ex.request,
-        &server.key_id.to_be_bytes(),
+        &request_ad(server.key_id, &padding),
         &header.encode(),
         rng,
     )?;
@@ -328,11 +337,7 @@ pub fn seal_poll(
         kem_ct: ct.0,
         sealed: s,
     };
-    let mut fill = |b: &mut [u8]| {
-        if rng.fill("rpc/poll-padding", b).is_err() {
-            b.fill(0);
-        }
-    };
+    let mut fill = |b: &mut [u8]| b.copy_from_slice(&padding);
     Ok((p.encode(&mut fill), ex))
 }
 
@@ -370,9 +375,9 @@ pub fn open_request(keys: &[&ServerSecret], bytes: &[u8]) -> Result<Opened> {
 }
 
 fn open_with(secret: &ServerSecret, bytes: &[u8]) -> Result<Opened> {
-    let ad = secret.key_id.to_be_bytes();
     match bytes.len() {
         UNIT_LEN => {
+            let ad = request_ad(secret.key_id, &bytes[UNIT_LEN - UNIT_PADDING_LEN..]);
             let u = WireUnit::decode(bytes)?;
             let rid = replay_id(secret.key_id, &u.eph_x448, &u.kem_ct[..]);
             let ex = server_exchange(secret, &X448Public(u.eph_x448), &MlKemCiphertext(u.kem_ct))?;
@@ -387,6 +392,7 @@ fn open_with(secret: &ServerSecret, bytes: &[u8]) -> Result<Opened> {
             })
         }
         POLL_LEN => {
+            let ad = request_ad(secret.key_id, &bytes[POLL_LEN - POLL_PADDING_LEN..]);
             let p = PollRequest::decode(bytes)?;
             let rid = replay_id(secret.key_id, &p.eph_x448, &p.kem_ct[..]);
             let ex = server_exchange(secret, &X448Public(p.eph_x448), &MlKemCiphertext(p.kem_ct))?;
