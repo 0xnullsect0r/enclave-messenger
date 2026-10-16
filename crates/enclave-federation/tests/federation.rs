@@ -185,6 +185,7 @@ fn descriptors_witnesses_and_relays() {
         "rel",
         "198.51.100.7:51820",
         [5; 56],
+        vec![7; 1568],
         [6; 32],
         vec![vec![1; enclave_federation::relay::TICKET_KEY_LEN]],
         16,

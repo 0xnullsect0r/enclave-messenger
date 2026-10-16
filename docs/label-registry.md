@@ -237,7 +237,9 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/calls/wg-psk` | KMAC | 256 | `enclave-calls/src/lib.rs` | WireGuard PSK for one 120 s period (spec: 11 §3) |
 | `enclave/v1/calls/ticket-pow` | KMAC / context | 256 | `enclave-calls/src/lib.rs` | Proof of work paying for a relay ticket (context with relay id, epoch, ephemeral key and ciphertext), and the id a relay burns from the ephemeral key (spec: 11 §3.3, ADR 0006) |
 | `enclave/v1/calls/relay-wg` | KMAC | 256 | `enclave-calls/src/lib.rs` | A relay's static WireGuard key from its link key (spec: 11 §3.1) |
-| `enclave/v1/calls/relay-link` | KMAC | 256 | `enclave-calls/src/lib.rs` | Per-direction relay↔relay link key from the relays' static X448 keys (interim until Rosenpass) (spec: 11 §3.4) |
+| `enclave/v1/calls/relay-link` | KMAC | 256 | `enclave-calls/src/lib.rs` | Per-direction relay↔relay link key from the relays' static X448 keys, until the first post-quantum epoch (spec: 11 §3.4, RFC 0007) |
+| `enclave/v1/calls/relay-kem` | KMAC | 256 | `enclave-calls/src/lib.rs` | A relay's static ML-KEM-1024 link key seed (`d`, `z`) from its link key (spec: RFC 0007) |
+| `enclave/v1/calls/relay-pq` | KMAC | 256 | `enclave-calls/src/lib.rs` | Per-direction relay↔relay link key for one 120 s epoch, from the X448 exchange and three ML-KEM secrets (spec: RFC 0007) |
 | `enclave/v1/calls/rendezvous` | KMAC | 128 | `enclave-calls/src/lib.rs` | Rendezvous id joining the two relay legs of a call (spec: 11 §3.4) |
 | `enclave/v1/calls/ad-ticket` | AD | — | `enclave-calls/src/lib.rs` | Relay-ticket seal AD prefix (spec: 11 §3) |
 | `enclave/v1/calls/ad-sframe` | AD | — | `enclave-calls/src/lib.rs` | Prefix of SFrame AAD (spec: 11 §5) |

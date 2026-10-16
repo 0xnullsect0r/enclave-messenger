@@ -40,12 +40,12 @@ Both:
 ### 3.1 Topology
 
 ```
-caller ──WireGuard (ticket PSK)──▶ relay R1 ══WireGuard + Rosenpass══ relay R2 ◀──WireGuard (ticket PSK)── callee
+caller ──WireGuard (ticket PSK)──▶ relay R1 ══X448 + ML-KEM link══ relay R2 ◀──WireGuard (ticket PSK)── callee
 ```
 
 - No ICE is used, so no host candidates leak. No single relay sees both IP addresses. Each relay sees its own caller's IP, stream timing, and the peer relay's IP.
 - Client↔relay WireGuard runs in userspace via **GotaTun**, so no VPN permission is needed.
-- Relay↔relay links use WireGuard plus **upstream Rosenpass**, running as a server daemon (`12-servers.md` §5). Rosenpass is never used on phones (D8).
+- Relay↔relay links are keyed by the relays' static X448 exchange and a fresh ML-KEM-1024 exchange every 120 s, built into the relay (RFC 0007, in place of WireGuard with upstream Rosenpass; `12-servers.md` §5). Phones never take part in it (D8).
 
 ### 3.2 Choosing relays
 
@@ -82,7 +82,7 @@ PSK schedule:
 - **Client↔relay link: WireGuard** (`enclave_calls::wg`, boringtun's Noise_IKpsk2 without a network device). The client's key pair is fresh per call, the relay's static (`calls/relay-wg` from its link key); the pre-shared key is the ticket's `wg_psk_i` for the current 120 s period, counted on the relay's clock. At each period the client starts a new tunnel; the old one carries traffic until the new handshake completes. Payloads ride behind a fixed 20-byte IPv4 header, so a stream's datagrams keep one size. Tests: `payloads_cross_a_wireguard_link_and_periods_rekey`, `two_relays_carry_a_call_without_seeing_both_ends`, `udp_loopback_call`.
 - **Tickets** are paid with proof of work bound to the request, not Privacy Pass (RFC 0006: a privately verifiable token can't be redeemed by a relay of another operator family, and the family rule makes that always the case). They are asked for over UDP in two datagrams (`T_TICKET`). Test `tickets_cost_their_proof_of_work`.
 - **Choosing relays** by operator family (`enclave_calls::route`): test `rt18_relays_from_distinct_operator_families`.
-- **Relay↔relay link.** Sealed with EnclaveSeal under per-direction keys from the two relays' static X448 keys, not yet WireGuard with Rosenpass (C-f). Media inside is SFrame under the call's X448 + ML-KEM keys, so this hop's classical key exchange exposes only rendezvous ids and timing, not media.
+- **Relay↔relay link.** Sealed with EnclaveSeal under per-direction keys from the two relays' static X448 exchange and, each 120 s epoch, three ML-KEM-1024 shared secrets (RFC 0007; not WireGuard with Rosenpass): the relay with the lower id sends an ephemeral key and a ciphertext to the other's static ML-KEM key, the answer one ciphertext to that ephemeral key and one to the initiator's static key; each side sends under an epoch's keys only once it has received something sealed under them. Relays peer with every relay in the foundation's signed server list, with the static ML-KEM key from each one's signed descriptor. Tests `relay_links_turn_post_quantum_each_epoch`, `audio_goes_both_ways_through_two_relays`.
 - **Rendezvous.** Both legs of a call join with `rendezvous = KMAC256(call_secret, "", 128, "enclave/v1/calls/rendezvous")`; the join names the peer relay's address. Relays forward media only between a joined session and the named peer relay.
 - **netd** opens UDP sockets for calls (`NetRequest::UdpOpen`, `UdpSend`, `UdpClose`; datagrams come back as `SOCKET_EVENT` replies). The vault sees a socket as two channels (`Transport::open_udp`, `Datagrams`); netd's seccomp profile allows the IPv4 and IPv6 UDP sockets this needs (test `netd_profile_keeps_ip_sockets_only`).
 - **Relay descriptors.** The server list names each relay's identity, address and family; its descriptor (`RelayDescriptor` v2: link key, WireGuard key, today's and tomorrow's ticket keys, ticket effort) changes daily, so the client fetches it from the relay in parts (`T_DESC`; a request is padded to 1,100 bytes and answered with at most 1,027, so a relay never amplifies) and checks its signature, identity and address against the list (`enclave_vault::calls::fetch_descriptor`). Relays re-sign it when their ticket keys turn over at midnight.
@@ -161,6 +161,8 @@ The observable residual is the tier (audio-only vs. each video tier).
 ## 7. Maximum privacy calls
 
 In Maximum privacy mode, while the app is in the foreground, the client keeps a constant 32 kbps audio-shaped WireGuard tunnel (160 B × 50 packets/s) open to its chosen relay, using a ticket as in §3.3. Calls ride inside it, which hides call start and stop from a global observer. On iOS, calls ring only while the app is open.
+
+As implemented (`enclave_vault::calls::Standby`, the engine's `standby_upkeep`): with Maximum privacy on, the app in front and no call, the vault opens a leg to a relay of another family than its home server's and sends what a call's audio sends: a padded payload of the audio packet's size every 20 ms, and a control payload each second. Every call's once-a-second control payload (its join, then keepalives) is padded to the same 64 bytes, so the change is invisible from outside. A call whose relay choice the standby's relay satisfies (RT-18: a family neither home server's, nor, when answering, the caller's relay's) takes the leg over; the media then sends at the same rate on it. A call that can't (the other side's home server is in the standby relay's family) opens its own leg as usual, and the standby keeps padding meanwhile. When the app leaves the front or Maximum is turned off, the tunnel closes; a ticket that runs out (4 h) is replaced. A video call's picture is its own stream, so starting one with the camera on shows. Test `a_standby_tunnel_carries_the_call_that_takes_it`.
 
 ## 8. Group calls
 

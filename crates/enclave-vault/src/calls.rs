@@ -51,6 +51,19 @@ const SILENCE_LIMIT: Duration = Duration::from_secs(20);
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 /// SFrame metadata of the audio stream.
 const AUDIO_AD: &[u8] = b"audio";
+/// The once-a-second control payload (a join, a keepalive) is padded to
+/// this many bytes, so a call that takes over a Maximum-privacy standby
+/// tunnel ([`Standby`]) looks the same from outside.
+const CONTROL_LEN: usize = 64;
+
+/// A control payload padded to [`CONTROL_LEN`] (the relay reads only its
+/// start).
+fn control(mut p: Vec<u8>) -> Vec<u8> {
+    if p.len() < CONTROL_LEN {
+        p.resize(CONTROL_LEN, 0);
+    }
+    p
+}
 
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
@@ -196,6 +209,90 @@ pub async fn open_leg(transport: &dyn Transport, relay: &ListedRelay) -> Result<
         link: ClientLink::new(secret, issued.relay_wg, issued.ticket, issued.offset),
         relay: relay.clone(),
     })
+}
+
+/// Maximum privacy's standby tunnel (`docs/11-calls.md` §7): while the
+/// app is in front, a leg to a relay that sends exactly what a call's
+/// audio sends (one padded packet every 20 ms of the audio packet's size,
+/// a control payload each second). A call takes the leg over, so a global
+/// observer can't see an audio call start or end.
+pub struct Standby {
+    /// The relay it goes to.
+    pub relay: ListedRelay,
+    take: mpsc::UnboundedSender<tokio::sync::oneshot::Sender<Leg>>,
+}
+
+impl Standby {
+    /// Start the padding on `leg`; `ended` hears when it stops by itself
+    /// (the ticket ran out, the socket closed).
+    pub fn start(leg: Leg, ended: mpsc::UnboundedSender<CallEvent>) -> Self {
+        let relay = leg.relay.clone();
+        let (take, rx) = mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            if standby_loop(leg, rx).await {
+                let _ = ended.send(CallEvent::StandbyEnded);
+            }
+        });
+        Self { relay, take }
+    }
+
+    /// The leg, for a call (none if the standby had stopped).
+    pub async fn take(self) -> Option<Leg> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.take.send(tx).ok()?;
+        rx.await.ok()
+    }
+}
+
+/// Pad until asked for the leg (or dropped). True when it stopped by
+/// itself.
+async fn standby_loop(
+    mut leg: Leg,
+    mut take: mpsc::UnboundedReceiver<tokio::sync::oneshot::Sender<Leg>>,
+) -> bool {
+    let padding = [
+        &[P_KEEPALIVE][..],
+        &[0u8; enclave_calls::shape::AUDIO_PACKET],
+    ]
+    .concat();
+    let keepalive = control(vec![P_KEEPALIVE]);
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+    let mut ticks: u64 = 0;
+    loop {
+        tokio::select! {
+            t = take.recv() => {
+                if let Some(t) = t {
+                    let _ = t.send(leg);
+                }
+                return false;
+            }
+            d = leg.dg.recv.recv() => {
+                let Some(d) = d else { return true };
+                if let Ok(got) = leg.link.receive(unix_now(), &d)
+                    && !send_all(&leg.dg, got.send)
+                {
+                    return true;
+                }
+            }
+            _ = tick.tick() => {
+                ticks += 1;
+                let now = unix_now();
+                let mut dgs = Vec::new();
+                if ticks % 50 == 1 {
+                    match leg.link.tick(now) {
+                        Ok(d) => dgs.extend(d),
+                        Err(_) => return true,
+                    }
+                    dgs.extend(leg.link.send(now, &keepalive).unwrap_or_default());
+                }
+                dgs.extend(leg.link.send(now, &padding).unwrap_or_default());
+                if !send_all(&leg.dg, dgs) {
+                    return true;
+                }
+            }
+        }
+    }
 }
 
 /// Our side of a direct call (`docs/11-calls.md` §4), before the other
@@ -389,6 +486,8 @@ pub enum CallEvent {
     /// Our side of a direct call is ready: its socket, key and addresses
     /// (or why not).
     Direct([u8; 16], Result<Box<DirectSide>, String>),
+    /// The Maximum-privacy standby tunnel stopped by itself.
+    StandbyEnded,
 }
 
 /// What a running call tells the engine.
@@ -668,7 +767,11 @@ async fn media_loop(
     };
     let mut sender = enclave_calls::sframe::Sender::new(us, &plan.keys.sframe_base(us, 0));
     let mut receiver = enclave_calls::sframe::Receiver::new(them, &plan.keys.sframe_base(them, 0));
-    let join = enclave_calls::relay::join_payload(&plan.keys.rendezvous(), plan.peer_relay);
+    let join = control(enclave_calls::relay::join_payload(
+        &plan.keys.rendezvous(),
+        plan.peer_relay,
+    ));
+    let keepalive = control(vec![P_KEEPALIVE]);
     let mut shaper = Shaper::new(Stream::Audio);
     let mut jitter = Jitter::default();
     let mut mic: VecDeque<Vec<i16>> = VecDeque::new();
@@ -779,7 +882,7 @@ async fn media_loop(
                     if heard.is_none() {
                         dgs.extend(leg.link.send(now, &join).unwrap_or_default());
                     } else {
-                        dgs.extend(leg.link.send(now, &[P_KEEPALIVE]).unwrap_or_default());
+                        dgs.extend(leg.link.send(now, &keepalive).unwrap_or_default());
                     }
                     if !send_all(&leg.dg, dgs) {
                         return "The call's connection closed.".into();

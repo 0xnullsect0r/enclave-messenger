@@ -413,3 +413,84 @@ fn keys_and_spent_tokens_survive_a_restart() {
     assert!(relay.issue_ticket(&stale, now + 2 * 86_400).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Carry datagrams between two relays until neither has more, with their
+/// once-a-second upkeep in between.
+fn pump(ra: &mut Relay, rb: &mut Relay, (ra_addr, rb_addr): (SocketAddr, SocketAddr), now: u64) {
+    for _ in 0..8 {
+        let mut to_b: Vec<Vec<u8>> = ra.peer_upkeep(now).into_iter().map(|(_, d)| d).collect();
+        let mut to_a: Vec<Vec<u8>> = rb.peer_upkeep(now).into_iter().map(|(_, d)| d).collect();
+        for _ in 0..8 {
+            let back: Vec<Vec<u8>> = to_b
+                .drain(..)
+                .flat_map(|d| rb.handle(ra_addr, &d, now))
+                .map(|(_, d)| d)
+                .collect();
+            to_a.extend(back);
+            let back: Vec<Vec<u8>> = to_a
+                .drain(..)
+                .flat_map(|d| ra.handle(rb_addr, &d, now))
+                .map(|(_, d)| d)
+                .collect();
+            to_b.extend(back);
+            if to_a.is_empty() && to_b.is_empty() {
+                break;
+            }
+        }
+    }
+}
+
+/// Relay links (ADR 0007): each 120 s epoch the relay with the lower id
+/// starts an ML-KEM-1024 exchange, and both switch to the epoch's keys
+/// once they have heard under them. A first message anyone could forge
+/// (the static ML-KEM keys are public) never switches the other relay.
+#[test]
+fn relay_links_turn_post_quantum_each_epoch() {
+    use enclave_relay::{LINK_EPOCH_SECS, T_KX};
+    let (ra_addr, rb_addr) = (addr("203.0.113.10:4000"), addr("198.51.100.20:4000"));
+    let day = (NOW / 86_400) as u32;
+    let mut ra = Relay::new([0xA; 16], "family-a", ra_addr, day).unwrap();
+    let mut rb = Relay::new([0xB; 16], "family-b", rb_addr, day).unwrap();
+    ra.add_peer(rb.descriptor()).unwrap();
+    rb.add_peer(ra.descriptor()).unwrap();
+    assert_eq!(ra.link_epoch(&rb_addr), Some(0), "classical to start with");
+
+    let epoch = (NOW / LINK_EPOCH_SECS) as u32 + 1;
+    pump(&mut ra, &mut rb, (ra_addr, rb_addr), NOW);
+    assert_eq!(ra.link_epoch(&rb_addr), Some(epoch));
+    assert_eq!(rb.link_epoch(&ra_addr), Some(epoch));
+    // The next epoch: fresh keys again.
+    let later = NOW + LINK_EPOCH_SECS;
+    pump(&mut ra, &mut rb, (ra_addr, rb_addr), later);
+    assert_eq!(ra.link_epoch(&rb_addr), Some(epoch + 1));
+    assert_eq!(rb.link_epoch(&ra_addr), Some(epoch + 1));
+
+    // A forged first message for a later epoch, "from" relay A.
+    let mut rng = HedgedRng::new().unwrap();
+    let b_kem =
+        enclave_crypto::kem::MlKemPublic::from_slice(rb.descriptor().kem.as_deref().unwrap())
+            .unwrap();
+    let (_eph, eph_pk) = enclave_crypto::kem::MlKemSecret::generate(&mut rng).unwrap();
+    let (ct1, _) = b_kem.encapsulate(&mut rng).unwrap();
+    let msg = [&eph_pk.0[..], &ct1.0[..]].concat();
+    let forged_epoch = epoch + 5;
+    let parts: Vec<&[u8]> = msg.chunks(1100).collect();
+    let mut answers = Vec::new();
+    for (i, p) in parts.iter().enumerate() {
+        let dg = [
+            &[T_KX, 1][..],
+            &forged_epoch.to_be_bytes(),
+            &[i as u8, parts.len() as u8],
+            p,
+        ]
+        .concat();
+        answers.extend(rb.handle(ra_addr, &dg, later));
+    }
+    assert!(!answers.is_empty(), "B answers what it can't tell from A's");
+    // Whatever B sends under those keys, A can't open: B never switches.
+    for (_, d) in answers.into_iter().chain(rb.peer_upkeep(later)) {
+        assert!(ra.handle(rb_addr, &d, later).is_empty());
+    }
+    pump(&mut ra, &mut rb, (ra_addr, rb_addr), later + 1);
+    assert_eq!(rb.link_epoch(&ra_addr), Some(epoch + 1));
+}

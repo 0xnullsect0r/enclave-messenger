@@ -406,6 +406,9 @@ struct Engine {
     call_tx: mpsc::UnboundedSender<crate::calls::CallEvent>,
     /// The call relays in the build's server list.
     listed_relays: Vec<enclave_federation::ListedRelay>,
+    /// Maximum privacy's standby call tunnel, and whether one is opening.
+    call_standby: Option<crate::calls::Standby>,
+    standby_opening: bool,
     out: mpsc::UnboundedSender<Out>,
 }
 
@@ -1064,6 +1067,8 @@ pub async fn run_with(
         call_ended: None,
         call_tx,
         listed_relays: Vec::new(),
+        call_standby: None,
+        standby_opening: false,
         out,
     };
     e.load_list();

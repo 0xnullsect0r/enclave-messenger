@@ -5,5 +5,10 @@
 listen = "0.0.0.0:51820"
 keys_dir = "/var/lib/enclave/relay-keys"
 data_dir = "/var/lib/enclave/relay"
-# Other relays' descriptors (hex, from `enclave-relay show-descriptor`).
+# The foundation's signed server list and key (the server's copies):
+# every relay listed becomes a peer, its link post-quantum (RFC 0007).
+server_list = "/etc/enclave/foundation/server-list.bin"
+foundation_key = "/etc/enclave/foundation/foundation.pub"
+# Other relays' descriptors (hex, from `enclave-relay show-descriptor`),
+# besides the list's; their links stay classical.
 peers = []

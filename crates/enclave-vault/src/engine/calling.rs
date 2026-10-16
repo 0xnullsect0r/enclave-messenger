@@ -25,6 +25,8 @@ use tokio::sync::mpsc;
 
 /// How long an ended call stays on screen.
 const ENDED_SHOWN: Duration = Duration::from_secs(4);
+/// The standby tunnel's leg reports under this id.
+const STANDBY: [u8; 16] = [0xff; 16];
 /// What the window says when no private route exists.
 const NO_ROUTE: &str = "Couldn't find a private route right now. Try again later.";
 
@@ -134,6 +136,77 @@ impl Engine {
         });
     }
 
+    /// Our end at `relay` for call `id`: the standby tunnel's leg when it
+    /// goes to that relay (Maximum privacy: the call starts unseen), else
+    /// a new one.
+    fn leg_for(&mut self, id: [u8; 16], relay: ListedRelay) {
+        match self.call_standby.take() {
+            Some(s) if s.relay.identity == relay.identity => {
+                let tx = self.call_tx.clone();
+                tokio::spawn(async move {
+                    let leg = s
+                        .take()
+                        .await
+                        .ok_or_else(|| "the standby tunnel had stopped".to_string());
+                    let _ = tx.send(CallEvent::Leg(id, leg.map(Box::new)));
+                });
+            }
+            other => {
+                self.call_standby = other;
+                self.open_leg(id, relay);
+            }
+        }
+    }
+
+    /// The relay to pick when the standby's fits the family rule: the
+    /// standby's if its family is none of `avoid`.
+    fn standby_relay(&self, avoid: &[&str]) -> Option<ListedRelay> {
+        self.call_standby
+            .as_ref()
+            .filter(|s| !avoid.contains(&s.relay.family.as_str()))
+            .map(|s| s.relay.clone())
+    }
+
+    /// Maximum privacy, in front, no call: keep a standby tunnel open;
+    /// otherwise none.
+    async fn standby_upkeep(&mut self) {
+        let wanted = self.visible
+            && self.call.is_none()
+            && self
+                .client
+                .as_ref()
+                .is_some_and(enclave_core::Client::maximum);
+        if !wanted {
+            // Dropping it stops the padding (a call took it already, or
+            // Maximum privacy is off, or the app left the front).
+            if self.call.is_none() {
+                self.call_standby = None;
+            }
+            return;
+        }
+        if self.call_standby.is_some() || self.standby_opening {
+            return;
+        }
+        let Some(c) = self.client.as_ref() else {
+            return;
+        };
+        let home = self.family_of(&c.home_server());
+        let relays = self.relays();
+        let candidates = calls::candidates(&relays);
+        let Some(relay) = route::caller_relay(&candidates, &home, "", calls::draw())
+            .and_then(|p| {
+                relays
+                    .iter()
+                    .find(|r| enclave_federation::relay_id(&r.identity) == p.id)
+            })
+            .cloned()
+        else {
+            return;
+        };
+        self.standby_opening = true;
+        self.open_leg(STANDBY, relay);
+    }
+
     /// Show that the call ended and write its line.
     fn finish_call(&mut self, line: &str, note: &str) {
         let Some(call) = self.call.take() else {
@@ -198,13 +271,14 @@ impl Engine {
         );
         let relays = self.relays();
         let candidates = calls::candidates(&relays);
-        let picked = route::caller_relay(&candidates, &home, &theirs, calls::draw())
-            .and_then(|p| {
+        let picked = self.standby_relay(&[&home, &theirs]).or_else(|| {
+            route::caller_relay(&candidates, &home, &theirs, calls::draw()).and_then(|p| {
                 relays
                     .iter()
                     .find(|r| enclave_federation::relay_id(&r.identity) == p.id)
+                    .cloned()
             })
-            .cloned();
+        });
         let now = self.transport.now();
         let mut rng = match HedgedRng::new() {
             Ok(r) => r,
@@ -258,7 +332,7 @@ impl Engine {
             direct_psk: None,
             on_direct: false,
         });
-        self.open_leg(id, relay);
+        self.leg_for(id, relay);
         if !self.signal(&root, &CallMessage::Offer(offer)).await {
             self.finish_call("", "Couldn't reach them to call. Try again.");
         }
@@ -287,13 +361,17 @@ impl Engine {
         let conv = c.call_conversation(&root);
         let relays = self.relays();
         let candidates = calls::candidates(&relays);
-        let picked = route::callee_relay(&candidates, &home, &their_relay.family, calls::draw())
-            .and_then(|p| {
-                relays
-                    .iter()
-                    .find(|r| enclave_federation::relay_id(&r.identity) == p.id)
-            })
-            .cloned();
+        let picked = self
+            .standby_relay(&[&home, &their_relay.family])
+            .or_else(|| {
+                route::callee_relay(&candidates, &home, &their_relay.family, calls::draw())
+                    .and_then(|p| {
+                        relays
+                            .iter()
+                            .find(|r| enclave_federation::relay_id(&r.identity) == p.id)
+                            .cloned()
+                    })
+            });
         let Some(relay) = picked else {
             self.signal(&root, &CallMessage::End(offer.call_id)).await;
             self.finish_call("Missed call", NO_ROUTE);
@@ -326,7 +404,7 @@ impl Engine {
             call.phase = Phase::Connecting;
             call.direct_wanted = direct;
         }
-        self.open_leg(id, relay.clone());
+        self.leg_for(id, relay.clone());
         if !self.signal(&root, &CallMessage::Answer(answer)).await {
             self.finish_call("Missed call", "Couldn't reach them to answer. Try again.");
             return;
@@ -657,6 +735,17 @@ impl Engine {
     pub(super) async fn on_call_event(&mut self, ev: CallEvent) {
         let current = |e: &Self, id: &[u8; 16]| e.call.as_ref().is_some_and(|c| &c.id == id);
         match ev {
+            CallEvent::Leg(id, Ok(leg)) if id == STANDBY => {
+                self.standby_opening = false;
+                if self.call.is_none() {
+                    self.call_standby = Some(calls::Standby::start(*leg, self.call_tx.clone()));
+                }
+            }
+            CallEvent::Leg(id, Err(e)) if id == STANDBY => {
+                self.standby_opening = false;
+                eprintln!("enclave-vault: standby call tunnel: {e}");
+            }
+            CallEvent::StandbyEnded => self.call_standby = None,
             CallEvent::Leg(id, Ok(leg)) if current(self, &id) => {
                 if let Some(c) = self.call.as_mut() {
                     c.leg = Some(*leg);
@@ -727,6 +816,7 @@ impl Engine {
 
     /// Every tick: unanswered calls time out; the ended notice goes.
     pub(super) async fn call_upkeep(&mut self) {
+        self.standby_upkeep().await;
         if self
             .call_ended
             .as_ref()

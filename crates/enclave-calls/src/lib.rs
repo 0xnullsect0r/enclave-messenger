@@ -68,6 +68,11 @@ pub mod labels {
     pub const RENDEZVOUS: &str = "enclave/v1/calls/rendezvous";
     /// Relay-to-relay link key.
     pub const RELAY_LINK: &str = "enclave/v1/calls/relay-link";
+    /// A relay's static ML-KEM-1024 key for relay links, from its link key.
+    pub const RELAY_KEM: &str = "enclave/v1/calls/relay-kem";
+    /// Per-direction relay↔relay link key for one 120 s epoch, from the
+    /// static X448 exchange and three ML-KEM-1024 shared secrets.
+    pub const RELAY_PQ: &str = "enclave/v1/calls/relay-pq";
     /// A day's ticket-key material from that day's chain seed.
     pub const TICKET_KEY: &str = "enclave/v1/calls/ticket-key";
     /// Stepping the ticket-key chain to the next day.

@@ -137,6 +137,7 @@ impl RelayKeys {
             family,
             addr,
             self.link_secret().public().0,
+            crate::kem_secret(&self.link_secret()).1.0.to_vec(),
             self.wg_public(),
             vec![ticket(&self.tickets()[0]), ticket(&self.next_ticket())],
             effort,

@@ -28,6 +28,11 @@ pub const RELAY_ID_LABEL: &str = "enclave/v1/calls/relay-id";
 /// Bytes of one ticket key: `u32 day ‖ X448 ‖ ML-KEM-1024`.
 pub const TICKET_KEY_LEN: usize = 4 + 56 + 1568;
 const VERSION: u8 = 2;
+/// With the relay's ML-KEM-1024 link key (post-quantum relay links,
+/// ADR 0007).
+const VERSION_KEM: u8 = 3;
+/// Bytes of an ML-KEM-1024 public key.
+const KEM_LEN: usize = 1568;
 /// Most proof-of-work effort a descriptor may ask for a ticket.
 pub const MAX_TICKET_EFFORT: u32 = 24;
 const MAX_TICKET_KEYS: usize = 3;
@@ -55,6 +60,9 @@ pub struct RelayDescriptor {
     pub link_key: [u8; 56],
     /// The relay's static WireGuard key (clients' links).
     pub wg_key: [u8; 32],
+    /// The relay's static ML-KEM-1024 key for relay links (empty in
+    /// version 2 descriptors).
+    pub link_kem: Vec<u8>,
     /// Ticket keys (`u32 day ‖ X448 ‖ ML-KEM-1024` each): today's and the
     /// next day's.
     pub ticket_keys: Vec<Vec<u8>>,
@@ -75,14 +83,20 @@ impl RelayDescriptor {
 
     fn body(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(VERSION)
-            .fixed(&self.identity.to_bytes())
-            .bytes(self.operator.as_bytes())
-            .bytes(self.family.as_bytes())
-            .bytes(self.addr.as_bytes())
-            .fixed(&self.link_key)
-            .fixed(&self.wg_key)
-            .u8(self.ticket_keys.len() as u8);
+        w.u8(if self.link_kem.is_empty() {
+            VERSION
+        } else {
+            VERSION_KEM
+        })
+        .fixed(&self.identity.to_bytes())
+        .bytes(self.operator.as_bytes())
+        .bytes(self.family.as_bytes())
+        .bytes(self.addr.as_bytes())
+        .fixed(&self.link_key);
+        if !self.link_kem.is_empty() {
+            w.fixed(&self.link_kem);
+        }
+        w.fixed(&self.wg_key).u8(self.ticket_keys.len() as u8);
         for k in &self.ticket_keys {
             w.fixed(k);
         }
@@ -100,6 +114,7 @@ impl RelayDescriptor {
         family: &str,
         addr: &str,
         link_key: [u8; 56],
+        link_kem: Vec<u8>,
         wg_key: [u8; 32],
         ticket_keys: Vec<Vec<u8>>,
         ticket_effort: u32,
@@ -107,6 +122,9 @@ impl RelayDescriptor {
         expires: u64,
         rng: &mut HedgedRng,
     ) -> Result<Self> {
+        if !(link_kem.is_empty() || link_kem.len() == KEM_LEN) {
+            return Err(FedError::Malformed);
+        }
         if family.is_empty()
             || operator.len() > MAX_NAME
             || family.len() > MAX_NAME
@@ -126,6 +144,7 @@ impl RelayDescriptor {
             family: family.into(),
             addr: addr.into(),
             link_key,
+            link_kem,
             wg_key,
             ticket_keys,
             ticket_effort,
@@ -149,7 +168,8 @@ impl RelayDescriptor {
     /// Decode (without checking the signature).
     pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader::new(b);
-        if r.u8()? != VERSION {
+        let version = r.u8()?;
+        if version != VERSION && version != VERSION_KEM {
             return Err(FedError::Malformed);
         }
         let identity = read_composite(&mut r)?;
@@ -157,6 +177,11 @@ impl RelayDescriptor {
         let family = utf8(r.bytes(MAX_NAME)?)?;
         let addr = utf8(r.bytes(MAX_ADDRESS)?)?;
         let link_key = r.array::<56>()?;
+        let link_kem = if version == VERSION_KEM {
+            r.fixed(KEM_LEN)?.to_vec()
+        } else {
+            Vec::new()
+        };
         let wg_key = r.array::<32>()?;
         let n = usize::from(r.u8()?);
         if n == 0 || n > MAX_TICKET_KEYS {
@@ -171,6 +196,7 @@ impl RelayDescriptor {
             family,
             addr,
             link_key,
+            link_kem,
             wg_key,
             ticket_keys,
             ticket_effort: r.u32()?,
