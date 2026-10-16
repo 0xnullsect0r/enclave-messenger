@@ -1,0 +1,16 @@
+[package]
+name = "enclave-crash"
+description = "Scrubbed local crash reports for Enclave: what crashed and where, never memory. Nothing is sent unless the person chooses to."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+enclave-platform = { path = "../enclave-platform" }

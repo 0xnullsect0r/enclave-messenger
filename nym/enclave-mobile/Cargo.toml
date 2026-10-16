@@ -32,6 +32,7 @@ enclave-netd = { path = "../../crates/enclave-netd" }
 enclave-platform = { path = "../../crates/enclave-platform" }
 enclave-tord = { path = "../../crates/enclave-tord" }
 enclave-vault = { path = "../../crates/enclave-vault" }
+enclave-crash = { path = "../../crates/enclave-crash" }
 enclave-nymd = { path = "../enclave-nymd" }
 slint = { version = "1.18", default-features = false }
 

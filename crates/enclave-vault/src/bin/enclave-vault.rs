@@ -40,6 +40,11 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // Crash reports go into the profile (enclave-crash), set up before the
+    // vault confines itself to it.
+    if let enclave_vault::Mode::Server { profile, .. } = &mode {
+        enclave_crash::install(&profile.join(enclave_crash::DIR), "vault");
+    }
     // McEliece key generation needs a deep stack.
     let worker = std::thread::Builder::new()
         .name("enclave-vault".into())

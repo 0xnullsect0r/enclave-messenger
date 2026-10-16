@@ -8,6 +8,7 @@
 //!   are never written to swap.
 //! - [`backup`]: keeping the profile directory out of OS backups.
 //! - [`process`]: no console windows on Windows.
+//! - [`fatal`]: a scrubbed record of a native crash.
 //! - [`keystore`] (feature `keystores`): the Keychain, DPAPI and the
 //!   Secret Service.
 //! - [`window`] (feature `window`): keeping the window out of screen
@@ -29,6 +30,7 @@ pub mod backup;
 #[cfg(feature = "biometric")]
 pub mod biometric;
 pub mod dit;
+pub mod fatal;
 #[cfg(all(target_os = "android", any(feature = "keystores", feature = "phone")))]
 mod jvm;
 #[cfg(feature = "keystores")]

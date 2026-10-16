@@ -112,6 +112,14 @@ export struct MessageRow {
     clip-time: string,
 }
 
+// A crash report on this device (enclave-crash): which process, when, and
+// its text.
+export struct CrashRow {
+    process: string,
+    when: string,
+    text: string,
+}
+
 // One licence text and the packages under it (Settings → About).
 export struct LicenceEntry {
     title: string,
@@ -142,7 +150,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account }
+export enum Sheet { none, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -866,6 +874,14 @@ export component AppWindow inherits Window {
     callback set-biometric(bool);
     in property <[LicenceEntry]> licences;
     callback load-licences();
+    // Crash reports kept on this device; nothing is sent unless chosen.
+    in property <[CrashRow]> crash-reports;
+    // Whether this build knows where Enclave Support is.
+    in property <bool> support-known;
+    callback save-crash(int);
+    callback send-crash(int);
+    callback delete-crash(int);
+    callback delete-crashes();
     callback check-backup(string, string);
     in-out property <bool> backup-media;
     in property <bool> server-backup;
@@ -1383,6 +1399,17 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: start;
                         QuietButton { text: @tr("Choose a new username"); clicked => { root.open-sheet(Sheet.settings); } }
+                    }
+                }
+                if root.crash-reports.length > 0: Notice {
+                    title: @tr("Enclave closed unexpectedly");
+                    text: @tr("A report was saved on this device. Nothing was sent. You can read it and choose whether to share it.");
+                    kind: 1;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: Tokens.space-s;
+                        QuietButton { text: @tr("Read the report"); clicked => { root.open-sheet(Sheet.crashes); } }
+                        QuietButton { text: @tr("Delete"); clicked => { root.delete-crashes(); } }
                     }
                 }
                 if !root.recovery-saved: Notice {
@@ -2970,6 +2997,37 @@ export component AppWindow inherits Window {
                 clicked => { root.load-licences(); root.sheet = Sheet.licences; }
             }
         }
+    }
+
+    if root.sheet == Sheet.crashes: SheetFrame {
+        title: @tr("Crash reports");
+        max-card-width: 720px;
+        close => { root.sheet = Sheet.none; }
+        Secondary { text: @tr("Each report says which part of Enclave stopped, where in its code, and the names of the functions it was running. It holds no messages, contacts, keys or memory. It stays on this device unless you save or send it."); }
+        if root.crash-reports.length == 0: Secondary { text: @tr("No reports."); }
+        ListView {
+            height: min(root.height * 0.6, 640px);
+            for r[i] in root.crash-reports: VerticalLayout {
+                padding-top: Tokens.space-s;
+                padding-bottom: Tokens.space-m;
+                spacing: Tokens.space-xs;
+                Text {
+                    text: @tr("{} · {}", r.process, r.when);
+                    font-size: Tokens.type-secondary;
+                    font-weight: 600;
+                    color: Tokens.text;
+                }
+                Code { text: r.text; wrap: word-wrap; font-size: Tokens.type-caption; }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: Tokens.space-s;
+                    if root.support-known: QuietButton { text: @tr("Send to Enclave Support"); outlined: true; clicked => { root.send-crash(i); } }
+                    QuietButton { text: @tr("Save as a file"); outlined: true; clicked => { root.save-crash(i); } }
+                    QuietButton { text: @tr("Delete"); danger: true; clicked => { root.delete-crash(i); } }
+                }
+            }
+        }
+        if !root.support-known: Caption { text: @tr("To report it, save it as a file and attach it to an issue at github.com/0xnullsect0r/enclave-messenger."); wrap: word-wrap; }
     }
 
     if root.sheet == Sheet.licences: SheetFrame {

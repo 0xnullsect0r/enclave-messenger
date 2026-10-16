@@ -3652,7 +3652,9 @@ name = "enclave-app"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "chrono",
  "directories 6.0.0",
+ "enclave-crash",
  "enclave-crypto",
  "enclave-design",
  "enclave-ipc",
@@ -3667,6 +3669,7 @@ dependencies = [
  "rqrr",
  "slint",
  "slint-build",
+ "sys-locale",
  "tokio",
 ]
 
@@ -3699,6 +3702,13 @@ dependencies = [
  "subtle 2.6.1",
  "thiserror 2.0.21",
  "zeroize",
+]
+
+[[package]]
+name = "enclave-crash"
+version = "0.1.0"
+dependencies = [
+ "enclave-platform",
 ]
 
 [[package]]
@@ -3836,6 +3846,7 @@ name = "enclave-mobile"
 version = "0.1.0"
 dependencies = [
  "enclave-app",
+ "enclave-crash",
  "enclave-crypto",
  "enclave-mediad",
  "enclave-netd",
@@ -4094,6 +4105,7 @@ dependencies = [
  "chrono",
  "directories 6.0.0",
  "enclave-core",
+ "enclave-crash",
  "enclave-crypto",
  "enclave-federation",
  "enclave-ipc",

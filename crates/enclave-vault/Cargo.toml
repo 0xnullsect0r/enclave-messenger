@@ -28,6 +28,7 @@ demo = ["dep:enclave-sim", "dep:enclave-server"]
 [dependencies]
 subtle = "2"
 enclave-platform = { path = "../enclave-platform", features = ["keystores", "biometric"] }
+enclave-crash = { path = "../enclave-crash" }
 enclave-core = { path = "../enclave-core" }
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-ipc = { path = "../enclave-ipc" }

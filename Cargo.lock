@@ -2781,7 +2781,9 @@ name = "enclave-app"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "chrono",
  "directories 6.0.0",
+ "enclave-crash",
  "enclave-crypto",
  "enclave-design",
  "enclave-ipc",
@@ -2846,6 +2848,13 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "enclave-crash"
+version = "0.1.0"
+dependencies = [
+ "enclave-platform",
 ]
 
 [[package]]
@@ -3348,6 +3357,7 @@ dependencies = [
  "chrono",
  "directories 6.0.0",
  "enclave-core",
+ "enclave-crash",
  "enclave-crypto",
  "enclave-federation",
  "enclave-ipc",

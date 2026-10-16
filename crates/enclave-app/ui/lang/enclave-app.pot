@@ -120,6 +120,10 @@ msgid "A poll needs a question and at least two options."
 msgstr ""
 
 #: ui/app.slint
+msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
+msgstr ""
+
+#: ui/app.slint
 msgid "A username server showed people different lists"
 msgstr ""
 
@@ -812,6 +816,10 @@ msgid "Couldn't upload the pack. Check your connection."
 msgstr ""
 
 #: ui/app.slint
+msgid "Crash reports"
+msgstr ""
+
+#: ui/app.slint
 msgid "Create group"
 msgstr ""
 
@@ -892,6 +900,10 @@ msgid "Each member downloads them"
 msgstr ""
 
 #: ui/app.slint
+msgid "Each report says which part of Enclave stopped, where in its code, and the names of the functions it was running. It holds no messages, contacts, keys or memory. It stays on this device unless you save or send it."
+msgstr ""
+
+#: ui/app.slint
 msgid "Edit"
 msgstr ""
 
@@ -941,6 +953,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk."
+msgstr ""
+
+#: ui/app.slint
+msgid "Enclave closed unexpectedly"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -1524,6 +1540,10 @@ msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr ""
 
 #: ui/app.slint
+msgid "No reports."
+msgstr ""
+
+#: ui/app.slint
 msgid "No single company runs its servers: independent operators do, and the foundation only signs the list of them."
 msgstr ""
 
@@ -1880,6 +1900,10 @@ msgid "Read"
 msgstr ""
 
 #: ui/app.slint
+msgid "Read the report"
+msgstr ""
+
+#: ui/app.slint
 msgid "Recovery with friends"
 msgstr ""
 
@@ -1981,6 +2005,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Save a backup"
+msgstr ""
+
+#: ui/app.slint
+msgid "Save as a file"
 msgstr ""
 
 #: ui/app.slint
@@ -2109,6 +2137,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Send sticker {} from {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Send to Enclave Support"
 msgstr ""
 
 #: ui/app.slint
@@ -2569,6 +2601,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device."
+msgstr ""
+
+#: ui/app.slint
+msgid "To report it, save it as a file and attach it to an issue at github.com/0xnullsect0r/enclave-messenger."
 msgstr ""
 
 #: ui/app.slint
@@ -3113,6 +3149,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "{} wants to talk"
+msgstr ""
+
+#: ui/app.slint
+msgid "{} · {}"
 msgstr ""
 
 #: ui/app.slint

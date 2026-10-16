@@ -26,6 +26,7 @@ pub fn start(profile: PathBuf, extra: Vec<String>) -> Result<(), slint::Platform
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn start_headless(profile: PathBuf) {
     prepare();
+    enclave_crash::install(&profile.join(enclave_crash::DIR), "app");
     match enclave_vault::Mode::from_args(&args(&profile)) {
         Ok(mode) => enclave_app::vault::phone::run(mode),
         Err(e) => eprintln!("enclave: {e}"),

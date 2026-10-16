@@ -122,6 +122,10 @@ msgid "A poll needs a question and at least two options."
 msgstr "‫A poll needs a question and at least two options.‬"
 
 #: ui/app.slint
+msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
+msgstr "‫A report was saved on this device. Nothing was sent. You can read it and choose whether to share it.‬"
+
+#: ui/app.slint
 msgid "A username server showed people different lists"
 msgstr "‫A username server showed people different lists‬"
 
@@ -814,6 +818,10 @@ msgid "Couldn't upload the pack. Check your connection."
 msgstr "‫Couldn't upload the pack. Check your connection.‬"
 
 #: ui/app.slint
+msgid "Crash reports"
+msgstr "‫Crash reports‬"
+
+#: ui/app.slint
 msgid "Create group"
 msgstr "‫Create group‬"
 
@@ -894,6 +902,10 @@ msgid "Each member downloads them"
 msgstr "‫Each member downloads them‬"
 
 #: ui/app.slint
+msgid "Each report says which part of Enclave stopped, where in its code, and the names of the functions it was running. It holds no messages, contacts, keys or memory. It stays on this device unless you save or send it."
+msgstr "‫Each report says which part of Enclave stopped, where in its code, and the names of the functions it was running. It holds no messages, contacts, keys or memory. It stays on this device unless you save or send it.‬"
+
+#: ui/app.slint
 msgid "Edit"
 msgstr "‫Edit‬"
 
@@ -944,6 +956,10 @@ msgstr "‫Enclave can't confirm it was them who did this. Check the security co
 #: ui/app.slint
 msgid "Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk."
 msgstr "‫Enclave can't reach the private network. It can use a backup route through Tor until the network is back: your server still can't read your messages, and nobody learns where you are, but someone watching the internet closely could more easily tell when you and your contacts talk.‬"
+
+#: ui/app.slint
+msgid "Enclave closed unexpectedly"
+msgstr "‫Enclave closed unexpectedly‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't confirm that this username is genuine, so it didn't add anyone. Ask them for their invite link instead."
@@ -1526,6 +1542,10 @@ msgid "No phone number. No email. Only the people you choose can reach you."
 msgstr "‫No phone number. No email. Only the people you choose can reach you.‬"
 
 #: ui/app.slint
+msgid "No reports."
+msgstr "‫No reports.‬"
+
+#: ui/app.slint
 msgid "No single company runs its servers: independent operators do, and the foundation only signs the list of them."
 msgstr "‫No single company runs its servers: independent operators do, and the foundation only signs the list of them.‬"
 
@@ -1882,6 +1902,10 @@ msgid "Read"
 msgstr "‫Read‬"
 
 #: ui/app.slint
+msgid "Read the report"
+msgstr "‫Read the report‬"
+
+#: ui/app.slint
 msgid "Recovery with friends"
 msgstr "‫Recovery with friends‬"
 
@@ -1984,6 +2008,10 @@ msgstr "‫Save‬"
 #: ui/app.slint
 msgid "Save a backup"
 msgstr "‫Save a backup‬"
+
+#: ui/app.slint
+msgid "Save as a file"
+msgstr "‫Save as a file‬"
 
 #: ui/app.slint
 msgid "Save edit"
@@ -2112,6 +2140,10 @@ msgstr "‫Send request‬"
 #: ui/app.slint
 msgid "Send sticker {} from {}"
 msgstr "‫Send sticker ‬{}‫ from ‬{}"
+
+#: ui/app.slint
+msgid "Send to Enclave Support"
+msgstr "‫Send to Enclave Support‬"
 
 #: ui/app.slint
 msgid "Sending privately"
@@ -2572,6 +2604,10 @@ msgstr "‫Those words don't match, so nothing was linked. If you didn't start t
 #: ui/app.slint
 msgid "To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device."
 msgstr "‫To link a new device, open Enclave on it, choose \"I already have Enclave\", and paste its link code here. Only do this with your own device.‬"
+
+#: ui/app.slint
+msgid "To report it, save it as a file and attach it to an issue at github.com/0xnullsect0r/enclave-messenger."
+msgstr "‫To report it, save it as a file and attach it to an issue at github.com/0xnullsect0r/enclave-messenger.‬"
 
 #: ui/app.slint
 msgid "Together right now? Meet in person"
@@ -3116,6 +3152,10 @@ msgstr "{}‫ pinned messages. Latest: ‬"
 #: ui/app.slint
 msgid "{} wants to talk"
 msgstr "{}‫ wants to talk‬"
+
+#: ui/app.slint
+msgid "{} · {}"
+msgstr "{}‫ · ‬{}"
 
 #: ui/app.slint
 msgid "{}'s account moved to a new key"

@@ -105,6 +105,93 @@ fn notify(ui: &AppWindow, n: enclave_ipc::Notice) {
         });
 }
 
+/// Where crash reports go when the person chooses to send one: Enclave
+/// Support's username, set when the foundation publishes it
+/// (`ENCLAVE_SUPPORT` at build time). Without it the app offers only
+/// saving the report.
+const SUPPORT: Option<&str> = option_env!("ENCLAVE_SUPPORT");
+
+/// Show this device's crash reports and handle what the person does with
+/// them: read, save as a file, send to Enclave Support as a message
+/// request (end-to-end encrypted like any other), or delete.
+fn crash_reports(
+    ui: &AppWindow,
+    dir: Option<std::path::PathBuf>,
+    tx: tokio::sync::mpsc::UnboundedSender<Cmd>,
+) {
+    let Some(dir) = dir else {
+        return;
+    };
+    let show = |ui: &AppWindow, dir: &std::path::Path| {
+        let rows: Vec<crate::CrashRow> = enclave_crash::reports(dir)
+            .iter()
+            .map(|r| crate::CrashRow {
+                process: r.process().into(),
+                when: crash_time(r.at).into(),
+                text: r.text.clone().into(),
+            })
+            .collect();
+        ui.set_crash_reports(slint::ModelRc::new(slint::VecModel::from(rows)));
+    };
+    ui.set_support_known(SUPPORT.is_some());
+    show(ui, &dir);
+    let report = {
+        let dir = dir.clone();
+        move |i: i32| {
+            usize::try_from(i)
+                .ok()
+                .and_then(|i| enclave_crash::reports(&dir).into_iter().nth(i))
+        }
+    };
+    let w = ui.as_weak();
+    let r = report.clone();
+    ui.on_save_crash(move |i| {
+        if let (Some(ui), Some(rep)) = (w.upgrade(), r(i)) {
+            let name = format!("enclave-crash-{}.txt", rep.at);
+            save_with_dialog(&ui, name, rep.text.into_bytes());
+        }
+    });
+    let w = ui.as_weak();
+    let r = report.clone();
+    let d = dir.clone();
+    ui.on_send_crash(move |i| {
+        if let (Some(support), Some(rep)) = (SUPPORT, r(i)) {
+            let _ = tx.send(Cmd::Add(support.to_string(), rep.text.clone()));
+            let _ = enclave_crash::remove(&rep);
+            if let Some(ui) = w.upgrade() {
+                show(&ui, &d);
+            }
+        }
+    });
+    let w = ui.as_weak();
+    let d = dir.clone();
+    ui.on_delete_crash(move |i| {
+        if let Some(rep) = report(i) {
+            let _ = enclave_crash::remove(&rep);
+        }
+        if let Some(ui) = w.upgrade() {
+            show(&ui, &d);
+        }
+    });
+    let w = ui.as_weak();
+    ui.on_delete_crashes(move || {
+        enclave_crash::remove_all(&dir);
+        if let Some(ui) = w.upgrade() {
+            show(&ui, &dir);
+        }
+    });
+}
+
+/// "9 Oct 2026, 14:02" in local time.
+fn crash_time(at: u64) -> String {
+    use chrono::TimeZone;
+    chrono::Local
+        .timestamp_opt(at as i64, 0)
+        .single()
+        .map(|t| t.format("%-d %b %Y, %H:%M").to_string())
+        .unwrap_or_default()
+}
+
 /// The app's id for notifications (Windows toasts need the installer's
 /// Start menu shortcut to carry it, `packaging/windows`).
 #[cfg(all(desktop, windows))]
@@ -279,6 +366,15 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             std::process::exit(2);
         }
     };
+    // Crash reports (enclave-crash) for this process; the vault writes its
+    // own into the same folder.
+    let crashes = match &mode {
+        Mode::Server { profile, .. } => Some(profile.join(enclave_crash::DIR)),
+        _ => None,
+    };
+    if let Some(dir) = &crashes {
+        enclave_crash::install(dir, "app");
+    }
     let single_process = args.iter().any(|a| a == "--single-process");
     // Install checks: quit once the vault's first state is shown.
     let smoke = args.iter().any(|a| a == "--smoke-exit");
@@ -531,6 +627,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     ui.on_set_screen_security(move |on| {
         let _ = t.send(Cmd::SetScreenSecurity(on));
     });
+    crash_reports(&ui, crashes, tx.clone());
     let w = ui.as_weak();
     ui.on_load_licences(move || {
         if let Some(ui) = w.upgrade()
