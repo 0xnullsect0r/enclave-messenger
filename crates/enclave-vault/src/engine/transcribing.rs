@@ -122,7 +122,12 @@ async fn download(transport: Arc<dyn Transport>, dir: PathBuf, state: Arc<Mutex<
         let have =
             std::fs::read(&path).is_ok_and(|b| b.len() as u64 == size && sha256_hex(&b) == sha);
         if !have {
-            let url = format!("{}{name}", enclave_media::transcribe::MODEL_URL);
+            // An ordinary web site, not an Enclave service (its TLS).
+            let url = format!(
+                "{}{}{name}",
+                enclave_net::transport::WEB,
+                enclave_media::transcribe::MODEL_URL
+            );
             let r = fetch_file(&fetch, &url, size, sha, &path, |n| {
                 done += n;
                 let p = (done * 100 / total.max(1)).min(99) as u8;

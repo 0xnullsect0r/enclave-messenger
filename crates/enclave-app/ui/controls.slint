@@ -351,6 +351,9 @@ export component Avatar inherits Rectangle {
     // whose filled cells are bits 0–24 of `art`, in `art-tint`. 0: initials.
     in property <int> art: 0;
     in property <color> art-tint;
+    // A contact's own photo, sent with their profile: shown over the art.
+    in property <image> photo;
+    in property <bool> has-photo: false;
     width: root.size;
     height: root.size;
     border-radius: root.size / 2;
@@ -381,6 +384,12 @@ export component Avatar inherits Rectangle {
         color: #F6F3EC;
         horizontal-alignment: center;
         vertical-alignment: center;
+    }
+    if root.has-photo: Image {
+        width: root.size;
+        height: root.size;
+        source: root.photo;
+        image-fit: cover;
     }
 }
 

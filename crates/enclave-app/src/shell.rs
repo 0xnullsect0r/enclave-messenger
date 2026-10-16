@@ -47,6 +47,8 @@ fn stage(t: &tokio::sync::mpsc::UnboundedSender<Cmd>, bytes: &[u8]) -> bool {
 const MAX_STICKER_FILE: u64 = 4 * 1024 * 1024;
 /// Most bytes read for one pack (one IPC message).
 const MAX_PACK_FILES: u64 = 14 * 1024 * 1024;
+/// The largest picture read for a profile photo (it is redrawn at 512 px).
+const PHOTO_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
 #[cfg(desktop)]
 /// The Downloads folder (or home, or the temporary directory).
@@ -546,6 +548,8 @@ fn put_paths(ui: &AppWindow, what: i32, paths: &[String]) {
         0 => ui.set_restore_file(joined),
         1 => ui.set_check_file(joined),
         3 => ui.set_pack_paths(joined),
+        // Our profile photo: used at once.
+        4 => ui.invoke_set_photo(paths[0].clone().into()),
         _ => ui.set_attach_path(joined),
     }
 }
@@ -622,6 +626,16 @@ fn browse(ui: &AppWindow, what: i32) {
                 .pick_files()
                 .await
                 .unwrap_or_default(),
+            4 => d
+                .add_filter(
+                    crate::i18n::tr("Pictures"),
+                    &["png", "jpg", "jpeg", "gif", "webp"],
+                )
+                .set_title(crate::i18n::tr("Choose your photo"))
+                .pick_file()
+                .await
+                .into_iter()
+                .collect(),
             _ => d
                 .set_title(crate::i18n::tr("Choose a file to send"))
                 .pick_file()
@@ -1023,6 +1037,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         let _ = ui.show();
                     }
                     Out::PackPreview(title, n) => view::apply_pack_preview(&ui, &title, n),
+                    Out::Gifs(names) => view::apply_gifs(&ui, &names),
                     Out::Gallery(rows) => {
                         let rows: Vec<crate::GalleryRow> = rows
                             .into_iter()
@@ -1578,6 +1593,38 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::AllFiles);
     });
     let t = tx.clone();
+    ui.on_set_name(move |name| {
+        let _ = t.send(Cmd::SetName(name.trim().to_string()));
+    });
+    let t = tx.clone();
+    ui.on_set_about(move |about| {
+        let _ = t.send(Cmd::SetAbout(about.trim().to_string()));
+    });
+    let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_set_photo(move |path| {
+        // The picture is read here and redrawn small in mediad.
+        let bytes = if path.is_empty() {
+            Vec::new()
+        } else {
+            match std::fs::metadata(path.as_str()) {
+                Ok(m) if m.len() <= PHOTO_MAX_BYTES => {
+                    std::fs::read(path.as_str()).unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        };
+        if !path.is_empty() && bytes.is_empty() {
+            if let Some(ui) = w.upgrade() {
+                ui.set_status_line(
+                    crate::i18n::tr("Enclave couldn't read that picture. Try another one.").into(),
+                );
+            }
+            return;
+        }
+        let _ = t.send(Cmd::SetPhoto(bytes));
+    });
+    let t = tx.clone();
     ui.on_change_words(move || {
         let _ = t.send(Cmd::ChangeWords);
     });
@@ -1605,6 +1652,25 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     let t2 = tx.clone();
     ui.on_set_receipts_setting(move |on| {
         let _ = t2.send(Cmd::ReceiptsSetting(on));
+    });
+    let t2 = tx.clone();
+    ui.on_set_link_previews(move |on| {
+        let _ = t2.send(Cmd::LinkPreviewsSetting(on));
+    });
+    let t2 = tx.clone();
+    ui.on_set_gif_search(move |on| {
+        let _ = t2.send(Cmd::GifSearchSetting(on));
+    });
+    let t2 = tx.clone();
+    ui.on_search_gifs(move |q| {
+        let _ = t2.send(Cmd::GifSearch(q.trim().to_string()));
+    });
+    let t2 = tx.clone();
+    ui.on_send_gif(move |conv, i| {
+        let _ = t2.send(Cmd::SendGif(
+            conv.to_string(),
+            u32::try_from(i).unwrap_or(u32::MAX),
+        ));
     });
     ui.on_set_typing_setting(move |on| {
         let _ = t.send(Cmd::TypingSetting(on));
@@ -1976,7 +2042,7 @@ mod phone {
     pub fn browse(ui: &AppWindow, what: i32) {
         let kind = match what {
             0 | 1 => Pick::Backup,
-            3 => Pick::Pictures,
+            3 | 4 => Pick::Pictures,
             _ => Pick::File,
         };
         let w = ui.as_weak();

@@ -76,6 +76,16 @@ pub enum MediaOp {
     VoicePiece(u32),
     /// A voice note as an Ogg Opus file, to save ([`MediaOut::Raw`]).
     VoiceOgg,
+    /// A web page's preview (`enclave_media::web::page_meta`): the bytes
+    /// are `u16 length ‖ the page's address ‖ the page`; the answer, a
+    /// [`MediaOut::Raw`] `PageMeta` encoding.
+    PageMeta,
+    /// A GIF search's answer (`enclave_media::web::commons_gifs`, JSON) to
+    /// its results ([`MediaOut::Raw`], `web::encode_hits`).
+    GifHits,
+    /// A GIF's first frame, shrunk to at most this many pixels
+    /// ([`MediaOut::Rgba`]; search results).
+    GifPoster(u16),
 }
 
 /// How [`MediaOp::CallDecode`] uses its bytes.
@@ -194,6 +204,9 @@ impl MediaRequest {
             MediaOp::VideoScreen(n, tier, on) => w.u8(20).u32(n).u8(tier).bool(on),
             MediaOp::VoicePiece(start) => w.u8(21).u32(start),
             MediaOp::VoiceOgg => w.u8(22),
+            MediaOp::PageMeta => w.u8(24),
+            MediaOp::GifHits => w.u8(25),
+            MediaOp::GifPoster(side) => w.u8(26).u32(u32::from(side)),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -251,6 +264,9 @@ impl MediaRequest {
             21 => MediaOp::VoicePiece(r.u32()?),
             22 => MediaOp::VoiceOgg,
             23 => MediaOp::CallLoss(r.u32()?, r.u8()?),
+            24 => MediaOp::PageMeta,
+            25 => MediaOp::GifHits,
+            26 => MediaOp::GifPoster(u16::try_from(r.u32()?).map_err(|_| IpcError::Malformed)?),
             _ => return Err(IpcError::Malformed),
         };
         let bytes = r.bytes()?;

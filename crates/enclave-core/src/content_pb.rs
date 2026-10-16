@@ -18,7 +18,7 @@ use prost::Message as _;
 pub struct Pb {
     #[prost(
         oneof = "Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38"
     )]
     pub kind: Option<Kind>,
 }
@@ -100,6 +100,20 @@ pub enum Kind {
     Call(Vec<u8>),
     #[prost(bytes, tag = "37")]
     Poll(Vec<u8>),
+    #[prost(message, tag = "38")]
+    Profile(Profile),
+}
+
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct Profile {
+    #[prost(string, tag = "1")]
+    pub name: String,
+    #[prost(string, tag = "2")]
+    pub about: String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub photo: Vec<u8>,
+    #[prost(uint64, tag = "4")]
+    pub version: u64,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -147,6 +161,21 @@ pub struct Text {
     pub reply: Vec<u8>,
     #[prost(bool, tag = "6")]
     pub forwarded: bool,
+    /// The sender's link preview.
+    #[prost(message, optional, tag = "7")]
+    pub link: Option<LinkPreview>,
+}
+
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct LinkPreview {
+    #[prost(string, tag = "1")]
+    pub url: String,
+    #[prost(string, tag = "2")]
+    pub title: String,
+    #[prost(string, tag = "3")]
+    pub description: String,
+    #[prost(bytes = "vec", tag = "4")]
+    pub image: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -358,6 +387,7 @@ pub fn to_pb(c: &Content) -> Pb {
             expires,
             reply,
             forwarded,
+            link,
         } => Kind::Text(Text {
             tokens: toks(&tokens),
             text,
@@ -365,6 +395,12 @@ pub fn to_pb(c: &Content) -> Pb {
             expires,
             reply: reply.map(|r| r.to_vec()).unwrap_or_default(),
             forwarded,
+            link: link.map(|l| LinkPreview {
+                url: l.url,
+                title: l.title,
+                description: l.description,
+                image: l.image,
+            }),
         }),
         Content::Tokens(t) => Kind::Tokens(Tokens { tokens: toks(&t) }),
         Content::GroupWelcome(b) => Kind::GroupWelcome(b),
@@ -500,6 +536,17 @@ pub fn to_pb(c: &Content) -> Pb {
         Content::Closed => Kind::Closed(true),
         Content::Call(b) => Kind::Call(b.clone()),
         Content::Poll(b) => Kind::Poll(b.clone()),
+        Content::Profile {
+            name,
+            about,
+            photo,
+            version,
+        } => Kind::Profile(Profile {
+            name: name.clone(),
+            about: about.clone(),
+            photo: photo.clone(),
+            version,
+        }),
         Content::NotifyKey { key, day, previews } => Kind::NotifyKey(NotifyKey {
             key: key.to_vec(),
             day,
@@ -533,6 +580,12 @@ pub fn from_pb(p: Pb) -> Result<Content> {
                 Some(id(t.reply)?)
             },
             forwarded: t.forwarded,
+            link: t.link.map(|l| crate::content::LinkPreview {
+                url: l.url,
+                title: l.title,
+                description: l.description,
+                image: l.image,
+            }),
         },
         Kind::Tokens(t) => Content::Tokens(arrs(t.tokens)?),
         Kind::GroupWelcome(b) => Content::GroupWelcome(b),
@@ -637,6 +690,20 @@ pub fn from_pb(p: Pb) -> Result<Content> {
                 return Err(ProtoError::Decode);
             }
             Content::Poll(b)
+        }
+        Kind::Profile(p) => {
+            if p.name.len() > crate::card::MAX_NAME
+                || p.about.len() > crate::content::MAX_ABOUT
+                || p.photo.len() > crate::content::MAX_ATTACHMENT_REF
+            {
+                return Err(ProtoError::Decode);
+            }
+            Content::Profile {
+                name: p.name,
+                about: p.about,
+                photo: p.photo,
+                version: p.version,
+            }
         }
         Kind::NotifyKey(n) => Content::NotifyKey {
             key: arr(n.key)?,

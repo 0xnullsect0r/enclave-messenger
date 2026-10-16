@@ -208,6 +208,47 @@ pub fn clip_from_gif(bytes: &[u8]) -> Result<Clip> {
     })
 }
 
+/// A GIF's first frame on its canvas, flattened onto white.
+pub(crate) fn gif_first_frame(bytes: &[u8]) -> Result<Rgba> {
+    if bytes.len() > crate::MAX_INPUT {
+        return Err(MediaError::TooLarge);
+    }
+    if !is_gif(bytes) {
+        return Err(MediaError::NotAnImage);
+    }
+    let mut opts = gif::DecodeOptions::new();
+    opts.set_color_output(gif::ColorOutput::RGBA);
+    let mut d = opts.read_info(bytes).map_err(|_| MediaError::Damaged)?;
+    let (sw, sh) = (u32::from(d.width()), u32::from(d.height()));
+    check_size(u64::from(sw), u64::from(sh))?;
+    let f = d
+        .read_next_frame()
+        .map_err(|_| MediaError::Damaged)?
+        .ok_or(MediaError::Damaged)?;
+    let mut canvas = vec![255u8; sw as usize * sh as usize * 4];
+    let (fx, fy, fw) = (u32::from(f.left), u32::from(f.top), u32::from(f.width));
+    for y in 0..u32::from(f.height) {
+        for x in 0..fw {
+            let (cx, cy) = (fx + x, fy + y);
+            if cx >= sw || cy >= sh {
+                continue;
+            }
+            let s = ((y * fw + x) * 4) as usize;
+            let px = f.buffer.get(s..s + 4).ok_or(MediaError::Damaged)?;
+            let a = u32::from(px[3]);
+            let o = ((cy * sw + cx) * 4) as usize;
+            for c in 0..3 {
+                canvas[o + c] = ((u32::from(px[c]) * a + 255 * (255 - a) + 127) / 255) as u8;
+            }
+        }
+    }
+    Ok(Rgba {
+        width: sw,
+        height: sh,
+        pixels: canvas,
+    })
+}
+
 /// Flatten onto white, shrink, and pad to an even size of at least 16.
 fn prepare(canvas: &[u8], w: u32, h: u32) -> Rgba {
     let flat: Vec<u8> = canvas

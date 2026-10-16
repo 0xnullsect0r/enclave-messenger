@@ -28,6 +28,7 @@ mod resize;
 pub mod transcribe;
 pub mod video;
 pub mod voice;
+pub mod web;
 
 /// Largest file accepted for decoding.
 pub const MAX_INPUT: usize = 64 << 20;

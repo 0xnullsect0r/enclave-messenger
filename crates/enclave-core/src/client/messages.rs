@@ -115,15 +115,21 @@ pub struct Message {
     /// A view-once file not opened yet. It is never in `attachment`, so
     /// nothing else downloads, previews or keeps it; gone once opened.
     pub once: Option<Attachment>,
+    /// The sender's preview of a link in the text.
+    pub link: Option<crate::content::LinkPreview>,
 }
 
-/// How a text is sent: as an answer to another message, or forwarded.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// How a text is sent: as an answer to another message, forwarded, or
+/// with a link preview.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TextOptions {
     /// The message it answers (its id, in the same conversation).
     pub reply: Option<MsgId>,
     /// Forwarded from another conversation.
     pub forwarded: bool,
+    /// A preview of a link in the text (made by the sender; dropped if the
+    /// text doesn't contain its link).
+    pub link: Option<crate::content::LinkPreview>,
 }
 
 impl Message {
@@ -157,12 +163,13 @@ impl Message {
             poll: None,
             view_once: false,
             once: None,
+            link: None,
         }
     }
 
     pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(9).u64(self.seq).fixed(&self.id);
+        w.u8(10).u64(self.seq).fixed(&self.id);
         w.u8(u8::from(self.outgoing))
             .u8(u8::from(self.delivered))
             .u8(u8::from(self.read))
@@ -226,13 +233,20 @@ impl Message {
                 .map(Attachment::encode)
                 .unwrap_or_default(),
         );
+        w.bytes(
+            &self
+                .link
+                .as_ref()
+                .map(crate::content::LinkPreview::encode)
+                .unwrap_or_default(),
+        );
         w.finish()
     }
 
     pub(crate) fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(2..=9).contains(&version) {
+        if !(2..=10).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let s = |r: &mut Reader<'_>, n| {
@@ -322,8 +336,19 @@ impl Message {
         } else {
             None
         };
+        let link = if version >= 10 {
+            let b = r.bytes(crate::content::MAX_LINK_PREVIEW)?;
+            if b.is_empty() {
+                None
+            } else {
+                Some(crate::content::LinkPreview::decode(b)?)
+            }
+        } else {
+            None
+        };
         r.end()?;
         Ok(Self {
+            link,
             seq,
             id,
             outgoing,
@@ -839,6 +864,7 @@ impl Client {
                 expires,
                 reply,
                 forwarded,
+                link,
                 ..
             } => {
                 self.note_receipt(root, id);
@@ -846,9 +872,11 @@ impl Client {
                     return Ok(events); // duplicate
                 }
                 let mut m = self.new_message(root, id, false, &text, expires, now)?;
-                if reply.is_some() || forwarded {
+                let link = link.filter(|l| l.fits(&text));
+                if reply.is_some() || forwarded || link.is_some() {
                     m.reply_to = reply;
                     m.forwarded = forwarded;
+                    m.link = link;
                     self.put_message(root, &m)?;
                 }
                 self.bump_unread(root)?;
@@ -1000,6 +1028,12 @@ impl Client {
                 }
             }
             Content::Poll(b) => events.extend(self.on_contact_poll(root, false, &b, now)?),
+            Content::Profile {
+                name,
+                about,
+                photo,
+                version,
+            } => events.extend(self.on_profile(root, name, about, &photo, version)?),
             _ => return Err(ProtoError::Decode.into()),
         }
         Ok(events)
@@ -1031,6 +1065,7 @@ impl Client {
                 expires,
                 reply,
                 forwarded,
+                link,
                 ..
             } => {
                 if self.find(to, &id).is_err() {
@@ -1038,6 +1073,7 @@ impl Client {
                     m.sent = true;
                     m.reply_to = reply;
                     m.forwarded = forwarded;
+                    m.link = link.filter(|l| l.fits(&text));
                     self.put_message(to, &m)?;
                     events.push(Event::Message {
                         root: *to,

@@ -142,6 +142,8 @@ pub(crate) enum Rich {
         forwarded: bool,
         /// Mentioned members: the first 16 bytes of each root.
         mentions: Vec<[u8; 16]>,
+        /// The sender's preview of a link in the text.
+        link: Option<crate::content::LinkPreview>,
     },
 }
 
@@ -234,6 +236,7 @@ impl Rich {
                 reply,
                 forwarded,
                 mentions,
+                link,
             } => {
                 w.u8(K_TEXT).fixed(id).bytes(text.as_bytes());
                 match reply {
@@ -245,6 +248,12 @@ impl Rich {
                 for m in mentions.iter().take(MAX_MENTIONS) {
                     w.fixed(m);
                 }
+                w.bytes(
+                    &link
+                        .as_ref()
+                        .map(crate::content::LinkPreview::encode)
+                        .unwrap_or_default(),
+                );
             }
         }
         w.finish()
@@ -354,12 +363,19 @@ impl Rich {
                 let mentions = (0..n)
                     .map(|_| r.array())
                     .collect::<enclave_proto::Result<_>>()?;
+                let link = r.bytes(crate::content::MAX_LINK_PREVIEW)?;
+                let link = if link.is_empty() {
+                    None
+                } else {
+                    Some(crate::content::LinkPreview::decode(link)?)
+                };
                 Rich::Text {
                     id,
                     text,
                     reply,
                     forwarded,
                     mentions,
+                    link,
                 }
             }
             K_PIN => Rich::Pin {
@@ -1118,6 +1134,7 @@ impl Client {
                 reply,
                 forwarded,
                 mentions,
+                link,
             } => {
                 if self.group_messages(gid)?.iter().any(|m| m.id == id) {
                     return Ok(None); // a duplicate
@@ -1129,6 +1146,7 @@ impl Client {
                 m.reply_to = reply;
                 m.forwarded = forwarded;
                 m.mentions_me = !ours && mentions.contains(&me);
+                m.link = link.filter(|l| l.fits(&text));
                 if ours {
                     m.delivered = true;
                 }

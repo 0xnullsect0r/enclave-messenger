@@ -35,10 +35,22 @@ const REVISION: u8 = <ImportableTicketBook as VersionedSerialise>::CURRENT_SERIA
 /// Extra roots for a local mixnet's tests: a PEM file.
 pub const TEST_CA_VAR: &str = "ENCLAVE_NYM_TEST_CA";
 
+/// The scheme prefix that asks for an ordinary web site (a link preview, a
+/// GIF search): `web+https://…`.
+pub const WEB: &str = "web+";
+/// Most of a web answer read (one pipe frame holds it).
+pub const MAX_WEB: usize = 960 * 1024;
+/// What web sites are told is asking: the same for every Enclave.
+const WEB_AGENT: &str = "Enclave (+https://github.com/0xnullsect0r/enclave-messenger)";
+
 /// HTTP for the credential gate: Enclave TLS, through the environment's
-/// proxy (`ALL_PROXY`, set by netd to tord's SOCKS5 port).
+/// proxy (`ALL_PROXY`, set by netd to tord's SOCKS5 port). Addresses that
+/// start with [`WEB`] go to ordinary web sites instead: the usual TLS key
+/// exchanges (sites don't offer Enclave's), https only, `GET` only, at most
+/// [`MAX_WEB`] bytes, no cookies, through the same proxy.
 pub struct Fetcher {
     http: reqwest::Client,
+    web: reqwest::Client,
 }
 
 impl Fetcher {
@@ -76,7 +88,48 @@ impl Fetcher {
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(client_error)?;
-        Ok(Self { http })
+        let mut web_roots = rustls::RootCertStore::empty();
+        web_roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let mut web_tls = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+            enclave_tls::compat_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(client_error)?
+        .with_root_certificates(web_roots)
+        .with_no_client_auth();
+        web_tls.alpn_protocols = vec![b"http/1.1".to_vec()];
+        let web = reqwest::Client::builder()
+            .tls_backend_preconfigured(web_tls)
+            .timeout(std::time::Duration::from_secs(45))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .https_only(true)
+            .user_agent(WEB_AGENT)
+            .build()
+            .map_err(client_error)?;
+        Ok(Self { http, web })
+    }
+
+    /// `GET` an ordinary web page or file (`url` is `https://…`), or a
+    /// `range` of it: the status and at most [`MAX_WEB`] bytes (more is an
+    /// error).
+    async fn fetch_web(&self, url: &str, range: Option<String>) -> Result<(u16, Vec<u8>)> {
+        if !url.starts_with("https://") {
+            return Err(NymError::Client("web: https only".into()));
+        }
+        let mut req = self.web.get(url);
+        if let Some(r) = range {
+            req = req.header("range", r);
+        }
+        let mut res = req.send().await.map_err(client_error)?;
+        let status = res.status().as_u16();
+        let mut body = Vec::new();
+        while let Some(chunk) = res.chunk().await.map_err(client_error)? {
+            if body.len() + chunk.len() > MAX_WEB {
+                return Err(NymError::Client("web: too large".into()));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok((status, body))
     }
 
     /// `method` `url` with `body`: the status and the answer.
@@ -94,6 +147,12 @@ impl Fetcher {
             }
             _ => (url, None),
         };
+        if let Some(web) = url.strip_prefix(WEB) {
+            if method != reqwest::Method::GET || !body.is_empty() {
+                return Err(NymError::Client("web: GET only".into()));
+            }
+            return self.fetch_web(web, range).await;
+        }
         let mut req = self.http.request(method, url);
         if let Some(r) = range {
             req = req.header("range", r);

@@ -143,6 +143,7 @@ mod pin;
 mod pins;
 mod polls;
 mod prefs;
+mod profile;
 mod push;
 mod record;
 #[cfg(test)]
@@ -162,6 +163,7 @@ mod typing;
 mod updates;
 mod usernames;
 mod wallet;
+pub mod web;
 
 pub use crate::rpc::Sending;
 pub use backup::{BackupCheck, check_archive};
@@ -187,6 +189,7 @@ pub use pin::{FREE_TRIES, MIN_PIN_LEN, UNLOCK_SECS};
 pub use pins::MAX_PINS;
 pub use polls::{MAX_OPTIONS, PollView};
 pub use prefs::{ConvPrefs, MAX_PINNED_CONVERSATIONS};
+pub use profile::{PHOTO_REFRESH_SECS, Photo, ProfileInfo};
 pub use record::Evidence;
 pub use reports::{CALM_PER_DAY, FLOOD_PER_DAY, RAISED_EFFORT_SECS};
 pub use search::{Hit, Place};
@@ -276,6 +279,11 @@ pub enum Event {
     /// A contact gave us part of their recovery to keep.
     RecoveryShareReceived {
         /// Whose.
+        root: [u8; 64],
+    },
+    /// A contact sent a new profile ([`Client::contact_profile`]).
+    ProfileChanged {
+        /// Their root.
         root: [u8; 64],
     },
     /// A vote arrived or a poll closed.
@@ -1440,6 +1448,9 @@ impl Client {
         let mut msg = self.store_message(root, true, text, now)?;
         msg.reply_to = opts.reply;
         msg.forwarded = opts.forwarded;
+        // A preview only for a link the text has.
+        let link = opts.link.clone().filter(|l| l.fits(text));
+        msg.link = link.clone();
         let sent = self
             .send_tracked(
                 root,
@@ -1451,6 +1462,7 @@ impl Client {
                     expires: msg.expires_secs,
                     reply: opts.reply,
                     forwarded: opts.forwarded,
+                    link: link.clone(),
                 },
                 now,
             )
@@ -1462,6 +1474,7 @@ impl Client {
             expires: msg.expires_secs,
             reply: opts.reply,
             forwarded: opts.forwarded,
+            link,
         };
         self.send_self_copy(root, &copy, now).await?;
         if refilled && let Some(c) = self.contacts.get_mut(root) {
@@ -1700,6 +1713,11 @@ impl Client {
             return Err(e);
         }
         if let Err(e) = self.push_groups(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
+        if let Err(e) = self.profile_upkeep(now).await
             && matches!(e, CoreError::Net(_))
         {
             return Err(e);
@@ -2300,6 +2318,7 @@ impl Client {
                             expires: 0,
                             reply: None,
                             forwarded: false,
+                            link: None,
                         });
                     }
                 }
@@ -2376,6 +2395,7 @@ impl Client {
                     expires,
                     reply,
                     forwarded,
+                    link,
                 } => {
                     add_tokens(&mut c.tokens, self.my_share(tokens));
                     c.received_since_refill = c.received_since_refill.saturating_add(1);
@@ -2386,6 +2406,7 @@ impl Client {
                         expires,
                         reply,
                         forwarded,
+                        link,
                     });
                 }
                 Content::ModeChange { on_record, seq } => {

@@ -242,6 +242,30 @@ fn handle(req: MediaRequest, calls: &mut Calls) -> MediaReply {
         )
         .map(|pcm| MediaOut::Raw(pcm.iter().flat_map(|s| s.to_le_bytes()).collect())),
         MediaOp::VoiceOgg => enclave_media::voice::voice_to_ogg(&req.bytes).map(MediaOut::Raw),
+        MediaOp::PageMeta => {
+            let n = req
+                .bytes
+                .get(..2)
+                .map(|b| usize::from(u16::from_be_bytes([b[0], b[1]])))
+                .ok_or(enclave_media::MediaError::Damaged);
+            n.and_then(|n| {
+                let url = req
+                    .bytes
+                    .get(2..2 + n)
+                    .and_then(|u| std::str::from_utf8(u).ok())
+                    .ok_or(enclave_media::MediaError::Damaged)?;
+                enclave_media::web::page_meta(url, &req.bytes[2 + n..])
+            })
+            .map(|m| MediaOut::Raw(m.encode()))
+        }
+        MediaOp::GifHits => enclave_media::web::commons_gifs(&req.bytes)
+            .map(|h| MediaOut::Raw(enclave_media::web::encode_hits(&h))),
+        MediaOp::GifPoster(side) => enclave_media::web::gif_poster(&req.bytes, u32::from(side))
+            .map(|t| MediaOut::Rgba {
+                width: t.width,
+                height: t.height,
+                pixels: t.pixels,
+            }),
         MediaOp::VoiceWav => enclave_media::voice::voice_info(&req.bytes).and_then(|i| {
             Ok(MediaOut::Audio {
                 duration_ms: i.duration_ms,

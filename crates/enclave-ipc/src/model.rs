@@ -49,6 +49,11 @@ pub struct Row {
     /// Contact art (`enclave_core::art`): filled cells in bits 0–24, the
     /// tint (0–7) in bits 25–27; 0 for none (groups, notes).
     pub art: u32,
+    /// A contact's "about", from their profile.
+    pub about: String,
+    /// A contact's profile photo: it comes as [`Out::Preview`] for
+    /// conversation `avatar/<id>`, its `seq` naming the photo.
+    pub has_photo: bool,
 }
 
 /// A sticker pack added on this device.
@@ -188,6 +193,16 @@ pub struct Msg {
     pub view_once: bool,
     /// ...that this device can still open ([`Cmd::OpenViewOnce`]).
     pub view_once_ready: bool,
+    /// The sender's link preview: the page's title (empty: none), its
+    /// description and site, and whether it has a picture (which comes as
+    /// an [`Out::Preview`] for this message, like a picture's).
+    pub link_title: String,
+    /// The page's description.
+    pub link_description: String,
+    /// The page's site ("example.org").
+    pub link_site: String,
+    /// The preview has a picture.
+    pub link_image: bool,
 }
 
 /// A call as the window shows it (`docs/11-calls.md`).
@@ -259,6 +274,11 @@ pub struct CallPeer {
 pub struct Snapshot {
     /// Our name.
     pub my_name: String,
+    /// Our profile's "about".
+    pub my_about: String,
+    /// We have a profile photo (it comes as [`Out::Preview`] for
+    /// conversation `avatar/me`).
+    pub my_photo: bool,
     /// Invite link.
     pub my_link: String,
     /// Conversations.
@@ -422,6 +442,10 @@ pub struct Snapshot {
     pub typing_setting: bool,
     /// Read receipts are on (Settings; on unless turned off).
     pub receipts_setting: bool,
+    /// Link previews are on (off by default).
+    pub link_previews: bool,
+    /// GIF search is on (off by default).
+    pub gif_search: bool,
     /// The open conversation's contact is typing.
     pub typing: bool,
     /// In a group: who is typing ("Ana, Ben"), when someone is.
@@ -700,10 +724,26 @@ pub enum Cmd {
     AllFiles,
     /// Remove an added sticker pack (its id).
     RemovePack(String),
+    /// Our display name.
+    SetName(String),
+    /// Our profile's "about".
+    SetAbout(String),
+    /// Our profile photo: a picture (re-encoded first), or empty for none.
+    SetPhoto(Vec<u8>),
     /// Show the pack a sticker message carries before adding it: its
     /// title and count ([`Out::PackPreview`]), then each picture as a
     /// [`Out::Preview`] for conversation [`PACK_PREVIEW`].
     PreviewPack(String, u64),
+    /// Link previews on or off.
+    LinkPreviewsSetting(bool),
+    /// GIF search on or off.
+    GifSearchSetting(bool),
+    /// Search for GIFs through Tor: the results come as [`Out::Gifs`],
+    /// then each one's first frame as an [`Out::Preview`] for conversation
+    /// [`GIF_RESULTS`] (its position as `seq`).
+    GifSearch(String),
+    /// Send a GIF from the last search: conversation, its position.
+    SendGif(String, u32),
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -953,10 +993,17 @@ pub enum Out {
     /// A sticker pack before adding it ([`Cmd::PreviewPack`]): its title
     /// and how many stickers.
     PackPreview(String, u32),
+    /// A GIF search's results ([`Cmd::GifSearch`]): each one's name, in
+    /// order (empty: none found).
+    Gifs(Vec<String>),
 }
 
 /// The conversation name a pack preview's pictures come under.
 pub const PACK_PREVIEW: &str = "pack-preview";
+/// The conversation name GIF search results' pictures come under.
+pub const GIF_RESULTS: &str = "gif-results";
+/// Most GIF search results.
+pub const MAX_GIFS: usize = 12;
 
 /// A file in the gallery across all conversations.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -1063,7 +1110,9 @@ fn put_row(w: &mut Writer, r: &Row) {
         .bool(r.archived)
         .bool(r.blocked)
         .bool(r.admin)
-        .u32(r.art);
+        .u32(r.art)
+        .str(&r.about)
+        .bool(r.has_photo);
 }
 
 fn get_row(r: &mut Reader<'_>) -> Result<Row> {
@@ -1085,6 +1134,8 @@ fn get_row(r: &mut Reader<'_>) -> Result<Row> {
         blocked: r.bool()?,
         admin: r.bool()?,
         art: r.u32()? & 0x0fff_ffff,
+        about: r.str()?,
+        has_photo: r.bool()?,
     })
 }
 
@@ -1113,7 +1164,10 @@ impl Snapshot {
     /// Encode.
     pub fn encode(&self) -> Vec<u8> {
         let mut w = Writer::default();
-        w.str(&self.my_name).str(&self.my_link);
+        w.str(&self.my_name)
+            .str(&self.my_about)
+            .bool(self.my_photo)
+            .str(&self.my_link);
         put_rows(&mut w, &self.contacts);
         put_rows(&mut w, &self.requests);
         put_rows(&mut w, &self.archived);
@@ -1168,7 +1222,11 @@ impl Snapshot {
                 .u32(m.poll_voters)
                 .str(&m.my_reaction)
                 .bool(m.view_once)
-                .bool(m.view_once_ready);
+                .bool(m.view_once_ready)
+                .str(&m.link_title)
+                .str(&m.link_description)
+                .str(&m.link_site)
+                .bool(m.link_image);
         }
         w.strs(&self.code_groups)
             .strs(&self.code_words)
@@ -1259,6 +1317,8 @@ impl Snapshot {
             .u32(self.invites)
             .bool(self.typing_setting)
             .bool(self.receipts_setting)
+            .bool(self.link_previews)
+            .bool(self.gif_search)
             .bool(self.typing)
             .str(&self.typing_who)
             .bool(self.announcement_only)
@@ -1341,6 +1401,7 @@ impl Snapshot {
     pub fn decode(b: &[u8]) -> Result<Self> {
         let mut r = Reader(b);
         let my_name = r.str()?;
+        let (my_about, my_photo) = (r.str()?, r.bool()?);
         let my_link = r.str()?;
         let contacts = get_rows(&mut r)?;
         let requests = get_rows(&mut r)?;
@@ -1401,6 +1462,10 @@ impl Snapshot {
                     my_reaction: r.str()?,
                     view_once: r.bool()?,
                     view_once_ready: r.bool()?,
+                    link_title: r.str()?,
+                    link_description: r.str()?,
+                    link_site: r.str()?,
+                    link_image: r.bool()?,
                 })
             })
             .collect::<Result<_>>()?;
@@ -1447,6 +1512,8 @@ impl Snapshot {
             .collect::<Result<_>>()?;
         let s = Self {
             my_name,
+            my_about,
+            my_photo,
             my_link,
             contacts,
             requests,
@@ -1549,6 +1616,8 @@ impl Snapshot {
             invites: r.u32()?,
             typing_setting: r.bool()?,
             receipts_setting: r.bool()?,
+            link_previews: r.bool()?,
+            gif_search: r.bool()?,
             typing: r.bool()?,
             typing_who: r.str()?,
             announcement_only: r.bool()?,
@@ -1758,7 +1827,14 @@ impl Cmd {
             Cmd::OpenViewOnce(c, seq) => w.u8(131).str(c).u64(*seq),
             Cmd::AllFiles => w.u8(132),
             Cmd::RemovePack(p) => w.u8(133).str(p),
+            Cmd::SetName(n) => w.u8(135).str(n),
+            Cmd::SetAbout(a) => w.u8(136).str(a),
+            Cmd::SetPhoto(b) => w.u8(137).bytes(b),
             Cmd::PreviewPack(c, seq) => w.u8(134).str(c).u64(*seq),
+            Cmd::LinkPreviewsSetting(on) => w.u8(138).bool(*on),
+            Cmd::GifSearchSetting(on) => w.u8(139).bool(*on),
+            Cmd::GifSearch(q) => w.u8(140).str(q),
+            Cmd::SendGif(c, i) => w.u8(141).str(c).u32(*i),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -1919,7 +1995,14 @@ impl Cmd {
             131 => Cmd::OpenViewOnce(r.str()?, r.u64()?),
             132 => Cmd::AllFiles,
             133 => Cmd::RemovePack(r.str()?),
+            135 => Cmd::SetName(r.str()?),
+            136 => Cmd::SetAbout(r.str()?),
+            137 => Cmd::SetPhoto(r.bytes()?),
             134 => Cmd::PreviewPack(r.str()?, r.u64()?),
+            138 => Cmd::LinkPreviewsSetting(r.bool()?),
+            139 => Cmd::GifSearchSetting(r.bool()?),
+            140 => Cmd::GifSearch(r.str()?),
+            141 => Cmd::SendGif(r.str()?, r.u32()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),
@@ -2116,6 +2199,11 @@ impl Out {
                 w.u8(20).str(title).u32(*n);
                 w.0
             }
+            Out::Gifs(names) => {
+                let mut w = Writer::default();
+                w.u8(21).strs(&names[..names.len().min(MAX_GIFS)]);
+                w.0
+            }
             Out::Gallery(rows) => {
                 let mut w = Writer::default();
                 let rows = &rows[..rows.len().min(MAX_GALLERY)];
@@ -2251,6 +2339,15 @@ impl Out {
                 let o = Out::PackPreview(r.str()?, r.u32()?);
                 r.end()?;
                 Ok(o)
+            }
+            [21, ..] => {
+                let mut r = Reader(&b[1..]);
+                let names = r.strs()?;
+                r.end()?;
+                if names.len() > MAX_GIFS {
+                    return Err(IpcError::Malformed);
+                }
+                Ok(Out::Gifs(names))
             }
             [19, ..] => {
                 let mut r = Reader(&b[1..]);

@@ -54,7 +54,17 @@ pub const HEARTBEAT_SECS: u64 = 86_400;
 /// How long a newly linked device is pointed out on every device.
 pub const NEW_DEVICE_SECS: u64 = 7 * 86_400;
 /// Settings kept the same on every device of the account.
-pub const SYNCED_SETTINGS: [&str; 3] = ["receipts", "typing", super::folders::SETTING];
+pub const SYNCED_SETTINGS: [&str; 6] = [
+    "receipts",
+    "typing",
+    super::folders::SETTING,
+    super::profile::SETTING,
+    super::web::LINK_PREVIEWS,
+    super::web::GIF_SEARCH,
+];
+
+/// Largest synced setting value (a profile with its photo reference).
+const MAX_SETTING: usize = 1024;
 
 const T_READ: u8 = 1;
 const T_PREFS: u8 = 2;
@@ -242,7 +252,7 @@ impl SyncItem {
             },
             T_SETTING => SyncItem::Setting {
                 key: String::from_utf8(r.bytes(64).ok()?.to_vec()).ok()?,
-                value: r.bytes(256).ok()?.to_vec(),
+                value: r.bytes(MAX_SETTING).ok()?.to_vec(),
             },
             T_CONTACT => {
                 let card = r.bytes(crate::content::MAX_CARD).ok()?.to_vec();

@@ -136,6 +136,7 @@ impl Client {
                 expires,
                 reply,
                 forwarded,
+                link,
                 ..
             } => Content::Text {
                 tokens: Vec::new(),
@@ -144,6 +145,7 @@ impl Client {
                 expires: *expires,
                 reply: *reply,
                 forwarded: *forwarded,
+                link: link.clone(),
             },
             c => c.clone(),
         };

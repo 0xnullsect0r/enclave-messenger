@@ -11,7 +11,11 @@ pub fn start(mode: &Mode) -> crate::Helpers {
     let net = start_netd(mode);
     let media = crate::media::mediad_binary()
         .and_then(|b| crate::media::Media::spawn(&b, crate::media::SPARES).ok());
-    crate::Helpers { net, media }
+    crate::Helpers {
+        net,
+        media,
+        web: None,
+    }
 }
 
 /// netd for `mode`'s servers (none outside server mode, or without netd).

@@ -18,6 +18,10 @@ use tokio::net::TcpStream;
 /// Server identifier.
 pub type ServerId = [u8; 16];
 
+/// The prefix of a [`Transport::fetch`] address that is an ordinary web
+/// site rather than an Enclave service: `web+https://…`.
+pub const WEB: &str = "web+";
+
 /// Carries sealed requests to servers.
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync {
@@ -103,7 +107,10 @@ pub trait Transport: Send + Sync {
         Ok(true)
     }
     /// HTTP through the mixnet client's Tor, for the credential gate
-    /// (`docs/09-transport.md` §7): the status and the body.
+    /// (`docs/09-transport.md` §7): the status and the body. An address
+    /// that starts with [`WEB`] is an ordinary web site (link previews, GIF
+    /// search, the transcription model): `GET` only, the usual TLS key
+    /// exchanges, at most about 1 MiB. `…#bytes=A-B` asks for a range.
     async fn fetch(&self, method: &str, url: &str, body: Vec<u8>) -> Result<(u16, Vec<u8>)> {
         let _ = (method, url, body);
         Err(NetError::Unavailable("fetching through Tor"))

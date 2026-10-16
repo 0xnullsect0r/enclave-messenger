@@ -14,6 +14,44 @@ thread_local! {
     /// Picture previews by (conversation, message position), for this run
     /// of the UI. Pixels only: mediad already decoded them.
     static PREVIEWS: RefCell<HashMap<(String, u64), Image>> = RefCell::new(HashMap::new());
+    /// Profile photos by contact id ("me" for ours): the latest one.
+    static AVATARS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+}
+
+fn avatar(id: &str) -> Option<Image> {
+    AVATARS.with(|a| a.borrow().get(id).cloned())
+}
+
+/// A profile photo came: into every list that shows that contact.
+fn apply_avatar(ui: &AppWindow, who: &str, img: Image) {
+    AVATARS.with(|a| a.borrow_mut().insert(who.to_string(), img.clone()));
+    if who == "me" {
+        ui.set_my_photo(img);
+        ui.set_my_has_photo(true);
+        return;
+    }
+    let update = |model: ModelRc<ContactRow>| {
+        for i in 0..model.row_count() {
+            if let Some(mut r) = model.row_data(i)
+                && r.id.as_str() == who
+            {
+                r.photo = img.clone();
+                r.has_photo = true;
+                model.set_row_data(i, r);
+            }
+        }
+    };
+    update(ui.get_contacts());
+    update(ui.get_requests());
+    update(ui.get_archived());
+    update(ui.get_members());
+    update(ui.get_search_results());
+    let mut c = ui.get_current();
+    if c.id.as_str() == who {
+        c.photo = img;
+        c.has_photo = true;
+        ui.set_current(c);
+    }
 }
 
 fn preview(conversation: &str, seq: u64) -> Option<Image> {
@@ -37,6 +75,20 @@ pub fn apply_clip(ui: &AppWindow, c: ClipFrames) {
     ui.set_player_frames(ModelRc::from(Rc::new(VecModel::from(frames))));
 }
 
+/// A GIF search's results: a cell per GIF, for the pictures that follow.
+pub fn apply_gifs(ui: &AppWindow, names: &[String]) {
+    let cells: Vec<crate::GifCell> = names
+        .iter()
+        .map(|n| crate::GifCell {
+            name: n.as_str().into(),
+            has_image: false,
+            image: Image::default(),
+        })
+        .collect();
+    ui.set_gif_cells(ModelRc::from(Rc::new(VecModel::from(cells))));
+    ui.set_gif_searched(true);
+}
+
 /// A sticker pack before adding it: its title, and a cell per sticker
 /// for the pictures that follow.
 pub fn apply_pack_preview(ui: &AppWindow, title: &str, n: u32) {
@@ -56,6 +108,18 @@ pub fn apply_preview(ui: &AppWindow, p: Preview) {
     let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
         &p.pixels, p.width, p.height,
     ));
+    if let Some(who) = p.conversation.strip_prefix("avatar/") {
+        return apply_avatar(ui, who, img);
+    }
+    if p.conversation == enclave_ipc::GIF_RESULTS {
+        let model = ui.get_gif_cells();
+        if let Some(mut c) = usize::try_from(p.seq).ok().and_then(|i| model.row_data(i)) {
+            c.image = img;
+            c.has_image = true;
+            model.set_row_data(p.seq as usize, c);
+        }
+        return;
+    }
     PREVIEWS.with(|c| {
         c.borrow_mut()
             .insert((p.conversation.clone(), p.seq), img.clone())
@@ -129,6 +193,7 @@ fn tint(i: usize) -> Color {
 }
 
 fn row(r: &Row) -> ContactRow {
+    let photo = r.has_photo.then(|| avatar(&r.id)).flatten();
     ContactRow {
         id: r.id.clone().into(),
         name: r.name.clone().into(),
@@ -154,6 +219,10 @@ fn row(r: &Row) -> ContactRow {
         admin: r.admin,
         art: (r.art & 0x01ff_ffff) as i32,
         art_tint: art_tint((r.art >> 25) as usize),
+        about: r.about.clone().into(),
+        // Shown once the picture itself has come.
+        has_photo: r.has_photo && photo.is_some(),
+        photo: photo.unwrap_or_default(),
     }
 }
 
@@ -222,6 +291,10 @@ pub fn qr_image(text: &str) -> Image {
 pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_my_name(s.my_name.clone().into());
     ui.set_my_initials(initials(&s.my_name).into());
+    ui.set_my_about(s.my_about.clone().into());
+    let mine = s.my_photo.then(|| avatar("me")).flatten();
+    ui.set_my_has_photo(mine.is_some());
+    ui.set_my_photo(mine.unwrap_or_default());
     if ui.get_my_link().as_str() != s.my_link {
         ui.set_my_link(s.my_link.clone().into());
         ui.set_my_qr(qr_image(&s.my_link));
@@ -310,6 +383,10 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
             my_reaction: m.my_reaction.clone().into(),
             view_once: m.view_once,
             view_once_ready: m.view_once_ready,
+            link_title: m.link_title.clone().into(),
+            link_description: m.link_description.clone().into(),
+            link_site: m.link_site.clone().into(),
+            link_image: m.link_image,
             voice_time: if m.voice_ms > 0 {
                 let s = m.voice_ms.div_ceil(1000);
                 format!("{}:{:02}", s / 60, s % 60).into()
@@ -466,6 +543,8 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_invites(s.invites as i32);
     ui.set_typing_setting(s.typing_setting);
     ui.set_receipts_setting(s.receipts_setting);
+    ui.set_link_previews(s.link_previews);
+    ui.set_gif_search(s.gif_search);
     ui.set_typing(s.typing);
     ui.set_typing_who(s.typing_who.clone().into());
     ui.set_sandbox_weak(s.sandbox_weak);

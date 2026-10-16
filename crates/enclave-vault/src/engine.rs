@@ -19,6 +19,7 @@ mod call_links;
 mod calling;
 mod group_calling;
 mod transcribing;
+mod web;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -260,6 +261,9 @@ pub struct Helpers {
     pub net: Option<Arc<dyn Transport>>,
     /// mediad, for pictures (in-process decoding when absent).
     pub media: Option<crate::media::Media>,
+    /// Where ordinary web fetches go (link previews, GIF search) when not
+    /// through the network above: a test's stand-in for the web.
+    pub web: Option<Arc<dyn Transport>>,
 }
 
 /// Longest side of a preview sent to the UI.
@@ -281,6 +285,9 @@ struct Engine {
     /// Voice-note transcription: the model's download, the model.
     transcription: transcribing::Transcription,
     transport: Arc<dyn Transport>,
+    /// Ordinary web fetches (`web.rs`): through `transport` but for a
+    /// test's stand-in.
+    web: Arc<dyn Transport>,
     /// The traffic shaper, in server mode (`enclave_net::shaped`).
     shaper: Option<Arc<ShapedTransport>>,
     /// Rounds of shaped syncing so far.
@@ -315,6 +322,8 @@ struct Engine {
     staged: Vec<u8>,
     /// The file being sent is to be viewed once ([`Cmd::SendViewOnce`]).
     view_once_next: bool,
+    /// The last GIF search's results: name and the GIF itself.
+    gifs: Vec<(String, Vec<u8>)>,
     picked: BTreeSet<[u8; 64]>,
     link_offer: Option<enclave_core::LinkOffer>,
     link_status: String,
@@ -465,6 +474,33 @@ pub fn spawn(mode: Mode) -> (mpsc::UnboundedSender<Cmd>, mpsc::UnboundedReceiver
                 };
                 run_with(mode, helpers, rx, out_tx).await;
             });
+        })
+        .ok();
+    (tx, out_rx)
+}
+
+/// [`spawn`] with stand-ins for the web (tests).
+pub fn spawn_with_web(
+    mode: Mode,
+    web: Arc<dyn Transport>,
+) -> (mpsc::UnboundedSender<Cmd>, mpsc::UnboundedReceiver<Out>) {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
+    std::thread::Builder::new()
+        .name("enclave-engine".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            let helpers = Helpers {
+                web: Some(web),
+                ..Helpers::default()
+            };
+            rt.block_on(run_with(mode, helpers, rx, out_tx));
         })
         .ok();
     (tx, out_rx)
@@ -775,6 +811,53 @@ fn is_clip(a: &enclave_core::files::Attachment) -> bool {
     a.mime == enclave_media::video::CLIP_MIME && a.size <= PREVIEW_MAX_BYTES
 }
 
+/// Longest side of a profile photo as sent (it is redrawn first).
+const PHOTO_SIDE: u16 = 512;
+/// Longest side of a profile photo as shown.
+const AVATAR_SIDE: u16 = 160;
+/// Longest side of a link preview's picture as sent (a small JPEG).
+const LINK_PICTURE_SIDE: u16 = 240;
+/// Longest side of a link preview's picture as shown.
+const LINK_SIDE: u16 = 240;
+/// Longest side of a GIF search result's picture.
+const GIF_SIDE: u16 = 160;
+
+/// A message row's link preview.
+fn fill_link(row: &mut Msg, link: Option<&enclave_core::content::LinkPreview>) {
+    let Some(l) = link else {
+        return;
+    };
+    row.link_title = l.title.clone();
+    row.link_description = l.description.clone();
+    row.link_site = site_of(&l.url);
+    row.link_image = !l.image.is_empty();
+}
+
+/// "example.org" for `https://www.example.org/a`.
+fn site_of(url: &str) -> String {
+    let host = url.strip_prefix("https://").unwrap_or(url);
+    let host = &host[..host.find(['/', '?', '#', ':']).unwrap_or(host.len())];
+    host.strip_prefix("www.")
+        .unwrap_or(host)
+        .to_ascii_lowercase()
+}
+
+/// Link previews' pictures not shown yet: (position, JPEG).
+fn link_pictures<'a>(
+    msgs: impl DoubleEndedIterator<Item = (u64, bool, Option<&'a enclave_core::content::LinkPreview>)>,
+    id: &str,
+    shown: &std::collections::HashSet<(String, u64)>,
+) -> Vec<(u64, Vec<u8>)> {
+    msgs.rev()
+        .filter(|(_, deleted, _)| !deleted)
+        .filter_map(|(seq, _, l)| {
+            l.filter(|l| !l.image.is_empty())
+                .map(|l| (seq, l.image.clone()))
+        })
+        .filter(|(seq, _)| !shown.contains(&(id.to_string(), *seq)))
+        .take(8)
+        .collect()
+}
 /// Longest side of a clip's frames in the player.
 const PLAYER_SIDE: u16 = 360;
 /// Longest side of a picture in the full-size viewer (its RGBA crosses to
@@ -1000,6 +1083,7 @@ pub async fn run_with(
     out: mpsc::UnboundedSender<Out>,
 ) {
     let mut shaper: Option<Arc<ShapedTransport>> = None;
+    let web = helpers.web.clone();
     let (transport, server, kt): (Arc<dyn Transport>, Option<ServerId>, _) = match &mode {
         #[cfg(feature = "demo")]
         Mode::Demo => {
@@ -1090,6 +1174,7 @@ pub async fn run_with(
         transcription: Default::default(),
         shaper,
         round: 0,
+        web: web.unwrap_or_else(|| Arc::clone(&transport)),
         transport,
         server: server.unwrap_or_default(),
         listed: Vec::new(),
@@ -1107,6 +1192,7 @@ pub async fn run_with(
         opened_link: None,
         staged: Vec::new(),
         view_once_next: false,
+        gifs: Vec::new(),
         picked: BTreeSet::new(),
         link_offer: None,
         link_status: String::new(),
@@ -1387,6 +1473,7 @@ impl Engine {
     async fn load_media(&mut self) {
         self.bulk(true);
         self.load_previews().await;
+        self.load_avatars().await;
         let voice = self.load_voice().await;
         self.bulk(false);
         if voice {
@@ -1517,6 +1604,54 @@ impl Engine {
         (name, bytes)
     }
 
+    /// Profile photos: ours, and those of accepted contacts (not the moment
+    /// a profile arrives, RT-17), each once, decoded small in the sandbox.
+    async fn load_avatars(&mut self) {
+        let Some(c) = self.client.as_mut() else {
+            return;
+        };
+        let now = c.now();
+        let mut want: Vec<(String, enclave_core::files::Attachment)> = Vec::new();
+        if let Some(a) = c.profile().ok().and_then(|p| p.photo) {
+            want.push(("avatar/me".into(), a));
+        }
+        for ct in c.contacts() {
+            if ct.state != enclave_core::ContactState::Accepted {
+                continue;
+            }
+            if let Some(p) = c.contact_profile(&ct.root).ok().flatten()
+                && let Some(a) = p.photo
+            {
+                let mut id = [0u8; 16];
+                id.copy_from_slice(&a.hash[..16]);
+                if enclave_core::fetch_due(&id, p.photo_at, now) {
+                    want.push((format!("avatar/{}", hex_id(&ct.root)), a));
+                }
+            }
+        }
+        for (conv, att) in want {
+            // Keyed by the photo, so a new one is loaded and the old isn't
+            // loaded again.
+            let seq = u64::from_be_bytes(att.hash[..8].try_into().unwrap_or_default());
+            if self.previews.contains(&(conv.clone(), seq)) || att.size > PREVIEW_MAX_BYTES {
+                continue;
+            }
+            let Ok(bytes) = c.fetch_file(&att).await else {
+                continue;
+            };
+            self.previews.insert((conv.clone(), seq));
+            if let Ok(t) = self.media.thumbnail(bytes, AVATAR_SIDE).await {
+                let _ = self.out.send(Out::Preview(enclave_ipc::Preview {
+                    conversation: conv,
+                    seq,
+                    width: t.width,
+                    height: t.height,
+                    pixels: t.pixels,
+                }));
+            }
+        }
+    }
+
     async fn load_previews(&mut self) {
         if let Some(gid) = self.selected_group {
             return self.load_group_previews(gid).await;
@@ -1550,6 +1685,11 @@ impl Engine {
             .filter(|(s, _)| !self.previews.contains(&(id.clone(), *s)))
             .take(4)
             .collect();
+        let links = link_pictures(
+            msgs.iter().map(|m| (m.seq, m.deleted, m.link.as_ref())),
+            &id,
+            &self.previews,
+        );
         for (seq, sticker) in want {
             // A download that fails is tried again next time; a picture
             // that doesn't decode is not.
@@ -1562,6 +1702,24 @@ impl Engine {
             };
             self.previews.insert((id.clone(), seq));
             send_preview(&self.media, &mut self.clips, &self.out, &id, seq, bytes).await;
+        }
+        self.send_link_pictures(&id, links).await;
+    }
+
+    /// The pictures of link previews: carried in the messages (nothing to
+    /// fetch), decoded in mediad like any picture.
+    async fn send_link_pictures(&mut self, id: &str, links: Vec<(u64, Vec<u8>)>) {
+        for (seq, jpeg) in links {
+            self.previews.insert((id.to_string(), seq));
+            if let Ok(t) = self.media.thumbnail(jpeg, LINK_SIDE).await {
+                let _ = self.out.send(Out::Preview(enclave_ipc::Preview {
+                    conversation: id.to_string(),
+                    seq,
+                    width: t.width,
+                    height: t.height,
+                    pixels: t.pixels,
+                }));
+            }
         }
     }
 
@@ -1592,6 +1750,11 @@ impl Engine {
             .filter(|(s, _)| !self.previews.contains(&(id.clone(), *s)))
             .take(4)
             .collect();
+        let links = link_pictures(
+            msgs.iter().map(|m| (m.seq, m.deleted, m.link.as_ref())),
+            &id,
+            &self.previews,
+        );
         for (seq, sticker) in want {
             let fetched = match sticker {
                 Some((att, i)) => c.sticker_picture(&att, i).await,
@@ -1603,6 +1766,7 @@ impl Engine {
             self.previews.insert((id.clone(), seq));
             send_preview(&self.media, &mut self.clips, &self.out, &id, seq, bytes).await;
         }
+        self.send_link_pictures(&id, links).await;
     }
 
     async fn handle(&mut self, cmd: Cmd) {
@@ -1625,6 +1789,18 @@ impl Engine {
                 self.view_once_next = true;
                 Cmd::SendFile(c, n, std::mem::take(&mut self.staged), cap)
             }
+            // A GIF from the search goes like a GIF file the person picked:
+            // as an AV1 clip.
+            Cmd::SendGif(c, i) => match self.gifs.get(i as usize) {
+                Some((name, gif)) if !gif.is_empty() => {
+                    Cmd::SendFile(c, format!("{name}.gif"), gif.clone(), String::new())
+                }
+                _ => {
+                    self.status = "That GIF didn't load. Search again.".into();
+                    self.push();
+                    return;
+                }
+            },
             Cmd::OpenFile(c, seq) => {
                 let _ = self.out.send(Out::OpenNext);
                 Cmd::SaveFile(c, seq)
@@ -1683,6 +1859,8 @@ impl Engine {
                 | Cmd::SaveFile(..)
                 | Cmd::CreatePack(..)
                 | Cmd::AddPack(..)
+                | Cmd::PreviewPack(..)
+                | Cmd::SetPhoto(..)
                 | Cmd::LoadStickers
                 | Cmd::SendHistory(..)
                 | Cmd::StartJoin
@@ -2090,7 +2268,7 @@ impl Engine {
                 let reply = self.message_id_at(&id, seq);
                 let opts = enclave_core::TextOptions {
                     reply,
-                    forwarded: false,
+                    ..Default::default()
                 };
                 self.send_with(&id, &text, opts).await;
             }
@@ -2370,6 +2548,81 @@ impl Engine {
                         }
                     }
                 }
+            }
+            Cmd::LinkPreviewsSetting(on) => {
+                if let Some(c) = self.client.as_mut() {
+                    let _ = c.set_link_previews_enabled(on);
+                }
+            }
+            Cmd::GifSearchSetting(on) => {
+                if let Some(c) = self.client.as_mut() {
+                    let _ = c.set_gif_search_enabled(on);
+                }
+                if !on {
+                    self.gifs.clear();
+                }
+            }
+            Cmd::GifSearch(query) => self.gif_search(&query).await,
+            Cmd::SetName(name) => {
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.set_display_name(&name) {
+                        Ok(()) => "Your name is changed. Your contacts see it soon.".into(),
+                        Err(_) => "A name needs 1 to 64 characters.".into(),
+                    };
+                }
+            }
+            Cmd::SetAbout(about) => {
+                self.busy = true;
+                self.push();
+                if let Some(c) = self.client.as_mut() {
+                    self.status = match c.set_profile(&about, enclave_core::Photo::Keep).await {
+                        Ok(_) => "Saved. Your contacts see it soon.".into(),
+                        Err(CoreError::TooLong) => "That's too long: at most 280 bytes.".into(),
+                        Err(_) => "Couldn't save your profile.".into(),
+                    };
+                }
+                self.busy = false;
+            }
+            Cmd::SetPhoto(bytes) => {
+                self.busy = true;
+                self.push();
+                let photo = if bytes.is_empty() {
+                    Some(None)
+                } else {
+                    // Redrawn small in the sandbox, without its metadata.
+                    self.media.shrink(bytes, PHOTO_SIDE).await.ok().map(Some)
+                };
+                let about = self
+                    .client
+                    .as_ref()
+                    .and_then(|c| c.profile().ok())
+                    .map(|p| p.about)
+                    .unwrap_or_default();
+                match (photo, self.client.as_mut()) {
+                    (None, _) => {
+                        self.status = "Enclave couldn't read that picture. Try another one.".into();
+                    }
+                    (Some(photo), Some(c)) => {
+                        let r = match &photo {
+                            None => c.set_profile(&about, enclave_core::Photo::Remove).await,
+                            Some(p) => {
+                                let name = format!("photo.{}", p.format.extension());
+                                c.set_profile(
+                                    &about,
+                                    enclave_core::Photo::New(&name, p.format.mime(), &p.bytes),
+                                )
+                                .await
+                            }
+                        };
+                        self.status = match r {
+                            Ok(_) => "Saved. Your contacts see it soon.".into(),
+                            Err(_) => "Couldn't upload the photo. Check your connection.".into(),
+                        };
+                    }
+                    (Some(_), None) => {}
+                }
+                self.busy = false;
+                self.load_avatars().await;
             }
             Cmd::RemovePack(pack) => {
                 let Some(c) = self.client.as_mut() else {
@@ -3614,7 +3867,11 @@ impl Engine {
                 }
             }
             // Turned into other commands before they get here (`handle`).
-            Cmd::Stage(_) | Cmd::SendStaged(..) | Cmd::SendViewOnce(..) | Cmd::OpenFile(..) => {}
+            Cmd::Stage(_)
+            | Cmd::SendStaged(..)
+            | Cmd::SendViewOnce(..)
+            | Cmd::OpenFile(..)
+            | Cmd::SendGif(..) => {}
         }
     }
 
@@ -4212,7 +4469,11 @@ impl Engine {
     }
 
     /// Send a text to conversation `id` (a contact or a group).
-    async fn send_with(&mut self, id: &str, text: &str, opts: enclave_core::TextOptions) {
+    async fn send_with(&mut self, id: &str, text: &str, mut opts: enclave_core::TextOptions) {
+        // A forwarded text keeps no preview; a new one may get one.
+        if !opts.forwarded && id != NOTES_ID && opts.link.is_none() {
+            opts.link = self.link_preview(text).await;
+        }
         if id == NOTES_ID {
             if let Some(c) = self.client.as_mut()
                 && c.send_note(text).await.is_err()
@@ -4348,8 +4609,8 @@ impl Engine {
         };
         let Some(a) = attachment else {
             let opts = enclave_core::TextOptions {
-                reply: None,
                 forwarded: true,
+                ..Default::default()
             };
             self.send_with(to, &text, opts).await;
             return;
@@ -4770,6 +5031,10 @@ impl Engine {
         };
         let now = c.now();
         s.my_name = c.name().to_string();
+        if let Ok(p) = c.profile() {
+            s.my_about = p.about;
+            s.my_photo = p.photo.is_some();
+        }
         if !self.search.trim().is_empty() {
             s.search = c
                 .search(&self.search, 50)
@@ -4815,6 +5080,8 @@ impl Engine {
             .collect();
         s.invites = c.invites().map(|v| v.len() as u32).unwrap_or(0);
         s.typing_setting = c.typing_enabled();
+        s.link_previews = c.link_previews_enabled();
+        s.gif_search = c.gif_search_enabled();
         s.receipts_setting = c.receipts_enabled();
         s.can_change_words = c.holds_recovery_words();
         let (on, at) = c.server_backup();
@@ -4954,6 +5221,7 @@ impl Engine {
         let mut rows: Vec<(u64, Row)> = Vec::new();
         for ct in c.contacts() {
             let blocked = c.is_blocked(&ct.root);
+            let profile = c.contact_profile(&ct.root).ok().flatten();
             if blocked && ct.state == ContactState::Request {
                 continue; // a blocked request just goes away
             }
@@ -4995,6 +5263,11 @@ impl Engine {
                 kind: 0,
                 members: 0,
                 blocked,
+                about: profile
+                    .as_ref()
+                    .map(|p| p.about.clone())
+                    .unwrap_or_default(),
+                has_photo: profile.as_ref().is_some_and(|p| p.photo.is_some()),
                 ..prefs_row(c.conv_prefs(&Place::Contact(ct.root)))
             };
             if self.selected == Some(ct.root) {
@@ -5068,6 +5341,9 @@ impl Engine {
                     row.forwarded = m.forwarded && !m.deleted;
                     row.view_once = m.view_once;
                     row.view_once_ready = m.once.is_some();
+                    if !m.deleted {
+                        fill_link(row, m.link.as_ref());
+                    }
                     row.my_reaction = m
                         .reactions
                         .iter()
@@ -5319,6 +5595,9 @@ impl Engine {
                     row.mentions_me = m.mentions_me && !m.deleted;
                     row.view_once = m.view_once;
                     row.view_once_ready = m.once.is_some();
+                    if !m.deleted {
+                        fill_link(row, m.link.as_ref());
+                    }
                     row.my_reaction = m
                         .reactions
                         .iter()

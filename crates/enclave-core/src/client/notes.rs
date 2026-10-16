@@ -55,6 +55,7 @@ impl Client {
             expires: 0,
             reply: None,
             forwarded: false,
+            link: None,
         };
         self.send_self_copy(&own, &content, now).await?;
         Ok(m)

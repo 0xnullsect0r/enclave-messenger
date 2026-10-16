@@ -42,6 +42,10 @@ export struct ContactRow {
     // Contact art: filled cells in bits 0–24 (0 for none), and its tint.
     art: int,
     art-tint: color,
+    // Their profile ("about" and a photo, when they sent one).
+    about: string,
+    has-photo: bool,
+    photo: image,
 }
 
 // A chat folder, and whether the open conversation is in it.
@@ -136,6 +140,19 @@ export struct MessageRow {
     // it.
     view-once: bool,
     view-once-ready: bool,
+    // The sender's link preview: the page's title (empty: none), its
+    // description and site; its picture comes as `image` (`link-image`).
+    link-title: string,
+    link-description: string,
+    link-site: string,
+    link-image: bool,
+}
+
+// A GIF search result (its first frame comes after the names).
+export struct GifCell {
+    name: string,
+    has-image: bool,
+    image: image,
 }
 
 // A file in the gallery across all conversations.
@@ -199,7 +216,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, gifs, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -293,7 +310,7 @@ component Bubble inherits HorizontalLayout {
         border-bottom-left-radius: root.msg.outgoing ? Tokens.radius-bubble : Tokens.radius-bubble-tail;
         border-bottom-right-radius: root.msg.outgoing ? Tokens.radius-bubble-tail : Tokens.radius-bubble;
         accessible-role: text;
-        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.forwarded ? @tr("Forwarded. ") : "") + (root.msg.view-once ? (root.msg.outgoing ? @tr("Sent to view once. ") : root.msg.view-once-ready ? @tr("Photo to view once, not opened yet. ") : @tr("Photo to view once, opened. ")) : "") + (root.msg.mentions-me ? @tr("Mentions you. ") : "") + (root.msg.quoted ? @tr("Answering {}: {}. ", root.msg.quote-who, root.msg.quote-text) : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
+        accessible-label: (root.msg.outgoing ? @tr("You: ") : "") + (root.msg.forwarded ? @tr("Forwarded. ") : "") + (root.msg.view-once ? (root.msg.outgoing ? @tr("Sent to view once. ") : root.msg.view-once-ready ? @tr("Photo to view once, not opened yet. ") : @tr("Photo to view once, opened. ")) : "") + (root.msg.mentions-me ? @tr("Mentions you. ") : "") + (root.msg.quoted ? @tr("Answering {}: {}. ", root.msg.quote-who, root.msg.quote-text) : "") + (root.msg.picture ? @tr("Photo: {}. ", root.msg.file) : "") + (root.msg.sticker ? @tr("Sticker. ") : "") + (root.msg.voice ? @tr("Voice note, ") + (root.msg.voice-time != "" ? root.msg.voice-time : @tr("length unknown")) + (root.msg.transcript != "" ? @tr(". It says: {}", root.msg.transcript) : "") + @tr(". Select it to save it as a sound file. ") : "") + (root.msg.contact-name != "" ? @tr("Contact: {}. ", root.msg.contact-name) : "") + (root.msg.location != "" ? @tr("Location: {} {}. ", root.msg.location-label, root.msg.location) : "") + (root.msg.link-title != "" ? @tr("Link preview from {}: {}. ", root.msg.link-site, root.msg.link-title) : "") + (root.selected ? root.msg.spoken-revealed : root.msg.spoken) + ", " + root.msg.time;
         accessible-action-default => { root.tapped(); }
         VerticalLayout {
             padding-left: Tokens.space-sm;
@@ -450,7 +467,7 @@ component Bubble inherits HorizontalLayout {
                 background: Tokens.bubble-in;
                 Caption { text: @tr("Sticker"); }
             }
-            if root.msg.has-image: Rectangle {
+            if root.msg.has-image && root.msg.link-title == "": Rectangle {
                 // Natural size, narrowed to the bubble, aspect kept; stickers
                 // at most 160 px.
                 width: min(root.msg.sticker ? 160px : root.bubble-max - 2 * Tokens.space-sm, root.msg.image.width * 1px);
@@ -563,6 +580,44 @@ component Bubble inherits HorizontalLayout {
                 default-color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
                 accessible-role: none;
             }
+            // The sender's preview of the link: shown as sent, nothing
+            // fetched here.
+            if root.msg.link-title != "" && !root.msg.deleted: Rectangle {
+                min-width: 220px;
+                border-radius: Tokens.radius-control;
+                border-width: 1px;
+                border-color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.hairline;
+                clip: true;
+                VerticalLayout {
+                    if root.msg.link-image && root.msg.has-image: Image {
+                        source: root.msg.image;
+                        height: min(160px, self.width * root.msg.image.height / max(1, root.msg.image.width));
+                        image-fit: cover;
+                    }
+                    VerticalLayout {
+                        padding: Tokens.space-sm;
+                        spacing: 2px;
+                        Text {
+                            text: root.msg.link-site;
+                            font-size: Tokens.type-caption;
+                            color: root.msg.outgoing ? Tokens.meta-on-bubble-out : Tokens.text-muted;
+                        }
+                        Text {
+                            text: root.msg.link-title;
+                            font-size: Tokens.type-body;
+                            font-weight: 600;
+                            color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
+                            wrap: word-wrap;
+                        }
+                        if root.msg.link-description != "": Text {
+                            text: root.msg.link-description;
+                            font-size: Tokens.type-secondary;
+                            color: root.msg.outgoing ? Tokens.on-bubble-out : Tokens.text;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
             for o[i] in root.msg.poll-options: Rectangle {
                 min-width: 220px;
                 height: 40px;
@@ -666,7 +721,7 @@ component ContactItem inherits Rectangle {
         spacing: Tokens.space-sm;
         VerticalLayout {
             alignment: center;
-            Avatar { initials: root.item.initials; tint: root.item.tint; art: root.item.art; art-tint: root.item.art-tint; size: 44px; }
+            Avatar { initials: root.item.initials; tint: root.item.tint; has-photo: root.item.has-photo; photo: root.item.photo; art: root.item.art; art-tint: root.item.art-tint; size: 44px; }
         }
         VerticalLayout {
             alignment: center;
@@ -1184,6 +1239,16 @@ export component AppWindow inherits Window {
     in property <string> my-name;
     in property <string> my-initials;
     in property <color> my-tint: Tokens.pine;
+    // Our profile (Settings → Your profile): what accepted contacts see.
+    in property <string> my-about;
+    in property <bool> my-has-photo;
+    in property <image> my-photo;
+    in-out property <string> profile-name;
+    in-out property <string> profile-about;
+    callback set-name(string);
+    callback set-about(string);
+    // A picture's path to use as our photo; "" removes it.
+    callback set-photo(string);
     in property <[ContactRow]> contacts;
     in property <[ContactRow]> requests;
     in property <[ContactRow]> archived;
@@ -1208,6 +1273,17 @@ export component AppWindow inherits Window {
     in property <bool> typing-setting;
     in property <bool> receipts-setting: true;
     callback set-receipts-setting(bool);
+    // Link previews and GIF search (both off by default; fetched through
+    // Tor by this device only).
+    in property <bool> link-previews;
+    in property <bool> gif-search;
+    callback set-link-previews(bool);
+    callback set-gif-search(bool);
+    in property <[GifCell]> gif-cells;
+    in property <bool> gif-searched;
+    in-out property <string> gif-query;
+    callback search-gifs(string);
+    callback send-gif(string, int);
     in property <bool> typing;
     // In a group: who ("Ana, Ben").
     in property <string> typing-who;
@@ -1371,7 +1447,8 @@ export component AppWindow inherits Window {
     callback save-backup(bool);
     callback set-server-backup(bool);
     // Open the system's file dialog for a path field: 0 the backup to
-    // restore, 1 a backup to check, 2 a file to send, 3 sticker pictures.
+    // restore, 1 a backup to check, 2 a file to send, 3 sticker pictures,
+    // 4 our profile photo.
     callback browse(int);
     // Scanning a code with the camera into a field: 1 add, 2 meet in
     // person, 3 a friend's new device (recovery share), 4 linking a device,
@@ -1911,7 +1988,7 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-m;
                 HorizontalLayout {
                     spacing: Tokens.space-sm;
-                    Avatar { initials: root.my-initials; tint: root.my-tint; size: 36px; }
+                    Avatar { initials: root.my-initials; tint: root.my-tint; has-photo: root.my-has-photo; photo: root.my-photo; size: 36px; }
                     Title { text: root.my-name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                     IconButton {
                         icon: Icons.settings;
@@ -2224,7 +2301,7 @@ export component AppWindow inherits Window {
                         }
                         VerticalLayout {
                             alignment: center;
-                            Avatar { initials: root.current.initials; tint: root.current.tint; art: root.current.art; art-tint: root.current.art-tint; size: 40px; }
+                            Avatar { initials: root.current.initials; tint: root.current.tint; has-photo: root.current.has-photo; photo: root.current.photo; art: root.current.art; art-tint: root.current.art-tint; size: 40px; }
                         }
                         VerticalLayout {
                             alignment: center;
@@ -3042,6 +3119,12 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.conversation: SheetFrame {
         title: root.current.name;
         close => { root.sheet = Sheet.none; }
+        if root.current.kind == 0 && (root.current.has-photo || root.current.about != ""): HorizontalLayout {
+            spacing: Tokens.space-sm;
+            alignment: start;
+            Avatar { initials: root.current.initials; tint: root.current.tint; has-photo: root.current.has-photo; photo: root.current.photo; art: root.current.art; art-tint: root.current.art-tint; size: 56px; }
+            if root.current.about != "": Body { text: root.current.about; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+        }
         // Contact info: the McEliece braid isn't done (`docs/17-design.md`
         // keeps this off the conversation itself).
         if root.finishing: Notice {
@@ -3250,6 +3333,68 @@ export component AppWindow inherits Window {
             if root.current.kind == 0: QuietButton {
                 text: @tr("Share a location");
                 clicked => { root.sheet = Sheet.location; }
+            }
+        }
+        if root.gif-search: HorizontalLayout {
+            alignment: start;
+            QuietButton {
+                text: @tr("Search GIFs");
+                outlined: true;
+                clicked => { root.sheet = Sheet.gifs; }
+            }
+        }
+    }
+
+    if root.sheet == Sheet.gifs: SheetFrame {
+        title: @tr("Search GIFs");
+        close => { root.sheet = Sheet.attach; }
+        Secondary { text: @tr("Searches Wikimedia Commons through Tor: Commons sees a Tor connection, not you, and nobody else sees what you searched for."); }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field {
+                placeholder: @tr("Search");
+                text <=> root.gif-query;
+                horizontal-stretch: 1;
+                accepted => { if root.gif-query != "" && !root.busy { root.search-gifs(root.gif-query); } }
+            }
+            PrimaryButton {
+                text: root.busy ? @tr("Searching…") : @tr("Search");
+                enabled: root.gif-query != "" && !root.busy;
+                clicked => { root.search-gifs(root.gif-query); }
+            }
+        }
+        if root.gif-searched && root.gif-cells.length == 0 && !root.busy: Secondary { text: @tr("No GIFs found. Try other words."); }
+        Flickable {
+            height: root.gif-cells.length > 0 ? 148px : 0px;
+            content-width: root.gif-cells.length * 128px;
+            HorizontalLayout {
+                spacing: 8px;
+                for c[i] in root.gif-cells: Rectangle {
+                    width: 120px;
+                    height: 148px;
+                    border-radius: Tokens.radius-control;
+                    background: gif-touch.has-hover ? Tokens.bubble-in : transparent;
+                    accessible-role: button;
+                    accessible-label: @tr("Send the GIF {}", c.name);
+                    accessible-action-default => { if c.has-image { root.send-gif(root.current-id, i); root.sheet = Sheet.none; } }
+                    gif-touch := TouchArea {
+                        enabled: c.has-image;
+                        mouse-cursor: c.has-image ? pointer : default;
+                        clicked => { root.send-gif(root.current-id, i); root.sheet = Sheet.none; }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Rectangle {
+                            height: 120px;
+                            border-radius: Tokens.radius-control;
+                            background: Tokens.surface;
+                            clip: true;
+                            if c.has-image: Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
+                            if !c.has-image: Caption { text: @tr("Loading…"); }
+                        }
+                        Caption { text: c.name; overflow: elide; }
+                    }
+                }
             }
         }
     }
@@ -3679,7 +3824,7 @@ export component AppWindow inherits Window {
         }
         HorizontalLayout {
             alignment: center;
-            Avatar { initials: root.current.initials; tint: root.current.tint; art: root.current.art; art-tint: root.current.art-tint; size: 56px; }
+            Avatar { initials: root.current.initials; tint: root.current.tint; has-photo: root.current.has-photo; photo: root.current.photo; art: root.current.art; art-tint: root.current.art-tint; size: 56px; }
         }
         HorizontalLayout {
             alignment: center;
@@ -3807,6 +3952,40 @@ export component AppWindow inherits Window {
     if root.sheet == Sheet.settings: SheetFrame {
         title: @tr("Settings");
         close => { root.sheet = Sheet.none; }
+        Body {
+            text: @tr("Your profile");
+            font-weight: 600;
+            // The editor starts from what we have each time Settings opens.
+            init => { root.profile-name = root.my-name; root.profile-about = root.my-about; }
+        }
+        Secondary {
+            text: @tr("People you've accepted see your name, these words and your photo. They go inside your conversations, so no server sees them.");
+        }
+        HorizontalLayout {
+            spacing: Tokens.space-sm;
+            alignment: start;
+            Avatar { initials: root.my-initials; tint: root.my-tint; has-photo: root.my-has-photo; photo: root.my-photo; size: 56px; }
+            VerticalLayout {
+                alignment: center;
+                spacing: Tokens.space-xs;
+                QuietButton { text: root.my-has-photo ? @tr("Change photo") : @tr("Choose a photo"); outlined: true; clicked => { root.browse(4); } }
+                if root.my-has-photo: QuietButton { text: @tr("Remove photo"); danger: true; clicked => { root.set-photo(""); } }
+            }
+        }
+        Field { placeholder: @tr("Your name"); text <=> root.profile-name; accepted => { root.set-name(root.profile-name); } }
+        Field { placeholder: @tr("A few words about you (optional)"); multiline: true; text <=> root.profile-about; }
+        HorizontalLayout {
+            alignment: start;
+            PrimaryButton {
+                text: @tr("Save");
+                enabled: root.profile-name != "" && (root.profile-name != root.my-name || root.profile-about != root.my-about);
+                clicked => {
+                    if root.profile-name != root.my-name { root.set-name(root.profile-name); }
+                    if root.profile-about != root.my-about { root.set-about(root.profile-about); }
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
         HorizontalLayout {
             alignment: start;
             QuietButton {
@@ -3956,6 +4135,19 @@ export component AppWindow inherits Window {
             detail: @tr("Let people know when you've read their messages, and see when they've read yours. Off, neither side sees them; messages still show as delivered.");
             on: root.receipts-setting;
             toggled => { root.set-receipts-setting(!root.receipts-setting); }
+        }
+        Rectangle { height: 1px; background: Tokens.hairline; }
+        SwitchRow {
+            label: @tr("Link previews");
+            detail: @tr("When you send a link, this device fetches the page's title and picture through Tor and sends them with your message, so the other side fetches nothing. The site sees a Tor connection, not you. Off, links go as plain text.");
+            on: root.link-previews;
+            toggled => { root.set-link-previews(!root.link-previews); }
+        }
+        SwitchRow {
+            label: @tr("GIF search");
+            detail: @tr("Search Wikimedia Commons for GIFs through Tor, from Send a file. The GIF you pick goes as an animated picture. Off, nothing is searched.");
+            on: root.gif-search;
+            toggled => { root.set-gif-search(!root.gif-search); }
         }
         Rectangle { height: 1px; background: Tokens.hairline; }
         SwitchRow {
@@ -4479,7 +4671,7 @@ export component AppWindow inherits Window {
         for m in root.members: HorizontalLayout {
             spacing: Tokens.space-sm;
             min-height: 56px;
-            VerticalLayout { alignment: start; padding-top: Tokens.space-s; Avatar { initials: m.initials; tint: m.tint; art: m.art; art-tint: m.art-tint; size: 36px; } }
+            VerticalLayout { alignment: start; padding-top: Tokens.space-s; Avatar { initials: m.initials; tint: m.tint; has-photo: m.has-photo; photo: m.photo; art: m.art; art-tint: m.art-tint; size: 36px; } }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 1;

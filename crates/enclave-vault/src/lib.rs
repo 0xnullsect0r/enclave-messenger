@@ -24,7 +24,7 @@ pub mod lock;
 pub mod media;
 pub mod netd;
 
-pub use engine::{Helpers, Mode, default_profile, spawn};
+pub use engine::{Helpers, Mode, default_profile, spawn, spawn_with_web};
 
 use enclave_ipc::frame::{self, TOKEN_LEN};
 use enclave_ipc::{Cmd, Out};

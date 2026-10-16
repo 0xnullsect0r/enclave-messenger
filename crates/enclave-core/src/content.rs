@@ -85,6 +85,8 @@ pub enum Content {
         reply: Option<MsgId>,
         /// Forwarded from another conversation: shown "Forwarded".
         forwarded: bool,
+        /// The sender's preview of a link in the text.
+        link: Option<LinkPreview>,
     },
     /// Token refill with no user-visible content.
     Tokens(Vec<Token>),
@@ -207,6 +209,19 @@ pub enum Content {
     /// A poll in a 1:1 conversation, a vote or its close (the group
     /// encoding, `client/polls.rs`).
     Poll(Vec<u8>),
+    /// Our profile (`client/profile.rs`): name, about, and a sealed photo
+    /// reference (empty: none), sent only inside sessions; a lower
+    /// `version` than the one held is stale.
+    Profile {
+        /// Display name.
+        name: String,
+        /// A few words about us.
+        about: String,
+        /// Encoded attachment reference of the photo, or empty.
+        photo: Vec<u8>,
+        /// Increases with every change.
+        version: u64,
+    },
     /// The sender's notification key chain for capsules sent to them, from
     /// `day` on, and whether they want previews (`10-push.md` §4).
     NotifyKey {
@@ -419,6 +434,83 @@ const K_CLOSED: u8 = 34;
 const K_NOTIFY_KEY: u8 = 35;
 const K_CALL: u8 = 36;
 const K_POLL: u8 = 37;
+const K_PROFILE: u8 = 38;
+
+/// Longest "about" text, in bytes.
+pub const MAX_ABOUT: usize = 280;
+/// Longest link-preview address.
+pub const MAX_LINK_URL: usize = 2_048;
+/// Longest link-preview title, in bytes.
+pub const MAX_LINK_TITLE: usize = 512;
+/// Longest link-preview description, in bytes.
+pub const MAX_LINK_DESCRIPTION: usize = 1_024;
+/// Largest link-preview picture (a small JPEG).
+pub const MAX_LINK_IMAGE: usize = 12 * 1024;
+/// Largest encoded link preview.
+pub const MAX_LINK_PREVIEW: usize =
+    MAX_LINK_URL + MAX_LINK_TITLE + MAX_LINK_DESCRIPTION + MAX_LINK_IMAGE + 16;
+/// Longest text that may carry a link preview (the two fit in one
+/// split message).
+pub const MAX_LINKED_TEXT: usize = 40_000;
+
+/// A link preview the sender made (`docs/15-client.md` §5, off by
+/// default): the page's title and description and a small picture, fetched
+/// by the sender through Tor and sent with the text. The receiver fetches
+/// nothing; it only shows these, and only if the text contains the link.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LinkPreview {
+    /// The link (`https://…`), as it is in the text.
+    pub url: String,
+    /// The page's title.
+    pub title: String,
+    /// The page's description (may be empty).
+    pub description: String,
+    /// A small JPEG, or empty.
+    pub image: Vec<u8>,
+}
+
+impl LinkPreview {
+    /// Within the limits, an `https` link the text contains, a title, and
+    /// a JPEG or no picture.
+    pub fn fits(&self, text: &str) -> bool {
+        self.url.starts_with("https://")
+            && self.url.len() <= MAX_LINK_URL
+            && text.contains(&self.url)
+            && text.len() <= MAX_LINKED_TEXT
+            && !self.title.trim().is_empty()
+            && self.title.len() <= MAX_LINK_TITLE
+            && self.description.len() <= MAX_LINK_DESCRIPTION
+            && self.image.len() <= MAX_LINK_IMAGE
+            && (self.image.is_empty() || self.image.starts_with(&[0xFF, 0xD8, 0xFF]))
+    }
+
+    /// `url ‖ title ‖ description ‖ image`, each length-prefixed.
+    pub fn encode(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.bytes(self.url.as_bytes())
+            .bytes(self.title.as_bytes())
+            .bytes(self.description.as_bytes())
+            .bytes(&self.image);
+        w.finish()
+    }
+
+    /// The reverse of [`LinkPreview::encode`], with every limit checked.
+    pub fn decode(b: &[u8]) -> Result<Self> {
+        let mut r = Reader::new(b);
+        let l = Self::read(&mut r)?;
+        r.end()?;
+        Ok(l)
+    }
+
+    fn read(r: &mut Reader<'_>) -> Result<Self> {
+        Ok(LinkPreview {
+            url: get_str(r, MAX_LINK_URL)?,
+            title: get_str(r, MAX_LINK_TITLE)?,
+            description: get_str(r, MAX_LINK_DESCRIPTION)?,
+            image: r.bytes(MAX_LINK_IMAGE)?.to_vec(),
+        })
+    }
+}
 /// Largest encoded 1:1 poll message.
 pub const MAX_POLL: usize = 8_192;
 /// Longest composite signature (ML-DSA-87 and Ed448).
@@ -517,8 +609,15 @@ impl Content {
                 expires,
                 reply,
                 forwarded,
+                link,
             } => {
                 if tokens.len() > MAX_TOKENS || text.len() > MAX_LONG_TEXT || *expires > MAX_TIMER {
+                    return too_large;
+                }
+                if link
+                    .as_ref()
+                    .is_some_and(|l| text.len() > MAX_LINKED_TEXT || l.image.len() > MAX_LINK_IMAGE)
+                {
                     return too_large;
                 }
                 w.u8(K_TEXT);
@@ -529,6 +628,10 @@ impl Content {
                     None => w.u8(0),
                 };
                 w.u8(u8::from(*forwarded));
+                match link {
+                    Some(l) => w.u8(1).fixed(&l.encode()),
+                    None => w.u8(0),
+                };
             }
             Content::Tokens(tokens) => {
                 if tokens.len() > MAX_TOKENS {
@@ -780,6 +883,24 @@ impl Content {
                 }
                 w.u8(K_POLL).bytes(b);
             }
+            Content::Profile {
+                name,
+                about,
+                photo,
+                version,
+            } => {
+                if name.len() > crate::card::MAX_NAME
+                    || about.len() > MAX_ABOUT
+                    || photo.len() > MAX_ATTACHMENT_REF
+                {
+                    return too_large;
+                }
+                w.u8(K_PROFILE)
+                    .bytes(name.as_bytes())
+                    .bytes(about.as_bytes())
+                    .bytes(photo)
+                    .u64(*version);
+            }
             Content::NotifyKey { key, day, previews } => {
                 w.u8(K_NOTIFY_KEY)
                     .fixed(key)
@@ -820,6 +941,11 @@ impl Content {
                 forwarded: match r.u8()? {
                     0 => false,
                     1 => true,
+                    _ => return Err(ProtoError::Decode),
+                },
+                link: match r.u8()? {
+                    0 => None,
+                    1 => Some(LinkPreview::read(&mut r)?),
                     _ => return Err(ProtoError::Decode),
                 },
             },
@@ -925,6 +1051,12 @@ impl Content {
             K_CLOSED => Content::Closed,
             K_CALL => Content::Call(r.bytes(MAX_CALL)?.to_vec()),
             K_POLL => Content::Poll(r.bytes(MAX_POLL)?.to_vec()),
+            K_PROFILE => Content::Profile {
+                name: get_str(&mut r, crate::card::MAX_NAME)?,
+                about: get_str(&mut r, MAX_ABOUT)?,
+                photo: r.bytes(MAX_ATTACHMENT_REF)?.to_vec(),
+                version: r.u64()?,
+            },
             K_NOTIFY_KEY => Content::NotifyKey {
                 key: r.array()?,
                 day: r.u32()?,
@@ -1012,11 +1144,17 @@ mod tests {
             },
             Content::Text {
                 tokens: vec![],
-                text: "héllo 👋".into(),
+                text: "héllo 👋 https://example.org/a".into(),
                 id: [1; 16],
                 expires: 3600,
                 reply: Some([7; 16]),
                 forwarded: true,
+                link: Some(LinkPreview {
+                    url: "https://example.org/a".into(),
+                    title: "A page".into(),
+                    description: "About it".into(),
+                    image: vec![0xFF, 0xD8, 0xFF, 0xE0, 1, 2],
+                }),
             },
             Content::Tokens(vec![[9; 32]; 8]),
             Content::GroupWelcome(vec![5; 7000]),
@@ -1082,6 +1220,12 @@ mod tests {
             Content::Closed,
             Content::Call(vec![1; 1800]),
             Content::Poll(vec![2; 300]),
+            Content::Profile {
+                name: "Ada".into(),
+                about: "Out walking".into(),
+                photo: vec![3; 200],
+                version: 4,
+            },
             Content::NotifyKey {
                 key: [3; 32],
                 day: 20_000,
@@ -1134,6 +1278,25 @@ mod tests {
                 expires: 0,
                 reply: None,
                 forwarded: false,
+                link: None,
+            }
+            .encode()
+            .is_err()
+        );
+        // A preview rides only on a text short enough for both.
+        assert!(
+            Content::Text {
+                tokens: vec![],
+                text: "x".repeat(MAX_LINKED_TEXT + 1),
+                id: [0; 16],
+                expires: 0,
+                reply: None,
+                forwarded: false,
+                link: Some(LinkPreview {
+                    url: "https://example.org/".into(),
+                    title: "t".into(),
+                    ..Default::default()
+                }),
             }
             .encode()
             .is_err()

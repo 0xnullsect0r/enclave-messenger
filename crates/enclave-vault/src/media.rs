@@ -642,6 +642,55 @@ impl Media {
         }
     }
 
+    /// A web page's preview, read in mediad (`url` is the page's
+    /// address, for its picture's).
+    pub async fn page_meta(
+        &self,
+        url: &str,
+        page: &[u8],
+    ) -> Result<enclave_media::web::PageMeta, String> {
+        let url = &url.as_bytes()[..url.len().min(enclave_media::web::MAX_URL)];
+        let mut b = Vec::with_capacity(2 + url.len() + page.len());
+        b.extend_from_slice(&(url.len() as u16).to_be_bytes());
+        b.extend_from_slice(url);
+        b.extend_from_slice(&page[..page.len().min(enclave_media::web::MAX_PAGE)]);
+        match self.call(MediaOp::PageMeta, b).await? {
+            MediaOut::Raw(r) => {
+                enclave_media::web::PageMeta::decode(&r).ok_or_else(|| "bad reply".into())
+            }
+            _ => Err("unexpected reply".into()),
+        }
+    }
+
+    /// A GIF search's answer, read in mediad.
+    pub async fn gif_hits(
+        &self,
+        answer: Vec<u8>,
+    ) -> Result<Vec<enclave_media::web::GifHit>, String> {
+        match self.call(MediaOp::GifHits, answer).await? {
+            MediaOut::Raw(r) => {
+                enclave_media::web::decode_hits(&r).ok_or_else(|| "bad reply".into())
+            }
+            _ => Err("unexpected reply".into()),
+        }
+    }
+
+    /// A GIF's first frame, at most `side` pixels on the long side.
+    pub async fn gif_poster(&self, gif: Vec<u8>, side: u16) -> Result<Rgba, String> {
+        match self.call(MediaOp::GifPoster(side), gif).await? {
+            MediaOut::Rgba {
+                width,
+                height,
+                pixels,
+            } => Ok(Rgba {
+                width,
+                height,
+                pixels,
+            }),
+            _ => Err("unexpected reply".into()),
+        }
+    }
+
     /// A voice note as an Ogg Opus file, to save.
     pub async fn voice_ogg(&self, note: Vec<u8>) -> Result<Vec<u8>, String> {
         match self.call(MediaOp::VoiceOgg, note).await? {
@@ -769,6 +818,29 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         )
         .map(|pcm| MediaOut::Raw(pcm.iter().flat_map(|s| s.to_le_bytes()).collect())),
         MediaOp::VoiceOgg => enclave_media::voice::voice_to_ogg(bytes).map(MediaOut::Raw),
+        MediaOp::PageMeta => {
+            let n = bytes
+                .get(..2)
+                .map(|b| usize::from(u16::from_be_bytes([b[0], b[1]])))
+                .ok_or(enclave_media::MediaError::Damaged);
+            n.and_then(|n| {
+                let url = bytes
+                    .get(2..2 + n)
+                    .and_then(|u| std::str::from_utf8(u).ok())
+                    .ok_or(enclave_media::MediaError::Damaged)?;
+                enclave_media::web::page_meta(url, &bytes[2 + n..])
+            })
+            .map(|m| MediaOut::Raw(m.encode()))
+        }
+        MediaOp::GifHits => enclave_media::web::commons_gifs(bytes)
+            .map(|h| MediaOut::Raw(enclave_media::web::encode_hits(&h))),
+        MediaOp::GifPoster(side) => {
+            enclave_media::web::gif_poster(bytes, u32::from(side)).map(|t| MediaOut::Rgba {
+                width: t.width,
+                height: t.height,
+                pixels: t.pixels,
+            })
+        }
         MediaOp::Shrink(side) => {
             enclave_media::sanitize_max(bytes, u32::from(side)).map(|s| MediaOut::Sanitized {
                 png: s.format == Format::Png,

@@ -33,6 +33,7 @@ fn samples() -> Vec<Vec<u8>> {
             expires: 60,
             reply: Some([4; 16]),
             forwarded: true,
+            link: None,
         }
         .encode()
         .unwrap(),

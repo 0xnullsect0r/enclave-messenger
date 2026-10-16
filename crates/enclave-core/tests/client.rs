@@ -1389,6 +1389,7 @@ async fn replies_forwards_and_mentions() {
     let opts = enclave_core::TextOptions {
         reply: Some(q.id),
         forwarded: false,
+        ..Default::default()
     };
     ben.send_text_with(&ada.root(), "yes!", opts).await.unwrap();
     let ev = ada.sync().await.unwrap();
@@ -1418,6 +1419,7 @@ async fn replies_forwards_and_mentions() {
     let fwd = enclave_core::TextOptions {
         reply: None,
         forwarded: true,
+        ..Default::default()
     };
     ada.send_group_text_with(&gid, "yes!", fwd).await.unwrap();
     let asked = ada
@@ -1443,6 +1445,7 @@ async fn replies_forwards_and_mentions() {
     let opts = enclave_core::TextOptions {
         reply: Some(asked.id),
         forwarded: false,
+        ..Default::default()
     };
     ana.send_group_text_with(&gid, "on my way", opts)
         .await
@@ -1451,6 +1454,95 @@ async fn replies_forwards_and_mentions() {
     let m = find(&ev[0], "on my way");
     assert_eq!(m.reply_to, Some(asked.id));
     assert!(!m.mentions_me);
+}
+
+/// A sender's link preview travels with the text, 1:1 and in a group, and
+/// is kept only for a link the text contains.
+#[tokio::test(flavor = "multi_thread")]
+async fn link_previews_travel_with_the_text() {
+    use enclave_core::content::LinkPreview;
+    let net = network();
+    let mut cs = Vec::new();
+    for (name, server) in [("Ada", S1), ("Ben", S2), ("Cy", S1)] {
+        cs.push(
+            Client::create(memory(), Arc::new(net.clone()), server, name)
+                .await
+                .unwrap()
+                .0,
+        );
+    }
+    let [mut ada, mut ben, mut cy] = <[Client; 3]>::try_from(cs).ok().unwrap();
+    connect(&mut ada, &mut ben).await;
+    connect(&mut ada, &mut cy).await;
+    let preview = LinkPreview {
+        url: "https://example.org/story".into(),
+        title: "A story".into(),
+        description: "What happened".into(),
+        image: vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 1, 2, 3],
+    };
+    let with = |link: &LinkPreview| enclave_core::TextOptions {
+        link: Some(link.clone()),
+        ..Default::default()
+    };
+    let text = "look: https://example.org/story";
+    let sent = ada
+        .send_text_with(&ben.root(), text, with(&preview))
+        .await
+        .unwrap();
+    assert_eq!(sent.link.as_ref(), Some(&preview));
+    // A preview of a link the text doesn't have isn't sent.
+    let other = ada
+        .send_text_with(&ben.root(), "no link here", with(&preview))
+        .await
+        .unwrap();
+    assert!(other.link.is_none());
+    let ev = ben.sync().await.unwrap();
+    let got = |t: &str| {
+        ev.iter()
+            .find_map(|e| match e {
+                Event::Message { message, .. } if message.text == t => Some(message.clone()),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(got(text).link.as_ref(), Some(&preview));
+    assert!(got("no link here").link.is_none());
+    // Kept with the message.
+    assert!(
+        ben.messages(&ada.root())
+            .unwrap()
+            .iter()
+            .any(|m| m.text == text && m.link.as_ref() == Some(&preview))
+    );
+
+    // In a group.
+    let gid = ada
+        .create_group("News", &[ben.root(), cy.root()])
+        .await
+        .unwrap();
+    settle(&mut [&mut ada, &mut ben, &mut cy], 3).await;
+    ada.send_group_text_with(&gid, text, with(&preview))
+        .await
+        .unwrap();
+    let ev = settle(&mut [&mut ada, &mut ben, &mut cy], 2).await;
+    for events in &ev[1..] {
+        let m = events
+            .iter()
+            .find_map(|e| match e {
+                Event::GroupMessage { message, .. } if message.text == text => {
+                    Some(message.clone())
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(m.link.as_ref(), Some(&preview));
+    }
+    assert!(
+        cy.group_messages(&gid)
+            .unwrap()
+            .iter()
+            .any(|m| m.text == text && m.link.as_ref() == Some(&preview))
+    );
 }
 
 /// A poll between two people, and an anonymous group poll: members see
@@ -3520,4 +3612,64 @@ async fn view_once_opens_once() {
         assert_eq!(c.open_group_view_once(&gid, m.seq).await.unwrap(), photo);
         assert!(c.open_group_view_once(&gid, m.seq).await.is_err());
     }
+}
+
+/// Encrypted profiles (F4): "about" and a photo, sent inside sessions to
+/// accepted contacts at the next upkeep; the photo is a sealed file the
+/// contact downloads and verifies; a new display name follows; nothing
+/// goes to a stranger.
+#[tokio::test(flavor = "multi_thread")]
+async fn profiles_reach_contacts_only() {
+    use enclave_core::Photo;
+    let net = network();
+    let (mut ada, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Ada")
+        .await
+        .unwrap();
+    let (mut ben, _) = Client::create(memory(), Arc::new(net.clone()), S2, "Ben")
+        .await
+        .unwrap();
+    let (mut cy, _) = Client::create(memory(), Arc::new(net.clone()), S1, "Cy")
+        .await
+        .unwrap();
+    connect(&mut ada, &mut ben).await;
+    let photo: Vec<u8> = (0..20_000u32).map(|i| (i % 241) as u8).collect();
+    let p = ada
+        .set_profile("Out walking", Photo::New("me.jpg", "image/jpeg", &photo))
+        .await
+        .unwrap();
+    assert_eq!((p.about.as_str(), p.version), ("Out walking", 1));
+    ada.sync().await.unwrap();
+    let ev = ben.sync().await.unwrap();
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, Event::ProfileChanged { root } if *root == ada.root()))
+    );
+    let theirs = ben.contact_profile(&ada.root()).unwrap().unwrap();
+    assert_eq!(
+        (theirs.name.as_str(), theirs.about.as_str()),
+        ("Ada", "Out walking")
+    );
+    let att = theirs.photo.expect("a photo");
+    assert_eq!(ben.fetch_file(&att).await.unwrap(), photo);
+
+    // Sent once per version.
+    ada.sync().await.unwrap();
+    let ev = ben.sync().await.unwrap();
+    assert!(!ev.iter().any(|e| matches!(e, Event::ProfileChanged { .. })));
+
+    // A new name and no photo.
+    ada.set_display_name("Ada L.").unwrap();
+    ada.set_profile("Out walking", Photo::Remove).await.unwrap();
+    ada.sync().await.unwrap();
+    ben.sync().await.unwrap();
+    let theirs = ben.contact_profile(&ada.root()).unwrap().unwrap();
+    assert_eq!(theirs.name, "Ada L.");
+    assert!(theirs.photo.is_none());
+    assert_eq!(ada.card().name, "Ada L.");
+
+    // Someone who isn't a contact gets nothing.
+    assert!(
+        cy.sync().await.unwrap().is_empty() || cy.contact_profile(&ada.root()).unwrap().is_none()
+    );
+    assert!(cy.contact_profile(&ada.root()).unwrap().is_none());
 }

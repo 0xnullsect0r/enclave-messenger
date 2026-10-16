@@ -119,6 +119,10 @@ msgstr ""
 msgid "A backup is on your server now, and is renewed every week."
 msgstr ""
 
+#: ui/app.slint
+msgid "A few words about you (optional)"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "A file"
 msgstr ""
@@ -137,6 +141,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "A message that isn't here any more"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "A name needs 1 to 64 characters."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -500,6 +508,10 @@ msgid "Change my words"
 msgstr ""
 
 #: ui/app.slint
+msgid "Change photo"
+msgstr ""
+
+#: ui/app.slint
 msgid "Change your recovery words"
 msgstr ""
 
@@ -588,6 +600,10 @@ msgid "Choose a passphrase"
 msgstr ""
 
 #: ui/app.slint
+msgid "Choose a photo"
+msgstr ""
+
+#: ui/app.slint
 msgid "Choose a server"
 msgstr ""
 
@@ -621,6 +637,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Choose your backup file"
+msgstr ""
+
+#: enclave-app/src/shell.rs
+msgid "Choose your photo"
 msgstr ""
 
 #: ui/app.slint
@@ -987,6 +1007,10 @@ msgstr ""
 msgid "Couldn't save them: {}"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Couldn't save your profile."
+msgstr ""
+
 #: enclave-app/src/shell.rs
 msgid "Couldn't save {}: {}"
 msgstr ""
@@ -1077,6 +1101,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't upload the pack. Check your connection."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Couldn't upload the photo. Check your connection."
 msgstr ""
 
 #: ui/app.slint
@@ -1287,6 +1315,10 @@ msgstr ""
 msgid "Enclave couldn't read that picture, so it wasn't sent. Try another file."
 msgstr ""
 
+#: enclave-app/src/shell.rs enclave-vault/src/engine.rs
+msgid "Enclave couldn't read that picture. Try another one."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit WAV file."
 msgstr ""
@@ -1493,6 +1525,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Free software under the GNU General Public License, version 3, with additional permissions for app stores. Anyone can read, build and check it: github.com/0xnullsect0r/enclave-messenger."
+msgstr ""
+
+#: ui/app.slint
+msgid "GIF search"
+msgstr ""
+
+#: enclave-vault/src/engine/web.rs
+msgid "GIF search couldn't reach Wikimedia Commons. Try again in a moment."
 msgstr ""
 
 #: ui/app.slint
@@ -1752,6 +1792,14 @@ msgid "Let someone next to you scan this. For someone who isn't here, copy an in
 msgstr ""
 
 #: ui/app.slint
+msgid "Link preview from {}: {}. "
+msgstr ""
+
+#: ui/app.slint
+msgid "Link previews"
+msgstr ""
+
+#: ui/app.slint
 msgid "Link this device"
 msgstr ""
 
@@ -1769,6 +1817,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Linking didn't finish. Try again from the new device."
+msgstr ""
+
+#: ui/app.slint
+msgid "Loading…"
 msgstr ""
 
 #: ui/app.slint
@@ -1845,6 +1897,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Make {} an admin"
+msgstr ""
+
+#: enclave-vault/src/engine/web.rs
+msgid "Making a link preview…"
 msgstr ""
 
 #: ui/app.slint
@@ -2005,6 +2061,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "New passphrase"
+msgstr ""
+
+#: enclave-vault/src/engine/web.rs ui/app.slint
+msgid "No GIFs found. Try other words."
 msgstr ""
 
 #: enclave-vault/src/engine/calling.rs
@@ -2364,6 +2424,10 @@ msgid "People who use the link wait until you let them in."
 msgstr ""
 
 #: ui/app.slint
+msgid "People you've accepted see your name, these words and your photo. They go inside your conversations, so no server sees them."
+msgstr ""
+
+#: ui/app.slint
 msgid "Photo"
 msgstr ""
 
@@ -2540,6 +2604,10 @@ msgid "Remove passphrase"
 msgstr ""
 
 #: ui/app.slint
+msgid "Remove photo"
+msgstr ""
+
+#: ui/app.slint
 msgid "Remove the pack {} from this device"
 msgstr ""
 
@@ -2659,6 +2727,10 @@ msgstr ""
 msgid "Saved to {}"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Saved. Your contacts see it soon."
+msgstr ""
+
 #: ui/app.slint
 msgid "Saving…"
 msgstr ""
@@ -2728,7 +2800,31 @@ msgid "Sealed"
 msgstr ""
 
 #: ui/app.slint
+msgid "Search"
+msgstr ""
+
+#: ui/app.slint
+msgid "Search GIFs"
+msgstr ""
+
+#: ui/app.slint
+msgid "Search Wikimedia Commons for GIFs through Tor, from Send a file. The GIF you pick goes as an animated picture. Off, nothing is searched."
+msgstr ""
+
+#: ui/app.slint
 msgid "Search messages"
+msgstr ""
+
+#: ui/app.slint
+msgid "Searches Wikimedia Commons through Tor: Commons sees a Tor connection, not you, and nobody else sees what you searched for."
+msgstr ""
+
+#: enclave-vault/src/engine/web.rs
+msgid "Searching through Tor…"
+msgstr ""
+
+#: ui/app.slint
+msgid "Searching…"
 msgstr ""
 
 #: ui/app.slint
@@ -2785,6 +2881,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Send sticker {} from {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "Send the GIF {}"
 msgstr ""
 
 #: ui/app.slint
@@ -3052,6 +3152,10 @@ msgid "Telling your contacts and groups about your new words. This finishes on i
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "That GIF didn't load. Search again."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "That PIN isn't right."
 msgstr ""
 
@@ -3133,6 +3237,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "That's an in-person code. It only works in Meet in person, with them next to you."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "That's too long: at most 280 bytes."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3755,6 +3863,10 @@ msgstr ""
 msgid "What should people call you?"
 msgstr ""
 
+#: ui/app.slint
+msgid "When you send a link, this device fetches the page's title and picture through Tor and sends them with your message, so the other side fetches nothing. The site sees a Tor connection, not you. Off, links go as plain text."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "When you're ready, share your invite link with someone you trust."
 msgstr ""
@@ -3987,12 +4099,20 @@ msgstr ""
 msgid "Your name"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Your name is changed. Your contacts see it soon."
+msgstr ""
+
 #: ui/app.slint
 msgid "Your other device now shows four sets of words. Pick the set that matches these."
 msgstr ""
 
 #: ui/app.slint
 msgid "Your part of {}'s recovery, sealed for their new device"
+msgstr ""
+
+#: ui/app.slint
+msgid "Your profile"
 msgstr ""
 
 #: ui/app.slint

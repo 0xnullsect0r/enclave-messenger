@@ -134,6 +134,8 @@ pub struct GroupMessage {
     pub view_once: bool,
     /// A view-once file not opened yet, never in `attachment`.
     pub once: Option<Attachment>,
+    /// The sender's preview of a link in the text.
+    pub link: Option<crate::content::LinkPreview>,
 }
 
 fn put_who(w: &mut Writer, who: &Option<[u8; 64]>) {
@@ -167,7 +169,7 @@ impl GroupMessage {
 
     fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
-        w.u8(11).u64(self.seq);
+        w.u8(12).u64(self.seq);
         put_who(&mut w, &self.from);
         w.bytes(self.from_name.as_bytes())
             .bytes(self.text.as_bytes())
@@ -216,13 +218,20 @@ impl GroupMessage {
                 .map(Attachment::encode)
                 .unwrap_or_default(),
         );
+        w.bytes(
+            &self
+                .link
+                .as_ref()
+                .map(crate::content::LinkPreview::encode)
+                .unwrap_or_default(),
+        );
         w.finish()
     }
 
     fn decode(b: &[u8]) -> enclave_proto::Result<Self> {
         let mut r = Reader::new(b);
         let version = r.u8()?;
-        if !(1..=11).contains(&version) {
+        if !(1..=12).contains(&version) {
             return Err(ProtoError::Decode);
         }
         let seq = r.u64()?;
@@ -301,8 +310,19 @@ impl GroupMessage {
         } else {
             None
         };
+        let link = if version >= 12 {
+            let b = r.bytes(crate::content::MAX_LINK_PREVIEW)?;
+            if b.is_empty() {
+                None
+            } else {
+                Some(crate::content::LinkPreview::decode(b)?)
+            }
+        } else {
+            None
+        };
         r.end()?;
         Ok(Self {
+            link,
             seq,
             from,
             from_name,
@@ -644,7 +664,9 @@ impl Client {
         let mut msg = self.store_group_message(gid, id, None, text, now)?;
         msg.reply_to = opts.reply;
         msg.forwarded = opts.forwarded;
-        if opts.reply.is_none() && !opts.forwarded && mentions.is_empty() {
+        let link = opts.link.clone().filter(|l| l.fits(text));
+        msg.link = link.clone();
+        if opts.reply.is_none() && !opts.forwarded && mentions.is_empty() && link.is_none() {
             // A plain text, as every version reads it.
             let content = [&id[..], text.as_bytes()].concat();
             self.post_group(gid, &content, 0, now).await?;
@@ -655,6 +677,7 @@ impl Client {
                 reply: opts.reply,
                 forwarded: opts.forwarded,
                 mentions,
+                link,
             };
             self.post_group(gid, &rich.encode(), FLAG_RICH, now).await?;
         }
@@ -1644,6 +1667,7 @@ impl Client {
             mentions_me: false,
             view_once: false,
             once: None,
+            link: None,
         };
         self.put_group_message(gid, &m)?;
         self.save_group(gid)?;
