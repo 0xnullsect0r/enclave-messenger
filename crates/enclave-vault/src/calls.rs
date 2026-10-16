@@ -202,6 +202,10 @@ pub enum ToCall {
     Mic(Vec<i16>),
     /// Microphone off (padding, the same size and rate) or on.
     Mute(bool),
+    /// Camera off (video padding, the same size and rate) or on.
+    Camera(bool),
+    /// A camera frame (RGBA at the call's video size).
+    Frame(Vec<u8>),
 }
 
 /// What call work in the background tells the engine.
@@ -279,6 +283,138 @@ pub struct Plan {
     pub peer_relay: std::net::SocketAddr,
     /// The call's audio in mediad.
     pub codec: CallCodec,
+    /// A video call: its codec in mediad and its tier.
+    pub video: Option<(crate::media::VideoCodec, usize)>,
+}
+
+/// SFrame metadata of the video stream.
+const VIDEO_AD: &[u8] = b"video";
+/// Control message on the video stream: send a key frame.
+const KEY_PLEASE: &[u8] = b"K";
+/// Least time between asking for key frames.
+const KEY_ASK_EVERY: Duration = Duration::from_secs(1);
+
+/// The video half of a call: encoding and decoding run on a task of their
+/// own (frames take tens of milliseconds), so the audio never waits.
+struct VideoSide {
+    shaper: Shaper,
+    reassembler: enclave_calls::shape::Reassembler,
+    /// Camera frames to encode (the newest two; older ones are dropped).
+    frames: mpsc::Sender<Vec<u8>>,
+    /// Units that arrived, to decode.
+    units: mpsc::Sender<Vec<u8>>,
+    /// Units encoded, to send.
+    encoded: mpsc::UnboundedReceiver<Vec<Vec<u8>>>,
+    /// The next frame must be a key frame (the other side asked).
+    key: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Decoding failed: ask the other side for a key frame.
+    lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    asked: Option<tokio::time::Instant>,
+    camera: bool,
+    tick: tokio::time::Interval,
+}
+
+impl VideoSide {
+    fn start(
+        codec: crate::media::VideoCodec,
+        tier: usize,
+        out: mpsc::UnboundedSender<Out>,
+    ) -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let stream = Stream::Video(tier);
+        let (frames, mut frame_rx) = mpsc::channel::<Vec<u8>>(2);
+        let (units, mut unit_rx) = mpsc::channel::<Vec<u8>>(64);
+        let (enc_tx, encoded) = mpsc::unbounded_channel();
+        let key = std::sync::Arc::new(AtomicBool::new(true));
+        let lost = std::sync::Arc::new(AtomicBool::new(false));
+        let (k, l) = (std::sync::Arc::clone(&key), std::sync::Arc::clone(&lost));
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    f = frame_rx.recv() => {
+                        let Some(f) = f else { return };
+                        let key = k.swap(false, Ordering::SeqCst);
+                        match codec.encode(f, key).await {
+                            Ok(u) if !u.is_empty() => {
+                                if enc_tx.send(u).is_err() {
+                                    return;
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(_) => k.store(true, Ordering::SeqCst),
+                        }
+                    }
+                    u = unit_rx.recv() => {
+                        let Some(u) = u else { return };
+                        match codec.decode(u).await {
+                            Ok(Some(img)) => {
+                                let _ = out.send(Out::CallVideo(img.width, img.height, img.pixels));
+                            }
+                            Ok(None) => {}
+                            Err(_) => l.store(true, Ordering::SeqCst),
+                        }
+                    }
+                }
+            }
+        });
+        let mut tick = tokio::time::interval(Duration::from_micros(stream.interval_us()));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+        Self {
+            shaper: Shaper::new(stream),
+            reassembler: Default::default(),
+            frames,
+            units,
+            encoded,
+            key,
+            lost,
+            asked: None,
+            camera: true,
+            tick,
+        }
+    }
+
+    /// The next fixed-size plaintext: encoded frames as they fit, a key
+    /// frame request, or padding.
+    fn next_plaintext(&mut self) -> Vec<u8> {
+        use std::sync::atomic::Ordering;
+        // Frames queue at most half a second; past that, drop them and
+        // start again from a key frame.
+        let limit = (1_000_000 / self.shaper.stream().interval_us().max(1) / 2) as usize;
+        while let Ok(units) = self.encoded.try_recv() {
+            if self.shaper.backlog() > limit {
+                self.key.store(true, Ordering::SeqCst);
+                continue;
+            }
+            for u in units {
+                let _ = self.shaper.push_video_frame(&u);
+            }
+        }
+        if self.lost.swap(false, Ordering::SeqCst)
+            && self.asked.is_none_or(|a| a.elapsed() > KEY_ASK_EVERY)
+        {
+            self.asked = Some(tokio::time::Instant::now());
+            let _ = self.shaper.push_control(KEY_PLEASE);
+        }
+        self.shaper.next_plaintext()
+    }
+
+    /// A video plaintext that arrived.
+    fn arrived(&mut self, pt: &[u8]) {
+        use std::sync::atomic::Ordering;
+        match decode_plaintext(pt) {
+            Ok(Inner::Media(frag)) => {
+                if let Some(unit) = self.reassembler.push(&frag) {
+                    // A full queue drops the unit; the decoder then asks
+                    // for a key frame.
+                    if self.units.try_send(unit).is_err() {
+                        self.lost.store(true, Ordering::SeqCst);
+                    }
+                }
+            }
+            Ok(Inner::Control(c)) if c == KEY_PLEASE => self.key.store(true, Ordering::SeqCst),
+            _ => {}
+        }
+    }
 }
 
 /// Run a call until the engine drops `cmds` or the call drops.
@@ -289,7 +425,9 @@ pub async fn run(
     out: mpsc::UnboundedSender<Out>,
     events: mpsc::UnboundedSender<CallEvent>,
 ) {
-    let why = media_loop(&mut leg, plan.id, &plan, &mut cmds, &out, &events).await;
+    let mut plan = plan;
+    let video = plan.video.take();
+    let why = media_loop(&mut leg, plan.id, &plan, video, &mut cmds, &out, &events).await;
     let _ = events.send(CallEvent::Media(plan.id, FromCall::Dropped(why)));
 }
 
@@ -297,6 +435,7 @@ async fn media_loop(
     leg: &mut Leg,
     id: [u8; 16],
     plan: &Plan,
+    video_codec: Option<(crate::media::VideoCodec, usize)>,
     cmds: &mut mpsc::UnboundedReceiver<ToCall>,
     out: &mpsc::UnboundedSender<Out>,
     events: &mpsc::UnboundedSender<CallEvent>,
@@ -319,6 +458,10 @@ async fn media_loop(
     let mut tick = tokio::time::interval(Duration::from_millis(20));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
     let mut ticks: u64 = 0;
+    let video_len = video_codec
+        .as_ref()
+        .map_or(0, |(_, t)| Stream::Video(*t).packet_len());
+    let mut video = video_codec.map(|(codec, tier)| VideoSide::start(codec, tier, out.clone()));
     loop {
         tokio::select! {
             cmd = cmds.recv() => match cmd {
@@ -329,6 +472,17 @@ async fn media_loop(
                     }
                 }
                 Some(ToCall::Mute(on)) => muted = on,
+                Some(ToCall::Camera(on)) => {
+                    if let Some(v) = video.as_mut() {
+                        v.camera = on;
+                    }
+                }
+                Some(ToCall::Frame(rgba)) => {
+                    if let Some(v) = video.as_ref().filter(|v| v.camera) {
+                        // Busy encoding: this frame is dropped.
+                        let _ = v.frames.try_send(rgba);
+                    }
+                }
                 // The engine hung up.
                 None => return String::new(),
             },
@@ -342,6 +496,14 @@ async fn media_loop(
                 if p.first() != Some(&P_MEDIA) {
                     continue;
                 }
+                if video_len > 0 && p.len() - 1 == video_len {
+                    if let Some(v) = video.as_mut()
+                        && let Ok(pt) = receiver.unprotect(&p[1..], VIDEO_AD)
+                    {
+                        v.arrived(&pt);
+                    }
+                    continue;
+                }
                 let Ok(pt) = receiver.unprotect(&p[1..], AUDIO_AD) else { continue };
                 if let Ok(Inner::Media(f)) = decode_plaintext(&pt)
                     && f.len() > 4
@@ -353,6 +515,26 @@ async fn media_loop(
                     let _ = events.send(CallEvent::Media(id, FromCall::Connected));
                 }
                 heard = Some(tokio::time::Instant::now());
+            }
+            _ = async {
+                match video.as_mut() {
+                    Some(v) => {
+                        v.tick.tick().await;
+                    }
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                let Some(v) = video.as_mut() else { continue };
+                let pt = v.next_plaintext();
+                let elapsed = started.elapsed().as_millis() as u64;
+                if let Ok(packet) = sender.protect(elapsed, VIDEO_AD, &pt) {
+                    let payload = [&[P_MEDIA][..], &packet].concat();
+                    if let Ok(dgs) = leg.link.send(unix_now(), &payload)
+                        && !send_all(&leg.dg, dgs)
+                    {
+                        return "The call's connection closed.".into();
+                    }
+                }
             }
             _ = tick.tick() => {
                 ticks += 1;

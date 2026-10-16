@@ -20,6 +20,7 @@
 #![deny(missing_docs)]
 
 pub mod call;
+pub mod callvideo;
 mod exif;
 mod resize;
 pub mod video;

@@ -80,6 +80,31 @@ extern "system" fn native_frame(
     }
 }
 
+extern "system" fn native_color_frame(
+    env: JNIEnv<'_>,
+    _: JClass<'_>,
+    i420: JByteArray<'_>,
+    width: jint,
+    height: jint,
+    rotation: jint,
+) {
+    let Ok(bytes) = env.convert_byte_array(&i420) else {
+        return;
+    };
+    let (Ok(w), Ok(h), Ok(r)) = (
+        u32::try_from(width),
+        u32::try_from(height),
+        u16::try_from(rotation.rem_euclid(360)),
+    ) else {
+        return;
+    };
+    if let Ok(mut c) = CAMERA.lock()
+        && let Some(report) = c.as_mut()
+    {
+        report(Camera::Color(w, h, r, bytes));
+    }
+}
+
 extern "system" fn native_scan_failed(mut env: JNIEnv<'_>, _: JClass<'_>, why: JString<'_>) {
     let why: String = env.get_string(&why).map(Into::into).unwrap_or_default();
     if let Ok(mut c) = CAMERA.lock()
@@ -108,6 +133,11 @@ pub fn init() {
                 name: "nativeFrame".into(),
                 sig: "([BII)V".into(),
                 fn_ptr: native_frame as *mut std::ffi::c_void,
+            },
+            NativeMethod {
+                name: "nativeColorFrame".into(),
+                sig: "([BIII)V".into(),
+                fn_ptr: native_color_frame as *mut std::ffi::c_void,
             },
             NativeMethod {
                 name: "nativeScanFailed".into(),
@@ -208,6 +238,16 @@ pub(super) fn start_camera(report: Frames) {
 
 pub(super) fn ask_microphone() {
     let _ = with(|env, a| env.call_method(a, "askMicrophone", "()V", &[]).map(|_| ()));
+}
+
+pub(super) fn start_call_camera(report: Frames) {
+    if let Ok(mut c) = CAMERA.lock() {
+        *c = Some(report);
+    }
+    let _ = with(|env, a| {
+        env.call_method(a, "startCallCamera", "()V", &[])
+            .map(|_| ())
+    });
 }
 
 pub(super) fn stop_camera() {

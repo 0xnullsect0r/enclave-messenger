@@ -45,6 +45,8 @@ pub(super) struct Call {
     pub(super) video: bool,
     pub(super) phase: Phase,
     pub(super) muted: bool,
+    /// Our camera is on (a video call).
+    pub(super) camera: bool,
     /// Their device rings (they sent Ringing).
     pub(super) ringing_there: bool,
     pending: Option<Pending>,
@@ -220,6 +222,7 @@ impl Engine {
             video,
             phase: Phase::Calling,
             muted: false,
+            camera: video,
             ringing_there: false,
             pending: Some(pending),
             offer: None,
@@ -339,6 +342,31 @@ impl Engine {
         }
     }
 
+    pub(super) fn call_camera(&mut self, on: bool) {
+        if let Some(call) = self.call.as_mut().filter(|c| c.video) {
+            call.camera = on;
+            if let Some(tx) = &call.tx {
+                let _ = tx.send(ToCall::Camera(on));
+            }
+        }
+    }
+
+    /// A camera frame, at the call's video size.
+    pub(super) fn call_frame(&mut self, width: u32, height: u32, rgba: Vec<u8>) {
+        let t = enclave_media::callvideo::tier(0);
+        if (width, height) != (t.width, t.height) {
+            return;
+        }
+        if let Some(tx) = self
+            .call
+            .as_ref()
+            .filter(|c| c.camera)
+            .and_then(|c| c.tx.as_ref())
+        {
+            let _ = tx.send(ToCall::Frame(rgba));
+        }
+    }
+
     pub(super) fn call_mic(&mut self, pcm: Vec<i16>) {
         if let Some(tx) = self.call.as_ref().and_then(|c| c.tx.as_ref()) {
             let _ = tx.send(ToCall::Mic(pcm));
@@ -379,6 +407,7 @@ impl Engine {
                     video,
                     phase: Phase::Ringing,
                     muted: false,
+                    camera: video,
                     ringing_there: false,
                     pending: None,
                     offer: Some(o),
@@ -489,6 +518,18 @@ impl Engine {
                 return;
             }
         };
+        // Video: tier 0 to start with (it only ever steps down).
+        let video = if self.call.as_ref().is_some_and(|c| c.video) {
+            match self.media.open_video(0).await {
+                Ok(v) => Some((v, 0usize)),
+                Err(e) => {
+                    eprintln!("enclave-vault: call video: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let Some(call) = self.call.as_mut() else {
             return;
         };
@@ -499,6 +540,9 @@ impl Engine {
         if call.muted {
             let _ = tx.send(ToCall::Mute(true));
         }
+        if call.video && !call.camera {
+            let _ = tx.send(ToCall::Camera(false));
+        }
         call.tx = Some(tx);
         let plan = calls::Plan {
             id: call.id,
@@ -506,6 +550,7 @@ impl Engine {
             caller: call.outgoing,
             peer_relay,
             codec,
+            video,
         };
         tokio::spawn(calls::run(
             leg,
@@ -614,6 +659,17 @@ impl Engine {
             name,
             video: call.video,
             muted: call.muted,
+            camera: call.video && call.camera,
+            video_width: if call.video {
+                enclave_media::callvideo::tier(0).width
+            } else {
+                0
+            },
+            video_height: if call.video {
+                enclave_media::callvideo::tier(0).height
+            } else {
+                0
+            },
             connected_at: call.connected_at,
             words: call.words.clone(),
             error: if call.phase == Phase::Calling && call.ringing_there {

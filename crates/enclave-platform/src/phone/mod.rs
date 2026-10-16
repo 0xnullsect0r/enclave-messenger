@@ -35,6 +35,10 @@ pub enum Pick {
 pub enum Camera {
     /// A frame's brightness, `width` × `height`, row by row.
     Frame(u32, u32, Vec<u8>),
+    /// A colour frame for a call (the front camera): width, height, the
+    /// clockwise turn (0, 90, 180, 270) that shows it upright, and I420
+    /// planes (Y, then U and V at half size).
+    Color(u32, u32, u16, Vec<u8>),
     /// The camera can't be used (the reason, for the person).
     Failed(String),
 }
@@ -108,6 +112,13 @@ pub fn copy(text: &str) -> bool {
 /// until [`stop_camera`].
 pub fn start_camera(report: impl FnMut(Camera) + Send + 'static) {
     imp::start_camera(Box::new(report));
+}
+
+/// Start the front camera for a video call; colour frames
+/// ([`Camera::Color`], about 15 a second) go to `report` until
+/// [`stop_camera`].
+pub fn start_call_camera(report: impl FnMut(Camera) + Send + 'static) {
+    imp::start_call_camera(Box::new(report));
 }
 
 /// Turn the camera off.

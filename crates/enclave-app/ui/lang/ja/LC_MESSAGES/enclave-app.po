@@ -366,6 +366,14 @@ msgid "Camera"
 msgstr ""
 
 #: ui/app.slint
+msgid "Camera off"
+msgstr ""
+
+#: ui/app.slint
+msgid "Camera on"
+msgstr ""
+
+#: ui/app.slint
 msgid "Cancel"
 msgstr ""
 
@@ -3305,6 +3313,10 @@ msgstr ""
 msgid "Your username: {}"
 msgstr ""
 
+#: ui/app.slint
+msgid "Your video"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Your vote is in. The group moves once more than half of its admins vote for the same server."
 msgstr ""
@@ -3411,6 +3423,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "{}'s phone should show the same three words. If it does, you scanned each other and nobody else."
+msgstr ""
+
+#: ui/app.slint
+msgid "{}'s video"
 msgstr ""
 
 #: ui/app.slint

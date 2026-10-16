@@ -366,6 +366,14 @@ msgid "Camera"
 msgstr "[Çámérá··]"
 
 #: ui/app.slint
+msgid "Camera off"
+msgstr "[Çámérá óff····]"
+
+#: ui/app.slint
+msgid "Camera on"
+msgstr "[Çámérá óñ···]"
+
+#: ui/app.slint
 msgid "Cancel"
 msgstr "[Çáñçél··]"
 
@@ -3305,6 +3313,10 @@ msgstr "[Ýóúr úsérñámé ñó lóñgér léáds tó ýóú········
 msgid "Your username: {}"
 msgstr "[Ýóúr úsérñámé: ······{}]"
 
+#: ui/app.slint
+msgid "Your video"
+msgstr "[Ýóúr vídéó····]"
+
 #: enclave-vault/src/engine.rs
 msgid "Your vote is in. The group moves once more than half of its admins vote for the same server."
 msgstr "[Ýóúr vóté ís íñ. Thé gróúp móvés óñçé móré tháñ hálf óf íts ádmíñs vóté fór thé sámé sérvér.····································]"
@@ -3412,6 +3424,10 @@ msgstr "[{}'s áççóúñt móvéd tó á ñéw kéý···········]"
 #: ui/app.slint
 msgid "{}'s phone should show the same three words. If it does, you scanned each other and nobody else."
 msgstr "[{}'s phóñé shóúld shów thé sámé thréé wórds. Íf ít dóés, ýóú sçáññéd éáçh óthér áñd ñóbódý élsé.·····································]"
+
+#: ui/app.slint
+msgid "{}'s video"
+msgstr "[{}'s vídéó···]"
 
 #: ui/app.slint
 msgid "{}, run by {}"

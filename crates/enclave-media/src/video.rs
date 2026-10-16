@@ -267,7 +267,7 @@ fn jpeg(img: &Rgba) -> Result<Vec<u8>> {
 }
 
 /// BT.601 limited-range 4:2:0 from opaque RGBA (even dimensions).
-fn to_i420(img: &Rgba) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+pub(crate) fn to_i420(img: &Rgba) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let (w, h) = (img.width as usize, img.height as usize);
     let px = |x: usize, y: usize| {
         let p = &img.pixels[(y * w + x) * 4..][..3];

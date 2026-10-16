@@ -162,6 +162,98 @@ enum CallAt {
     Here(Arc<std::sync::Mutex<enclave_media::call::CallAudio>>),
 }
 
+/// One call's video: its encoder and decoder live in one helper,
+/// another than the call's audio where there are two, so encoding a frame
+/// never holds up the audio.
+pub struct VideoCodec {
+    n: u32,
+    at: VideoAt,
+}
+
+enum VideoAt {
+    Helper(Arc<Proc>),
+    #[cfg(feature = "demo")]
+    Here(
+        Arc<
+            std::sync::Mutex<(
+                enclave_media::callvideo::VideoEncoder,
+                enclave_media::callvideo::VideoDecoder,
+            )>,
+        >,
+    ),
+}
+
+impl VideoCodec {
+    /// Encode a camera frame (RGBA at the tier's size): the temporal units.
+    pub async fn encode(&self, rgba: Vec<u8>, key: bool) -> Result<Vec<Vec<u8>>, String> {
+        match &self.at {
+            VideoAt::Helper(p) => match p.call(MediaOp::VideoEncode(self.n, key), rgba).await? {
+                MediaOut::Raw(b) => {
+                    let mut units = Vec::new();
+                    let mut at = 0;
+                    while at + 4 <= b.len() {
+                        let n =
+                            u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]) as usize;
+                        let unit = b.get(at + 4..at + 4 + n).ok_or("bad reply")?;
+                        units.push(unit.to_vec());
+                        at += 4 + n;
+                    }
+                    Ok(units)
+                }
+                _ => Err("unexpected reply".into()),
+            },
+            #[cfg(feature = "demo")]
+            VideoAt::Here(c) => c
+                .lock()
+                .map_err(|_| "poisoned".to_string())?
+                .0
+                .encode(&rgba, key)
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    /// Decode a temporal unit: the picture it completed, if any.
+    pub async fn decode(&self, unit: Vec<u8>) -> Result<Option<Rgba>, String> {
+        match &self.at {
+            VideoAt::Helper(p) => match p.call(MediaOp::VideoDecode(self.n), unit).await? {
+                MediaOut::Rgba {
+                    width,
+                    height,
+                    pixels,
+                } => Ok(Some(Rgba {
+                    width,
+                    height,
+                    pixels,
+                })),
+                MediaOut::Raw(_) => Ok(None),
+                _ => Err("unexpected reply".into()),
+            },
+            #[cfg(feature = "demo")]
+            VideoAt::Here(c) => c
+                .lock()
+                .map_err(|_| "poisoned".to_string())?
+                .1
+                .decode(&unit)
+                .map_err(|e| e.to_string()),
+        }
+    }
+}
+
+impl Drop for VideoCodec {
+    fn drop(&mut self) {
+        if let VideoAt::Helper(p) = &self.at {
+            let _ = p.out.send(
+                MediaRequest {
+                    id: 0,
+                    op: MediaOp::VideoClose(self.n),
+                    bytes: Vec::new(),
+                }
+                .encode(),
+            );
+        }
+    }
+}
+
 /// How [`CallCodec::decode`] takes its bytes.
 pub use enclave_ipc::media::CallDecode;
 
@@ -283,6 +375,46 @@ impl Media {
             return Err("mediad stopped".into());
         };
         p.call(op, bytes).await
+    }
+
+    /// Start a call's video at a tier. Without helpers, only the demo
+    /// can (decoding other people's video happens in mediad only).
+    pub async fn open_video(&self, tier: u8) -> Result<VideoCodec, String> {
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        if self.procs.is_empty() {
+            #[cfg(feature = "demo")]
+            {
+                use enclave_media::callvideo::{VideoDecoder, VideoEncoder};
+                let codec = (
+                    VideoEncoder::new(usize::from(tier)).map_err(|e| e.to_string())?,
+                    VideoDecoder::new().map_err(|e| e.to_string())?,
+                );
+                return Ok(VideoCodec {
+                    n,
+                    at: VideoAt::Here(Arc::new(std::sync::Mutex::new(codec))),
+                });
+            }
+            #[cfg(not(feature = "demo"))]
+            return Err("video needs the media process".into());
+        }
+        let alive: Vec<&Arc<Proc>> = self
+            .procs
+            .iter()
+            .filter(|p| p.alive.load(Ordering::SeqCst))
+            .collect();
+        // The audio takes the last; video the one before it.
+        let p = alive
+            .len()
+            .checked_sub(2)
+            .and_then(|i| alive.get(i))
+            .or_else(|| alive.last())
+            .ok_or("mediad stopped")?;
+        p.call(MediaOp::VideoOpen(n, tier), Vec::new()).await?;
+        Ok(VideoCodec {
+            n,
+            at: VideoAt::Helper(Arc::clone(p)),
+        })
     }
 
     /// Start a call's audio (`enclave_media::call`). It goes to the last
@@ -523,7 +655,13 @@ fn local(op: MediaOp, bytes: &[u8]) -> Result<MediaOut, String> {
         MediaOp::CallOpen(_)
         | MediaOp::CallEncode(_)
         | MediaOp::CallDecode(..)
-        | MediaOp::CallClose(_) => return Err("calls go through Media::open_call".into()),
+        | MediaOp::CallClose(_)
+        | MediaOp::VideoOpen(..)
+        | MediaOp::VideoEncode(..)
+        | MediaOp::VideoDecode(_)
+        | MediaOp::VideoClose(_) => {
+            return Err("calls go through Media::open_call and open_video".into());
+        }
     }
     .map_err(|e| e.to_string())
 }

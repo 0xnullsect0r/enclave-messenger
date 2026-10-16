@@ -1106,7 +1106,7 @@ pub async fn run_with(
                 let Some(cmd) = cmd else { return };
                 // Keystrokes and the microphone change nothing the window
                 // shows.
-                let quiet = matches!(cmd, Cmd::Typing(..) | Cmd::CallMic(_));
+                let quiet = matches!(cmd, Cmd::Typing(..) | Cmd::CallMic(_) | Cmd::CallFrame(..));
                 e.handle(cmd).await;
                 if !quiet {
                     e.push();
@@ -2915,6 +2915,8 @@ impl Engine {
             Cmd::EndCall => self.end_call().await,
             Cmd::CallMute(on) => self.call_mute(on),
             Cmd::CallMic(pcm) => self.call_mic(pcm),
+            Cmd::CallCamera(on) => self.call_camera(on),
+            Cmd::CallFrame(width, height, rgba) => self.call_frame(width, height, rgba),
             Cmd::CheckUpdates => {
                 self.update_day = 0;
                 if self.client.is_some() {

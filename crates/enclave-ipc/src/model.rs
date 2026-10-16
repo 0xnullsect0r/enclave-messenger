@@ -179,6 +179,13 @@ pub struct CallView {
     pub video: bool,
     /// Our microphone is off.
     pub muted: bool,
+    /// Our camera is on (a video call).
+    pub camera: bool,
+    /// The size camera frames are sent at (the call's video tier; 0 for
+    /// an audio call).
+    pub video_width: u32,
+    /// As above.
+    pub video_height: u32,
     /// When it connected (Unix seconds; 0 before).
     pub connected_at: u64,
     /// The two-word call check, once both have keys.
@@ -663,6 +670,10 @@ pub enum Cmd {
     CallMute(bool),
     /// The microphone's next 20 ms: 960 samples, 48 kHz mono.
     CallMic(Vec<i16>),
+    /// Turn our camera off or on (a video call).
+    CallCamera(bool),
+    /// A camera frame: width, height (the call's video size), RGBA.
+    CallFrame(u32, u32, Vec<u8>),
 }
 
 /// Most samples in one [`Cmd::CallMic`] or [`Out::CallAudio`] (20 ms).
@@ -740,6 +751,8 @@ pub enum Out {
     UpdateBundle(Vec<u8>),
     /// The call's next 20 ms to play: 960 samples, 48 kHz mono.
     CallAudio(Vec<i16>),
+    /// The other person's newest picture: width, height, RGBA.
+    CallVideo(u32, u32, Vec<u8>),
 }
 
 /// PCM as 16-bit little-endian bytes.
@@ -1046,6 +1059,9 @@ impl Snapshot {
             .str(&self.call.name)
             .bool(self.call.video)
             .bool(self.call.muted)
+            .bool(self.call.camera)
+            .u32(self.call.video_width)
+            .u32(self.call.video_height)
             .u64(self.call.connected_at)
             .str(&self.call.words)
             .str(&self.call.error);
@@ -1305,6 +1321,9 @@ impl Snapshot {
                 name: r.str()?,
                 video: r.bool()?,
                 muted: r.bool()?,
+                camera: r.bool()?,
+                video_width: r.u32()?,
+                video_height: r.u32()?,
                 connected_at: r.u64()?,
                 words: r.str()?,
                 error: r.str()?,
@@ -1443,6 +1462,8 @@ impl Cmd {
             Cmd::EndCall => w.u8(101),
             Cmd::CallMute(on) => w.u8(102).bool(*on),
             Cmd::CallMic(pcm) => w.u8(103).bytes(&pcm_bytes(pcm)),
+            Cmd::CallCamera(on) => w.u8(104).bool(*on),
+            Cmd::CallFrame(width, height, rgba) => w.u8(105).u32(*width).u32(*height).bytes(rgba),
             Cmd::SetEmergencyPin(p) => w.u8(78).str(p),
         };
         w.0
@@ -1582,6 +1603,15 @@ impl Cmd {
             101 => Cmd::EndCall,
             102 => Cmd::CallMute(r.bool()?),
             103 => Cmd::CallMic(bytes_pcm(&r.bytes()?)?),
+            104 => Cmd::CallCamera(r.bool()?),
+            105 => {
+                let (width, height) = (r.u32()?, r.u32()?);
+                let rgba = r.bytes()?;
+                if crate::rgba_len(width, height) != Some(rgba.len()) {
+                    return Err(IpcError::Malformed);
+                }
+                Cmd::CallFrame(width, height, rgba)
+            }
             78 => Cmd::SetEmergencyPin(r.str()?),
             _ => return Err(IpcError::Malformed),
         };
@@ -1661,6 +1691,11 @@ impl Out {
                 w.u8(12).bytes(&pcm_bytes(pcm));
                 w.0
             }
+            Out::CallVideo(width, height, rgba) => {
+                let mut w = Writer::default();
+                w.u8(13).u32(*width).u32(*height).bytes(rgba);
+                w.0
+            }
             Out::Effect(e) => vec![
                 2,
                 match e {
@@ -1735,6 +1770,16 @@ impl Out {
                 let o = Out::CallAudio(bytes_pcm(&r.bytes()?)?);
                 r.end()?;
                 Ok(o)
+            }
+            [13, ..] => {
+                let mut r = Reader(&b[1..]);
+                let (width, height) = (r.u32()?, r.u32()?);
+                let rgba = r.bytes()?;
+                if crate::rgba_len(width, height) != Some(rgba.len()) {
+                    return Err(IpcError::Malformed);
+                }
+                r.end()?;
+                Ok(Out::CallVideo(width, height, rgba))
             }
             [7, ..] => {
                 let mut r = Reader(&b[1..]);

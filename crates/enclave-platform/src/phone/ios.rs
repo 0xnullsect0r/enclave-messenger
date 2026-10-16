@@ -11,8 +11,9 @@ use objc2::{
 };
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput,
-    AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
-    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeVideo,
+    AVCaptureDevicePosition, AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureOutput,
+    AVCaptureSession, AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate,
+    AVMediaTypeAudio, AVMediaTypeVideo,
 };
 use objc2_core_media::CMSampleBuffer;
 use objc2_core_video::{
@@ -60,6 +61,10 @@ thread_local! {
 }
 
 static CAMERA: Mutex<Option<Frames>> = Mutex::new(None);
+/// The camera is for a video call (front, colour), not a scan.
+static CALL_CAMERA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The front camera's buffers, shown upright on a phone held upright.
+const FRONT_ROTATION: u16 = 270;
 /// Screen security, on until the profile's setting says otherwise.
 static SECURE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
@@ -442,10 +447,22 @@ define_class!(
                 let Ok(mut last) = self.ivars().lock() else {
                     return;
                 };
-                if last.elapsed() < Duration::from_millis(120) {
+                let call = CALL_CAMERA.load(std::sync::atomic::Ordering::SeqCst);
+                if last.elapsed() < Duration::from_millis(if call { 66 } else { 120 }) {
                     return;
                 }
                 *last = Instant::now();
+            }
+            if CALL_CAMERA.load(std::sync::atomic::Ordering::SeqCst) {
+                // SAFETY: as below, for both planes.
+                if let Some((w, h, i420)) = unsafe { buffer.image_buffer().and_then(|i| i420(&i)) }
+                    && let (Ok(w), Ok(h)) = (u32::try_from(w), u32::try_from(h))
+                    && let Ok(mut c) = CAMERA.lock()
+                    && let Some(report) = c.as_mut()
+                {
+                    report(Camera::Color(w, h, FRONT_ROTATION, i420));
+                }
+                return;
             }
             // SAFETY: the buffer is valid for this call.
             let Some(image) = (unsafe { buffer.image_buffer() }) else {
@@ -484,6 +501,49 @@ define_class!(
     }
 );
 
+/// I420 from a bi-planar 4:2:0 pixel buffer (Y, then Cb and Cr
+/// interleaved).
+///
+/// # Safety
+///
+/// `image` must be a valid pixel buffer for the duration of the call.
+unsafe fn i420(image: &objc2_core_video::CVBuffer) -> Option<(usize, usize, Vec<u8>)> {
+    // SAFETY: locked read-only around the plane reads; each plane is
+    // `height` rows of `stride` bytes.
+    unsafe {
+        if CVPixelBufferLockBaseAddress(image, CVPixelBufferLockFlags::ReadOnly) != 0 {
+            return None;
+        }
+        let w = CVPixelBufferGetWidthOfPlane(image, 0);
+        let h = CVPixelBufferGetHeightOfPlane(image, 0);
+        let ys = CVPixelBufferGetBytesPerRowOfPlane(image, 0);
+        let cs = CVPixelBufferGetBytesPerRowOfPlane(image, 1);
+        let yb = CVPixelBufferGetBaseAddressOfPlane(image, 0).cast::<u8>();
+        let cb = CVPixelBufferGetBaseAddressOfPlane(image, 1).cast::<u8>();
+        let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+        let out = if yb.is_null() || cb.is_null() || ys < w || cs < 2 * cw {
+            None
+        } else {
+            let mut out = Vec::with_capacity(w * h + 2 * cw * ch);
+            for row in 0..h {
+                out.extend_from_slice(std::slice::from_raw_parts(yb.add(row * ys), w));
+            }
+            let mut v = Vec::with_capacity(cw * ch);
+            for row in 0..ch {
+                let line = std::slice::from_raw_parts(cb.add(row * cs), 2 * cw);
+                for pair in line.chunks_exact(2) {
+                    out.push(pair[0]);
+                    v.push(pair[1]);
+                }
+            }
+            out.extend_from_slice(&v);
+            Some((w, h, out))
+        };
+        CVPixelBufferUnlockBaseAddress(image, CVPixelBufferLockFlags::ReadOnly);
+        out
+    }
+}
+
 /// A session to start on the camera's queue (AVFoundation's documented
 /// way: `startRunning` blocks, so not on the main thread).
 struct Running(Retained<AVCaptureSession>);
@@ -507,7 +567,17 @@ fn open_camera() {
     };
     // SAFETY: plain AVFoundation calls with valid arguments.
     unsafe {
-        let Some(device) = AVCaptureDevice::defaultDeviceWithMediaType(video) else {
+        let front = if CALL_CAMERA.load(std::sync::atomic::Ordering::SeqCst) {
+            AVCaptureDevice::defaultDeviceWithDeviceType_mediaType_position(
+                AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                Some(video),
+                AVCaptureDevicePosition::Front,
+            )
+        } else {
+            None
+        };
+        let Some(device) = front.or_else(|| AVCaptureDevice::defaultDeviceWithMediaType(video))
+        else {
             return camera_failed("No camera was found.");
         };
         let Ok(input) = AVCaptureDeviceInput::deviceInputWithDevice_error(&device) else {
@@ -550,7 +620,17 @@ fn open_camera() {
     }
 }
 
+pub(super) fn start_call_camera(report: Frames) {
+    CALL_CAMERA.store(true, std::sync::atomic::Ordering::SeqCst);
+    start(report);
+}
+
 pub(super) fn start_camera(report: Frames) {
+    CALL_CAMERA.store(false, std::sync::atomic::Ordering::SeqCst);
+    start(report);
+}
+
+fn start(report: Frames) {
     if let Ok(mut c) = CAMERA.lock() {
         *c = Some(report);
     }

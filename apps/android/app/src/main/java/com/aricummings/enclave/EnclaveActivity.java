@@ -60,6 +60,7 @@ public class EnclaveActivity extends android.app.NativeActivity {
     static native void nativePicked(int request, String[] paths);
     static native void nativeSaved(int request, boolean ok, String where);
     static native void nativeFrame(byte[] grey, int width, int height);
+    static native void nativeColorFrame(byte[] i420, int width, int height, int rotation);
     static native void nativeScanFailed(String why);
 
     @Override
@@ -335,6 +336,8 @@ public class EnclaveActivity extends android.app.NativeActivity {
     private CameraCaptureSession session;
     private ImageReader reader;
     private long lastFrame;
+    /** The camera is for a video call (front, colour), not a scan. */
+    private boolean callCamera;
 
     /** Ask for the microphone when a call starts; the call's audio keeps
      *  trying to open it, so the answer needs no reply. */
@@ -346,9 +349,23 @@ public class EnclaveActivity extends android.app.NativeActivity {
         });
     }
 
+    /** Start the front camera for a video call; colour frames go to
+     *  nativeColorFrame. */
+    public void startCallCamera() {
+        runOnUiThread(() -> {
+            callCamera = true;
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] {Manifest.permission.CAMERA}, PERMISSION_CAMERA);
+                return;
+            }
+            openCamera();
+        });
+    }
+
     /** Start the back camera; frames go to nativeFrame as brightness only. */
     public void startScan() {
         runOnUiThread(() -> {
+            callCamera = false;
             if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[] {Manifest.permission.CAMERA}, PERMISSION_CAMERA);
                 return;
@@ -372,10 +389,12 @@ public class EnclaveActivity extends android.app.NativeActivity {
     private void openCamera() {
         try {
             CameraManager cm = getSystemService(CameraManager.class);
+            final boolean call = callCamera;
+            final int wanted = call ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK;
             String id = null;
             for (String c : cm.getCameraIdList()) {
                 Integer facing = cm.getCameraCharacteristics(c).get(CameraCharacteristics.LENS_FACING);
-                if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                if (facing != null && facing == wanted) {
                     id = c;
                     break;
                 }
@@ -390,6 +409,8 @@ public class EnclaveActivity extends android.app.NativeActivity {
             cameraThread = new HandlerThread("enclave-camera");
             cameraThread.start();
             Handler h = new Handler(cameraThread.getLooper());
+            Integer sensor = cm.getCameraCharacteristics(id).get(CameraCharacteristics.SENSOR_ORIENTATION);
+            final int rotation = sensor == null ? 0 : sensor;
             reader = ImageReader.newInstance(640, 480, ImageFormat.YUV_420_888, 2);
             reader.setOnImageAvailableListener(r -> {
                 Image img = r.acquireLatestImage();
@@ -398,10 +419,14 @@ public class EnclaveActivity extends android.app.NativeActivity {
                 }
                 try {
                     long now = System.currentTimeMillis();
-                    if (now - lastFrame < 120) {
+                    if (now - lastFrame < (call ? 66 : 120)) {
                         return;
                     }
                     lastFrame = now;
+                    if (call) {
+                        nativeColorFrame(i420(img), img.getWidth(), img.getHeight(), rotation);
+                        return;
+                    }
                     Image.Plane y = img.getPlanes()[0];
                     int w = img.getWidth(), ht = img.getHeight();
                     ByteBuffer buf = y.getBuffer();
@@ -463,6 +488,27 @@ public class EnclaveActivity extends android.app.NativeActivity {
         } catch (Exception e) {
             nativeScanFailed("The camera is busy or can't be opened.");
         }
+    }
+
+    /** I420 from a YUV_420_888 image, whatever its strides. */
+    private static byte[] i420(Image img) {
+        int w = img.getWidth(), h = img.getHeight();
+        int cw = (w + 1) / 2, ch = (h + 1) / 2;
+        byte[] out = new byte[w * h + 2 * cw * ch];
+        Image.Plane[] p = img.getPlanes();
+        int at = 0;
+        for (int i = 0; i < 3; i++) {
+            ByteBuffer b = p[i].getBuffer();
+            int rs = p[i].getRowStride(), ps = p[i].getPixelStride();
+            int pw = i == 0 ? w : cw, ph = i == 0 ? h : ch;
+            for (int y = 0; y < ph; y++) {
+                for (int x = 0; x < pw; x++) {
+                    int idx = y * rs + x * ps;
+                    out[at++] = idx < b.limit() ? b.get(idx) : 0;
+                }
+            }
+        }
+        return out;
     }
 
     /** Turn the camera off. */

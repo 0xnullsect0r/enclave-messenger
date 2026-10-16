@@ -109,6 +109,7 @@ async fn audio_goes_both_ways_through_two_relays() {
             caller,
             peer_relay: peer,
             codec: helpers.open_call().await.unwrap(),
+            video: None,
         };
         tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
         sides.push((tx, out_rx));
@@ -179,5 +180,72 @@ async fn audio_goes_both_ways_through_two_relays() {
     })
     .await;
     assert!(ended.is_ok());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn video_goes_through_two_relays() {
+    let dir = std::env::temp_dir().join(format!("enclave-video-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (la, ra, aa) = relay(&dir.join("a"), "alpha").await;
+    let (lb, rb, ab) = relay(&dir.join("b"), "beta").await;
+    {
+        let d = rb.lock().await.descriptor().clone();
+        ra.lock().await.add_peer(&d).unwrap();
+        let d = ra.lock().await.descriptor().clone();
+        rb.lock().await.add_peer(&d).unwrap();
+    }
+    let t = enclave_net::transport::TcpTransport::new(Default::default());
+    let leg_a = calls::open_leg(&t, &la).await.unwrap();
+    let leg_b = calls::open_leg(&t, &lb).await.unwrap();
+    let mut rng = HedgedRng::new().unwrap();
+    let pending = signal::offer(Media::Video(0), Route::Relay, vec![], now(), &mut rng).unwrap();
+    let id = pending.offer().call_id;
+    let (ans, kb) = signal::answer(pending.offer(), vec![], b"conv", now(), &mut rng).unwrap();
+    let ka = pending.finish(&ans, b"conv", now()).unwrap();
+    let helpers = Helpers::in_process();
+    let (ev_tx, _ev_rx) = mpsc::unbounded_channel();
+    let mut sides = Vec::new();
+    for (leg, keys, caller, peer) in [(leg_a, ka, true, ab), (leg_b, kb, false, aa)] {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let plan = Plan {
+            id,
+            keys,
+            caller,
+            peer_relay: peer,
+            codec: helpers.open_call().await.unwrap(),
+            video: Some((helpers.open_video(0).await.unwrap(), 0)),
+        };
+        tokio::spawn(calls::run(leg, plan, rx, out_tx, ev_tx.clone()));
+        sides.push((tx, out_rx));
+    }
+    let (_b_tx, mut b_out) = sides.pop().unwrap();
+    let (a_tx, _a_out) = sides.pop().unwrap();
+    let tier = enclave_media::callvideo::tier(0);
+    // Ada's camera for 4 s at the tier's frame rate (a moving gradient).
+    let mut tick = tokio::time::interval(Duration::from_millis(1000 / u64::from(tier.fps)));
+    for n in 0..(4 * tier.fps) {
+        tick.tick().await;
+        let mut px = Vec::with_capacity((tier.width * tier.height * 4) as usize);
+        for y in 0..tier.height {
+            for x in 0..tier.width {
+                px.extend_from_slice(&[((x + n * 8) % 256) as u8, (y % 256) as u8, 90, 255]);
+            }
+        }
+        a_tx.send(ToCall::Frame(px)).unwrap();
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let mut pictures = 0;
+    while let Ok(o) = b_out.try_recv() {
+        if let Out::CallVideo(w, h, px) = o {
+            assert_eq!((w, h), (tier.width, tier.height));
+            assert_eq!(px.len(), (w * h * 4) as usize);
+            pictures += 1;
+        }
+    }
+    // Encoding is slow in a debug build: some frames are dropped, never
+    // queued.
+    assert!(pictures >= 3, "Ben saw {pictures} pictures");
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -747,7 +747,12 @@ export component AppWindow inherits Window {
     in property <string> call-words;
     in property <string> call-note;
     in-out property <int> call-elapsed;
+    in property <bool> call-camera;
+    in-out property <image> call-remote;
+    in-out property <bool> call-has-remote;
+    in-out property <image> call-self;
     callback start-call(string, bool);
+    callback camera-call(bool);
     callback answer-call();
     callback decline-call();
     callback end-call();
@@ -3809,6 +3814,33 @@ export component AppWindow inherits Window {
         accessible-role: groupbox;
         accessible-label: root.call-state == 2 ? @tr("Incoming call from {}", root.call-name) : @tr("Call with {}", root.call-name);
         TouchArea { }
+        // The other person's picture, filling the window, under all of it.
+        if root.call-video && root.call-has-remote && root.call-state == 4: Image {
+            width: 100%;
+            height: 100%;
+            source: root.call-remote;
+            image-fit: cover;
+            accessible-role: image;
+            accessible-label: @tr("{}'s video", root.call-name);
+        }
+        // Our own, small, in a corner (mirrored, like a mirror).
+        if root.call-video && root.call-camera && (root.call-state == 3 || root.call-state == 4): Rectangle {
+            x: parent.width - self.width - Tokens.space-m;
+            y: Tokens.space-m;
+            width: min(parent.width / 4, 200px);
+            height: self.width * 3 / 4;
+            border-radius: Tokens.radius-control;
+            clip: true;
+            background: #000;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.call-self;
+                image-fit: cover;
+                accessible-role: image;
+                accessible-label: @tr("Your video");
+            }
+        }
         // The time on the call, counted here between snapshots.
         Timer {
             interval: 1s;
@@ -3893,6 +3925,13 @@ export component AppWindow inherits Window {
                     tint: root.call-muted ? #ffffff : #ffffff26;
                     ink: root.call-muted ? #101914 : #ffffff;
                     clicked => { root.mute-call(!root.call-muted); }
+                }
+                if root.call-video && (root.call-state == 3 || root.call-state == 4): CallButton {
+                    icon: Icons.video;
+                    label: root.call-camera ? @tr("Camera off") : @tr("Camera on");
+                    tint: root.call-camera ? #ffffff26 : #ffffff;
+                    ink: root.call-camera ? #ffffff : #101914;
+                    clicked => { root.camera-call(!root.call-camera); }
                 }
                 if root.call-state == 1 || root.call-state == 3 || root.call-state == 4: CallButton {
                     icon: Icons.phone;

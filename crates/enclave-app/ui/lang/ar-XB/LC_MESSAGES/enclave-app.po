@@ -366,6 +366,14 @@ msgid "Camera"
 msgstr "‫Camera‬"
 
 #: ui/app.slint
+msgid "Camera off"
+msgstr "‫Camera off‬"
+
+#: ui/app.slint
+msgid "Camera on"
+msgstr "‫Camera on‬"
+
+#: ui/app.slint
 msgid "Cancel"
 msgstr "‫Cancel‬"
 
@@ -3305,6 +3313,10 @@ msgstr "‫Your username no longer leads to you‬"
 msgid "Your username: {}"
 msgstr "‫Your username: ‬{}"
 
+#: ui/app.slint
+msgid "Your video"
+msgstr "‫Your video‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Your vote is in. The group moves once more than half of its admins vote for the same server."
 msgstr "‫Your vote is in. The group moves once more than half of its admins vote for the same server.‬"
@@ -3412,6 +3424,10 @@ msgstr "{}‫'s account moved to a new key‬"
 #: ui/app.slint
 msgid "{}'s phone should show the same three words. If it does, you scanned each other and nobody else."
 msgstr "{}‫'s phone should show the same three words. If it does, you scanned each other and nobody else.‬"
+
+#: ui/app.slint
+msgid "{}'s video"
+msgstr "{}‫'s video‬"
 
 #: ui/app.slint
 msgid "{}, run by {}"

@@ -90,6 +90,18 @@ opt-level = 2
 [profile.dev.package."*"]
 opt-level = 2
 
+# The video codecs check themselves in their hot loops: with debug
+# assertions a call's frames take seconds each in tests.
+[profile.dev.package.rav1e]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev.package.rav1d]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
 # Upstream crates built with a small change (third_party/PATCHES.md).
 [patch.crates-io]
 ptrs = { path = "third_party/ptrs" }

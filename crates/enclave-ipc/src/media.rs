@@ -44,6 +44,18 @@ pub enum MediaOp {
     CallDecode(u32, CallDecode),
     /// End a call's audio.
     CallClose(u32),
+    /// Start a call's video with this number at a tier
+    /// (`enclave_media::callvideo::TIERS`).
+    VideoOpen(u32, u8),
+    /// Encode one camera frame (RGBA at the tier's size), as a key frame
+    /// or not: the temporal units that came out, each `u32 length ‖
+    /// bytes`, in [`MediaOut::Raw`].
+    VideoEncode(u32, bool),
+    /// Decode one temporal unit: the picture ([`MediaOut::Rgba`]) or
+    /// nothing yet (an empty [`MediaOut::Raw`]).
+    VideoDecode(u32),
+    /// End a call's video.
+    VideoClose(u32),
 }
 
 /// How [`MediaOp::CallDecode`] uses its bytes.
@@ -152,6 +164,10 @@ impl MediaRequest {
                 CallDecode::Lost => 2,
             }),
             MediaOp::CallClose(n) => w.u8(13).u32(n),
+            MediaOp::VideoOpen(n, tier) => w.u8(14).u32(n).u8(tier),
+            MediaOp::VideoEncode(n, key) => w.u8(15).u32(n).bool(key),
+            MediaOp::VideoDecode(n) => w.u8(16).u32(n),
+            MediaOp::VideoClose(n) => w.u8(17).u32(n),
         };
         w.bytes(&self.bytes[..self.bytes.len().min(MAX_BYTES)]);
         w.0
@@ -186,6 +202,16 @@ impl MediaRequest {
                 )
             }
             13 => MediaOp::CallClose(r.u32()?),
+            14 => {
+                let n = r.u32()?;
+                MediaOp::VideoOpen(n, r.u8()?)
+            }
+            15 => {
+                let n = r.u32()?;
+                MediaOp::VideoEncode(n, r.bool()?)
+            }
+            16 => MediaOp::VideoDecode(r.u32()?),
+            17 => MediaOp::VideoClose(r.u32()?),
             _ => return Err(IpcError::Malformed),
         };
         let bytes = r.bytes()?;

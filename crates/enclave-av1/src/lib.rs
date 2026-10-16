@@ -190,6 +190,12 @@ fn copy_out(pic: &Dav1dPicture) -> Result<Frame, Av1Error> {
     })
 }
 
+// SAFETY: the context is used only through `&mut self` (never from two
+// threads at once), and dav1d runs it on the calling thread
+// (`n_threads = 1`): moving it to another thread between calls is sound,
+// as for any C library handle without thread-local state.
+unsafe impl Send for Decoder {}
+
 impl Drop for Decoder {
     fn drop(&mut self) {
         // SAFETY: `ctx` was opened by dav1d_open; dav1d_close takes it and

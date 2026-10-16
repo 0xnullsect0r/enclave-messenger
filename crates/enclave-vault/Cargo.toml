@@ -23,7 +23,8 @@ dev-transport = ["enclave-net/dev-transport"]
 # The demo (`--demo`: a local server and a demo contact, all in memory),
 # for development and screenshots; never in a release build, which then
 # links no server code.
-demo = ["dep:enclave-sim", "dep:enclave-server"]
+# Video calls without mediad decode AV1 in this process: the demo only.
+demo = ["dep:enclave-sim", "dep:enclave-server", "enclave-media/av1"]
 
 [dependencies]
 subtle = "2"

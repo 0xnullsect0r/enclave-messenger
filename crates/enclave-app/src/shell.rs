@@ -214,6 +214,10 @@ fn updates(ui: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
     ui.on_mute_call(move |on| {
         let _ = t.send(Cmd::CallMute(on));
     });
+    let t = tx.clone();
+    ui.on_camera_call(move |on| {
+        let _ = t.send(Cmd::CallCamera(on));
+    });
     #[cfg(desktop)]
     {
         use crate::updater::{self, Install};
@@ -493,8 +497,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                 std::collections::HashMap::new();
             let mut to_serve: std::collections::HashMap<String, Vec<Vec<u8>>> =
                 std::collections::HashMap::new();
-            // The microphone and speaker, while a call is connecting or on.
+            // The microphone and speaker, while a call is connecting or on;
+            // the camera, while a video call's is on.
             let mut audio: Option<crate::audio::CallAudio> = None;
+            let mut camera: Option<CallCamera> = None;
             while let Some(o) = out.blocking_recv() {
                 // Files are written here, in the UI process, where the
                 // person chooses: the vault can't reach anything outside
@@ -506,7 +512,32 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         }
                         continue;
                     }
+                    Out::CallVideo(width, height, rgba) => {
+                        let _ = w.upgrade_in_event_loop(move |ui| {
+                            let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                &rgba, width, height,
+                            );
+                            ui.set_call_remote(slint::Image::from_rgba8(buf));
+                            ui.set_call_has_remote(true);
+                        });
+                        continue;
+                    }
                     Out::Snapshot(s) => {
+                        let c = &s.call;
+                        let film = matches!(c.state, 3 | 4) && c.camera && c.video_width > 0;
+                        if film && camera.is_none() {
+                            camera = Some(CallCamera::start(
+                                c.video_width,
+                                c.video_height,
+                                lan_tx.clone(),
+                                w.clone(),
+                            ));
+                        } else if !film {
+                            camera = None;
+                        }
+                        if c.state == 0 || c.state == 5 {
+                            let _ = w.upgrade_in_event_loop(|ui| ui.set_call_has_remote(false));
+                        }
                         let on = matches!(s.call.state, 3 | 4);
                         if on && audio.is_none() {
                             let tx = lan_tx.clone();
@@ -608,7 +639,8 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                     | Out::LanStop(_)
                     | Out::LanFetch(..)
                     | Out::UpdateBundle(_)
-                    | Out::CallAudio(_) => {}
+                    | Out::CallAudio(_)
+                    | Out::CallVideo(..) => {}
                 });
             }
         })
@@ -1390,3 +1422,57 @@ mod phone {
 }
 #[cfg(not(desktop))]
 use phone::*;
+
+/// The camera during a video call: frames go to the vault at the call's
+/// video size, and a small mirrored copy to our own preview. Dropping it
+/// turns the camera off.
+struct CallCamera {
+    #[cfg(desktop)]
+    _scan: crate::camera::Scan,
+}
+
+impl CallCamera {
+    fn start(
+        width: u32,
+        height: u32,
+        tx: tokio::sync::mpsc::UnboundedSender<Cmd>,
+        ui: slint::Weak<AppWindow>,
+    ) -> Self {
+        let send = move |fw: u32, fh: u32, rgb: &[u8]| {
+            let frame = crate::camera::fit(fw, fh, rgb, width, height, false);
+            let _ = tx.send(Cmd::CallFrame(width, height, frame));
+            let (pw, ph) = (width / 2, height / 2);
+            let preview = crate::camera::fit(fw, fh, rgb, pw, ph, true);
+            let _ = ui.upgrade_in_event_loop(move |ui| {
+                let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                    &preview, pw, ph,
+                );
+                ui.set_call_self(slint::Image::from_rgba8(buf));
+            });
+        };
+        #[cfg(desktop)]
+        {
+            Self {
+                _scan: crate::camera::start_video(move |fw, fh, rgb| send(fw, fh, &rgb)),
+            }
+        }
+        #[cfg(not(desktop))]
+        {
+            enclave_platform::phone::start_call_camera(move |c| {
+                if let enclave_platform::phone::Camera::Color(fw, fh, rot, i420) = c
+                    && let Some((rw, rh, rgb)) = crate::camera::i420_rgb(fw, fh, rot, &i420)
+                {
+                    send(rw, rh, &rgb);
+                }
+            });
+            Self {}
+        }
+    }
+}
+
+#[cfg(not(desktop))]
+impl Drop for CallCamera {
+    fn drop(&mut self) {
+        enclave_platform::phone::stop_camera();
+    }
+}
