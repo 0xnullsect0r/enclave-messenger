@@ -748,6 +748,9 @@ export component AppWindow inherits Window {
     in property <string> call-note;
     in-out property <int> call-elapsed;
     in property <bool> call-camera;
+    // The call shrunk to a tile over the app (picture in picture), while
+    // it rings out, connects or is on.
+    in-out property <bool> call-small;
     in-out property <image> call-remote;
     in-out property <bool> call-has-remote;
     in-out property <image> call-self;
@@ -859,6 +862,12 @@ export component AppWindow inherits Window {
     callback start-join();
     callback sheet-changed(Sheet);
     changed sheet => { root.sheet-changed(root.sheet); }
+    // A call that rings, ends or goes away comes back to the full screen.
+    changed call-state => {
+        if root.call-state != 1 && root.call-state != 3 && root.call-state != 4 {
+            root.call-small = false;
+        }
+    }
     callback cancel-join();
     in property <bool> can-join;
     in property <string> join-code;
@@ -3809,7 +3818,14 @@ export component AppWindow inherits Window {
     }
 
     // ------------------------------------------------------------- the call
-    if root.call-state != 0: Rectangle {
+    // The time on the call, counted here between snapshots (also while the
+    // call is a tile).
+    Timer {
+        interval: 1s;
+        running: root.call-state == 4;
+        triggered => { root.call-elapsed += 1; }
+    }
+    if root.call-state != 0 && !root.call-small: Rectangle {
         background: #101914;
         accessible-role: groupbox;
         accessible-label: root.call-state == 2 ? @tr("Incoming call from {}", root.call-name) : @tr("Call with {}", root.call-name);
@@ -3841,11 +3857,30 @@ export component AppWindow inherits Window {
                 accessible-label: @tr("Your video");
             }
         }
-        // The time on the call, counted here between snapshots.
-        Timer {
-            interval: 1s;
-            running: root.call-state == 4;
-            triggered => { root.call-elapsed += 1; }
+        // Back to the app, the call in a tile.
+        if root.call-state == 1 || root.call-state == 3 || root.call-state == 4: Rectangle {
+            x: Tokens.space-m;
+            y: Tokens.space-m;
+            width: 48px;
+            height: 48px;
+            border-radius: self.width / 2;
+            background: shrink.pressed ? #ffffff40 : shrink.has-hover ? #ffffff26 : #ffffff14;
+            accessible-role: button;
+            accessible-label: @tr("Back to the app (the call goes on)");
+            accessible-action-default => { root.call-small = true; }
+            Path {
+                width: 24px;
+                height: 24px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.back;
+                stroke: #ffffff;
+                stroke-width: 1.75px;
+            }
+            shrink := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.call-small = true; }
+            }
         }
         VerticalLayout {
             alignment: center;
@@ -3939,6 +3974,87 @@ export component AppWindow inherits Window {
                     tint: #b3261e;
                     ink: #ffffff;
                     clicked => { root.end-call(); }
+                }
+            }
+        }
+    }
+
+    // The call as a tile over the app: the other person's picture (or who
+    // and how long), tap to go back to the call, or hang up.
+    if root.call-small && (root.call-state == 1 || root.call-state == 3 || root.call-state == 4): tile := Rectangle {
+        property <bool> picture: root.call-video && root.call-has-remote && root.call-state == 4;
+        x: parent.width - self.width - Tokens.space-m;
+        y: 84px;
+        width: 184px;
+        height: self.picture ? 184px : 64px;
+        border-radius: Tokens.radius-control;
+        clip: true;
+        background: #101914;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000059;
+        accessible-role: groupbox;
+        accessible-label: @tr("Call with {}", root.call-name);
+        open := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.call-small = false; }
+        }
+        if tile.picture: Image {
+            y: 0;
+            width: 100%;
+            height: tile.height - 48px;
+            source: root.call-remote;
+            image-fit: cover;
+            accessible-role: image;
+            accessible-label: @tr("{}'s video", root.call-name);
+        }
+        HorizontalLayout {
+            y: tile.height - 48px - 8px;
+            height: 48px;
+            padding-left: Tokens.space-s;
+            padding-right: 8px;
+            spacing: Tokens.space-s;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.call-name;
+                    color: #ffffff;
+                    font-size: Tokens.type-body;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.call-state == 1 ? @tr("Calling…")
+                        : root.call-state == 3 ? @tr("Connecting…")
+                        : (Math.floor(root.call-elapsed / 60) + ":" + (Math.mod(root.call-elapsed, 60) < 10 ? "0" : "") + Math.mod(root.call-elapsed, 60))
+                            + (root.call-muted ? " · " + @tr("Muted") : "");
+                    color: #ffffffbf;
+                    font-size: Tokens.type-caption;
+                    overflow: elide;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: self.width / 2;
+                    background: hang.pressed ? #b3261e.darker(20%) : #b3261e;
+                    accessible-role: button;
+                    accessible-label: @tr("Hang up");
+                    accessible-action-default => { root.end-call(); }
+                    Path {
+                        width: 20px;
+                        height: 20px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.phone;
+                        stroke: #ffffff;
+                        stroke-width: 1.75px;
+                    }
+                    hang := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.end-call(); }
+                    }
                 }
             }
         }

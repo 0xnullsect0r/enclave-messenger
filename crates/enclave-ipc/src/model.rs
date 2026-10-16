@@ -777,6 +777,12 @@ fn bytes_pcm(b: &[u8]) -> Result<Vec<i16>> {
 /// (about 7 MB, well inside a frame).
 pub const LAN_BATCH: usize = 512;
 
+/// The titles of a ringing call's notice (phones show the system's call
+/// screen instead).
+pub const CALL_NOTICE: &str = "Incoming call";
+/// As above, for a video call.
+pub const VIDEO_CALL_NOTICE: &str = "Incoming video call";
+
 /// A desktop notification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {

@@ -240,6 +240,8 @@ impl VideoCodec {
 }
 
 impl Drop for VideoCodec {
+    // Refutable only with the demo's in-process codec.
+    #[allow(irrefutable_let_patterns)]
     fn drop(&mut self) {
         if let VideoAt::Helper(p) = &self.at {
             let _ = p.out.send(

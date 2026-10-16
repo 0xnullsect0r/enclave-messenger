@@ -288,9 +288,46 @@ pub(super) fn set_delivery(way: u8) {
     });
 }
 
+/// The call's state for the system's call handling (`Calls.java`, a
+/// self-managed ConnectionService): 1 ringing, 2 calling out, 3
+/// connected, 4 ended. On the activity, or the service with no window.
+fn call_state(state: i32, name: &str, video: bool) {
+    let _ = with_any(|env, a| {
+        let n = env.new_string(name)?;
+        env.call_method(
+            a,
+            "callState",
+            "(ILjava/lang/String;Z)V",
+            &[
+                JValue::Int(state),
+                JValue::Object(&n),
+                JValue::Bool(u8::from(video)),
+            ],
+        )
+        .map(|_| ())
+    });
+}
+
+pub(super) fn report_incoming(name: &str, video: bool) {
+    call_state(1, name, video);
+}
+
+pub(super) fn report_outgoing(name: &str, video: bool) {
+    call_state(2, name, video);
+}
+
+pub(super) fn report_connected() {
+    call_state(3, "", false);
+}
+
+pub(super) fn report_ended() {
+    call_state(4, "", false);
+}
+
 /// An event from the Java side (`Native.event`): 1 in front ("1") or not,
 /// 2 a push token ("platform:token"), 3 a wake, 4 the activity is gone,
-/// 5 the way messages arrive changed (its number).
+/// 5 the way messages arrive changed (its number), 6 the system's call
+/// screen ("answer", "end", "mute:1", "mute:0").
 pub fn event(kind: i32, data: &str) {
     let e = match kind {
         4 => {
@@ -307,6 +344,13 @@ pub fn event(kind: i32, data: &str) {
             Event::PushToken(p.parse().unwrap_or(0), t.to_string())
         }
         3 => Event::Wake,
+        6 => match data {
+            "answer" => Event::CallAnswered,
+            "end" => Event::CallEnded,
+            "mute:1" => Event::CallMuted(true),
+            "mute:0" => Event::CallMuted(false),
+            _ => return,
+        },
         _ => return,
     };
     super::emit(e);

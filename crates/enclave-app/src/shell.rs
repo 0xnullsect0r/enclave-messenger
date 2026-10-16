@@ -1371,6 +1371,8 @@ mod phone {
                     ui.set_scan_error(crate::i18n::tr(&why).into())
                 });
             }
+            // Colour frames are a call's (start_call_camera), not a scan's.
+            Camera::Color(..) => {}
         });
     }
 

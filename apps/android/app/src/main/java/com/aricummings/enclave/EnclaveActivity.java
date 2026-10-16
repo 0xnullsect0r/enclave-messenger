@@ -84,6 +84,41 @@ public class EnclaveActivity extends android.app.NativeActivity {
         if (EnclaveService.delivery(this) == Native.FCM) {
             Fcm.start(this);
         }
+        callIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        callIntent(intent);
+    }
+
+    /** Opened by a ringing call's notification: over the lock screen, answering if asked. */
+    private void callIntent(Intent intent) {
+        String call = intent == null ? null : intent.getStringExtra(Calls.EXTRA);
+        if (call == null) {
+            return;
+        }
+        intent.removeExtra(Calls.EXTRA);
+        setShowWhenLocked(true);
+        setTurnScreenOn(true);
+        if ("answer".equals(call)) {
+            Calls.answer();
+        }
+    }
+
+    // Calls -----------------------------------------------------------------
+
+    /** The call's state for the system's call handling (Calls.report). */
+    public void callState(int state, String name, boolean video) {
+        Calls.report(this, state, name, video);
+        if (state == Calls.ENDED) {
+            main.post(() -> {
+                setShowWhenLocked(false);
+                setTurnScreenOn(false);
+            });
+        }
     }
 
     @Override

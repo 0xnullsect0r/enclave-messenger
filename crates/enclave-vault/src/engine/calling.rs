@@ -431,9 +431,9 @@ impl Engine {
                 let _ = self.out.send(Out::Notify(enclave_ipc::Notice {
                     conversation: hex_id(&from),
                     title: if video {
-                        "Incoming video call"
+                        enclave_ipc::VIDEO_CALL_NOTICE
                     } else {
-                        "Incoming call"
+                        enclave_ipc::CALL_NOTICE
                     }
                     .into(),
                     body: if named { name } else { String::new() },

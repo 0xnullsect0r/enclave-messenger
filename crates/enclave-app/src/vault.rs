@@ -262,6 +262,7 @@ pub fn spawn_process(_: &std::path::Path, _: &Mode) -> std::io::Result<Channels>
 #[cfg(not(desktop))]
 pub mod phone {
     use super::{Channels, Cmd, Out};
+    use enclave_ipc::{CALL_NOTICE, VIDEO_CALL_NOTICE};
     use enclave_vault::Mode;
     use std::sync::{Arc, Mutex, OnceLock};
     use tokio::sync::mpsc;
@@ -273,6 +274,76 @@ pub mod phone {
 
     static ENGINE: OnceLock<Shared> = OnceLock::new();
 
+    /// What the system's call handling (CallKit, Android's
+    /// ConnectionService) was told of the call, from each snapshot: the
+    /// call's state, and an answer the system's screen gave before the
+    /// offer arrived (a push's call screen on iOS).
+    #[derive(Default)]
+    struct SystemCall {
+        state: u8,
+        early_answer: bool,
+    }
+
+    static SYSTEM_CALL: Mutex<SystemCall> = Mutex::new(SystemCall {
+        state: 0,
+        early_answer: false,
+    });
+
+    /// Tell the system how the call goes. Returns a command when an early
+    /// answer is now due.
+    fn see_call(s: &enclave_ipc::Snapshot) -> Option<Cmd> {
+        use enclave_platform::phone as p;
+        let c = &s.call;
+        let mut sys = SYSTEM_CALL.lock().ok()?;
+        // With previews off, the system's screens (the lock screen, a car)
+        // don't name the caller either.
+        let name = if s.previews && !c.name.is_empty() {
+            c.name.as_str()
+        } else {
+            "Enclave"
+        };
+        let was = sys.state;
+        sys.state = c.state;
+        let live = |st: u8| (1..=4).contains(&st);
+        match c.state {
+            1 if !live(was) => p::report_outgoing_call(name, c.video),
+            2 if !live(was) => {
+                p::report_incoming_call(name, c.video);
+                if std::mem::take(&mut sys.early_answer) {
+                    return Some(Cmd::AnswerCall);
+                }
+            }
+            4 if was != 4 => p::report_call_connected(),
+            0 | 5 if live(was) => p::report_call_ended(),
+            _ => {}
+        }
+        None
+    }
+
+    /// A button on the system's call screen.
+    fn call_button(e: &enclave_platform::phone::Event) -> Option<Cmd> {
+        use enclave_platform::phone::Event;
+        let mut sys = SYSTEM_CALL.lock().ok()?;
+        match e {
+            Event::CallAnswered if sys.state == 2 => Some(Cmd::AnswerCall),
+            Event::CallAnswered => {
+                // Nothing rings yet: answer once the offer is in.
+                sys.early_answer = sys.state == 0 || sys.state == 5;
+                None
+            }
+            Event::CallEnded => {
+                sys.early_answer = false;
+                match sys.state {
+                    2 => Some(Cmd::DeclineCall),
+                    1 | 3 | 4 => Some(Cmd::EndCall),
+                    _ => None,
+                }
+            }
+            Event::CallMuted(on) => Some(Cmd::CallMute(*on)),
+            _ => None,
+        }
+    }
+
     /// The process's vault, started with `mode` if there is none yet;
     /// whether it was started now.
     fn engine(mode: Mode) -> (&'static Shared, bool) {
@@ -282,10 +353,28 @@ pub mod phone {
             let (tx, mut out_rx) = enclave_vault::spawn(mode);
             let window: Arc<Mutex<Option<mpsc::UnboundedSender<Out>>>> = Arc::new(Mutex::new(None));
             let to = Arc::clone(&window);
+            let answer = tx.clone();
             let _ = std::thread::Builder::new()
                 .name("enclave-outputs".into())
                 .spawn(move || {
                     while let Some(out) = out_rx.blocking_recv() {
+                        let out = match out {
+                            Out::Snapshot(snap) => {
+                                if let Some(cmd) = see_call(&snap) {
+                                    let _ = answer.send(cmd);
+                                }
+                                Out::Snapshot(snap)
+                            }
+                            // The system's call screen rings (CallKit,
+                            // Android's call notification), not a message
+                            // notification.
+                            Out::Notify(n)
+                                if n.title == CALL_NOTICE || n.title == VIDEO_CALL_NOTICE =>
+                            {
+                                continue;
+                            }
+                            out => out,
+                        };
                         let Ok(mut w) = to.lock() else {
                             return;
                         };
@@ -313,11 +402,16 @@ pub mod phone {
             let events = tx.clone();
             enclave_platform::phone::on_event(move |e| {
                 use enclave_platform::phone::Event;
-                let _ = events.send(match e {
+                let cmd = match e {
                     Event::Visible(v) => Cmd::Visible(v),
                     Event::PushToken(p, t) => Cmd::PushToken(p, t),
                     Event::Wake => Cmd::Wake,
-                });
+                    e => match call_button(&e) {
+                        Some(cmd) => cmd,
+                        None => return,
+                    },
+                };
+                let _ = events.send(cmd);
             });
             Shared { tx, window }
         });

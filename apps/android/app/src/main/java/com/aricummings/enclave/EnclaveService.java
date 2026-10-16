@@ -37,6 +37,8 @@ public class EnclaveService extends Service {
     private static final ArrayDeque<String> DATA = new ArrayDeque<>();
     private static boolean started;
     static volatile boolean windowOpen;
+    /** A call is on: the service holds the call's microphone and audio. */
+    private static volatile boolean inCall;
 
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -68,6 +70,12 @@ public class EnclaveService extends Service {
         }
     }
 
+    /** A call started (true) or ended: the service keeps it going with no window. */
+    static void call(Context c, boolean on) {
+        inCall = on;
+        start(c);
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -83,14 +91,28 @@ public class EnclaveService extends Service {
         Notification n = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(getApplicationInfo().icon)
                 .setContentTitle("Enclave")
-                .setContentText(delivery(this) == 0 ? "Connected, so messages arrive" : "Fetching new messages")
+                .setContentText(inCall ? "Call in progress"
+                        : delivery(this) == 0 ? "Connected, so messages arrive" : "Fetching new messages")
                 .setContentIntent(PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE))
                 .setOngoing(true)
                 .build();
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(FOREGROUND_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        } else {
-            startForeground(FOREGROUND_ID, n);
+        int call = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(FOREGROUND_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE | (inCall ? call : 0));
+            } else if (inCall && Build.VERSION.SDK_INT >= 30) {
+                startForeground(FOREGROUND_ID, n, call);
+            } else {
+                startForeground(FOREGROUND_ID, n);
+            }
+        } catch (RuntimeException e) {
+            // The call's types aren't allowed right now (the microphone from
+            // the background): connected, without them.
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(FOREGROUND_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            } else {
+                startForeground(FOREGROUND_ID, n);
+            }
         }
         Native.load();
         synchronized (KINDS) {
@@ -117,7 +139,7 @@ public class EnclaveService extends Service {
         main.removeCallbacksAndMessages(null);
         if (delivery(this) != 0) {
             main.postDelayed(() -> {
-                if (!windowOpen) {
+                if (!windowOpen && !inCall) {
                     stopForeground(STOP_FOREGROUND_REMOVE);
                     stopSelf();
                 }
@@ -157,6 +179,11 @@ public class EnclaveService extends Service {
                 .setAutoCancel(true)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .build());
+    }
+
+    /** The call's state for the system's call handling (Calls.report). */
+    public void callState(int state, String name, boolean video) {
+        Calls.report(this, state, name, video);
     }
 
     /** A helper in its own process (HelperService.start). */

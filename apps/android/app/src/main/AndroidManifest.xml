@@ -22,6 +22,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Calls on the system's call handling (Calls.java: a self-managed
+         ConnectionService, which needs no phone permission), a ringing
+         call full screen over the lock screen, and the call kept going
+         with the window closed. -->
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- UnifiedPush distributors and their link screen (UnifiedPush.java). -->
     <queries>
@@ -61,11 +69,24 @@
         <service
             android:name=".EnclaveService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|phoneCall|microphone">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps an end-to-end encrypted messenger connected to its mixnet so messages arrive without Google's push service, or fetches them after a push woke it." />
         </service>
+
+        <service
+            android:name=".Calls$Service"
+            android:exported="true"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".Calls$Decline"
+            android:exported="false" />
 
         <!-- The helpers in processes of their own (HelperService): the
              network in ":net", the media parsers isolated in ":media". -->

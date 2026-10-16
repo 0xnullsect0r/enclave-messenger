@@ -4081,10 +4081,13 @@ dependencies = [
  "ndk-context",
  "objc2 0.6.5",
  "objc2-av-foundation",
+ "objc2-avf-audio",
+ "objc2-call-kit",
  "objc2-core-media",
  "objc2-core-video",
  "objc2-foundation 0.3.2",
  "objc2-local-authentication",
+ "objc2-push-kit",
  "objc2-ui-kit 0.3.2",
  "objc2-uniform-type-identifiers 0.3.2",
  "objc2-user-notifications 0.3.2",
@@ -9854,6 +9857,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-call-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e33ab4dde42f7a6955a9ed8af82b9ff7d163b3791f5cf6288312742dc874403"
+dependencies = [
+ "block2 0.6.2",
+ "dispatch2",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
 name = "objc2-cloud-kit"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10096,6 +10111,18 @@ checksum = "a0125f776a10d00af4152d74616409f0d4a2053a6f57fa5b7d6aa2854ac04794"
 dependencies = [
  "bitflags 2.13.2",
  "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-push-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34a021f6e2cd480134c091ac9e173f4ea4bbc7213589232ff8ccb287b2c10b82"
+dependencies = [
+ "block2 0.6.2",
+ "dispatch2",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
 ]

@@ -97,6 +97,7 @@ allow-build-scripts = [
     "borsh",
     "clang-sys",
     "classic-mceliece-rust",
+    "cpal",  # target cfgs only (call audio)
     "crabgrind",  # constant-time tests under valgrind only (cfg(valgrind_ct_test))
     "crc32fast",
     "crossbeam-deque",
@@ -104,6 +105,7 @@ allow-build-scripts = [
     "crossbeam-utils",
     "crunchy",
     "curve25519-dalek",
+    "curve25519-elligator2",  # backend cfg, as curve25519-dalek; obfs4 bridges
     "defmt",
     "defmt-macros",
     "derive-deftly-macros",
@@ -120,6 +122,7 @@ allow-build-scripts = [
     "glutin_glx_sys",
     "glutin_wgl_sys",
     "hax-lib",
+    "heapless",  # target cfg; obfs4 bridges and WireGuard (boringtun)
     "httparse",
     "i-slint-backend-linuxkms",
     "i-slint-backend-selector",
@@ -199,6 +202,7 @@ allow-build-scripts = [
     "valuable",
     "wasm-bindgen",
     "wasm-bindgen-shared",
+    "wasmparser",  # iOS media sandbox (wasmi): reads the rustc version for a cfg
     "wayland-backend",  # Linux windowing
     "wayland-client",
     "wayland-sys",  # Linux windowing (dlopen)

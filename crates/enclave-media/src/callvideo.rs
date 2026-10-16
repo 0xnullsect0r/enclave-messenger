@@ -8,7 +8,9 @@
 //! packets carry so frames don't queue. The window hands over frames
 //! already cropped and scaled to the tier's size, as RGBA.
 
-use crate::video::{i420_to_rgba, to_i420};
+#[cfg(feature = "av1")]
+use crate::video::i420_to_rgba;
+use crate::video::to_i420;
 use crate::{MediaError, Result, Rgba};
 
 /// One video tier.

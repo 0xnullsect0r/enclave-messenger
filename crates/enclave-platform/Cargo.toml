@@ -37,7 +37,7 @@ biometric = ["dep:objc2", "dep:objc2-local-authentication", "dep:objc2-foundatio
 # Android and iOS services for the app (`phone`): file pickers, the camera
 # for codes, notifications, the clipboard, screen security. The app turns
 # this on; on Android it also gives the keystore its Android Keystore.
-phone = ["dep:jni", "dep:ndk-context", "dep:objc2", "dep:objc2-foundation", "dep:objc2-ui-kit", "dep:objc2-user-notifications", "dep:objc2-av-foundation", "dep:objc2-core-media", "dep:objc2-core-video", "dep:objc2-uniform-type-identifiers", "dep:block2", "dep:dispatch2"]
+phone = ["dep:jni", "dep:ndk-context", "dep:objc2", "dep:objc2-foundation", "dep:objc2-ui-kit", "dep:objc2-user-notifications", "dep:objc2-av-foundation", "dep:objc2-core-media", "dep:objc2-core-video", "dep:objc2-uniform-type-identifiers", "dep:block2", "dep:dispatch2", "dep:objc2-call-kit", "dep:objc2-push-kit", "dep:objc2-avf-audio"]
 
 [dependencies]
 zeroize = "1"
@@ -55,7 +55,7 @@ block2 = { version = "0.6", optional = true }
 [target.'cfg(target_os = "ios")'.dependencies]
 security-framework = { version = "3", optional = true }
 objc2 = { version = "0.6", optional = true }
-objc2-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "NSString", "NSError", "NSArray", "NSURL", "NSData", "NSDate", "NSDictionary", "NSNotification", "NSOperation", "NSObject", "NSFileManager", "NSValue", "NSPathUtilities", "NSEnumerator"] }
+objc2-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "NSString", "NSError", "NSArray", "NSURL", "NSData", "NSDate", "NSDictionary", "NSNotification", "NSOperation", "NSObject", "NSFileManager", "NSValue", "NSPathUtilities", "NSEnumerator", "NSUUID", "NSSet"] }
 objc2-ui-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "UIApplication", "UIResponder", "UIView", "UIWindow", "UIViewController", "UIScreen", "UIPasteboard", "UIDocumentPickerViewController", "UIVisualEffectView", "UIVisualEffect", "UIBlurEffect", "UIScene", "UIWindowScene", "objc2-uniform-type-identifiers", "objc2-core-foundation"] }
 objc2-user-notifications = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationRequest", "UNNotificationContent", "UNNotificationSound", "UNNotificationTrigger", "UNNotification"] }
 objc2-av-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-video", "AVCaptureSession", "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureVideoDataOutput", "AVMediaFormat"] }
@@ -64,6 +64,10 @@ objc2-core-video = { version = "0.3", optional = true, default-features = false,
 objc2-uniform-type-identifiers = { version = "0.3", optional = true, default-features = false, features = ["std", "UTType", "UTCoreTypes"] }
 block2 = { version = "0.6", optional = true }
 dispatch2 = { version = "0.3", optional = true, default-features = false, features = ["std", "objc2"] }
+# Calls: CallKit (the system's call screens) and PushKit (VoIP wakes).
+objc2-call-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "CXProvider", "CXProviderConfiguration", "CXCallUpdate", "CXHandle", "CXAction", "CXCallAction", "CXAnswerCallAction", "CXEndCallAction", "CXSetMutedCallAction", "CXStartCallAction", "CXCallController", "CXTransaction", "CXError"] }
+objc2-avf-audio = { version = "0.3", optional = true, default-features = false, features = ["std", "bitflags", "AVAudioSession", "AVAudioSessionTypes"] }
+objc2-push-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "dispatch2", "PKDefines", "PKPushRegistry", "PKPushCredentials", "PKPushPayload"] }
 
 # Android: JNI to the app's activity (apps/android, EnclaveActivity).
 [target.'cfg(target_os = "android")'.dependencies]

@@ -49,11 +49,39 @@ pub enum Event {
     /// The app came to the front (true) or left it.
     Visible(bool),
     /// A push token for this app: platform (1 UnifiedPush endpoint, 2 APNs
-    /// device token in hex, 3 FCM token) and the token; empty when the
-    /// push service dropped the app.
+    /// device token in hex, 3 FCM token, 4 PushKit VoIP token in hex) and
+    /// the token; empty when the push service dropped the app.
     PushToken(u8, String),
     /// A push arrived: time to fetch.
     Wake,
+    /// The system's call screen answered the ringing call.
+    CallAnswered,
+    /// The system's call screen hung up (or turned down) the call.
+    CallEnded,
+    /// The system's call screen turned the microphone off (true) or on.
+    CallMuted(bool),
+}
+
+/// A call is ringing: show the system's incoming-call screen (CallKit,
+/// Android's ConnectionService), or name the caller on one already shown.
+pub fn report_incoming_call(name: &str, video: bool) {
+    imp::report_incoming(name, video);
+}
+
+/// We are calling someone: the system handles the call's audio and shows
+/// it on the lock screen.
+pub fn report_outgoing_call(name: &str, video: bool) {
+    imp::report_outgoing(name, video);
+}
+
+/// The call connected.
+pub fn report_call_connected() {
+    imp::report_connected();
+}
+
+/// The call ended.
+pub fn report_call_ended() {
+    imp::report_ended();
 }
 
 type Listener = Box<dyn Fn(Event) + Send + Sync>;

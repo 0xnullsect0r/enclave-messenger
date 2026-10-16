@@ -2,8 +2,11 @@
 //! thread (the app's UI thread on iOS) except the camera's frames, which
 //! arrive on a queue of their own.
 
+mod calls;
+
 use super::{Camera, Pick};
 use block2::RcBlock;
+pub(super) use calls::{report_connected, report_ended, report_incoming, report_outgoing};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool, NSObject, NSObjectProtocol, ProtocolObject, Sel};
 use objc2::{
@@ -239,6 +242,8 @@ pub fn init() {
             );
         }
     }
+    // Calls: CallKit, and a PushKit VoIP token for call wakes.
+    calls::init();
     // APNs: the token comes back to `registered` (Maximum privacy never
     // registers it with a server; the vault refuses there).
     UIApplication::sharedApplication(mtm).registerForRemoteNotifications();

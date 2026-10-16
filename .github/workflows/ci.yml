@@ -193,6 +193,36 @@ jobs:
           manifest-path: nym/Cargo.toml
           arguments: --config nym/deny.toml
 
+  phones:
+    name: Phone code (Android app crates, iOS platform code, Java)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          workspaces: nym
+          key: phones
+      - name: NDK r28, Rust targets, cargo-ndk
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;28.2.13676358" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          rustup target add aarch64-linux-android aarch64-apple-ios
+          cargo install --locked cargo-ndk@4.1.2
+      # What only phones compile (enclave-platform's phone module, the
+      # app's phone shell and vault glue), which the desktop jobs never see.
+      - name: clippy for Android
+        working-directory: nym
+        run: cargo ndk --platform 28 -t arm64-v8a clippy --locked -p enclave-mobile -p enclave-app -p enclave-platform -p enclave-vault -- -D warnings
+      - name: clippy for iOS (the platform code; the app builds on macOS at release)
+        run: cargo clippy --locked -p enclave-platform --features phone --target aarch64-apple-ios -- -D warnings
+      - name: Java sources compile (the F-Droid flavour; Play's needs Firebase)
+        run: |
+          javac -Xlint:all -Werror -cp "$ANDROID_HOME/platforms/android-36/android.jar" -d "$RUNNER_TEMP/java" \
+            apps/android/app/src/main/java/com/aricummings/enclave/*.java \
+            apps/android/app/src/fdroid/java/com/aricummings/enclave/*.java
+
   tls-interop:
     name: TLS interop (OpenSSL 3.5), ACME (pebble), C2SP cosignatures (Go)
     runs-on: ubuntu-24.04

@@ -114,6 +114,10 @@ allow-build-scripts = [
     # the Windows resource; checked in the main workspace.
     "enclave-app",
     "enclave-vault",
+    # The app's call audio (cpal), as in the main workspace: cpal's script
+    # sets target cfgs; alsa-sys links the system's ALSA on a Linux host.
+    "alsa-sys",
+    "cpal",
     # nym-sdk 1.21.5 (nym/ workspace only): nym crates' build scripts set up
     # sqlx's offline query checks and version info (vergen); aws-lc-sys is
     # rustls's default C crypto there; blake3 and snow pick SIMD paths;

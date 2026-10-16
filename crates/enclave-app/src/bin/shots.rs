@@ -533,6 +533,11 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.set_call_elapsed(182);
         shot("61-call-on", desktop);
         shot("61-call-on-phone", phone);
+        // Back to the app, the call in a tile.
+        ui.set_call_small(true);
+        shot("62-call-tile", desktop);
+        shot("62-call-tile-phone", phone);
+        ui.set_call_small(false);
         view::apply(&ui, &data);
 
         // The mixnet unreachable for a minute: the backup route offered.

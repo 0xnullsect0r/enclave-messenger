@@ -58,10 +58,15 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Enclave uses the microphone for calls. Your voice is encrypted on this iPhone before it leaves.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Enclave uses the camera only to scan codes (invites, meeting in person, linking a device). Frames never leave the app.</string>
+	<string>Enclave uses the camera to scan codes (invites, meeting in person, linking a device) and for video calls, encrypted on this iPhone before they leave. Scanned frames never leave the app.</string>
+	<!-- remote-notification: message wakes (the NSE decrypts them); voip:
+	     a call's PushKit push, reported to CallKit at once (PC-02); audio:
+	     the call keeps its sound with the screen locked. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>voip</string>
+		<string>audio</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Enclave sends your message history straight to your other device on this network when you link them.</string>
