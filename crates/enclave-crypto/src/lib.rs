@@ -10,11 +10,15 @@
 //! * [`rng`]: hedged randomness.
 //! * [`pwhash`]: Argon2id for optional passphrases.
 //! * [`hash`]: SHA3-512, SHAKE256, fingerprints and security codes.
+//! * `hqc` (feature `hqc`): HQC-256, for the four-KEM suite once FIPS 207
+//!   is final.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod error;
 pub mod hash;
+#[cfg(feature = "hqc")]
+pub mod hqc;
 pub mod kem;
 pub mod kmac;
 pub mod labels;

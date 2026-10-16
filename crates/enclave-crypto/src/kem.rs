@@ -311,6 +311,11 @@ pub enum Suite {
     TwoKem,
     /// X448 + ML-KEM-1024 + Classic McEliece-8192128.
     ThreeKem,
+    /// X448 + ML-KEM-1024 + Classic McEliece-8192128 + HQC-256: reserved
+    /// for when FIPS 207 is final (External Gate G12); no protocol uses it
+    /// yet.
+    #[cfg(feature = "hqc")]
+    FourKem,
 }
 
 impl Suite {
@@ -319,6 +324,8 @@ impl Suite {
         match self {
             Suite::TwoKem => 0x02,
             Suite::ThreeKem => 0x03,
+            #[cfg(feature = "hqc")]
+            Suite::FourKem => 0x04,
         }
     }
 
@@ -326,6 +333,8 @@ impl Suite {
         match self {
             Suite::TwoKem => (labels::KEM2_EXTRACT, labels::KEM2_COMBINE),
             Suite::ThreeKem => (labels::KEM_EXTRACT, labels::KEM_COMBINE),
+            #[cfg(feature = "hqc")]
+            Suite::FourKem => (labels::KEM4_EXTRACT, labels::KEM4_COMBINE),
         }
     }
 }

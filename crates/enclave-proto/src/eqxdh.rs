@@ -165,9 +165,13 @@ impl InitialMessage {
         let ek = X448Public(r.array()?);
         let ct_pq = MlKemCiphertext::from_slice(r.fixed(MLKEM_CT_LEN)?)?;
         let mce_bytes: [u8; MCELIECE_CT_LEN] = r.array()?;
+        #[allow(unreachable_patterns)]
         let ct_mce = match suite {
             Suite::ThreeKem => Some(McElieceCiphertext(mce_bytes)),
             Suite::TwoKem => None,
+            // The four-KEM suite (enclave-crypto's `hqc`) isn't part of
+            // EQXDH until FIPS 207 is final.
+            _ => return Err(ProtoError::Decode),
         };
         let ct_auth = MlKemCiphertext::from_slice(r.fixed(MLKEM_CT_LEN)?)?;
         let sealed_identity = r.fixed(SEALED_IDENTITY_LEN)?.to_vec();

@@ -17,6 +17,10 @@ pub const KEM_COMBINE: &str = "enclave/v1/kem/combine";
 pub const KEM2_EXTRACT: &str = "enclave/v1/kem2/extract";
 /// EnclaveCombine (2-KEM, pre-braid) combination step.
 pub const KEM2_COMBINE: &str = "enclave/v1/kem2/combine";
+/// EnclaveCombine (4-KEM, with HQC-256; feature `hqc`) extraction step.
+pub const KEM4_EXTRACT: &str = "enclave/v1/kem4/extract";
+/// EnclaveCombine (4-KEM, with HQC-256; feature `hqc`) combination step.
+pub const KEM4_COMBINE: &str = "enclave/v1/kem4/combine";
 /// Hedged random number generation.
 pub const RNG_HEDGE: &str = "enclave/v1/rng/hedge";
 /// Deterministic SLH-DSA root key generation from the recovery secret.
@@ -39,6 +43,8 @@ pub const ALL: &[&str] = &[
     KEM_COMBINE,
     KEM2_EXTRACT,
     KEM2_COMBINE,
+    KEM4_EXTRACT,
+    KEM4_COMBINE,
     RNG_HEDGE,
     ROOT_KEYGEN,
     SIG_COMPOSITE,
