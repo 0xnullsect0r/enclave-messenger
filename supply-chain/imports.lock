@@ -2665,6 +2665,20 @@ delta = "0.10.3 -> 0.10.4"
 notes = "Adds panics to prevent a block size of zero from causing unsoundness."
 aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
 
+[[audits.zcash.audits.chacha20poly1305]]
+who = "Jack Grigg <jack@z.cash>"
+criteria = "safe-to-deploy"
+delta = "0.9.0 -> 0.9.1"
+notes = "Unpins zeroize."
+aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
+
+[[audits.zcash.audits.chacha20poly1305]]
+who = "Daira Hopwood <daira@jacaranda.org>"
+criteria = "safe-to-deploy"
+delta = "0.9.1 -> 0.10.1"
+notes = "This mainly adapts to API changes between aead 0.4 and aead 0.5."
+aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
+
 [[audits.zcash.audits.crunchy]]
 who = "Jack Grigg <jack@electriccoin.co>"
 criteria = "safe-to-deploy"

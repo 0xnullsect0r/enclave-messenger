@@ -1,8 +1,7 @@
-//! Call key agreement, SFrame, shaping, tickets and the relay link.
+//! Call key agreement, SFrame, shaping and tickets.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use enclave_calls::CallError;
-use enclave_calls::link::{self, Link};
 use enclave_calls::sframe::{self, Receiver, Sender};
 use enclave_calls::shape::{self, Inner, Reassembler, Shaper, Stream};
 use enclave_calls::signal::{self, Answer, CALLEE, CALLER, Media, Offer, Route};
@@ -145,38 +144,34 @@ fn shaping_is_constant_and_only_steps_down() {
 }
 
 #[test]
-fn tickets_and_link() {
+fn tickets() {
     let mut rng = HedgedRng::new().unwrap();
     let relay_key = TicketSecretKey::generate([7; 16], 20_000, &mut rng).unwrap();
-    let (req, client) = ticket::request(relay_key.public(), [9; 32], 3600, &mut rng).unwrap();
-    let accepted = relay_key.accept(&req).unwrap();
-    assert_eq!((accepted.token, accepted.duration), ([9; 32], 3600));
-    let (reply, relay_ticket) = accepted.issue([1; 16], NOW, NOW + 3600, &mut rng).unwrap();
-    let client_ticket = client.finish(&reply).unwrap();
+    let (req, client) = ticket::request(relay_key.public(), [9; 32], 3600, 1, &mut rng).unwrap();
+    let accepted = relay_key.accept(&req, 1).unwrap();
+    assert_eq!((accepted.wg_public, accepted.duration), ([9; 32], 3600));
+    let spend = accepted.spend;
+    let (reply, relay_ticket) = accepted
+        .issue([1; 16], NOW, NOW + 3600, [4; 32], &mut rng)
+        .unwrap();
+    let issued = client.finish(&reply, NOW - 2).unwrap();
+    assert_eq!((issued.relay_wg, issued.offset), ([4; 32], 2));
+    let client_ticket = issued.ticket;
     assert_eq!(client_ticket.psk(3)[..], relay_ticket.psk(3)[..]);
     assert_ne!(client_ticket.psk(3)[..], client_ticket.psk(4)[..]);
-    let mut bad = req.clone();
-    let n = bad.len() - 1;
-    bad[n] ^= 1;
-    assert!(relay_key.accept(&bad).is_err());
-
-    let mut c = Link::client(client_ticket);
-    let mut r = Link::relay(relay_ticket);
-    let up = c.seal(NOW + 10, &[5; 160]).unwrap();
-    assert_eq!(up.len(), 160 + link::OVERHEAD);
-    assert_eq!(link::session_of(&up), Some([1; 16]));
-    assert_eq!(r.open(NOW + 10, &up).unwrap(), vec![5; 160]);
-    assert_eq!(r.open(NOW + 10, &up), Err(CallError::Replay));
-    assert!(c.open(NOW + 10, &up).is_err(), "direction keys differ");
-    let down = r.seal(NOW + 10, b"down").unwrap();
-    assert_eq!(c.open(NOW + 10, &down).unwrap(), b"down");
-    // Across a period boundary the previous period still opens; older does not.
-    let late = c.seal(NOW + PERIOD_SECS - 1, b"late").unwrap();
-    assert_eq!(r.open(NOW + PERIOD_SECS + 1, &late).unwrap(), b"late");
-    let old = c.seal(NOW + 1, b"old").unwrap();
+    assert_eq!(client_ticket.period(NOW + PERIOD_SECS + 1), 1);
+    // The same request burns the same id; another request another.
+    assert_eq!(relay_key.accept(&req, 1).unwrap().spend, spend);
+    let (other, _) = ticket::request(relay_key.public(), [9; 32], 3600, 1, &mut rng).unwrap();
+    assert_ne!(relay_key.accept(&other, 1).unwrap().spend, spend);
+    // Tampering anywhere (the proof of work last) is refused.
+    for i in [4, 100, req.len() - 40, req.len() - 1] {
+        let mut bad = req.clone();
+        bad[i] ^= 1;
+        assert!(relay_key.accept(&bad, 1).is_err(), "byte {i}");
+    }
     assert_eq!(
-        r.open(NOW + 2 * PERIOD_SECS + 1, &old),
-        Err(CallError::Stale)
+        relay_key.accept(&req[..req.len() - 1], 1).err(),
+        Some(CallError::Malformed)
     );
-    assert_eq!(c.seal(NOW + 3600, b"x"), Err(CallError::Stale), "expired");
 }

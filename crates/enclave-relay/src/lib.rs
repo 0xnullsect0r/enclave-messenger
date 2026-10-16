@@ -1,7 +1,7 @@
 //! The Enclave call relay (`docs/11-calls.md` §3, `docs/12-servers.md` §5).
 //!
 //! ```text
-//! caller ──link (ticket keys)──▶ relay A ══relay link══ relay B ◀──link (ticket keys)── callee
+//! caller ──WireGuard (ticket PSK)──▶ relay A ══relay link══ relay B ◀──WireGuard (ticket PSK)── callee
 //! ```
 //!
 //! Each caller joins its own relay with the call's rendezvous id and the
@@ -9,16 +9,20 @@
 //! peer relay's address, and packet sizes and timing, never the other
 //! client's address and never media keys (media is SFrame end to end).
 //!
+//! The client hop is WireGuard (`enclave_calls::wg`) with the relay's
+//! static WireGuard key and the ticket's per-period pre-shared key. Tickets
+//! are asked for over UDP (`T_TICKET`, in two datagrams: a request is
+//! larger than one) and paid with proof of work bound to the request
+//! (ADR 0006). The relay-to-relay hop is sealed with a key from the two
+//! relays' static X448 keys.
+//!
 //! The relay core is sans-I/O ([`Relay::handle`] maps one datagram to the
-//! datagrams to send); [`serve`] runs it on a UDP socket. Relay-to-relay
-//! datagrams are sealed with a key from the two relays' static X448 keys.
-//! In production that hop runs WireGuard with Rosenpass (D8) and the client
-//! hop runs WireGuard with the ticket PSK; see `enclave_calls::link`.
+//! datagrams to send); [`serve`] runs it on a UDP socket.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-use enclave_calls::link::{self, Link};
-use enclave_calls::ticket::{Ticket, TicketSecretKey};
+use enclave_calls::ticket::TicketSecretKey;
+use enclave_calls::wg::RelayLinks;
 use enclave_calls::{CallError, labels};
 use enclave_crypto::kem::{X448Public, X448Secret};
 use enclave_crypto::kmac::kmac256_parts;
@@ -34,10 +38,15 @@ pub mod ledger;
 
 pub use ledger::{MemorySpent, Spent};
 
-/// Datagram type: client link.
-pub const T_CLIENT: u8 = 0x01;
-/// Datagram type: relay link.
+/// Datagram type: relay link (from a peer relay's address only).
 pub const T_RELAY: u8 = 0x02;
+/// Datagram type: a ticket request part, or a ticket reply. (A WireGuard
+/// datagram starts with its type, 1 to 4, then three zero bytes.)
+pub const T_TICKET: u8 = 0x10;
+/// Bytes of a ticket request in one datagram.
+pub const TICKET_PART: usize = 1024;
+/// Proof-of-work effort a relay asks for a ticket, by default.
+pub const TICKET_EFFORT: u32 = 16;
 /// Link payload: join a rendezvous.
 pub const P_JOIN: u8 = 0x10;
 /// Link payload: a media packet.
@@ -59,7 +68,6 @@ pub struct Descriptor {
 }
 
 struct Session {
-    link: Link,
     client: Option<SocketAddr>,
     rendezvous: Option<[u8; 16]>,
     peer: Option<SocketAddr>,
@@ -97,7 +105,22 @@ pub struct Relay {
     spent: Box<dyn Spent + Send>,
     stats: Stats,
     rng: HedgedRng,
+    /// Clients' WireGuard links.
+    links: RelayLinks,
+    /// Proof-of-work effort a ticket costs.
+    effort: u32,
+    /// Ticket requests arriving in parts: (from, request id) → parts.
+    partial: HashMap<(SocketAddr, [u8; 8]), Partial>,
 }
+
+/// A ticket request still missing parts.
+struct Partial {
+    parts: Vec<Option<Vec<u8>>>,
+    since: u64,
+}
+
+/// Most ticket requests held while their parts arrive.
+const MAX_PARTIAL: usize = 1024;
 
 impl Relay {
     /// A relay at `addr` with fresh random keys and an in-memory ledger
@@ -129,6 +152,10 @@ impl Relay {
         if tickets.is_empty() {
             return Err(CallError::UnknownKey);
         }
+        // The static WireGuard key comes from the link key, so it is as
+        // long-lived and needs no file of its own.
+        let wg: [u8; 32] =
+            enclave_crypto::kmac::kmac256(&link_secret.to_bytes()[..], b"", labels::RELAY_WG);
         Ok(Self {
             desc: Descriptor {
                 id,
@@ -136,6 +163,9 @@ impl Relay {
                 addr,
                 link_key: link_secret.public().0,
             },
+            links: RelayLinks::new(wg),
+            effort: TICKET_EFFORT,
+            partial: HashMap::new(),
             link_secret,
             tickets,
             sessions: HashMap::new(),
@@ -195,15 +225,24 @@ impl Relay {
         Ok(())
     }
 
-    /// Ticket service: open a request, burn its token, issue a ticket.
-    /// `token_ok` verifies the Privacy Pass token (single use is enforced
-    /// here as well).
-    pub fn issue_ticket(
-        &mut self,
-        request: &[u8],
-        now: u64,
-        token_ok: impl Fn(&[u8; 32]) -> bool,
-    ) -> Result<Vec<u8>, CallError> {
+    /// Ask this much proof of work for a ticket.
+    pub fn set_ticket_effort(&mut self, effort: u32) {
+        self.effort = effort;
+    }
+
+    /// The proof-of-work effort a ticket costs here.
+    pub fn ticket_effort(&self) -> u32 {
+        self.effort
+    }
+
+    /// The relay's WireGuard key.
+    pub fn wg_public(&self) -> [u8; 32] {
+        self.links.public()
+    }
+
+    /// Ticket service: open a request, check and burn its proof of work,
+    /// issue a ticket and let its WireGuard key connect.
+    pub fn issue_ticket(&mut self, request: &[u8], now: u64) -> Result<Vec<u8>, CallError> {
         let epoch = request
             .get(..4)
             .and_then(|b| b.try_into().ok())
@@ -214,18 +253,24 @@ impl Relay {
             .iter()
             .find(|k| k.public().epoch == epoch)
             .ok_or(CallError::UnknownKey)?;
-        let accepted = key.accept(request)?;
-        if !token_ok(&accepted.token) || !self.spent.spend(&accepted.token, now)? {
-            return Err(CallError::Crypto);
+        let accepted = key.accept(request, self.effort)?;
+        if !self.spent.spend(&accepted.spend, now)? {
+            return Err(CallError::Replay);
         }
         let duration = u64::from(accepted.duration.min(4 * 3600));
         let session: [u8; 16] = self.rng.array("relay/session")?;
-        let (reply, ticket): (Vec<u8>, Ticket) =
-            accepted.issue(session, now, now + duration, &mut self.rng)?;
+        let wg_client = accepted.wg_public;
+        let (reply, ticket) = accepted.issue(
+            session,
+            now,
+            now + duration,
+            self.links.public(),
+            &mut self.rng,
+        )?;
+        self.links.add(wg_client, ticket);
         self.sessions.insert(
             session,
             Session {
-                link: Link::relay(ticket),
                 client: None,
                 rendezvous: None,
                 peer: None,
@@ -234,22 +279,71 @@ impl Relay {
         Ok(reply)
     }
 
+    /// One part of a ticket request: the reply datagram once every part
+    /// is in.
+    fn on_ticket(
+        &mut self,
+        from: SocketAddr,
+        dg: &[u8],
+        now: u64,
+    ) -> Result<Vec<(SocketAddr, Vec<u8>)>, CallError> {
+        let (id, index, count, part) = match dg {
+            [_, rest @ ..] if rest.len() > 10 => {
+                let id: [u8; 8] = rest[..8].try_into().map_err(|_| CallError::Malformed)?;
+                (id, usize::from(rest[8]), usize::from(rest[9]), &rest[10..])
+            }
+            _ => return Err(CallError::Malformed),
+        };
+        if count == 0 || count > 4 || index >= count || part.len() > TICKET_PART {
+            return Err(CallError::Malformed);
+        }
+        self.partial.retain(|_, p| now < p.since + 10);
+        if self.partial.len() >= MAX_PARTIAL && !self.partial.contains_key(&(from, id)) {
+            return Err(CallError::Malformed);
+        }
+        let p = self.partial.entry((from, id)).or_insert_with(|| Partial {
+            parts: vec![None; count],
+            since: now,
+        });
+        if p.parts.len() != count {
+            return Err(CallError::Malformed);
+        }
+        p.parts[index] = Some(part.to_vec());
+        if p.parts.iter().any(Option::is_none) {
+            return Ok(Vec::new());
+        }
+        let request: Vec<u8> = self
+            .partial
+            .remove(&(from, id))
+            .map(|p| p.parts.into_iter().flatten().flatten().collect())
+            .unwrap_or_default();
+        let reply = self.issue_ticket(&request, now)?;
+        Ok(vec![(from, [&[T_TICKET][..], &id, &reply].concat())])
+    }
+
     /// Drop expired sessions and spent tokens past their retention.
     pub fn expire(&mut self, now: u64) {
         if let Err(e) = self.spent.prune(now) {
             eprintln!("enclave-relay: pruning spent tokens failed: {e}");
         }
-        self.sessions.retain(|_, s| !s.link.expired(now));
+        self.links.expire(now);
+        let links = &self.links;
+        self.sessions.retain(|sid, _| links.has(sid));
         let live: std::collections::HashSet<[u8; 16]> = self.sessions.keys().copied().collect();
         self.rendezvous.retain(|_, s| live.contains(s));
     }
 
     /// Handle one datagram; returns what to send where.
     pub fn handle(&mut self, from: SocketAddr, dg: &[u8], now: u64) -> Vec<(SocketAddr, Vec<u8>)> {
-        let out = match dg.first() {
-            Some(&T_CLIENT) => self.on_client(from, &dg[1..], now),
-            Some(&T_RELAY) => self.on_peer(from, &dg[1..], now),
-            _ => Err(CallError::Malformed),
+        let out = if self.peers.contains_key(&from) {
+            match dg.first() {
+                Some(&T_RELAY) => self.on_peer(from, &dg[1..], now),
+                _ => Err(CallError::Malformed),
+            }
+        } else if dg.first() == Some(&T_TICKET) {
+            self.on_ticket(from, dg, now)
+        } else {
+            self.on_client(from, dg, now)
         };
         out.unwrap_or_else(|_| {
             self.stats.dropped += 1;
@@ -263,11 +357,14 @@ impl Relay {
         dg: &[u8],
         now: u64,
     ) -> Result<Vec<(SocketAddr, Vec<u8>)>, CallError> {
-        let sid = link::session_of(dg).ok_or(CallError::Malformed)?;
+        let (sid, got) = self.links.receive(now, dg)?;
         let s = self.sessions.get_mut(&sid).ok_or(CallError::UnknownKey)?;
-        let pt = s.link.open(now, dg)?;
         s.client = Some(from); // roaming: follow the latest authenticated address
-        match pt.first() {
+        let mut out: Vec<(SocketAddr, Vec<u8>)> = got.send.into_iter().map(|d| (from, d)).collect();
+        let Some(pt) = got.payload else {
+            return Ok(out);
+        };
+        let routed = match pt.first() {
             Some(&P_JOIN) => {
                 let (rv, peer) = decode_join(&pt[1..])?;
                 if !self.peers.contains_key(&peer) && peer != self.desc.addr {
@@ -298,7 +395,9 @@ impl Relay {
             }
             Some(&P_KEEPALIVE) => Ok(Vec::new()),
             _ => Err(CallError::Malformed),
-        }
+        };
+        out.extend(routed?);
+        Ok(out)
     }
 
     fn on_peer(
@@ -350,11 +449,13 @@ impl Relay {
             .filter(|(sid, s)| s.rendezvous.as_ref() == Some(rv) && Some(**sid) != not)
             .map(|(sid, _)| *sid)
             .collect();
+        let _ = now;
         for sid in targets {
-            let s = self.sessions.get_mut(&sid).ok_or(CallError::UnknownKey)?;
+            let s = self.sessions.get(&sid).ok_or(CallError::UnknownKey)?;
             let Some(addr) = s.client else { continue };
-            let dg = s.link.seal(now, &[&[P_MEDIA][..], packet].concat())?;
-            out.push((addr, [&[T_CLIENT][..], &dg].concat()));
+            for dg in self.links.send(&sid, &[&[P_MEDIA][..], packet].concat())? {
+                out.push((addr, dg));
+            }
             self.stats.to_client += 1;
         }
         if out.is_empty() {
@@ -386,20 +487,22 @@ fn decode_join(b: &[u8]) -> Result<([u8; 16], SocketAddr), CallError> {
     Ok((rv, s.parse().map_err(|_| CallError::Malformed)?))
 }
 
-/// Client helper: wrap a link datagram for the wire.
-pub fn client_datagram(link: &mut Link, now: u64, payload: &[u8]) -> Result<Vec<u8>, CallError> {
-    Ok([&[T_CLIENT][..], &link.seal(now, payload)?].concat())
+/// Client helper: a ticket request as the datagrams that carry it.
+pub fn ticket_datagrams(id: [u8; 8], request: &[u8]) -> Vec<Vec<u8>> {
+    let parts: Vec<&[u8]> = request.chunks(TICKET_PART).collect();
+    let count = parts.len() as u8;
+    parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| [&[T_TICKET][..], &id, &[i as u8, count], p].concat())
+        .collect()
 }
 
-/// Client helper: unwrap a datagram from our relay into a media packet.
-pub fn client_receive(link: &mut Link, now: u64, dg: &[u8]) -> Result<Vec<u8>, CallError> {
-    if dg.first() != Some(&T_CLIENT) {
-        return Err(CallError::Malformed);
-    }
-    let pt = link.open(now, &dg[1..])?;
-    match pt.split_first() {
-        Some((&P_MEDIA, packet)) => Ok(packet.to_vec()),
-        _ => Err(CallError::Malformed),
+/// Client helper: a ticket reply datagram's request id and reply.
+pub fn ticket_reply(dg: &[u8]) -> Option<([u8; 8], &[u8])> {
+    match dg {
+        [T_TICKET, rest @ ..] if rest.len() > 8 => Some((rest[..8].try_into().ok()?, &rest[8..])),
+        _ => None,
     }
 }
 

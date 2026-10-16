@@ -376,6 +376,10 @@ criteria = "safe-to-deploy"
 version = "1.7.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.boringtun]]
+version = "0.7.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.borsh]]
 version = "1.8.1"
 criteria = "safe-to-deploy"
@@ -453,7 +457,15 @@ version = "1.0.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.chacha20]]
+version = "0.9.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.chacha20]]
 version = "0.10.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.chacha20poly1305]]
+version = "0.9.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.chrono]]
@@ -1458,6 +1470,18 @@ criteria = "safe-to-deploy"
 
 [[exemptions.inventory]]
 version = "0.3.24"
+criteria = "safe-to-deploy"
+
+[[exemptions.ip_network]]
+version = "0.4.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.ip_network_table]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.ip_network_table-deps-treebitmap]]
+version = "0.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.ipnet]]

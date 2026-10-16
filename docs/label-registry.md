@@ -235,7 +235,8 @@ These labels were first reserved in §3 and are now used by code. "Where" names 
 | `enclave/v1/calls/ticket-secret` | KMAC | 256 | `enclave-calls/src/lib.rs` | Relay-ticket secret (spec: 11 §3) |
 | `enclave/v1/calls/ticket-seal` | KMAC | 256 | `enclave-calls/src/lib.rs` | Seal key for the relay-ticket request body (spec: 11 §3.3) |
 | `enclave/v1/calls/wg-psk` | KMAC | 256 | `enclave-calls/src/lib.rs` | WireGuard PSK for one 120 s period (spec: 11 §3) |
-| `enclave/v1/calls/link-dir` | KMAC | 256 | `enclave-calls/src/lib.rs` | Per-direction client↔relay link key from a period PSK (interim framing until WireGuard) (spec: 11 §3.4) |
+| `enclave/v1/calls/ticket-pow` | KMAC / context | 256 | `enclave-calls/src/lib.rs` | Proof of work paying for a relay ticket (context with relay id, epoch, ephemeral key and ciphertext), and the id a relay burns from the ephemeral key (spec: 11 §3.3, ADR 0006) |
+| `enclave/v1/calls/relay-wg` | KMAC | 256 | `enclave-calls/src/lib.rs` | A relay's static WireGuard key from its link key (spec: 11 §3.1) |
 | `enclave/v1/calls/relay-link` | KMAC | 256 | `enclave-calls/src/lib.rs` | Per-direction relay↔relay link key from the relays' static X448 keys (interim until Rosenpass) (spec: 11 §3.4) |
 | `enclave/v1/calls/rendezvous` | KMAC | 128 | `enclave-calls/src/lib.rs` | Rendezvous id joining the two relay legs of a call (spec: 11 §3.4) |
 | `enclave/v1/calls/ad-ticket` | AD | — | `enclave-calls/src/lib.rs` | Relay-ticket seal AD prefix (spec: 11 §3) |
@@ -278,6 +279,7 @@ The M0 draft named these labels. The implementation replaced them, so they are r
 |---|---|
 | `enclave/v1/net/grp-read-key`, `enclave/v1/net/grp-read-cred` | `enclave/v1/rpc/read-credential` of the mailbox's write token (`grp-write-token`): the server derives the read credential's hash from the first write, so a group mailbox is created and readable in one unit. A separate read key would need a registration request per mailbox per day (four per epoch) and protects against nobody: only members and the server ever hold the write token |
 | `enclave/v1/proto/invite-psk`, `enclave/v1/proto/invite-cap` | `enclave/v1/invite/psk` and `enclave/v1/invite/cap` (`eqxdh.rs` `invite_psk`, `invite_cap`): the same derivations, built under the invite namespace |
+| `enclave/v1/calls/link-dir` | WireGuard (`enclave_calls::wg`): the client↔relay hop is a WireGuard tunnel whose pre-shared key is `calls/wg-psk` for the period |
 | `enclave/v1/proto/link-cap` | None: the link rendezvous mailbox's owner secret is random (`link/owner`) and travels in the link code, so the server never sees anything derived from the link secret that keys the exchange |
 | `enclave/v1/proto/pending-root` | None: an update without a co-signature is the manifest itself, held by each contact from when it first saw it (`guard.rs`); a root-signed `not_before` would be chosen by whoever holds the root. The manifest and its attestations go into key transparency together as the account record (03 §8.1) |
 | `enclave/v1/proto/veto` | `enclave/v1/ctx/manifest-cosign` and `enclave/v1/ctx/manifest-veto` (`attest.rs`): one context per verdict, signing the root, version and manifest hash |

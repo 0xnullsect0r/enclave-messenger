@@ -19,13 +19,13 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-pub mod link;
 pub mod message;
 pub mod route;
 pub mod sframe;
 pub mod shape;
 pub mod signal;
 pub mod ticket;
+pub mod wg;
 
 /// KMAC labels (`docs/label-registry.md`).
 pub mod labels {
@@ -55,10 +55,12 @@ pub mod labels {
     pub const AD_TICKET: &str = "enclave/v1/calls/ad-ticket";
     /// Per-period link PSK.
     pub const WG_PSK: &str = "enclave/v1/calls/wg-psk";
+    /// Proof of work paying for a relay ticket, and the id a relay burns.
+    pub const TICKET_POW: &str = "enclave/v1/calls/ticket-pow";
+    /// A relay's static WireGuard key, from its link key.
+    pub const RELAY_WG: &str = "enclave/v1/calls/relay-wg";
     /// Relay rendezvous id joining the two legs of a call.
     pub const RENDEZVOUS: &str = "enclave/v1/calls/rendezvous";
-    /// Per-direction link key from a period PSK.
-    pub const LINK_DIR: &str = "enclave/v1/calls/link-dir";
     /// Relay-to-relay link key.
     pub const RELAY_LINK: &str = "enclave/v1/calls/relay-link";
     /// A day's ticket-key material from that day's chain seed.

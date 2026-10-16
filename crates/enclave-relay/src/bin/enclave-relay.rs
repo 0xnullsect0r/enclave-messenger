@@ -50,6 +50,8 @@ struct RelaySection {
     data_dir: PathBuf,
     /// Peer relays' descriptors (hex).
     peers: Vec<String>,
+    /// Proof-of-work effort a ticket costs (`enclave_relay::TICKET_EFFORT`).
+    ticket_effort: u32,
 }
 
 impl Default for RelaySection {
@@ -62,6 +64,7 @@ impl Default for RelaySection {
             keys_dir: PathBuf::from("/var/lib/enclave/relay-keys"),
             data_dir: PathBuf::from("/var/lib/enclave/relay"),
             peers: Vec::new(),
+            ticket_effort: enclave_relay::TICKET_EFFORT,
         }
     }
 }
@@ -223,6 +226,7 @@ async fn run(args: &[String]) -> Result<(), String> {
         Box::new(spent),
     )
     .map_err(|e| e.to_string())?;
+    relay.set_ticket_effort(cfg.relay.ticket_effort);
     for p in &cfg.relay.peers {
         let d = decode(p, "peer").ok_or_else(|| format!("malformed peer descriptor {p}"))?;
         relay.add_peer(&d).map_err(|e| e.to_string())?;

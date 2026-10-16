@@ -13,6 +13,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+enclave-tokens = { path = "../enclave-tokens" }
+boringtun = { version = "0.7.1", default-features = false }
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-proto = { path = "../enclave-proto" }
 bip39 = { version = "3.0.0", default-features = false, features = ["std"] }

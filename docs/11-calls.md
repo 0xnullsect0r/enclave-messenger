@@ -75,17 +75,18 @@ PSK schedule:
 - WireGuard keys are fresh per call. The PSK changes every 2 minutes; both ends switch at the period boundary and WireGuard's own 120 s rekey picks it up.
 - Tickets are obtained **anonymously** over the mixnet and paid with Privacy Pass, so the relay cannot link a ticket to an account. Clients MAY pre-fetch one ticket per relay family to cut setup time.
 
-### 3.4 Implementation status (M8)
+### 3.4 As implemented
 
-`crates/enclave-calls` and `crates/enclave-relay` implement signalling, SFrame, shaping, tickets and two-relay forwarding. Two things differ from §3.1 until their dependencies are ready:
+`crates/enclave-calls` and `crates/enclave-relay` implement signalling (`message::CallMessage`, carried as `Content::Call` in ratchet messages; `Client::send_call`, `Event::Call`, a line in the conversation per call), SFrame, shaping, tickets, the WireGuard client link and two-relay forwarding.
 
-- **Client↔relay link.** Every published Rust WireGuard (boringtun, GotaTun) uses ring or aws-lc for its AEAD (C and assembly), and GotaTun 0.9 needs Rust 1.95. Until one of them can ship under §22, the link seals datagrams with EnclaveSeal (compact form) under per-direction keys derived from the ticket's period PSK (`link-dir`): `type ‖ session 16 ‖ period u32 ‖ counter u64 ‖ ct ‖ tag`. The key schedule is the WireGuard PSK schedule of §3.3, so an observer or relay learns the same things either way. Current and previous periods are accepted; a 128-entry window rejects replays.
-- **Relay↔relay link.** Sealed with EnclaveSeal under per-direction keys from the two relays' static X448 keys (`relay-link`) instead of WireGuard + Rosenpass. Peers are configured explicitly.
+- **Client↔relay link: WireGuard** (`enclave_calls::wg`, boringtun's Noise_IKpsk2 without a network device). The client's key pair is fresh per call, the relay's static (`calls/relay-wg` from its link key); the pre-shared key is the ticket's `wg_psk_i` for the current 120 s period, counted on the relay's clock. At each period the client starts a new tunnel; the old one carries traffic until the new handshake completes. Payloads ride behind a fixed 20-byte IPv4 header, so a stream's datagrams keep one size. Tests: `payloads_cross_a_wireguard_link_and_periods_rekey`, `two_relays_carry_a_call_without_seeing_both_ends`, `udp_loopback_call`.
+- **Tickets** are paid with proof of work bound to the request, not Privacy Pass (RFC 0006: a privately verifiable token can't be redeemed by a relay of another operator family, and the family rule makes that always the case). They are asked for over UDP in two datagrams (`T_TICKET`). Test `tickets_cost_their_proof_of_work`.
+- **Choosing relays** by operator family (`enclave_calls::route`): test `rt18_relays_from_distinct_operator_families`.
+- **Relay↔relay link.** Sealed with EnclaveSeal under per-direction keys from the two relays' static X448 keys, not yet WireGuard with Rosenpass (C-f). Media inside is SFrame under the call's X448 + ML-KEM keys, so this hop's classical key exchange exposes only rendezvous ids and timing, not media.
 - **Rendezvous.** Both legs of a call join with `rendezvous = KMAC256(call_secret, "", 128, "enclave/v1/calls/rendezvous")`; the join names the peer relay's address. Relays forward media only between a joined session and the named peer relay.
+- **netd** opens UDP sockets for calls (`NetRequest::UdpOpen`, `UdpSend`, `UdpClose`; datagrams come back as `SOCKET_EVENT` replies).
 
-Tested: a two-relay call where each relay sees only its own client's address, constant datagram sizes on both hops, replay rejection on every hop, and a real UDP loopback call.
-
-Not implemented yet: Opus/AV1 media engines, capture, direct mode (ICE), the Maximum-privacy tunnel, group calls (SFU), call links, Privacy Pass payment for tickets, and the call UI.
+Not implemented yet: the media engines and capture (C-c), the call screens (C-d), direct mode (C-e), group calls, call links, screen share and the Maximum-privacy tunnel (C-f).
 
 ## 4. Direct mode (opt-in per call)
 

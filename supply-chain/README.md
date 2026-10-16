@@ -25,8 +25,9 @@ bytes, or make randomness:
 | Area | Crates |
 |---|---|
 | Post-quantum and classical primitives | `libcrux-ml-kem`, `libcrux-ml-dsa`, `libcrux-sha3`, `libcrux-kmac`, `ml-kem`, `ml-dsa`, `slh-dsa`, `classic-mceliece-rust`, `ed448`, `ed448-goldilocks`, `x448`, `curve25519-dalek`, `x25519-dalek`, `ed25519-dalek`, `voprf`, `p256`, `p384`, `ecdsa`, `elliptic-curve`, `primeorder`, `hash2curve`, `crypto-bigint` |
-| Symmetric and hashing | `aes`, `aead`, `chacha20`, `poly1305`, `polyval`, `universal-hash`, `ctr`, `cipher`, `crypto_secretbox`, `sha2`, `sha3`, `shake`, `cshake`, `keccak`, `blake2`, `hmac`, `hkdf`, `pbkdf2`, `argon2`, `digest`, `crypto-common`, `signature` |
+| Symmetric and hashing | `aes`, `aead`, `chacha20`, `chacha20poly1305`, `poly1305`, `polyval`, `universal-hash`, `ctr`, `cipher`, `crypto_secretbox`, `sha2`, `sha3`, `shake`, `cshake`, `keccak`, `blake2`, `hmac`, `hkdf`, `pbkdf2`, `argon2`, `digest`, `crypto-common`, `signature` |
 | Randomness and secrets | `rand`, `rand_core`, `rand_chacha`, `getrandom`, `rdrand`, `zeroize`, `zeroize_derive` |
+| WireGuard | `boringtun` (the call links) |
 | TLS and certificates | `rustls`, `rustls-webpki`, `rustls-pki-types`, `rustls-platform-verifier`, `ring`, `tokio-rustls`, `hyper-rustls`, `x509-parser`, `der`, `der-parser`, `spki`, `pkcs8`, `sec1`, `pem` |
 | Parsers of untrusted input | `prost`, `prost-derive`, `png`, `gif`, `zune-jpeg`, `image-webp`, `image`, `rav1d`, `opus-decoder`, `opus-rs`, `redb`, `httparse`, `h2`, `hyper`, `serde_json`, `toml`, `url`, `bip39` |
 | Tor (arti) | every `tor-*` and `arti-client` crate (arti 0.46) |

@@ -1,7 +1,8 @@
-//! Spent Privacy Pass tokens (`docs/11-calls.md` §3.3).
+//! Spent ticket requests (`docs/11-calls.md` §3.3, RFC 0006).
 //!
-//! A ticket costs one token, and a token buys one ticket. The relay records
-//! each token it accepts; a token seen before is refused. [`RedbSpent`]
+//! A ticket costs proof of work bound to its request, and a request buys
+//! one ticket. The relay records each request's burn id; one seen before
+//! is refused. [`RedbSpent`]
 //! keeps the record on disk, so a restarted relay doesn't accept a token a
 //! second time. Tokens are kept for [`RETENTION_SECS`], longer than an
 //! issuer key lives, after which a replayed token fails issuer verification
