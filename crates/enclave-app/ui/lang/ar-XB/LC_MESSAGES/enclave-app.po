@@ -122,6 +122,10 @@ msgid "A backup is on your server now, and is renewed every week."
 msgstr "‫A backup is on your server now, and is renewed every week.‬"
 
 #: ui/app.slint
+msgid "A few words (optional with a picture)"
+msgstr "‫A few words (optional with a picture)‬"
+
+#: ui/app.slint
 msgid "A few words about you (optional)"
 msgstr "‫A few words about you (optional)‬"
 
@@ -157,6 +161,14 @@ msgstr "‫A pack needs 1 to 40 pictures and a short name.‬"
 msgid "A pack needs 1 to 40 pictures."
 msgstr "‫A pack needs 1 to 40 pictures.‬"
 
+#: ui/app.slint
+msgid "A picture (optional)"
+msgstr "‫A picture (optional)‬"
+
+#: ui/app.slint
+msgid "A picture or a few words your contacts can see for 24 hours. Each one gets it sealed in your conversation with them; nobody sees who else it went to."
+msgstr "‫A picture or a few words your contacts can see for 24 hours. Each one gets it sealed in your conversation with them; nobody sees who else it went to.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "A poll needs a question and at least two options."
 msgstr "‫A poll needs a question and at least two options.‬"
@@ -168,6 +180,10 @@ msgstr "‫A reaction replaces your earlier one on that message. They see it cha
 #: ui/app.slint
 msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
 msgstr "‫A report was saved on this device. Nothing was sent. You can read it and choose whether to share it.‬"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "A story needs a picture or a few words (at most 700 bytes)."
+msgstr "‫A story needs a picture or a few words (at most 700 bytes).‬"
 
 #: ui/app.slint
 msgid "A username server showed people different lists"
@@ -605,6 +621,10 @@ msgstr "‫Choose a passphrase‬"
 msgid "Choose a photo"
 msgstr "‫Choose a photo‬"
 
+#: enclave-app/src/shell.rs ui/app.slint
+msgid "Choose a picture for your story"
+msgstr "‫Choose a picture for your story‬"
+
 #: ui/app.slint
 msgid "Choose a server"
 msgstr "‫Choose a server‬"
@@ -873,6 +893,10 @@ msgstr "‫Couldn't get that pack. Check your connection.‬"
 msgid "Couldn't leave the group. Check your connection."
 msgstr "‫Couldn't leave the group. Check your connection.‬"
 
+#: enclave-vault/src/engine/stories.rs
+msgid "Couldn't load the picture. Check your connection."
+msgstr "‫Couldn't load the picture. Check your connection.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't make a backup."
 msgstr "‫Couldn't make a backup.‬"
@@ -924,6 +948,10 @@ msgstr "‫Couldn't open ‬{}‫: ‬{}"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't pin that message. Check your connection."
 msgstr "‫Couldn't pin that message. Check your connection.‬"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Couldn't post it. Check your connection."
+msgstr "‫Couldn't post it. Check your connection.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
@@ -1090,6 +1118,10 @@ msgid "Couldn't start the call's audio."
 msgstr "‫Couldn't start the call's audio.‬"
 
 #: enclave-vault/src/engine.rs
+msgid "Couldn't take it down everywhere yet. We'll keep trying."
+msgstr "‫Couldn't take it down everywhere yet. We'll keep trying.‬"
+
+#: enclave-vault/src/engine.rs
 msgid "Couldn't tell everyone yet. It goes on when you're back online."
 msgstr "‫Couldn't tell everyone yet. It goes on when you're back online.‬"
 
@@ -1156,6 +1188,10 @@ msgstr "‫Delete the folder ‬{}"
 #: ui/app.slint
 msgid "Delete the model"
 msgstr "‫Delete the model‬"
+
+#: ui/app.slint
+msgid "Delete this story for everyone"
+msgstr "‫Delete this story for everyone‬"
 
 #: ui/app.slint
 msgid "Delete your account"
@@ -1601,6 +1637,10 @@ msgstr "‫Help them get back in‬"
 msgid "Hi, I'm Sam. I'm a demo contact running on this computer, so you can try Enclave before inviting anyone. Accept to start talking."
 msgstr "‫Hi, I'm Sam. I'm a demo contact running on this computer, so you can try Enclave before inviting anyone. Accept to start talking.‬"
 
+#: ui/app.slint
+msgid "Hidden"
+msgstr "‫Hidden‬"
+
 #: enclave-app/src/format.rs
 msgid "Hidden text"
 msgstr "‫Hidden text‬"
@@ -1820,6 +1860,10 @@ msgstr "‫Linking didn't finish. Start again on both devices.‬"
 #: enclave-vault/src/engine.rs
 msgid "Linking didn't finish. Try again from the new device."
 msgstr "‫Linking didn't finish. Try again from the new device.‬"
+
+#: ui/app.slint
+msgid "Loading the picture…"
+msgstr "‫Loading the picture…‬"
 
 #: ui/app.slint
 msgid "Loading…"
@@ -2209,6 +2253,10 @@ msgstr "‫On the record‬"
 msgid "On the record: messages carry their sender's signature. Admins can change this."
 msgstr "‫On the record: messages carry their sender's signature. Admins can change this.‬"
 
+#: ui/app.slint
+msgid "Once you have contacts, they show here."
+msgstr "‫Once you have contacts, they show here.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "One of those animations is too long for a sticker, so no pack was made."
 msgstr "‫One of those animations is too long for a sticker, so no pack was made.‬"
@@ -2528,6 +2576,26 @@ msgstr "‫Play · ‬{}"
 #: ui/app.slint
 msgid "Português"
 msgstr "‫Português‬"
+
+#: ui/app.slint
+msgid "Post"
+msgstr "‫Post‬"
+
+#: ui/app.slint
+msgid "Post a story"
+msgstr "‫Post a story‬"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Posted. It reaches your contacts over the next minutes, for 24 hours."
+msgstr "‫Posted. It reaches your contacts over the next minutes, for 24 hours.‬"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Posted. Nobody sees it: your stories are hidden from everyone."
+msgstr "‫Posted. Nobody sees it: your stories are hidden from everyone.‬"
+
+#: ui/app.slint
+msgid "Posting…"
+msgstr "‫Posting…‬"
 
 #: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
@@ -2862,6 +2930,10 @@ msgid "See this sticker pack before adding it"
 msgstr "‫See this sticker pack before adding it‬"
 
 #: ui/app.slint
+msgid "Sees them"
+msgstr "‫Sees them‬"
+
+#: ui/app.slint
 msgid "Send"
 msgstr "‫Send‬"
 
@@ -3136,6 +3208,14 @@ msgstr "‫Stop ‬{}‫ being an admin‬"
 #: enclave-vault/src/engine.rs
 msgid "Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them."
 msgstr "‫Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them.‬"
+
+#: ui/app.slint
+msgid "Stories last 24 hours. {} doesn't learn that you looked."
+msgstr "‫Stories last 24 hours. ‬{}‫ doesn't learn that you looked.‬"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Stories take pictures and animations. Enclave couldn't read that one."
+msgstr "‫Stories take pictures and animations. Enclave couldn't read that one.‬"
 
 #: ui/app.slint
 msgid "Take back your reaction"
@@ -3877,6 +3957,14 @@ msgstr "‫When you're ready, share your invite link with someone you trust.‬"
 msgid "Which words does your new device show?"
 msgstr "‫Which words does your new device show?‬"
 
+#: ui/app.slint
+msgid "Who sees it ({})"
+msgstr "‫Who sees it (‬{}‫)‬"
+
+#: ui/app.slint
+msgid "Who sees your stories"
+msgstr "‫Who sees your stories‬"
+
 #: enclave-vault/src/engine.rs
 msgid "With photos and files your backup is too large to save from here. Save it without them, or keep one on your server."
 msgstr "‫With photos and files your backup is too large to save from here. Save it without them, or keep one on your server.‬"
@@ -4149,6 +4237,18 @@ msgstr "‫Your server has no backup for these words. Check the words, or restor
 msgid "Your server: {}"
 msgstr "‫Your server: ‬{}"
 
+#: ui/app.slint
+msgid "Your stories go to the contacts chosen here. A change counts from your next story; this list stays on this device."
+msgstr "‫Your stories go to the contacts chosen here. A change counts from your next story; this list stays on this device.‬"
+
+#: ui/app.slint
+msgid "Your story"
+msgstr "‫Your story‬"
+
+#: ui/app.slint
+msgid "Your story, {} showing"
+msgstr "‫Your story, ‬{}‫ showing‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Your unused invite links no longer work."
 msgstr "‫Your unused invite links no longer work.‬"
@@ -4220,6 +4320,14 @@ msgstr "‫zh-Hans‬"
 #: ui/app.slint
 msgid "zh-Hant"
 msgstr "‫zh-Hant‬"
+
+#: ui/app.slint
+msgid "{} ago · reached {}"
+msgstr "{}‫ ago · reached ‬{}"
+
+#: ui/app.slint
+msgid "{} ago · reached {}, {} still to go"
+msgstr "{}‫ ago · reached ‬{}‫, ‬{}‫ still to go‬"
 
 #: ui/app.slint
 msgid "{} asked for a direct call: clearer, but answering directly shows your internet address to them."
@@ -4316,6 +4424,14 @@ msgstr "{}‫'s phone should show the same three words. If it does, you scanned 
 #: ui/app.slint
 msgid "{}'s screen"
 msgstr "{}‫'s screen‬"
+
+#: ui/app.slint
+msgid "{}'s story"
+msgstr "{}‫'s story‬"
+
+#: ui/app.slint
+msgid "{}'s story, new"
+msgstr "{}‫'s story, new‬"
 
 #: ui/app.slint
 msgid "{}'s video"

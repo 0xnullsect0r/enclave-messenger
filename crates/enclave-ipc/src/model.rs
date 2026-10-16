@@ -94,6 +94,32 @@ pub struct Pick {
     pub selected: bool,
 }
 
+/// A story showing now (`enclave_core::Story`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StoryRow {
+    /// Its key for [`Cmd::OpenStory`] and [`Cmd::DeleteStory`]; its
+    /// picture comes as an [`Out::Preview`] for conversation
+    /// `story/<key>`.
+    pub key: String,
+    /// Whose: a contact's id (as in [`Snapshot::contacts`]), or empty for
+    /// ours.
+    pub who: String,
+    /// Their name.
+    pub name: String,
+    /// Its words.
+    pub text: String,
+    /// How long ago it was posted ("3 h").
+    pub ago: String,
+    /// It has a picture.
+    pub picture: bool,
+    /// We opened it.
+    pub viewed: bool,
+    /// Ours: how many it reached, and how many it still goes to.
+    pub reached: u32,
+    /// Ours: still to go.
+    pub waiting: u32,
+}
+
 /// A device of the account.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Device {
@@ -401,6 +427,10 @@ pub struct Snapshot {
     pub restore_error: String,
     /// Accepted contacts who could hold a share of our recovery.
     pub friends: Vec<Pick>,
+    /// Stories showing now, newest first: ours and our contacts'.
+    pub stories: Vec<StoryRow>,
+    /// Who our stories go to: accepted contacts, `selected` unless hidden.
+    pub story_audience: Vec<Pick>,
     /// Who holds a share of our recovery, and how many are needed.
     pub share_holders: Vec<String>,
     /// Shares needed to rebuild our recovery (0: none given).
@@ -744,6 +774,15 @@ pub enum Cmd {
     GifSearch(String),
     /// Send a GIF from the last search: conversation, its position.
     SendGif(String, u32),
+    /// Post a story: its words, and a picture's file name and bytes (empty
+    /// for none; re-encoded first).
+    PostStory(String, String, Vec<u8>),
+    /// Delete one of our stories (its key).
+    DeleteStory(String),
+    /// Open a story (its key): marked viewed, and its picture sent.
+    OpenStory(String),
+    /// Hide our stories from a contact (true) or not.
+    StoryHidden(String, bool),
     /// Show the recovery words in this BIP-39 language (its code).
     WordsLanguage(String),
     /// Show the security code's words in English (else in the recovery
@@ -1394,6 +1433,25 @@ impl Snapshot {
         w.u8(self.transcription)
             .u8(self.transcription_percent)
             .str(&self.transcription_error);
+        w.len(self.stories.len());
+        for s in self.stories.iter().take(crate::codec::MAX_ITEMS) {
+            w.str(&s.key)
+                .str(&s.who)
+                .str(&s.name)
+                .str(&s.text)
+                .str(&s.ago)
+                .bool(s.picture)
+                .bool(s.viewed)
+                .u32(s.reached)
+                .u32(s.waiting);
+        }
+        w.len(self.story_audience.len());
+        for p in self.story_audience.iter().take(crate::codec::MAX_ITEMS) {
+            w.str(&p.id)
+                .str(&p.name)
+                .u8((p.tint % TINT_COUNT) as u8)
+                .bool(p.selected);
+        }
         w.0
     }
 
@@ -1728,6 +1786,37 @@ impl Snapshot {
             transcription: r.u8()?,
             transcription_percent: r.u8()?,
             transcription_error: r.str()?,
+            stories: {
+                let n = r.len()?;
+                (0..n)
+                    .map(|_| {
+                        Ok(StoryRow {
+                            key: r.str()?,
+                            who: r.str()?,
+                            name: r.str()?,
+                            text: r.str()?,
+                            ago: r.str()?,
+                            picture: r.bool()?,
+                            viewed: r.bool()?,
+                            reached: r.u32()?,
+                            waiting: r.u32()?,
+                        })
+                    })
+                    .collect::<Result<_>>()?
+            },
+            story_audience: {
+                let n = r.len()?;
+                (0..n)
+                    .map(|_| {
+                        Ok(Pick {
+                            id: r.str()?,
+                            name: r.str()?,
+                            tint: usize::from(r.u8()?) % TINT_COUNT,
+                            selected: r.bool()?,
+                        })
+                    })
+                    .collect::<Result<_>>()?
+            },
         };
         r.end()?;
         Ok(s)
@@ -1835,6 +1924,10 @@ impl Cmd {
             Cmd::GifSearchSetting(on) => w.u8(139).bool(*on),
             Cmd::GifSearch(q) => w.u8(140).str(q),
             Cmd::SendGif(c, i) => w.u8(141).str(c).u32(*i),
+            Cmd::PostStory(t, n, b) => w.u8(142).str(t).str(n).bytes(b),
+            Cmd::DeleteStory(k) => w.u8(143).str(k),
+            Cmd::OpenStory(k) => w.u8(144).str(k),
+            Cmd::StoryHidden(c, on) => w.u8(145).str(c).bool(*on),
             Cmd::WordsLanguage(l) => w.u8(67).str(l),
             Cmd::CodeWordsEnglish(on) => w.u8(68).bool(*on),
             Cmd::ReleaseShare(code) => w.u8(69).str(code),
@@ -2003,6 +2096,10 @@ impl Cmd {
             139 => Cmd::GifSearchSetting(r.bool()?),
             140 => Cmd::GifSearch(r.str()?),
             141 => Cmd::SendGif(r.str()?, r.u32()?),
+            142 => Cmd::PostStory(r.str()?, r.str()?, r.bytes()?),
+            143 => Cmd::DeleteStory(r.str()?),
+            144 => Cmd::OpenStory(r.str()?),
+            145 => Cmd::StoryHidden(r.str()?, r.bool()?),
             67 => Cmd::WordsLanguage(r.str()?),
             68 => Cmd::CodeWordsEnglish(r.bool()?),
             69 => Cmd::ReleaseShare(r.str()?),

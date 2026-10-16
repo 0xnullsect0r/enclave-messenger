@@ -158,6 +158,7 @@ mod servers;
 mod sharing;
 mod social;
 mod stickers;
+mod stories;
 mod tokens;
 mod typing;
 mod updates;
@@ -199,6 +200,7 @@ pub use social::{
     MAX_HOLDERS, RELEASE_PREFIX, SHARE_PREFIX, ShareRelease, ShareRequest, words_from_shares,
 };
 pub use stickers::{InstalledPack, MAX_STICKER_BYTES, MAX_STICKERS, PACK_MIME, StickerPack};
+pub use stories::{MAX_STORY_TEXT, STORY_SECS, Story, StoryPicture};
 pub use typing::{TYPING_RESERVE, TYPING_SHOW_SECS};
 pub use updates::{RECEIVE_GRACE, UpdateStatus};
 pub use usernames::AUDIT_EVERY_SECS;
@@ -286,6 +288,8 @@ pub enum Event {
         /// Their root.
         root: [u8; 64],
     },
+    /// A story came or went ([`Client::stories`]).
+    StoriesChanged,
     /// A vote arrived or a poll closed.
     PollChanged {
         /// The conversation (a group or a 1:1 one).
@@ -1718,6 +1722,11 @@ impl Client {
             return Err(e);
         }
         if let Err(e) = self.profile_upkeep(now).await
+            && matches!(e, CoreError::Net(_))
+        {
+            return Err(e);
+        }
+        if let Err(e) = self.story_upkeep(now).await
             && matches!(e, CoreError::Net(_))
         {
             return Err(e);

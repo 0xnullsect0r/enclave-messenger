@@ -550,6 +550,7 @@ fn put_paths(ui: &AppWindow, what: i32, paths: &[String]) {
         3 => ui.set_pack_paths(joined),
         // Our profile photo: used at once.
         4 => ui.invoke_set_photo(paths[0].clone().into()),
+        5 => ui.set_story_path(paths[0].clone().into()),
         _ => ui.set_attach_path(joined),
     }
 }
@@ -632,6 +633,16 @@ fn browse(ui: &AppWindow, what: i32) {
                     &["png", "jpg", "jpeg", "gif", "webp"],
                 )
                 .set_title(crate::i18n::tr("Choose your photo"))
+                .pick_file()
+                .await
+                .into_iter()
+                .collect(),
+            5 => d
+                .add_filter(
+                    crate::i18n::tr("Pictures"),
+                    &["png", "jpg", "jpeg", "gif", "webp"],
+                )
+                .set_title(crate::i18n::tr("Choose a picture for your story"))
                 .pick_file()
                 .await
                 .into_iter()
@@ -1593,6 +1604,51 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::AllFiles);
     });
     let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_open_stories(move |who| {
+        if let Some(ui) = w.upgrade() {
+            for key in view::show_stories(&ui, who.as_str()) {
+                let _ = t.send(Cmd::OpenStory(key));
+            }
+        }
+    });
+    let t = tx.clone();
+    let w = ui.as_weak();
+    ui.on_post_story(move |text, path| {
+        let path = path.trim();
+        let (name, bytes) = if path.is_empty() {
+            (String::new(), Vec::new())
+        } else {
+            match std::fs::metadata(path) {
+                Ok(m) if m.len() <= PHOTO_MAX_BYTES => (
+                    std::path::Path::new(path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "story".into()),
+                    std::fs::read(path).unwrap_or_default(),
+                ),
+                _ => (String::new(), Vec::new()),
+            }
+        };
+        if !path.is_empty() && bytes.is_empty() {
+            if let Some(ui) = w.upgrade() {
+                ui.set_status_line(
+                    crate::i18n::tr("Enclave couldn't read that picture. Try another one.").into(),
+                );
+            }
+            return;
+        }
+        let _ = t.send(Cmd::PostStory(text.trim().to_string(), name, bytes));
+    });
+    let t = tx.clone();
+    ui.on_delete_story(move |key| {
+        let _ = t.send(Cmd::DeleteStory(key.to_string()));
+    });
+    let t = tx.clone();
+    ui.on_story_hidden(move |id, hidden| {
+        let _ = t.send(Cmd::StoryHidden(id.to_string(), hidden));
+    });
+    let t = tx.clone();
     ui.on_set_name(move |name| {
         let _ = t.send(Cmd::SetName(name.trim().to_string()));
     });
@@ -2042,7 +2098,7 @@ mod phone {
     pub fn browse(ui: &AppWindow, what: i32) {
         let kind = match what {
             0 | 1 => Pick::Backup,
-            3 | 4 => Pick::Pictures,
+            3..=5 => Pick::Pictures,
             _ => Pick::File,
         };
         let w = ui.as_weak();

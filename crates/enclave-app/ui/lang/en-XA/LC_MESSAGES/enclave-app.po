@@ -122,6 +122,10 @@ msgid "A backup is on your server now, and is renewed every week."
 msgstr "[Á báçkúp ís óñ ýóúr sérvér ñów, áñd ís réñéwéd évérý wéék.·······················]"
 
 #: ui/app.slint
+msgid "A few words (optional with a picture)"
+msgstr "[Á féw wórds (óptíóñál wíth á píçtúré)··············]"
+
+#: ui/app.slint
 msgid "A few words about you (optional)"
 msgstr "[Á féw wórds ábóút ýóú (óptíóñál)············]"
 
@@ -157,6 +161,14 @@ msgstr "[Á páçk ñééds 1 tó 40 píçtúrés áñd á shórt ñámé.···
 msgid "A pack needs 1 to 40 pictures."
 msgstr "[Á páçk ñééds 1 tó 40 píçtúrés.············]"
 
+#: ui/app.slint
+msgid "A picture (optional)"
+msgstr "[Á píçtúré (óptíóñál)········]"
+
+#: ui/app.slint
+msgid "A picture or a few words your contacts can see for 24 hours. Each one gets it sealed in your conversation with them; nobody sees who else it went to."
+msgstr "[Á píçtúré ór á féw wórds ýóúr çóñtáçts çáñ séé fór 24 hóúrs. Éáçh óñé géts ít séáléd íñ ýóúr çóñvérsátíóñ wíth thém; ñóbódý séés whó élsé ít wéñt tó.···························································]"
+
 #: enclave-vault/src/engine.rs
 msgid "A poll needs a question and at least two options."
 msgstr "[Á póll ñééds á qúéstíóñ áñd át léást twó óptíóñs.···················]"
@@ -168,6 +180,10 @@ msgstr "[Á réáçtíóñ répláçés ýóúr éárlíér óñé óñ thát m�
 #: ui/app.slint
 msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
 msgstr "[Á répórt wás sávéd óñ thís dévíçé. Ñóthíñg wás séñt. Ýóú çáñ réád ít áñd çhóósé whéthér tó sháré ít.········································]"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "A story needs a picture or a few words (at most 700 bytes)."
+msgstr "[Á stórý ñééds á píçtúré ór á féw wórds (át móst 700 býtés).·······················]"
 
 #: ui/app.slint
 msgid "A username server showed people different lists"
@@ -605,6 +621,10 @@ msgstr "[Çhóósé á pássphrásé·······]"
 msgid "Choose a photo"
 msgstr "[Çhóósé á phótó·····]"
 
+#: enclave-app/src/shell.rs ui/app.slint
+msgid "Choose a picture for your story"
+msgstr "[Çhóósé á píçtúré fór ýóúr stórý············]"
+
 #: ui/app.slint
 msgid "Choose a server"
 msgstr "[Çhóósé á sérvér······]"
@@ -873,6 +893,10 @@ msgstr "[Çóúldñ't gét thát páçk. Çhéçk ýóúr çóññéçtíóñ.·
 msgid "Couldn't leave the group. Check your connection."
 msgstr "[Çóúldñ't léávé thé gróúp. Çhéçk ýóúr çóññéçtíóñ.···················]"
 
+#: enclave-vault/src/engine/stories.rs
+msgid "Couldn't load the picture. Check your connection."
+msgstr "[Çóúldñ't lóád thé píçtúré. Çhéçk ýóúr çóññéçtíóñ.···················]"
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't make a backup."
 msgstr "[Çóúldñ't máké á báçkúp.·········]"
@@ -924,6 +948,10 @@ msgstr "[Çóúldñ't ópéñ ·····{}: {}]"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't pin that message. Check your connection."
 msgstr "[Çóúldñ't píñ thát mésságé. Çhéçk ýóúr çóññéçtíóñ.···················]"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Couldn't post it. Check your connection."
+msgstr "[Çóúldñ't póst ít. Çhéçk ýóúr çóññéçtíóñ.················]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't reach that server. Try again in a moment."
@@ -1090,6 +1118,10 @@ msgid "Couldn't start the call's audio."
 msgstr "[Çóúldñ't stárt thé çáll's áúdíó.············]"
 
 #: enclave-vault/src/engine.rs
+msgid "Couldn't take it down everywhere yet. We'll keep trying."
+msgstr "[Çóúldñ't táké ít dówñ évérýwhéré ýét. Wé'll kéép trýíñg.······················]"
+
+#: enclave-vault/src/engine.rs
 msgid "Couldn't tell everyone yet. It goes on when you're back online."
 msgstr "[Çóúldñ't téll évérýóñé ýét. Ít góés óñ whéñ ýóú'ré báçk óñlíñé.·························]"
 
@@ -1156,6 +1188,10 @@ msgstr "[Délété thé fóldér ·······{}]"
 #: ui/app.slint
 msgid "Delete the model"
 msgstr "[Délété thé módél······]"
+
+#: ui/app.slint
+msgid "Delete this story for everyone"
+msgstr "[Délété thís stórý fór évérýóñé············]"
 
 #: ui/app.slint
 msgid "Delete your account"
@@ -1601,6 +1637,10 @@ msgstr "[Hélp thém gét báçk íñ········]"
 msgid "Hi, I'm Sam. I'm a demo contact running on this computer, so you can try Enclave before inviting anyone. Accept to start talking."
 msgstr "[Hí, Í'm Sám. Í'm á démó çóñtáçt rúññíñg óñ thís çómpútér, só ýóú çáñ trý Éñçlávé béfóré íñvítíñg áñýóñé. Áççépt tó stárt tálkíñg.···················································]"
 
+#: ui/app.slint
+msgid "Hidden"
+msgstr "[Híddéñ··]"
+
 #: enclave-app/src/format.rs
 msgid "Hidden text"
 msgstr "[Híddéñ téxt····]"
@@ -1820,6 +1860,10 @@ msgstr "[Líñkíñg dídñ't fíñísh. Stárt ágáíñ óñ bóth dévíçés
 #: enclave-vault/src/engine.rs
 msgid "Linking didn't finish. Try again from the new device."
 msgstr "[Líñkíñg dídñ't fíñísh. Trý ágáíñ fróm thé ñéw dévíçé.·····················]"
+
+#: ui/app.slint
+msgid "Loading the picture…"
+msgstr "[Lóádíñg thé píçtúré…········]"
 
 #: ui/app.slint
 msgid "Loading…"
@@ -2209,6 +2253,10 @@ msgstr "[Óñ thé réçórd·····]"
 msgid "On the record: messages carry their sender's signature. Admins can change this."
 msgstr "[Óñ thé réçórd: mésságés çárrý théír séñdér's sígñátúré. Ádmíñs çáñ çháñgé thís.·······························]"
 
+#: ui/app.slint
+msgid "Once you have contacts, they show here."
+msgstr "[Óñçé ýóú hávé çóñtáçts, théý shów héré.···············]"
+
 #: enclave-vault/src/engine.rs
 msgid "One of those animations is too long for a sticker, so no pack was made."
 msgstr "[Óñé óf thósé áñímátíóñs ís tóó lóñg fór á stíçkér, só ñó páçk wás mádé.····························]"
@@ -2528,6 +2576,26 @@ msgstr "[Pláý · ··{}]"
 #: ui/app.slint
 msgid "Português"
 msgstr "[Pórtúgúês···]"
+
+#: ui/app.slint
+msgid "Post"
+msgstr "[Póst·]"
+
+#: ui/app.slint
+msgid "Post a story"
+msgstr "[Póst á stórý····]"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Posted. It reaches your contacts over the next minutes, for 24 hours."
+msgstr "[Póstéd. Ít réáçhés ýóúr çóñtáçts óvér thé ñéxt míñútés, fór 24 hóúrs.···························]"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Posted. Nobody sees it: your stories are hidden from everyone."
+msgstr "[Póstéd. Ñóbódý séés ít: ýóúr stóríés áré híddéñ fróm évérýóñé.························]"
+
+#: ui/app.slint
+msgid "Posting…"
+msgstr "[Póstíñg…···]"
 
 #: ui/app.slint
 msgid "Private delivery takes a few seconds. That pause is part of what hides who you talk to."
@@ -2862,6 +2930,10 @@ msgid "See this sticker pack before adding it"
 msgstr "[Séé thís stíçkér páçk béfóré áddíñg ít···············]"
 
 #: ui/app.slint
+msgid "Sees them"
+msgstr "[Séés thém···]"
+
+#: ui/app.slint
 msgid "Send"
 msgstr "[Séñd·]"
 
@@ -3136,6 +3208,14 @@ msgstr "[Stóp ··{} béíñg áñ ádmíñ······]"
 #: enclave-vault/src/engine.rs
 msgid "Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them."
 msgstr "[Stóppéd. Ýóúr çóñtáçts wóñ't áççépt thát dévíçé. Çhóósé ñéw réçóvérý wórds sóóñ: whóévér úséd thém stíll hás thém.·············································]"
+
+#: ui/app.slint
+msgid "Stories last 24 hours. {} doesn't learn that you looked."
+msgstr "[Stóríés lást 24 hóúrs. ·········{} dóésñ't léárñ thát ýóú lóókéd.············]"
+
+#: enclave-vault/src/engine/stories.rs
+msgid "Stories take pictures and animations. Enclave couldn't read that one."
+msgstr "[Stóríés táké píçtúrés áñd áñímátíóñs. Éñçlávé çóúldñ't réád thát óñé.···························]"
 
 #: ui/app.slint
 msgid "Take back your reaction"
@@ -3877,6 +3957,14 @@ msgstr "[Whéñ ýóú'ré réádý, sháré ýóúr íñvíté líñk wíth só
 msgid "Which words does your new device show?"
 msgstr "[Whíçh wórds dóés ýóúr ñéw dévíçé shów?···············]"
 
+#: ui/app.slint
+msgid "Who sees it ({})"
+msgstr "[Whó séés ít (·····{})]"
+
+#: ui/app.slint
+msgid "Who sees your stories"
+msgstr "[Whó séés ýóúr stóríés········]"
+
 #: enclave-vault/src/engine.rs
 msgid "With photos and files your backup is too large to save from here. Save it without them, or keep one on your server."
 msgstr "[Wíth phótós áñd fílés ýóúr báçkúp ís tóó lárgé tó sávé fróm héré. Sávé ít wíthóút thém, ór kéép óñé óñ ýóúr sérvér.··············································]"
@@ -4149,6 +4237,18 @@ msgstr "[Ýóúr sérvér hás ñó báçkúp fór thésé wórds. Çhéçk thé
 msgid "Your server: {}"
 msgstr "[Ýóúr sérvér: ·····{}]"
 
+#: ui/app.slint
+msgid "Your stories go to the contacts chosen here. A change counts from your next story; this list stays on this device."
+msgstr "[Ýóúr stóríés gó tó thé çóñtáçts çhóséñ héré. Á çháñgé çóúñts fróm ýóúr ñéxt stórý; thís líst stáýs óñ thís dévíçé.·············································]"
+
+#: ui/app.slint
+msgid "Your story"
+msgstr "[Ýóúr stórý····]"
+
+#: ui/app.slint
+msgid "Your story, {} showing"
+msgstr "[Ýóúr stórý, ····{} shówíñg···]"
+
 #: enclave-vault/src/engine.rs
 msgid "Your unused invite links no longer work."
 msgstr "[Ýóúr úñúséd íñvíté líñks ñó lóñgér wórk.················]"
@@ -4220,6 +4320,14 @@ msgstr "[zh-Háñs··]"
 #: ui/app.slint
 msgid "zh-Hant"
 msgstr "[zh-Háñt··]"
+
+#: ui/app.slint
+msgid "{} ago · reached {}"
+msgstr "[{} ágó · réáçhéd ······{}]"
+
+#: ui/app.slint
+msgid "{} ago · reached {}, {} still to go"
+msgstr "[{} ágó · réáçhéd ······{}, {} stíll tó gó····]"
 
 #: ui/app.slint
 msgid "{} asked for a direct call: clearer, but answering directly shows your internet address to them."
@@ -4316,6 +4424,14 @@ msgstr "[{}'s phóñé shóúld shów thé sámé thréé wórds. Íf ít dóés
 #: ui/app.slint
 msgid "{}'s screen"
 msgstr "[{}'s sçrééñ···]"
+
+#: ui/app.slint
+msgid "{}'s story"
+msgstr "[{}'s stórý···]"
+
+#: ui/app.slint
+msgid "{}'s story, new"
+msgstr "[{}'s stórý, ñéw·····]"
 
 #: ui/app.slint
 msgid "{}'s video"

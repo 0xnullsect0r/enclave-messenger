@@ -148,6 +148,30 @@ export struct MessageRow {
     link-image: bool,
 }
 
+// Someone with stories showing (the strip above the conversations).
+export struct StoryPerson {
+    who: string,
+    name: string,
+    initials: string,
+    tint: color,
+    has-photo: bool,
+    photo: image,
+    // Some not opened yet.
+    unviewed: bool,
+}
+
+// One story in the viewer (theirs) or in Your story (ours).
+export struct StoryCard {
+    key: string,
+    text: string,
+    ago: string,
+    picture: bool,
+    has-image: bool,
+    image: image,
+    reached: int,
+    waiting: int,
+}
+
 // A GIF search result (its first frame comes after the names).
 export struct GifCell {
     name: string,
@@ -216,7 +240,7 @@ export struct StickerCell {
 }
 
 export enum Screen { welcome, name, setting-up, join, locked, main, restore }
-export enum Sheet { none, gifs, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
+export enum Sheet { none, story, my-story, story-audience, gifs, pack-preview, open-map, view-once, emoji, forward, call-route, servers, about, licences, my-code, add, check-code, settings, recovery, new-group, devices, meet, timer, attach, members, poll, friends, share, conversation, share-contact, location, gallery, report, stickers, new-pack, change-words, player, delete-account, crashes }
 
 component DeliveryMark inherits Rectangle {
     in property <int> status;
@@ -1284,6 +1308,20 @@ export component AppWindow inherits Window {
     in-out property <string> gif-query;
     callback search-gifs(string);
     callback send-gif(string, int);
+    // Stories: who has some, the ones being looked at, ours to post.
+    in property <[StoryPerson]> story-people;
+    in property <[StoryCard]> story-view;
+    in property <int> my-stories;
+    in property <[PickRow]> story-audience;
+    in property <int> story-audience-count;
+    in-out property <string> story-who;
+    in-out property <string> story-name;
+    in-out property <string> story-text;
+    in-out property <string> story-path;
+    callback open-stories(string);
+    callback post-story(string, string);
+    callback delete-story(string);
+    callback story-hidden(string, bool);
     in property <bool> typing;
     // In a group: who ("Ana, Ben").
     in property <string> typing-who;
@@ -1448,7 +1486,7 @@ export component AppWindow inherits Window {
     callback set-server-backup(bool);
     // Open the system's file dialog for a path field: 0 the backup to
     // restore, 1 a backup to check, 2 a file to send, 3 sticker pictures,
-    // 4 our profile photo.
+    // 4 our profile photo, 5 a story's picture.
     callback browse(int);
     // Scanning a code with the camera into a field: 1 add, 2 meet in
     // person, 3 a friend's new device (recovery share), 4 linking a device,
@@ -2002,6 +2040,69 @@ export component AppWindow inherits Window {
                     ActionTile { text: @tr("My code"); icon: Icons.qr; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.my-code); } }
                     ActionTile { text: @tr("Add"); icon: Icons.link; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.add); } }
                     ActionTile { text: @tr("Group"); icon: Icons.group; horizontal-stretch: 1; clicked => { root.open-sheet(Sheet.new-group); } }
+                }
+                // Stories: ours first, then each contact with some showing.
+                Flickable {
+                    height: 76px;
+                    vertical-stretch: 0;
+                    content-width: (root.story-people.length + 1) * 72px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Rectangle {
+                            width: 64px;
+                            accessible-role: button;
+                            accessible-label: root.my-stories > 0 ? @tr("Your story, {} showing", root.my-stories) : @tr("Post a story");
+                            accessible-action-default => { root.story-who = ""; root.open-stories(""); root.sheet = Sheet.my-story; }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.story-who = ""; root.open-stories(""); root.sheet = Sheet.my-story; } }
+                            VerticalLayout {
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 52px;
+                                        height: 52px;
+                                        border-radius: 26px;
+                                        border-width: 2px;
+                                        border-color: root.my-stories > 0 ? Tokens.pine : Tokens.hairline;
+                                        Avatar { initials: root.my-initials; tint: root.my-tint; has-photo: root.my-has-photo; photo: root.my-photo; size: 44px; }
+                                        if root.my-stories == 0: Rectangle {
+                                            x: parent.width - 18px;
+                                            y: parent.height - 18px;
+                                            width: 18px;
+                                            height: 18px;
+                                            border-radius: 9px;
+                                            background: Tokens.pine;
+                                            Text { text: "+"; color: #F6F3EC; font-size: 13px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                                        }
+                                    }
+                                }
+                                Caption { text: @tr("Your story"); horizontal-alignment: center; overflow: elide; }
+                            }
+                        }
+                        for p in root.story-people: Rectangle {
+                            width: 64px;
+                            accessible-role: button;
+                            accessible-label: p.unviewed ? @tr("{}'s story, new", p.name) : @tr("{}'s story", p.name);
+                            accessible-action-default => { root.story-who = p.who; root.story-name = p.name; root.open-stories(p.who); root.sheet = Sheet.story; }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.story-who = p.who; root.story-name = p.name; root.open-stories(p.who); root.sheet = Sheet.story; } }
+                            VerticalLayout {
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 52px;
+                                        height: 52px;
+                                        border-radius: 26px;
+                                        border-width: 2px;
+                                        border-color: p.unviewed ? Tokens.pine : Tokens.hairline;
+                                        Avatar { initials: p.initials; tint: p.tint; has-photo: p.has-photo; photo: p.photo; size: 44px; }
+                                    }
+                                }
+                                Caption { text: p.name; horizontal-alignment: center; overflow: elide; }
+                            }
+                        }
+                    }
                 }
                 if root.recovery-alert != "": Notice {
                     title: @tr("Someone is setting up your account on another device");
@@ -3343,6 +3444,121 @@ export component AppWindow inherits Window {
                 clicked => { root.sheet = Sheet.gifs; }
             }
         }
+    }
+
+    if root.sheet == Sheet.story: SheetFrame {
+        title: root.story-name;
+        close => { root.sheet = Sheet.none; }
+        Secondary { text: @tr("Stories last 24 hours. {} doesn't learn that you looked.", root.story-name); }
+        for c in root.story-view: VerticalLayout {
+            spacing: Tokens.space-xs;
+            if c.has-image: Rectangle {
+                height: min(420px, self.width * c.image.height / max(1, c.image.width));
+                border-radius: Tokens.radius-control;
+                clip: true;
+                Image { source: c.image; width: parent.width; height: parent.height; image-fit: contain; accessible-role: image; accessible-label: @tr("Picture"); }
+            }
+            if c.picture && !c.has-image: Secondary { text: @tr("Loading the picture…"); }
+            if c.text != "" && !c.picture: Rectangle {
+                min-height: 140px;
+                border-radius: Tokens.radius-control;
+                background: Tokens.pine;
+                Text {
+                    width: parent.width - 2 * Tokens.space-l;
+                    text: c.text;
+                    font-size: Tokens.type-title;
+                    font-weight: 600;
+                    color: #F6F3EC;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            if c.text != "" && c.picture: Body { text: c.text; wrap: word-wrap; }
+            Caption { text: c.ago; }
+        }
+    }
+
+    if root.sheet == Sheet.my-story: SheetFrame {
+        title: @tr("Your story");
+        close => { root.sheet = Sheet.none; }
+        Secondary { text: @tr("A picture or a few words your contacts can see for 24 hours. Each one gets it sealed in your conversation with them; nobody sees who else it went to."); }
+        Field { placeholder: @tr("A few words (optional with a picture)"); multiline: true; text <=> root.story-text; }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            Field { placeholder: @tr("A picture (optional)"); mono: true; text <=> root.story-path; horizontal-stretch: 1; }
+            QuietButton { text: @tr("Choose…"); outlined: true; accessible-label: @tr("Choose a picture for your story"); clicked => { root.browse(5); } }
+        }
+        HorizontalLayout {
+            spacing: Tokens.space-s;
+            alignment: start;
+            PrimaryButton {
+                text: root.busy ? @tr("Posting…") : @tr("Post");
+                enabled: (root.story-text != "" || root.story-path != "") && !root.busy;
+                clicked => { root.post-story(root.story-text, root.story-path); root.story-text = ""; root.story-path = ""; }
+            }
+            QuietButton {
+                text: @tr("Who sees it ({})", root.story-audience-count);
+                outlined: true;
+                clicked => { root.sheet = Sheet.story-audience; }
+            }
+        }
+        if root.story-view.length > 0: Rectangle { height: 1px; background: Tokens.hairline; }
+        for c in root.story-view: HorizontalLayout {
+            spacing: Tokens.space-sm;
+            if c.has-image: Rectangle {
+                width: 56px;
+                height: 56px;
+                border-radius: Tokens.radius-control;
+                clip: true;
+                Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                Body { text: c.text != "" ? c.text : @tr("Picture"); overflow: elide; }
+                Caption {
+                    text: c.waiting > 0
+                        ? @tr("{} ago · reached {}, {} still to go", c.ago, c.reached, c.waiting)
+                        : @tr("{} ago · reached {}", c.ago, c.reached);
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                QuietButton {
+                    text: @tr("Delete");
+                    danger: true;
+                    accessible-label: @tr("Delete this story for everyone");
+                    clicked => { root.delete-story(c.key); }
+                }
+            }
+        }
+    }
+
+    if root.sheet == Sheet.story-audience: SheetFrame {
+        title: @tr("Who sees your stories");
+        close => { root.sheet = Sheet.my-story; }
+        Secondary { text: @tr("Your stories go to the contacts chosen here. A change counts from your next story; this list stays on this device."); }
+        for p in root.story-audience: Rectangle {
+            height: 56px;
+            border-radius: Tokens.radius-control;
+            background: p.selected ? Tokens.bubble-in : transparent;
+            accessible-role: checkbox;
+            accessible-checked: p.selected;
+            accessible-label: p.name;
+            accessible-action-default => { root.story-hidden(p.id, p.selected); }
+            TouchArea { clicked => { root.story-hidden(p.id, p.selected); } }
+            HorizontalLayout {
+                padding-left: Tokens.space-s;
+                padding-right: Tokens.space-s;
+                spacing: Tokens.space-sm;
+                VerticalLayout { alignment: center; Avatar { initials: p.initials; tint: p.tint; size: 36px; } }
+                Body { text: p.name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                Text { text: p.selected ? @tr("Sees them") : @tr("Hidden"); font-size: Tokens.type-caption; color: p.selected ? Tokens.pine : Tokens.text-muted; vertical-alignment: center; }
+            }
+        }
+        if root.story-audience.length == 0: Secondary { text: @tr("Once you have contacts, they show here."); }
     }
 
     if root.sheet == Sheet.gifs: SheetFrame {

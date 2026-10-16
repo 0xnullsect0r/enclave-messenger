@@ -1034,6 +1034,17 @@ impl Client {
                 photo,
                 version,
             } => events.extend(self.on_profile(root, name, about, &photo, version)?),
+            Content::Story {
+                id,
+                text,
+                attachment,
+                age,
+                gone,
+            } => events.extend(self.on_story(
+                Some(root),
+                (&id, text, &attachment, age, gone),
+                now,
+            )?),
             _ => return Err(ProtoError::Decode.into()),
         }
         Ok(events)
@@ -1047,7 +1058,19 @@ impl Client {
         now: u64,
     ) -> Result<Vec<Event>> {
         if *to == self.account.root_public.0 {
-            let changed = self.on_note_copy(Content::decode(inner)?, now)?;
+            let content = Content::decode(inner)?;
+            // One of our stories, from another of our devices.
+            if let Content::Story {
+                id,
+                text,
+                attachment,
+                age,
+                gone,
+            } = content
+            {
+                return self.on_story(None, (&id, text, &attachment, age, gone), now);
+            }
+            let changed = self.on_note_copy(content, now)?;
             return Ok(if changed {
                 vec![Event::NotesChanged]
             } else {

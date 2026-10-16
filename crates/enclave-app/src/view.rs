@@ -16,6 +16,70 @@ thread_local! {
     static PREVIEWS: RefCell<HashMap<(String, u64), Image>> = RefCell::new(HashMap::new());
     /// Profile photos by contact id ("me" for ours): the latest one.
     static AVATARS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    /// The stories of the last snapshot, for the viewer.
+    static STORIES: RefCell<Vec<enclave_ipc::StoryRow>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The stories of `who` (a contact's id; empty for ours) into the viewer,
+/// with the pictures already decoded. Returns their keys, to open.
+pub fn show_stories(ui: &AppWindow, who: &str) -> Vec<String> {
+    let rows: Vec<enclave_ipc::StoryRow> = STORIES.with(|s| {
+        s.borrow()
+            .iter()
+            .filter(|r| r.who == who)
+            .cloned()
+            .collect()
+    });
+    let cards: Vec<crate::StoryCard> = rows
+        .iter()
+        .map(|r| {
+            let image = preview(&format!("story/{}", r.key), 0);
+            crate::StoryCard {
+                key: r.key.as_str().into(),
+                text: r.text.as_str().into(),
+                ago: r.ago.as_str().into(),
+                picture: r.picture,
+                has_image: image.is_some(),
+                image: image.unwrap_or_default(),
+                reached: r.reached as i32,
+                waiting: r.waiting as i32,
+            }
+        })
+        .collect();
+    ui.set_story_view(ModelRc::from(Rc::new(VecModel::from(cards))));
+    rows.into_iter().map(|r| r.key).collect()
+}
+
+/// The strip of people with stories, from a snapshot.
+fn apply_stories(ui: &AppWindow, s: &Snapshot) {
+    let mut people: Vec<crate::StoryPerson> = Vec::new();
+    for r in s.stories.iter().filter(|r| !r.who.is_empty()) {
+        if let Some(p) = people.iter_mut().find(|p| p.who.as_str() == r.who) {
+            p.unviewed |= !r.viewed;
+            continue;
+        }
+        let contact = s.contacts.iter().find(|c| c.id == r.who);
+        let photo = contact.filter(|c| c.has_photo).and_then(|c| avatar(&c.id));
+        people.push(crate::StoryPerson {
+            who: r.who.as_str().into(),
+            name: r.name.as_str().into(),
+            initials: initials(&r.name).into(),
+            tint: tint(contact.map_or(0, |c| c.tint)),
+            has_photo: photo.is_some(),
+            photo: photo.unwrap_or_default(),
+            unviewed: !r.viewed,
+        });
+    }
+    ui.set_story_people(ModelRc::from(Rc::new(VecModel::from(people))));
+    ui.set_my_stories(s.stories.iter().filter(|r| r.who.is_empty()).count() as i32);
+    ui.set_story_audience(ModelRc::from(Rc::new(VecModel::from(
+        s.story_audience.iter().map(pick_row).collect::<Vec<_>>(),
+    ))));
+    ui.set_story_audience_count(s.story_audience.iter().filter(|p| p.selected).count() as i32);
+    STORIES.with(|st| *st.borrow_mut() = s.stories.clone());
+    if matches!(ui.get_sheet(), Sheet::Story | Sheet::MyStory) {
+        show_stories(ui, ui.get_story_who().as_str());
+    }
 }
 
 fn avatar(id: &str) -> Option<Image> {
@@ -110,6 +174,19 @@ pub fn apply_preview(ui: &AppWindow, p: Preview) {
     ));
     if let Some(who) = p.conversation.strip_prefix("avatar/") {
         return apply_avatar(ui, who, img);
+    }
+    if let Some(key) = p.conversation.strip_prefix("story/") {
+        let model = ui.get_story_view();
+        for i in 0..model.row_count() {
+            if let Some(mut c) = model.row_data(i)
+                && c.key.as_str() == key
+            {
+                c.image = img.clone();
+                c.has_image = true;
+                model.set_row_data(i, c);
+            }
+        }
+        return;
     }
     if p.conversation == enclave_ipc::GIF_RESULTS {
         let model = ui.get_gif_cells();
@@ -479,6 +556,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
         s.friends.iter().map(pick_row).collect::<Vec<_>>(),
     ))));
     ui.set_friends_chosen(s.friends.iter().filter(|p| p.selected).count() as i32);
+    apply_stories(ui, s);
     ui.set_share_holders(strings(&s.share_holders));
     ui.set_share_threshold(s.share_threshold as i32);
     ui.set_holds_share(s.holds_share);

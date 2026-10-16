@@ -18,7 +18,7 @@ use prost::Message as _;
 pub struct Pb {
     #[prost(
         oneof = "Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39"
     )]
     pub kind: Option<Kind>,
 }
@@ -102,6 +102,22 @@ pub enum Kind {
     Poll(Vec<u8>),
     #[prost(message, tag = "38")]
     Profile(Profile),
+    #[prost(message, tag = "39")]
+    Story(Story),
+}
+
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct Story {
+    #[prost(bytes = "vec", tag = "1")]
+    pub id: Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub text: String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub attachment: Vec<u8>,
+    #[prost(uint32, tag = "4")]
+    pub age: u32,
+    #[prost(bool, tag = "5")]
+    pub gone: bool,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -547,6 +563,19 @@ pub fn to_pb(c: &Content) -> Pb {
             photo: photo.clone(),
             version,
         }),
+        Content::Story {
+            id,
+            text,
+            attachment,
+            age,
+            gone,
+        } => Kind::Story(Story {
+            id: id.to_vec(),
+            text: text.clone(),
+            attachment: attachment.clone(),
+            age,
+            gone,
+        }),
         Content::NotifyKey { key, day, previews } => Kind::NotifyKey(NotifyKey {
             key: key.to_vec(),
             day,
@@ -705,6 +734,13 @@ pub fn from_pb(p: Pb) -> Result<Content> {
                 version: p.version,
             }
         }
+        Kind::Story(s) => Content::Story {
+            id: id(s.id)?,
+            text: s.text,
+            attachment: s.attachment,
+            age: s.age,
+            gone: s.gone,
+        },
         Kind::NotifyKey(n) => Content::NotifyKey {
             key: arr(n.key)?,
             day: n.day,

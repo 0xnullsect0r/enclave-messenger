@@ -18,6 +18,7 @@ use std::sync::Arc;
 mod call_links;
 mod calling;
 mod group_calling;
+mod stories;
 mod transcribing;
 mod web;
 use std::time::Duration;
@@ -513,6 +514,22 @@ fn program_name(target: &str) -> &str {
 
 fn hex_id(root: &[u8; 64]) -> String {
     root[..16].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A story's key in the window: whose ("me" or a contact's id) and its id.
+fn story_key(s: &enclave_core::Story) -> String {
+    let who = s.from.as_ref().map(hex_id).unwrap_or_else(|| "me".into());
+    let id: String = s.id.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{who}/{id}")
+}
+
+/// "3 h", "12 min", "now".
+fn ago(secs: u64) -> String {
+    match secs {
+        0..60 => "now".into(),
+        60..3600 => format!("{} min", secs / 60),
+        _ => format!("{} h", secs / 3600),
+    }
 }
 
 fn group_id_str(gid: &[u8; 32]) -> String {
@@ -1861,6 +1878,7 @@ impl Engine {
                 | Cmd::AddPack(..)
                 | Cmd::PreviewPack(..)
                 | Cmd::SetPhoto(..)
+                | Cmd::PostStory(..)
                 | Cmd::LoadStickers
                 | Cmd::SendHistory(..)
                 | Cmd::StartJoin
@@ -2563,6 +2581,25 @@ impl Engine {
                 }
             }
             Cmd::GifSearch(query) => self.gif_search(&query).await,
+            Cmd::PostStory(text, name, bytes) => self.post_story(&text, &name, bytes).await,
+            Cmd::DeleteStory(key) => {
+                let found = self.client.as_ref().and_then(|c| {
+                    c.stories()
+                        .into_iter()
+                        .find(|s| s.from.is_none() && story_key(s) == key)
+                });
+                if let (Some(s), Some(c)) = (found, self.client.as_mut())
+                    && c.delete_story(&s.id).await.is_err()
+                {
+                    self.status = "Couldn't take it down everywhere yet. We'll keep trying.".into();
+                }
+            }
+            Cmd::OpenStory(key) => self.open_story(&key).await,
+            Cmd::StoryHidden(id, hidden) => {
+                if let (Some(root), Some(c)) = (self.root_of(&id), self.client.as_mut()) {
+                    let _ = c.set_story_hidden(&root, hidden);
+                }
+            }
             Cmd::SetName(name) => {
                 if let Some(c) = self.client.as_mut() {
                     self.status = match c.set_display_name(&name) {
@@ -5126,6 +5163,36 @@ impl Engine {
                 name: ct.name.clone(),
                 tint: tint_for(&ct.root),
                 selected: self.picked.contains(&ct.root),
+            })
+            .collect();
+        let audience = c.story_audience();
+        s.story_audience = c
+            .contacts()
+            .into_iter()
+            .filter(|ct| ct.state == ContactState::Accepted && !c.is_blocked(&ct.root))
+            .map(|ct| Pick {
+                id: hex_id(&ct.root),
+                name: ct.name.clone(),
+                tint: tint_for(&ct.root),
+                selected: audience.contains(&ct.root),
+            })
+            .collect();
+        s.stories = c
+            .stories()
+            .iter()
+            .map(|st| enclave_ipc::StoryRow {
+                key: story_key(st),
+                who: st.from.as_ref().map(hex_id).unwrap_or_default(),
+                name: st
+                    .from
+                    .and_then(|r| c.contact(&r).map(|ct| ct.name.clone()))
+                    .unwrap_or_else(|| s.my_name.clone()),
+                text: st.text.clone(),
+                ago: ago(now.saturating_sub(st.at)),
+                picture: st.attachment.is_some(),
+                viewed: st.viewed,
+                reached: st.reached() as u32,
+                waiting: st.waiting() as u32,
             })
             .collect();
         if let Some((t, holders)) = c.recovery_holders() {

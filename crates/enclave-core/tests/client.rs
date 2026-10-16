@@ -3673,3 +3673,82 @@ async fn profiles_reach_contacts_only() {
     );
     assert!(cy.contact_profile(&ada.root()).unwrap().is_none());
 }
+
+/// A story reaches the poster's audience (not those it is hidden from),
+/// with its picture; deleting it takes it down; after 24 hours it is gone.
+#[tokio::test(flavor = "multi_thread")]
+async fn stories_reach_the_audience_for_a_day() {
+    use enclave_core::StoryPicture;
+    let net = network();
+    let mut cs = Vec::new();
+    for (name, server) in [("Ada", S1), ("Ben", S2), ("Cy", S1)] {
+        cs.push(
+            Client::create(memory(), Arc::new(net.clone()), server, name)
+                .await
+                .unwrap()
+                .0,
+        );
+    }
+    let [mut ada, mut ben, mut cy] = <[Client; 3]>::try_from(cs).ok().unwrap();
+    connect(&mut ada, &mut ben).await;
+    connect(&mut ada, &mut cy).await;
+    ada.set_story_hidden(&cy.root(), true).unwrap();
+    assert_eq!(ada.story_audience(), vec![ben.root()]);
+
+    let words = ada.post_story("At the lake", None).await.unwrap();
+    let picture: Vec<u8> = (0..30_000u32).map(|i| (i % 239) as u8).collect();
+    let pic = ada
+        .post_story(
+            "",
+            Some(StoryPicture {
+                name: "lake.jpg",
+                mime: "image/jpeg",
+                bytes: &picture,
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(ada.post_story("  ", None).await.is_err(), "nothing to show");
+    assert_eq!(ada.stories().len(), 2, "ours show here too");
+    ada.sync().await.unwrap();
+    let ev = ben.sync().await.unwrap();
+    assert!(ev.iter().any(|e| matches!(e, Event::StoriesChanged)));
+    let theirs = ben.stories();
+    assert_eq!(theirs.len(), 2);
+    assert!(
+        theirs
+            .iter()
+            .all(|s| s.from == Some(ada.root()) && !s.viewed)
+    );
+    let shown = theirs.iter().find(|s| s.id == pic.id).unwrap().clone();
+    assert_eq!(ben.story_picture(&shown).await.unwrap(), picture);
+    ben.mark_story_viewed(&ada.root(), &pic.id).unwrap();
+    assert!(
+        ben.stories()
+            .iter()
+            .find(|s| s.id == pic.id)
+            .unwrap()
+            .viewed
+    );
+    cy.sync().await.unwrap();
+    assert!(cy.stories().is_empty(), "hidden from Cy");
+    let mine = ada.stories();
+    assert!(
+        mine.iter()
+            .all(|s| s.from.is_none() && s.reached() == 1 && s.waiting() == 0)
+    );
+
+    // Taken down: gone for Ben too.
+    ada.delete_story(&words.id).await.unwrap();
+    assert_eq!(ada.stories().len(), 1);
+    ada.sync().await.unwrap();
+    ben.sync().await.unwrap();
+    assert_eq!(ben.stories().len(), 1);
+
+    // A day later, gone everywhere.
+    net.advance(enclave_core::client::STORY_SECS + 1);
+    ada.sync().await.unwrap();
+    ben.sync().await.unwrap();
+    assert!(ada.stories().is_empty());
+    assert!(ben.stories().is_empty());
+}

@@ -222,6 +222,21 @@ pub enum Content {
         /// Increases with every change.
         version: u64,
     },
+    /// A story (`client/stories.rs`): its words and its picture's encoded
+    /// attachment reference (either may be empty, not both), how long ago
+    /// it was posted, or (`gone`) that its poster took it down.
+    Story {
+        /// Its id.
+        id: MsgId,
+        /// Its words.
+        text: String,
+        /// Encoded attachment reference of its picture, or empty.
+        attachment: Vec<u8>,
+        /// Seconds since it was posted, when sent.
+        age: u32,
+        /// Taken down.
+        gone: bool,
+    },
     /// The sender's notification key chain for capsules sent to them, from
     /// `day` on, and whether they want previews (`10-push.md` §4).
     NotifyKey {
@@ -435,6 +450,7 @@ const K_NOTIFY_KEY: u8 = 35;
 const K_CALL: u8 = 36;
 const K_POLL: u8 = 37;
 const K_PROFILE: u8 = 38;
+const K_STORY: u8 = 39;
 
 /// Longest "about" text, in bytes.
 pub const MAX_ABOUT: usize = 280;
@@ -901,6 +917,25 @@ impl Content {
                     .bytes(photo)
                     .u64(*version);
             }
+            Content::Story {
+                id,
+                text,
+                attachment,
+                age,
+                gone,
+            } => {
+                if text.len() > crate::client::MAX_STORY_TEXT
+                    || attachment.len() > MAX_ATTACHMENT_REF
+                {
+                    return too_large;
+                }
+                w.u8(K_STORY)
+                    .fixed(id)
+                    .bytes(text.as_bytes())
+                    .bytes(attachment)
+                    .u32(*age)
+                    .u8(u8::from(*gone));
+            }
             Content::NotifyKey { key, day, previews } => {
                 w.u8(K_NOTIFY_KEY)
                     .fixed(key)
@@ -1056,6 +1091,17 @@ impl Content {
                 about: get_str(&mut r, MAX_ABOUT)?,
                 photo: r.bytes(MAX_ATTACHMENT_REF)?.to_vec(),
                 version: r.u64()?,
+            },
+            K_STORY => Content::Story {
+                id: r.array()?,
+                text: get_str(&mut r, crate::client::MAX_STORY_TEXT)?,
+                attachment: r.bytes(MAX_ATTACHMENT_REF)?.to_vec(),
+                age: r.u32()?,
+                gone: match r.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(ProtoError::Decode),
+                },
             },
             K_NOTIFY_KEY => Content::NotifyKey {
                 key: r.array()?,
@@ -1225,6 +1271,13 @@ mod tests {
                 about: "Out walking".into(),
                 photo: vec![3; 200],
                 version: 4,
+            },
+            Content::Story {
+                id: [5; 16],
+                text: "At the lake".into(),
+                attachment: vec![4; 200],
+                age: 3600,
+                gone: false,
             },
             Content::NotifyKey {
                 key: [3; 32],

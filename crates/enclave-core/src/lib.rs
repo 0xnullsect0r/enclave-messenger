@@ -36,7 +36,7 @@ pub use client::{
 pub use client::{
     ConvPrefs, Folder, GalleryItem, Hit, Location, MAX_FOLDER_NAME, MAX_FOLDERS,
     MAX_PINNED_CONVERSATIONS, MAX_PINS, MeetMatch, Photo, Place, ProfileInfo, RecoveryAlert,
-    RecoveryHold, ShareRelease, ShareRequest, words_from_shares,
+    RecoveryHold, ShareRelease, ShareRequest, Story, StoryPicture, words_from_shares,
 };
 pub use client::{
     HistoryServe, HostVotes, LanHistory, ListUpdate, Sending, TYPING_RESERVE, TYPING_SHOW_SECS,
