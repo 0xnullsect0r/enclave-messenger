@@ -66,11 +66,16 @@ const fn hex56(s: &str) -> [u8; 56] {
     out
 }
 
+// Comparisons rather than range patterns, which hax doesn't translate
+// (`formal/hax`).
+#[allow(clippy::manual_range_contains)]
 const fn nibble(c: u8) -> u8 {
-    match c {
-        b'0'..=b'9' => c - b'0',
-        b'a'..=b'f' => c - b'a' + 10,
-        _ => 0,
+    if c >= b'0' && c <= b'9' {
+        c - b'0'
+    } else if c >= b'a' && c <= b'f' {
+        c - b'a' + 10
+    } else {
+        0
     }
 }
 
@@ -252,16 +257,17 @@ fn base_mul(k: &[u8; 56]) -> Point {
 // ---------------------------------------------------------------- scalars
 
 /// `x mod ℓ` for a little-endian `x` of any length, in constant time
-/// (the length is public).
+/// (the length is public). Indexed loops: hax doesn't translate `iter_mut`.
+#[allow(clippy::needless_range_loop)]
 fn reduce(x: &[u8]) -> [u64; 7] {
     // acc < ℓ always holds between steps; acc·256 + byte < 2^455 fits 8 limbs.
     let mut acc = [0u64; 8];
     for &byte in x.iter().rev() {
         // acc = acc·256 + byte
         let mut c = u64::from(byte);
-        for limb in acc.iter_mut() {
-            let v = (u128::from(*limb) << 8) | u128::from(c);
-            *limb = v as u64;
+        for k in 0..8 {
+            let v = (u128::from(acc[k]) << 8) | u128::from(c);
+            acc[k] = v as u64;
             c = (v >> 64) as u64;
         }
         // acc < 256·ℓ: subtract ℓ·2^j where it fits, j = 7 … 0.
@@ -308,6 +314,7 @@ fn limbs_to_bytes(l: &[u64]) -> Vec<u8> {
 }
 
 /// `(r + k·s) mod ℓ`, as RFC 8032 §5.2.6's S.
+#[allow(clippy::needless_range_loop)]
 fn mul_add(k: &[u64; 7], s: &[u64; 7], r: &[u64; 7]) -> [u8; 57] {
     let mut prod = [0u64; 15];
     for (i, &ki) in k.iter().enumerate() {
@@ -318,16 +325,17 @@ fn mul_add(k: &[u64; 7], s: &[u64; 7], r: &[u64; 7]) -> [u8; 57] {
             c = v >> 64;
         }
         // The carry runs to the end whatever its value (no early stop).
-        for slot in prod.iter_mut().skip(i + 7) {
-            let v = u128::from(*slot) + c;
-            *slot = v as u64;
+        for t in (i + 7)..15 {
+            let v = u128::from(prod[t]) + c;
+            prod[t] = v as u64;
             c = v >> 64;
         }
     }
     let mut c = 0u128;
-    for (i, slot) in prod.iter_mut().enumerate() {
-        let v = u128::from(*slot) + u128::from(if i < 7 { r[i] } else { 0 }) + c;
-        *slot = v as u64;
+    for t in 0..15 {
+        let ri = if t < 7 { r[t] } else { 0 };
+        let v = u128::from(prod[t]) + u128::from(ri) + c;
+        prod[t] = v as u64;
         c = v >> 64;
     }
     let mut bytes = Zeroizing::new(limbs_to_bytes(&prod));
@@ -358,10 +366,12 @@ impl ExpandedKey {
     pub(crate) fn from_seed(seed: &[u8; 57]) -> Self {
         let _dit = enclave_platform::dit::Guard::new();
         let h: Zeroizing<[u8; 114]> = Zeroizing::new(shake256(seed));
-        let mut s = Zeroizing::new([0u8; 56]);
-        s.copy_from_slice(&h[..56]);
-        s[0] &= 0xfc;
-        s[55] |= 0x80;
+        let mut clamped = [0u8; 56];
+        clamped.copy_from_slice(&h[..56]);
+        clamped[0] &= 0xfc;
+        clamped[55] |= 0x80;
+        let s = Zeroizing::new(clamped);
+        clamped.zeroize();
         // h[56] is the clamped scalar's 57th byte, set to 0: ignored.
         let mut prefix = Zeroizing::new([0u8; 57]);
         prefix.copy_from_slice(&h[57..]);

@@ -153,9 +153,10 @@ pub(crate) fn x448(scalar: &[u8; 56], u: &[u8; 56]) -> [u8; 56] {
     let mut bytes = [0u8; 56];
     fiat_p448_to_bytes(&mut bytes, &out);
     k.zeroize();
-    for v in [&mut x2, &mut z2, &mut x3, &mut z3] {
-        v.0.zeroize();
-    }
+    x2.0.zeroize();
+    z2.0.zeroize();
+    x3.0.zeroize();
+    z3.0.zeroize();
     bytes
 }
 
