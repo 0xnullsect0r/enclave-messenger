@@ -94,6 +94,7 @@ impl Drop for Tray {
 
 /// Show the icon. `None` when this desktop has no status area for it (or on
 /// a platform without one); the app then quits when its window closes.
+/// Desktops only: phones keep running in the background on their own terms.
 /// On macOS this must be called on the main thread.
 pub fn show(
     icon: &Icon,
@@ -113,11 +114,6 @@ pub fn show(
     #[cfg(target_os = "macos")]
     let tray = macos::show(icon, labels).map(|i| Tray { _inner: i });
     #[cfg(not(any(unix, windows)))]
-    let tray: Option<Tray> = {
-        let _ = (icon, labels);
-        None
-    };
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     let tray: Option<Tray> = {
         let _ = (icon, labels);
         None
