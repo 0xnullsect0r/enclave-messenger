@@ -440,7 +440,8 @@ jobs:
             adb install -r -g dist/Enclave-${{ needs.prepare.outputs.version }}-android.apk
             adb shell am start -W -n com.aricummings.enclave/.EnclaveActivity
             sleep 20
-            adb shell pidof com.aricummings.enclave
+            # Not running: what it said before it stopped.
+            adb shell pidof com.aricummings.enclave || { adb logcat -d -b crash -b main -v brief | grep -iE 'enclave|AndroidRuntime|DEBUG|libc|RustPanic|accesskit|slint' | tail -300; exit 1; }
             # uiautomator reads the accessibility tree TalkBack reads (PC-28):
             # the first dump turns accessibility on and the app sends its tree,
             # so the second has the welcome screen's controls in it.

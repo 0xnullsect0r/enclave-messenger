@@ -4123,6 +4123,7 @@ dependencies = [
  "enclave-vault",
  "enclave-wasmbox",
  "jni 0.21.1",
+ "libc",
  "libloading",
  "slint",
 ]

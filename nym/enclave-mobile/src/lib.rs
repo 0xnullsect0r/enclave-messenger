@@ -204,6 +204,7 @@ fn tor_variables() {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 fn android_main(app: slint::android::AndroidApp) {
+    stderr_to_logcat();
     enclave_platform::phone::android::attach_activity();
     let profile = app
         .internal_data_path()
@@ -229,6 +230,7 @@ extern "system" fn Java_com_aricummings_enclave_Native_start(
     service: jni::objects::JObject<'_>,
     profile: jni::objects::JString<'_>,
 ) {
+    stderr_to_logcat();
     enclave_platform::phone::android::attach_service(&env, &service);
     let Ok(profile) = env.get_string(&profile).map(String::from) else {
         return;
@@ -285,4 +287,51 @@ extern "system" fn Java_com_aricummings_enclave_Native_helper(
     if let Err(e) = enclave_platform::phone::android::serve_helper(&name, args, fd) {
         eprintln!("enclave: {name}: {e}");
     }
+}
+
+/// Android sends an app's standard error nowhere: this sends it to the
+/// system log under the tag "enclave", so a panic (and every `eprintln!`,
+/// which never carries message content) can be read with `adb logcat`.
+/// Apps can't read each other's logs.
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+fn stderr_to_logcat() {
+    use std::io::BufRead;
+    use std::os::fd::FromRawFd;
+    #[link(name = "log")]
+    unsafe extern "C" {
+        fn __android_log_write(
+            prio: i32,
+            tag: *const std::ffi::c_char,
+            text: *const std::ffi::c_char,
+        ) -> i32;
+    }
+    /// `ANDROID_LOG_WARN`.
+    const WARN: i32 = 5;
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mut fds = [0i32; 2];
+        // SAFETY: `pipe` fills the two descriptors of a new pipe.
+        if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+            return;
+        }
+        // SAFETY: points descriptor 2 at the pipe's write end; both are
+        // open descriptors of this process.
+        if unsafe { libc::dup2(fds[1], 2) } < 0 {
+            return;
+        }
+        // SAFETY: the read end is this file's alone from here on.
+        let read = unsafe { std::fs::File::from_raw_fd(fds[0]) };
+        let _ = std::thread::Builder::new()
+            .name("enclave-stderr".into())
+            .spawn(move || {
+                for line in std::io::BufReader::new(read).lines().map_while(Result::ok) {
+                    if let Ok(text) = std::ffi::CString::new(line) {
+                        // SAFETY: both are NUL-terminated strings that
+                        // outlive the call.
+                        unsafe { __android_log_write(WARN, c"enclave".as_ptr(), text.as_ptr()) };
+                    }
+                }
+            });
+    });
 }

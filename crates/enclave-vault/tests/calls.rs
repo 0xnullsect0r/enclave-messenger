@@ -489,7 +489,22 @@ async fn a_group_call_through_an_sfu_relay() {
     let txs: Vec<_> = sides.iter().map(|s| s.0.clone()).collect();
     let tier = enclave_media::callvideo::tier(0);
     // Ada talks and films for 4 s; the others send silence. Ben raises his
-    // hand; Dana reacts.
+    // hand; Dana reacts. Then everyone keeps sending silence until the
+    // checks below are done: on a loaded machine a side may connect late,
+    // and it can only hear the others while they still send.
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let keep_on = {
+        let (txs, done) = (txs.clone(), Arc::clone(&done));
+        move || async move {
+            let mut tick = tokio::time::interval(Duration::from_millis(20));
+            while !done.load(std::sync::atomic::Ordering::SeqCst) {
+                tick.tick().await;
+                for tx in &txs {
+                    let _ = tx.send(ToCall::Mic(vec![0; 960]));
+                }
+            }
+        }
+    };
     let talk = tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_millis(20));
         for f in 0..200 {
@@ -521,6 +536,7 @@ async fn a_group_call_through_an_sfu_relay() {
         txs
     });
     let txs = talk.await.unwrap();
+    let silence = tokio::spawn(keep_on());
     // What each side's window and call got. A slow machine decodes behind
     // the call: wait (up to 20 s) until Ben has pictures and everyone has
     // heard everyone else, rather than a fixed time.
@@ -557,6 +573,8 @@ async fn a_group_call_through_an_sfu_relay() {
             break;
         }
     }
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = silence.await;
     for (i, ev) in evs.into_iter().enumerate() {
         let mut heard = std::collections::BTreeSet::new();
         let (mut connected, mut hand, mut react) = (false, false, false);
