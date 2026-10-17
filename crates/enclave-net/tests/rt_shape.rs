@@ -76,14 +76,19 @@ async fn observe(
     let shaper = ShapedTransport::start(l.clone(), Shaping::On(profile), client.servers.clone());
     let span = profile.mean_tick() * ticks;
     let mut rng = HedgedRng::new().unwrap();
-    // Real requests at uniformly random moments of the run, to every
-    // server the client knows, in both sizes.
+    // Real requests at random moments, one in each of `real` equal parts
+    // of the run, to every server the client knows, in both sizes. (Fully
+    // uniform moments now and then put more than BULK_AFTER of one size in
+    // one long Background gap, which the shaper rightly answers with a
+    // disclosed burst: a different workload from the one these tests
+    // describe.)
     let mut jobs = Vec::new();
+    let part = span.as_millis() / client.real.max(1) as u128;
     for i in 0..client.real {
         let at = Duration::from_millis(
-            (u64::from(rng.array::<4>("t").map(u32::from_le_bytes).unwrap()) as u128
-                * span.as_millis()
-                / u128::from(u32::MAX)) as u64,
+            (i as u128 * part
+                + u128::from(rng.array::<4>("t").map(u32::from_le_bytes).unwrap()) * part
+                    / u128::from(u32::MAX)) as u64,
         );
         let server = client.servers[i % client.servers.len()];
         let len = if i % 3 == 0 { POLL_LEN } else { UNIT_LEN };
