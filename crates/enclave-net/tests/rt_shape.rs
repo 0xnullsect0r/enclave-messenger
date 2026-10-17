@@ -32,7 +32,10 @@ impl Transport for Link {
             .push((Instant::now(), request.len()));
         Ok(vec![0; request.len()])
     }
+    /// On the mixnet a key fetch is a poll-sized frame with a poll-sized
+    /// answer (`enclave_nym::frame`), so the watcher sees a poll.
     async fn server_key(&self, _: &ServerId) -> Result<ServerKey> {
+        self.seen.lock().unwrap().push((Instant::now(), POLL_LEN));
         Ok(self.key.clone())
     }
     fn now(&self) -> u64 {

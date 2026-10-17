@@ -60,6 +60,9 @@ struct Job {
     droppable: bool,
     /// Sent with [`Transport::exchange_oneway`]: no answer over the mixnet.
     oneway: bool,
+    /// A key fetch ([`Transport::server_key`]): poll-sized on the wire, so
+    /// it takes a poll slot like any other request with an answer.
+    key: bool,
     waited: u32,
 }
 
@@ -180,33 +183,63 @@ impl ShapedTransport {
         mean.mul_f64(-u.ln())
     }
 
-    async fn key(&self, server: &ServerId) -> Option<ServerKey> {
-        let today = (self.inner.now() / 86_400) as u32;
-        if let Some(k) = self
-            .state
+    fn today(&self) -> u32 {
+        (self.inner.now() / 86_400) as u32
+    }
+
+    /// Today's key for `server`, if fetched.
+    fn cached_key(&self, server: &ServerId) -> Option<ServerKey> {
+        let today = self.today();
+        self.state
             .lock()
             .ok()?
             .keys
             .get(server)
             .filter(|k| k.key_id == today)
             .cloned()
-        {
-            return Some(k);
-        }
-        let k = self.inner.server_key(server).await.ok()?;
-        self.state.lock().ok()?.keys.insert(*server, k.clone());
-        Some(k)
     }
 
-    /// Cover of the given size for a random known server.
+    /// A known server whose key for today hasn't been fetched yet: an empty
+    /// poll slot fetches it, rather than a fetch outside the schedule (a
+    /// first message to a server, or a new day, would show otherwise).
+    fn missing_key(&self) -> Option<ServerId> {
+        let today = self.today();
+        let st = self.state.lock().ok()?;
+        st.servers
+            .iter()
+            .find(|s| st.keys.get(*s).is_none_or(|k| k.key_id != today))
+            .copied()
+    }
+
+    /// Fetch `server`'s key now (in a poll slot), keep it and answer.
+    fn fetch_key(&self, server: ServerId, reply: Reply) {
+        let inner = Arc::clone(&self.inner);
+        let state = Arc::clone(&self.state);
+        tokio::spawn(async move {
+            let r = inner.server_key(&server).await;
+            if let (Ok(k), Ok(mut st)) = (&r, state.lock()) {
+                st.keys.insert(server, k.clone());
+            }
+            let _ = reply.send(r.map(|k| Some(crate::transport::encode_server_key(&k))));
+        });
+    }
+
+    /// Cover of the given size for a random known server whose key is in
+    /// hand.
     async fn cover(&self, size: usize, rng: &mut HedgedRng) -> Option<(ServerId, Vec<u8>)> {
-        let servers = self.state.lock().ok()?.servers.clone();
+        let servers: Vec<ServerId> = {
+            let servers = self.state.lock().ok()?.servers.clone();
+            servers
+                .into_iter()
+                .filter(|s| self.cached_key(s).is_some())
+                .collect()
+        };
         if servers.is_empty() {
             return None;
         }
         let pick: [u8; 2] = rng.array("shaped/server").ok()?;
         let server = servers[usize::from(u16::from_be_bytes(pick)) % servers.len()];
-        let key = self.key(&server).await?;
+        let key = self.cached_key(&server)?;
         let h = RequestHeader {
             op: if size == UNIT_LEN {
                 Op::Cover
@@ -228,6 +261,10 @@ impl ShapedTransport {
     }
 
     fn send(&self, job: Job) {
+        if job.key {
+            self.fetch_key(job.server, job.reply);
+            return;
+        }
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
             let r = if job.oneway {
@@ -339,20 +376,35 @@ impl ShapedTransport {
         }
         self.repace(units.len() > 1 || polls.len() > 1);
         let mut log = TickLog::default();
-        for (jobs, size) in [(units, UNIT_LEN), (polls, POLL_LEN)] {
+        // The poll slot first: when it fetches a key, the unit slot of the
+        // same tick may need it for its cover.
+        for (jobs, size) in [(polls, POLL_LEN), (units, UNIT_LEN)] {
             if jobs.is_empty() {
-                if let Some((server, bytes)) = self.cover(size, rng).await {
+                // An empty poll slot fetches a key still missing, else
+                // carries cover.
+                if size == POLL_LEN
+                    && let Some(server) = self.missing_key()
+                {
+                    log.sizes.push(POLL_LEN);
+                    if let Ok(k) = self.inner.server_key(&server).await
+                        && let Ok(mut st) = self.state.lock()
+                    {
+                        st.keys.insert(server, k);
+                    }
+                } else if let Some((server, bytes)) = self.cover(size, rng).await {
                     log.sizes.push(bytes.len());
                     self.send_cover(server, bytes);
                 }
             } else {
                 for j in jobs {
-                    log.sizes.push(j.bytes.len());
+                    log.sizes.push(if j.key { POLL_LEN } else { j.bytes.len() });
                     log.real += 1;
                     self.send(j);
                 }
             }
         }
+        // Logged units first, as a tick has always been read.
+        log.sizes.sort_unstable_by(|a, b| b.cmp(a));
         if let Ok(mut st) = self.state.lock()
             && let Some(l) = st.log.as_mut()
         {
@@ -393,6 +445,7 @@ impl ShapedTransport {
                     reply: tx,
                     droppable,
                     oneway,
+                    key: false,
                     waited: 0,
                 };
                 if size == UNIT_LEN {
@@ -492,8 +545,43 @@ impl Transport for ShapedTransport {
         self.enqueue(server, request, true, true).await
     }
 
+    /// A key fetch is poll-sized on the wire: it waits for a poll slot
+    /// (or comes from the keys the shaper already holds).
     async fn server_key(&self, server: &ServerId) -> Result<ServerKey> {
-        self.inner.server_key(server).await
+        if let Some(k) = self.cached_key(server) {
+            return Ok(k);
+        }
+        let (tx, rx) = oneshot::channel();
+        let off = {
+            let mut st = self
+                .state
+                .lock()
+                .map_err(|_| NetError::Unavailable("shaper"))?;
+            let off = st.shaping == Shaping::Off;
+            if !off && !st.servers.contains(server) {
+                st.servers.push(*server);
+            }
+            if !off {
+                st.polls.push_back(Job {
+                    server: *server,
+                    bytes: Vec::new(),
+                    reply: tx,
+                    droppable: false,
+                    oneway: false,
+                    key: true,
+                    waited: 0,
+                });
+            }
+            off
+        };
+        if off {
+            return self.inner.server_key(server).await;
+        }
+        let bytes = rx
+            .await
+            .map_err(|_| NetError::Unavailable("shaper stopped"))??
+            .ok_or(NetError::BadReply)?;
+        crate::transport::decode_server_key(&bytes)
     }
 
     fn set_route(&self, server: ServerId, route: crate::transport::Route) {

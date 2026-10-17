@@ -28,7 +28,9 @@ impl Transport for Net {
         self.seen.fetch_add(1, Ordering::SeqCst);
         Ok(vec![0; request.len()])
     }
+    /// A key fetch is a request on the link too (a poll-sized one).
     async fn server_key(&self, _: &ServerId) -> Result<ServerKey> {
+        self.seen.fetch_add(1, Ordering::SeqCst);
         Ok(self.key.clone())
     }
     fn now(&self) -> u64 {
@@ -183,11 +185,10 @@ async fn bulk_transfers_skip_the_clock_except_in_maximum() {
     for h in h {
         assert!(h.await.unwrap().is_ok());
     }
+    let log = m.take_log();
     assert!(
-        m.take_log()
-            .iter()
-            .all(|t| t.sizes == vec![UNIT_LEN, POLL_LEN]),
-        "Maximum ignores bulk"
+        log.iter().all(|t| t.sizes == vec![UNIT_LEN, POLL_LEN]),
+        "Maximum ignores bulk: {log:?}"
     );
     assert!(n.seen.load(Ordering::SeqCst) >= 4);
 }
@@ -240,4 +241,36 @@ async fn pacing_follows_the_profile_and_bulk() {
         .filter(|p| **p == Profile::Maximum.pacing(false))
         .count();
     assert!(max >= 1);
+}
+
+/// A first message to another server needs its key: the fetch waits for
+/// a poll slot instead of going out between ticks (the CI capture showed
+/// one at the start of every busy phase), so every tick keeps its shape.
+#[tokio::test(start_paused = true)]
+async fn a_key_fetch_takes_a_poll_slot() {
+    let (s, n) = shaper(Profile::Foreground);
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    let before = n.seen.load(Ordering::SeqCst);
+    let other: ServerId = [9; 16];
+    let k = {
+        let s = Arc::clone(&s);
+        tokio::spawn(async move { s.server_key(&other).await })
+    };
+    tokio::task::yield_now().await;
+    assert_eq!(
+        n.seen.load(Ordering::SeqCst),
+        before,
+        "nothing leaves between ticks"
+    );
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    assert!(k.await.unwrap().is_ok(), "the key came in a slot");
+    let log = s.take_log();
+    assert!(
+        log.iter().all(|t| t.sizes == vec![UNIT_LEN, POLL_LEN]),
+        "{log:?}"
+    );
+    // Held from now on: no second fetch.
+    let seen = n.seen.load(Ordering::SeqCst);
+    assert!(s.server_key(&other).await.is_ok());
+    assert_eq!(n.seen.load(Ordering::SeqCst), seen);
 }
