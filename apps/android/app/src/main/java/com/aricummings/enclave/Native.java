@@ -26,6 +26,13 @@ final class Native {
 
     private static boolean loaded;
 
+    // Whoever calls first (the activity, a service, a broadcast receiver in
+    // a process of its own) gets the library: NativeActivity's own loading
+    // happens outside Java and leaves these methods unresolved.
+    static {
+        load();
+    }
+
     private Native() {}
 
     static synchronized void load() {

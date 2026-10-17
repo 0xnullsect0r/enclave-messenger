@@ -69,6 +69,11 @@ public class EnclaveActivity extends android.app.NativeActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        // NativeActivity loads the library outside Java, which leaves the
+        // Java side's native methods unresolved: load it for them before
+        // anything here calls one (onResume does at once; the service, which
+        // also loads it, starts later).
+        Native.load();
         // Screen security: no screenshots, no recording, a blank thumbnail
         // in the app switcher (docs/14-storage.md §5); on until the
         // profile's setting says otherwise (setSecure).
