@@ -75,21 +75,23 @@ impl AccessKitAdapter {
         let mut env = vm.attach_current_thread_permanently().ok()?;
         // SAFETY: as above.
         let activity = unsafe { JObject::from_raw(app.activity_as_ptr() as *mut _) };
-        let window = env
-            .call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])
-            .ok()?
-            .l()
-            .ok()?;
-        // The decor view's origin is the native window's, which Slint's
-        // coordinates (plus `offset`) are relative to.
-        let host = env
-            .call_method(&window, "getDecorView", "()Landroid/view/View;", &[])
-            .ok()?
-            .l()
-            .ok()?;
-        if host.is_null() {
-            return None;
-        }
+        // A Java call that throws leaves its exception pending on this
+        // thread, and the next JNI call would abort the process: clear it
+        // and go without AccessKit instead.
+        let host = (|| {
+            let window =
+                env.call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])?.l()?;
+            // The decor view's origin is the native window's, which Slint's
+            // coordinates (plus `offset`) are relative to.
+            env.call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?.l()
+        })();
+        let host = match host {
+            Ok(h) if !h.is_null() => h,
+            _ => {
+                let _ = env.exception_clear();
+                return None;
+            }
+        };
         let requests = Requests { queue, waker: app.create_waker() };
         let inner =
             accesskit_android::InjectingAdapter::new(&mut env, &host, requests.clone(), requests);
