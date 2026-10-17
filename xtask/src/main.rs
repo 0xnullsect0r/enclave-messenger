@@ -188,8 +188,10 @@ fn ctgrind() -> ExitCode {
             "--release",
             "-p",
             "enclave-crypto",
+            // The integration tests, and the Ed448 signer's own.
             "--test",
             "ctgrind",
+            "--lib",
             "--",
             "--ignored",
             "--nocapture",

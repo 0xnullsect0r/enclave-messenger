@@ -22,8 +22,9 @@ use crate::hash::shake256;
 use crate::kmac::Kmac256;
 use crate::labels;
 use crate::rng::HedgedRng;
+use crate::ed448_sign::ExpandedKey as EdSigningKey;
 use ed448_goldilocks::{
-    Signature as EdSignature, SigningKey as EdSigningKey, VerifyingKey as EdVerifyingKey,
+    Signature as EdSignature, VerifyingKey as EdVerifyingKey,
 };
 use enclave_platform::mem::{Locked, Secret};
 use slh_dsa::{
@@ -156,11 +157,15 @@ impl CompositeSigningKey {
     /// Rebuild from the stored seed.
     pub fn from_seed(seed: &[u8; COMPOSITE_SEED_LEN]) -> Result<Self> {
         let _dit = enclave_platform::dit::Guard::new();
-        let ed = EdSigningKey::try_from(&seed[..57]).map_err(|_| Error::Malformed)?;
+        // Our own constant-time signer (`ed448_sign`); ed448-goldilocks
+        // only verifies.
+        let mut ed_seed = Zeroizing::new([0u8; 57]);
+        ed_seed.copy_from_slice(&seed[..57]);
+        let ed = EdSigningKey::from_seed(&ed_seed);
         let mut ml_seed = Zeroizing::new([0u8; 32]);
         ml_seed.copy_from_slice(&seed[57..]);
         let kp = libcrux_ml_dsa::ml_dsa_87::generate_key_pair(*ml_seed);
-        let ed_pk: [u8; ED448_PK_LEN] = ed.verifying_key().to_bytes();
+        let ed_pk: [u8; ED448_PK_LEN] = ed.public();
         let ml_pk: [u8; MLDSA_PK_LEN] = *kp.verification_key.as_ref();
         Ok(Self {
             seed: Secret::from_ref(seed),
@@ -187,13 +192,13 @@ impl CompositeSigningKey {
     pub fn sign(&self, ctx: &[u8], msg: &[u8], rng: &mut HedgedRng) -> Result<Vec<u8>> {
         let _dit = enclave_platform::dit::Guard::new();
         let m = composite_representative(ctx, msg)?;
-        let ed_sig = self.ed.sign_raw(&m);
+        let ed_sig = self.ed.sign(&m);
         let r: [u8; 32] = rng.array("sig/composite/sign")?;
         let ml_sig =
             libcrux_ml_dsa::ml_dsa_87::sign(&self.ml, &m, labels::SIG_COMPOSITE.as_bytes(), r)
                 .map_err(|_| Error::Malformed)?;
         let mut out = Vec::with_capacity(COMPOSITE_SIG_LEN);
-        out.extend_from_slice(&ed_sig.to_bytes());
+        out.extend_from_slice(&ed_sig);
         out.extend_from_slice(ml_sig.as_ref());
         Ok(out)
     }

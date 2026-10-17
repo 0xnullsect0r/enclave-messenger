@@ -148,7 +148,16 @@ impl IssuerPublic {
 /// An issuer's secret key.
 pub struct IssuerKey {
     server: VoprfServer<Suite>,
+    /// The same key's scalar, for the constant-time [`IssuerKey::evaluate`]
+    /// (`voprf` keeps its own private).
+    sk: p384::Scalar,
     public: IssuerPublic,
+}
+
+impl Drop for IssuerKey {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.sk);
+    }
 }
 
 impl IssuerKey {
@@ -159,7 +168,13 @@ impl IssuerKey {
                 .try_into()
                 .map_err(|_| PrivPassError::Malformed)?,
         );
-        Ok(Self { server, public })
+        use p384::elliptic_curve::PrimeField;
+        let bytes = zeroize::Zeroizing::new(server.serialize());
+        let mut repr = p384::FieldBytes::default();
+        repr.copy_from_slice(&bytes[..NS]);
+        let sk = Option::from(p384::Scalar::from_repr(repr)).ok_or(PrivPassError::Malformed)?;
+        zeroize::Zeroize::zeroize(&mut repr);
+        Ok(Self { server, sk, public })
     }
 
     /// A fresh random key.
@@ -212,10 +227,36 @@ impl IssuerKey {
         if token.challenge_digest != *challenge_digest || token.key_id != self.public.key_id() {
             return false;
         }
-        match self.server.evaluate(&token.input()) {
-            Ok(out) => bool::from(out.as_slice().ct_eq(&token.authenticator)),
-            Err(_) => false,
-        }
+        bool::from(self.evaluate(&token.input()).ct_eq(&token.authenticator))
+    }
+
+    /// RFC 9497 `Evaluate` (VOPRF mode, P384-SHA384) in constant time in
+    /// the key: `SHA-384(len ‖ input ‖ len ‖ SerializeElement(k·H(input)) ‖
+    /// "Finalize")`. `voprf`'s own `evaluate` gives the same bytes, but its
+    /// SEC1 encoding picks the 02/03 tag with a branch on the parity of
+    /// `k·H(input)`'s y (found by ctgrind): a timing oracle on one bit of
+    /// the issuer's PRF per verification. Here the tag is arithmetic.
+    fn evaluate(&self, input: &[u8]) -> [u8; NK] {
+        use p384::elliptic_curve::hash2curve::{ExpandMsgXmd, GroupDigest};
+        use p384::elliptic_curve::point::AffineCoordinates;
+        use sha2::Sha384;
+        const DST: &[u8] = b"HashToGroup-OPRFV1-\x01-P384-SHA384";
+        // The input is public: hashing it to the curve may branch.
+        let Ok(h) = NistP384::hash_from_bytes::<ExpandMsgXmd<Sha384>>(&[input], &[DST]) else {
+            return [0; NK];
+        };
+        let y = (h * self.sk).to_affine();
+        let mut element = [0u8; NE];
+        // `|`, not `+`: an overflow check would branch on the bit.
+        element[0] = 2 | y.y_is_odd().unwrap_u8();
+        element[1..].copy_from_slice(&y.x());
+        let mut f = Sha384::new();
+        f.update((input.len() as u16).to_be_bytes());
+        f.update(input);
+        f.update((NE as u16).to_be_bytes());
+        f.update(element);
+        f.update(b"Finalize");
+        f.finalize().into()
     }
 }
 
@@ -352,6 +393,18 @@ mod tests {
             .step_by(2)
             .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
             .collect()
+    }
+
+    /// The constant-time `evaluate` gives `voprf`'s bytes.
+    #[test]
+    fn evaluate_matches_voprf() {
+        let mut rng = HedgedRng::new().unwrap();
+        let key = IssuerKey::generate(&mut rng).unwrap();
+        for n in [0usize, 1, 32, 98, 300] {
+            let input: Vec<u8> = (0..n).map(|i| (i * 7 + n) as u8).collect();
+            let theirs = key.server.evaluate(&input).unwrap();
+            assert_eq!(key.evaluate(&input)[..], theirs[..], "{n} bytes");
+        }
     }
 
     /// RFC 9497 A.4.2 (P384-SHA384, VOPRF mode): key derivation and the

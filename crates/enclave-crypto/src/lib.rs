@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod ed448_sign;
 pub mod error;
 pub mod hash;
 #[cfg(feature = "hqc")]
