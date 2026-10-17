@@ -1185,13 +1185,17 @@ fn lossy(leg: &mut calls::Leg, rate: f64, seed: u64, on: Arc<std::sync::atomic::
     let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let out = std::mem::replace(&mut leg.dg.send, tx);
     tokio::spawn(async move {
+        // The generator moves only while losing, so the same packets of the
+        // talk are lost on every run (how many went before depends on
+        // timing: the handshake, keepalives).
         let mut x = seed | 1;
         while let Some(d) = rx.recv().await {
-            x ^= x << 13;
-            x ^= x >> 7;
-            x ^= x << 17;
-            let drop = on.load(std::sync::atomic::Ordering::Relaxed)
-                && (x % 1_000_000) as f64 / 1_000_000.0 < rate;
+            let drop = on.load(std::sync::atomic::Ordering::Relaxed) && {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x % 1_000_000) as f64 / 1_000_000.0 < rate
+            };
             if !drop && out.send(d).is_err() {
                 return;
             }

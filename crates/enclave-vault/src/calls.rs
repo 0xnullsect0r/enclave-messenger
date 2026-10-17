@@ -1266,6 +1266,9 @@ async fn group_loop(
     let id = plan.id;
     let mut sender = Sender::new(plan.me, &plan.keys.sframe_base(plan.me, 0));
     let mut receivers: HashMap<u32, Receiver> = HashMap::new();
+    // Who has been heard: a participant's first audio, whether or not a
+    // video packet from them came first (and made their receiver).
+    let mut heard: std::collections::HashSet<u32> = std::collections::HashSet::new();
     let mut jitters: HashMap<u32, (Jitter, tokio::time::Instant)> = HashMap::new();
     let mut join = enclave_calls::relay::join_payload(&plan.keys.rendezvous(), plan.sfu);
     join[0] = enclave_calls::relay::P_JOIN_GROUP;
@@ -1370,7 +1373,7 @@ async fn group_loop(
                         }
                         continue;
                     };
-                    if fresh {
+                    if heard.insert(from) {
                         let _ = events.send(CallEvent::Media(id, FromCall::Heard(from)));
                     }
                     for inner in decode_plaintexts(&pt).unwrap_or_default() {
