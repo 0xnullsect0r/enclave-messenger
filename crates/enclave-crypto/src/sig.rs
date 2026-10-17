@@ -17,15 +17,13 @@
 //! sig = Ed448.Sign(M') ‖ ML-DSA-87.Sign(M', ctx = "enclave/v1/sig/composite")
 //! ```
 
+use crate::ed448_sign::ExpandedKey as EdSigningKey;
 use crate::error::{Error, Result};
 use crate::hash::shake256;
 use crate::kmac::Kmac256;
 use crate::labels;
 use crate::rng::HedgedRng;
-use crate::ed448_sign::ExpandedKey as EdSigningKey;
-use ed448_goldilocks::{
-    Signature as EdSignature, VerifyingKey as EdVerifyingKey,
-};
+use ed448_goldilocks::{Signature as EdSignature, VerifyingKey as EdVerifyingKey};
 use enclave_platform::mem::{Locked, Secret};
 use slh_dsa::{
     Shake256s, Signature as SlhSignature, SigningKey as SlhSigningKey,

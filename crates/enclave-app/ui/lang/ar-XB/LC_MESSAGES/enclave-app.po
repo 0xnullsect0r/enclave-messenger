@@ -2381,6 +2381,10 @@ msgstr "‫Only your first device can link new ones.‬"
 msgid "Open"
 msgstr "‫Open‬"
 
+#: enclave-app/src/background.rs
+msgid "Open Enclave"
+msgstr "‫Open Enclave‬"
+
 #: ui/app.slint
 msgid "Open battery settings"
 msgstr "‫Open battery settings‬"
@@ -2676,6 +2680,10 @@ msgstr "‫QR code of your contact code‬"
 #: ui/app.slint
 msgid "Question"
 msgstr "‫Question‬"
+
+#: enclave-app/src/background.rs
+msgid "Quit Enclave"
+msgstr "‫Quit Enclave‬"
 
 #: ui/app.slint
 msgid "Raise hand"

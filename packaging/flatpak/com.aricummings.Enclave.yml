@@ -26,6 +26,8 @@ finish-args:
   - --device=all
   # New-message notices.
   - --talk-name=org.freedesktop.Notifications
+  # The status icon when the window is closed (enclave_platform::tray).
+  - --talk-name=org.kde.StatusNotifierWatcher
   # Files to send, backups and saved attachments go through the file
   # chooser portal; secrets through the Secret portal. Neither needs a
   # permission here.

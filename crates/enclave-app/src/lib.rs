@@ -4,6 +4,8 @@
 //! separate process ([`vault`]); elsewhere it is a thread.
 
 pub mod audio;
+#[cfg(desktop)]
+pub mod background;
 pub mod camera;
 pub mod format;
 #[cfg(desktop)]

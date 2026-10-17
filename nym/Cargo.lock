@@ -4225,6 +4225,7 @@ dependencies = [
  "libloading",
  "ndk-context",
  "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
  "objc2-av-foundation",
  "objc2-avf-audio",
  "objc2-call-kit",
@@ -4352,6 +4353,7 @@ dependencies = [
  "sha2 0.10.9",
  "subtle 2.6.1",
  "voprf",
+ "zeroize",
 ]
 
 [[package]]

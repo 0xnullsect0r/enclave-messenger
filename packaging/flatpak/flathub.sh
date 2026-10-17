@@ -82,6 +82,8 @@ finish-args:
   - --share=network
   - --device=all
   - --talk-name=org.freedesktop.Notifications
+  # The status icon when the window is closed (enclave_platform::tray).
+  - --talk-name=org.kde.StatusNotifierWatcher
 modules:
   - name: enclave
     buildsystem: simple

@@ -2381,6 +2381,10 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
+#: enclave-app/src/background.rs
+msgid "Open Enclave"
+msgstr ""
+
 #: ui/app.slint
 msgid "Open battery settings"
 msgstr ""
@@ -2675,6 +2679,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Question"
+msgstr ""
+
+#: enclave-app/src/background.rs
+msgid "Quit Enclave"
 msgstr ""
 
 #: ui/app.slint

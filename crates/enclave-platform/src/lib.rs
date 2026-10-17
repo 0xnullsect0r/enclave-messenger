@@ -52,6 +52,8 @@ pub mod phone;
 pub mod process;
 #[cfg(target_os = "macos")]
 pub mod seatbelt;
+#[cfg(feature = "window")]
+pub mod tray;
 #[cfg(feature = "video")]
 pub mod video;
 #[cfg(feature = "window")]

@@ -741,9 +741,11 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         Mode::Server { profile, .. } => Some(profile.clone()),
         _ => None,
     };
+    // Started again while running (perhaps in the background): the open
+    // copy shows its window, or takes the link, and this one stops.
     #[cfg(desktop)]
-    if let (Some(p), Some(l)) = (&profile, &opened)
-        && crate::handoff::send(p, l)
+    if let Some(p) = &profile
+        && crate::handoff::send(p, opened.as_deref().unwrap_or(crate::background::SHOW))
     {
         std::process::exit(0);
     }
@@ -770,15 +772,34 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // the system. They wait in the vault until the profile is unlocked.
     #[cfg(desktop)]
     if let Some(p) = &profile {
-        let t = tx.clone();
+        let (t, w) = (tx.clone(), ui.as_weak());
         crate::handoff::listen(p, move |l| {
-            let _ = t.send(Cmd::OpenLink(l));
+            // Either way the window comes back (it may be hidden).
+            let (t2, w) = (t.clone(), w.clone());
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = w.upgrade() {
+                    crate::background::show(&ui, &t2);
+                }
+            });
+            if l != crate::background::SHOW {
+                let _ = t.send(Cmd::OpenLink(l));
+            }
         });
     }
+    // Closing the window leaves Enclave running where there is a status
+    // area (PC-48); kept until the app quits.
+    #[cfg(desktop)]
+    let _tray = crate::background::start(&ui, tx.clone());
     #[cfg(target_os = "macos")]
     {
-        let t = tx.clone();
+        let (t, w) = (tx.clone(), ui.as_weak());
         enclave_platform::open_url::on_open_url(move |l| {
+            let (t2, w) = (t.clone(), w.clone());
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = w.upgrade() {
+                    crate::background::show(&ui, &t2);
+                }
+            });
             let _ = t.send(Cmd::OpenLink(l));
         });
     }
@@ -2039,6 +2060,14 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     #[cfg(not(desktop))]
     {
         slint::Timer::single_shot(Duration::ZERO, enclave_platform::phone::init);
+        // The text size again: iOS can only say it once the app runs.
+        let w = ui.as_weak();
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(ui) = w.upgrade() {
+                ui.global::<crate::Tokens>()
+                    .set_text_scale(enclave_platform::window::text_scale());
+            }
+        });
         phone::delivery(&ui);
     }
     if smoke {
@@ -2047,6 +2076,15 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
             std::process::exit(1);
         });
     }
+    // On a desktop, hiding the window doesn't end the loop: only quitting
+    // does (the status icon, `background`).
+    #[cfg(desktop)]
+    {
+        ui.show()?;
+        slint::run_event_loop_until_quit()?;
+        ui.hide()
+    }
+    #[cfg(not(desktop))]
     ui.run()
 }
 

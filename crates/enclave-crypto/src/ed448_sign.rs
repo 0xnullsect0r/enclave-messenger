@@ -28,8 +28,7 @@ use crate::hash::shake256;
 use fiat_crypto::p448_solinas_64::{
     fiat_p448_add, fiat_p448_carry, fiat_p448_carry_mul, fiat_p448_carry_square,
     fiat_p448_from_bytes, fiat_p448_loose_field_element as Loose, fiat_p448_relax,
-    fiat_p448_selectznz, fiat_p448_sub, fiat_p448_tight_field_element as Tight,
-    fiat_p448_to_bytes,
+    fiat_p448_selectznz, fiat_p448_sub, fiat_p448_tight_field_element as Tight, fiat_p448_to_bytes,
 };
 use std::hint::black_box;
 use zeroize::{Zeroize, Zeroizing};
@@ -40,10 +39,16 @@ pub(crate) const POINT_LEN: usize = 57;
 pub(crate) const SIG_LEN: usize = 114;
 
 /// The base point's coordinates (RFC 8032 §5.2), little-endian.
-const BX: [u8; 56] = hex56("5ec00cc72ba826268e93008be1803b431165b62af71aae1264a4d3a324e36dea67170f477065149eda36bf22a6151d22ed0ded6bc670194f");
-const BY: [u8; 56] = hex56("14fa30f25b790898adc8d74e2c13bdfdc4397ce61cffd33ad7c2a0051e9c78874098a36c7373ea4b62c7c9563720768824bcb66e71463f69");
+const BX: [u8; 56] = hex56(
+    "5ec00cc72ba826268e93008be1803b431165b62af71aae1264a4d3a324e36dea67170f477065149eda36bf22a6151d22ed0ded6bc670194f",
+);
+const BY: [u8; 56] = hex56(
+    "14fa30f25b790898adc8d74e2c13bdfdc4397ce61cffd33ad7c2a0051e9c78874098a36c7373ea4b62c7c9563720768824bcb66e71463f69",
+);
 /// `d = −39081 mod p`.
-const D: [u8; 56] = hex56("5667fffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+const D: [u8; 56] = hex56(
+    "5667fffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+);
 /// ℓ = 2^446 − 13818066809895115352007386748515426880336692474882178609894547503885,
 /// as 64-bit limbs, least significant first.
 const L: [u64; 7] = limbs_of(&hex56(
@@ -479,7 +484,10 @@ mod tests {
         assert_eq!(reduce(&l), [0; 7]);
         l[0] += 5;
         assert_eq!(reduce(&l)[0], 5);
-        assert_eq!(reduce(&[0xff; 114]), reduce(&limbs_to_bytes(&reduce(&[0xff; 114]))));
+        assert_eq!(
+            reduce(&[0xff; 114]),
+            reduce(&limbs_to_bytes(&reduce(&[0xff; 114])))
+        );
     }
 }
 
@@ -507,7 +515,11 @@ mod ctgrind {
         let sig = key.sign(b"a message");
         ctgrind::unpoison(black_box(&sig));
         ctgrind::unpoison(&seed);
-        assert_eq!(ctgrind::errors() - before, 0, "Ed448 signing depends on the key");
+        assert_eq!(
+            ctgrind::errors() - before,
+            0,
+            "Ed448 signing depends on the key"
+        );
         let theirs = ed448_goldilocks::SigningKey::try_from(&seed[..]).unwrap();
         assert_eq!(sig, theirs.sign_raw(b"a message").to_bytes());
     }

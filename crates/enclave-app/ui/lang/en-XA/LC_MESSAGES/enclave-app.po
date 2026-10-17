@@ -2381,6 +2381,10 @@ msgstr "[Óñlý ýóúr fírst dévíçé çáñ líñk ñéw óñés.····�
 msgid "Open"
 msgstr "[Ópéñ·]"
 
+#: enclave-app/src/background.rs
+msgid "Open Enclave"
+msgstr "[Ópéñ Éñçlávé····]"
+
 #: ui/app.slint
 msgid "Open battery settings"
 msgstr "[Ópéñ báttérý séttíñgs········]"
@@ -2676,6 +2680,10 @@ msgstr "[QR çódé óf ýóúr çóñtáçt çódé···········]"
 #: ui/app.slint
 msgid "Question"
 msgstr "[Qúéstíóñ···]"
+
+#: enclave-app/src/background.rs
+msgid "Quit Enclave"
+msgstr "[Qúít Éñçlávé····]"
 
 #: ui/app.slint
 msgid "Raise hand"
