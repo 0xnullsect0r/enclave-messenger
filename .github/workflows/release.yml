@@ -442,7 +442,10 @@ jobs:
             sleep 20
             # What the app and the system said while it started (a crash, and
             # the service bringing the process back, would show here).
-            adb logcat -d -b crash -b main -b system -v brief | grep -iE 'enclave|AndroidRuntime|DEBUG|libc|accesskit|slint|ActivityManager|ActivityTaskManager' | tail -300
+            adb logcat -d -b crash -v brief | tail -80
+            adb logcat -d -v brief -s enclave AndroidRuntime DEBUG libc ActivityTaskManager WindowManager NativeActivity threaded_app | grep -v 'Slow operation' | tail -150
+            adb shell dumpsys activity activities | grep -iE 'aricummings|ResumedActivity' | head -20
+            adb shell dumpsys window | grep -iE 'mCurrentFocus|mFocusedApp' | head -5
             adb shell pidof com.aricummings.enclave
             # uiautomator reads the accessibility tree TalkBack reads (PC-28):
             # the first dump turns accessibility on and the app sends its tree,
