@@ -274,3 +274,22 @@ async fn a_key_fetch_takes_a_poll_slot() {
     assert!(s.server_key(&other).await.is_ok());
     assert_eq!(n.seen.load(Ordering::SeqCst), seen);
 }
+
+/// A real poll queued before the first tick, when no key is held yet:
+/// the first poll slot fetches a key (the unit slot's cover needs one) and
+/// the poll goes a tick later, so even the first tick carries both sizes.
+#[tokio::test(start_paused = true)]
+async fn the_first_tick_has_both_sizes_with_a_poll_waiting() {
+    let (s, _) = shaper(Profile::Background);
+    let polls = spawn_requests(&s, 1, POLL_LEN);
+    tokio::time::sleep(Duration::from_secs(120 * 20)).await;
+    for h in polls {
+        assert!(h.await.unwrap().is_ok(), "the poll was answered");
+    }
+    let log = s.take_log();
+    assert!(log.len() >= 2);
+    assert!(
+        log.iter().all(|t| t.sizes == vec![UNIT_LEN, POLL_LEN]),
+        "{log:?}"
+    );
+}

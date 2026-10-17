@@ -368,7 +368,20 @@ impl ShapedTransport {
                 Shaping::On(p) => p.allows_bulk(),
             };
             let (u, du) = Self::take(&mut st.units, bulk);
-            let (p, dp) = Self::take(&mut st.polls, bulk);
+            // Cover for an empty unit slot needs a key. With none held yet
+            // (the first ticks), the poll slot fetches one and real polls
+            // wait a tick, so the tick still carries both sizes.
+            let today = (self.inner.now() / 86_400) as u32;
+            let keyless = u.is_empty()
+                && !st
+                    .servers
+                    .iter()
+                    .any(|s| st.keys.get(s).is_some_and(|k| k.key_id == today));
+            let (p, dp) = if keyless {
+                (Vec::new(), Vec::new())
+            } else {
+                Self::take(&mut st.polls, bulk)
+            };
             (u, p, du, dp)
         };
         for j in dropped_u.into_iter().chain(dropped_p) {
