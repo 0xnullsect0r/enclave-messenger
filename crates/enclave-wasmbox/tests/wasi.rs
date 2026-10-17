@@ -205,3 +205,27 @@ fn mediad_in_the_sandbox_matches_native() {
         other => panic!("clip frames: {other:?}"),
     }
 }
+
+/// `random_get` fills the buffer it is given (std seeds its hash maps with
+/// it), and refuses one outside memory.
+#[test]
+fn random_bytes() {
+    let module = wat::parse_str(
+        r#"(module
+          (import "wasi_snapshot_preview1" "random_get" (func $random (param i32 i32) (result i32)))
+          (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+          (memory (export "memory") 1)
+          (func (export "_start")
+            (if (call $random (i32.const 70000) (i32.const 8)) (then) (else (call $exit (i32.const 2))))
+            (drop (call $random (i32.const 0) (i32.const 37)))
+            ;; 37 bytes, not all zero: exit 0; else 1.
+            (if (i64.ne (i64.or (i64.load (i32.const 0)) (i64.load (i32.const 29))) (i64.const 0))
+              (then (call $exit (i32.const 0)))
+              (else (call $exit (i32.const 1))))))"#,
+    )
+    .unwrap();
+    assert_eq!(
+        enclave_wasmbox::run(&module, Cursor::new(Vec::new()), Sink::default()).unwrap(),
+        0
+    );
+}

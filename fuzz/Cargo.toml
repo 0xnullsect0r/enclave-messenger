@@ -72,6 +72,12 @@ test = false
 doc = false
 
 [[bin]]
+name = "update"
+path = "fuzz_targets/update.rs"
+test = false
+doc = false
+
+[[bin]]
 name = "media"
 path = "fuzz_targets/media.rs"
 test = false

@@ -82,9 +82,22 @@ fn mtm() -> Option<MainThreadMarker> {
     MainThreadMarker::new()
 }
 
+/// The running app: `None` before `UIApplicationMain` has made it (the
+/// window's first settings are read before the event loop starts there).
+fn app(_mtm: MainThreadMarker) -> Option<Retained<UIApplication>> {
+    // SAFETY: a class method returning the shared application or nil, on
+    // the main thread (the marker).
+    unsafe {
+        objc2::msg_send![
+            <UIApplication as objc2::ClassType>::class(),
+            sharedApplication
+        ]
+    }
+}
+
 #[allow(deprecated)]
 fn key_window(mtm: MainThreadMarker) -> Option<Retained<UIWindow>> {
-    UIApplication::sharedApplication(mtm).keyWindow()
+    app(mtm)?.keyWindow()
 }
 
 /// Lay a blur over the window, or take it away.
@@ -220,7 +233,7 @@ pub fn init() {
     cover(mtm, secure() && captured(mtm));
 
     // SAFETY: reading the delegate object to find its class.
-    let delegate = unsafe { UIApplication::sharedApplication(mtm).delegate() };
+    let delegate = app(mtm).and_then(|a| unsafe { a.delegate() });
     if let Some(d) = delegate {
         let obj: &AnyObject = d.as_ref();
         let class: &AnyClass = obj.class();
@@ -275,7 +288,9 @@ pub fn init() {
     calls::init();
     // APNs: the token comes back to `registered` (Maximum privacy never
     // registers it with a server; the vault refuses there).
-    UIApplication::sharedApplication(mtm).registerForRemoteNotifications();
+    if let Some(a) = app(mtm) {
+        a.registerForRemoteNotifications();
+    }
 
     let center = UNUserNotificationCenter::currentNotificationCenter();
     let done = RcBlock::new(|_: Bool, _: *mut objc2_foundation::NSError| {});
@@ -486,7 +501,7 @@ pub(super) fn notify(title: &str, body: &str) {
     let Some(mtm) = mtm() else {
         return;
     };
-    if UIApplication::sharedApplication(mtm).applicationState() == UIApplicationState::Active {
+    if app(mtm).is_none_or(|a| a.applicationState() == UIApplicationState::Active) {
         return;
     }
     let content = UNMutableNotificationContent::new();
@@ -798,7 +813,11 @@ pub(super) fn text_scale() -> f32 {
     let Some(mtm) = MainThreadMarker::new() else {
         return 1.0;
     };
-    let app = UIApplication::sharedApplication(mtm);
+    // Before the app exists, the default size; the app reads it again
+    // once its loop runs.
+    let Some(app) = app(mtm) else {
+        return 1.0;
+    };
     // SAFETY: preferredContentSizeCategory is a UIApplication property
     // returning an NSString (a UIContentSizeCategory constant), read on
     // the main thread.

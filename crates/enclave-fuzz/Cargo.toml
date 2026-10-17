@@ -29,6 +29,7 @@ enclave-nym = { path = "../enclave-nym" }
 enclave-tokens = { path = "../enclave-tokens" }
 enclave-push-relay = { path = "../enclave-push-relay" }
 enclave-store = { path = "../enclave-store" }
+enclave-update = { path = "../enclave-update" }
 
 [dev-dependencies]
 png = "0.18"

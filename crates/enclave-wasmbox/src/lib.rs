@@ -259,6 +259,34 @@ fn link(linker: &mut Linker<Host>) -> Result<(), wasmi::Error> {
     linker.func_wrap(WASI, "sched_yield", |_: Caller<'_, Host>| -> i32 {
         SUCCESS
     })?;
+    // Random bytes, which Rust's standard library asks for to seed its
+    // hash maps: from the system (std's own keys; no crate needed).
+    linker.func_wrap(
+        WASI,
+        "random_get",
+        |mut c: Caller<'_, Host>, at: i32, len: i32| -> i32 {
+            use std::hash::{BuildHasher, Hasher};
+            let (Ok(at), Ok(len)) = (u32::try_from(at), u32::try_from(len)) else {
+                return EINVAL;
+            };
+            let keys = std::collections::hash_map::RandomState::new();
+            let mut done = 0u32;
+            while done < len {
+                let mut h = keys.build_hasher();
+                h.write_u32(done);
+                let word = h.finish().to_le_bytes();
+                let n = (len - done).min(8);
+                let Some(to) = at.checked_add(done).and_then(|t| i32::try_from(t).ok()) else {
+                    return EINVAL;
+                };
+                if !put(&mut c, to, &word[..n as usize]) {
+                    return EINVAL;
+                }
+                done += n;
+            }
+            SUCCESS
+        },
+    )?;
     Ok(())
 }
 

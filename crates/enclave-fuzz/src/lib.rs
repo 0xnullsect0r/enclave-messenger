@@ -169,6 +169,19 @@ fn ipc(d: &[u8]) {
     let _ = enclave_ipc::media::MediaReply::decode(d);
 }
 
+/// The update channel: TUF metadata, release bundles and Sigsum proofs,
+/// which reach the device from a server and a log it doesn't trust.
+fn update(d: &[u8]) {
+    use enclave_update::{Bundle, Root, Signed, Snapshot, Targets, Timestamp};
+    let _ = Signed::decode(d);
+    let _ = Root::decode(d);
+    let _ = Targets::decode(d);
+    let _ = Snapshot::decode(d);
+    let _ = Timestamp::decode(d);
+    let _ = Bundle::decode(d);
+    let _ = enclave_update::sigsum::Proof::parse(&String::from_utf8_lossy(d));
+}
+
 /// What mediad decodes: every byte string a peer can send as a picture or
 /// a voice note.
 fn media(d: &[u8]) {
@@ -235,6 +248,7 @@ pub const TARGETS: &[Target] = &[
     ("relay", relay),
     ("group_open", group_open),
     ("ipc", ipc),
+    ("update", update),
 ];
 
 /// Run one target by name (for reproducers).
