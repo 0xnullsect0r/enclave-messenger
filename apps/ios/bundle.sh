@@ -156,6 +156,12 @@ echo "bundle: $ipa (signed for the App Store: $signed)"
 if [ "$signed" = yes ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] && [ -n "${ASC_KEY_PATH:-}" ]; then
   mkdir -p "$HOME/.appstoreconnect/private_keys"
   cp "$ASC_KEY_PATH" "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-  xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-  echo "bundle: uploaded to TestFlight"
+  # The .ipa is a release file either way; a refused upload (no App Store
+  # Connect record yet, a build number already used) shouldn't stop the
+  # release.
+  if xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"; then
+    echo "bundle: uploaded to TestFlight"
+  else
+    echo "::warning::the TestFlight upload failed; the .ipa is still in the release"
+  fi
 fi
