@@ -28,6 +28,7 @@ ignore = [
     { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 0.101 only in nym's Nyx RPC client; see above" },
     { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.101 only in nym's Nyx RPC client; see above" },
     { id = "RUSTSEC-2026-0104", reason = "CRL parsing; no CRLs are used" },
+    { id = "RUSTSEC-2026-0382", reason = "rustls-webpki 0.101 only in nym's Nyx RPC client (the optional mixnet's credentials); its roots come from webpki-roots 1.0.10, which drops the distrusted emSign root" },
     { id = "RUSTSEC-2026-0258", reason = "h2 0.3 only in nym's Nyx RPC client; denial of service only" },
     # rustls 0.21 comes through the same reqwest 0.11 (fixed only in 0.23.46,
     # which the rest of the tree uses). No ClientSessionStore of ours formats
