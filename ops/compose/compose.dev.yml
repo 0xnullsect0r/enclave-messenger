@@ -20,7 +20,7 @@ services:
   push-egress:
     profiles: [onion]
   push-onion:
-    profiles: [push-tor]
+    profiles: !override [push-tor]
   updater:
     profiles: [updater]
 

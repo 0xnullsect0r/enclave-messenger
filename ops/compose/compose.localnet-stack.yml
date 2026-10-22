@@ -16,7 +16,7 @@ services:
   push-egress:
     profiles: [onion]
   push-onion:
-    profiles: [push-tor]
+    profiles: !override [push-tor]
   ingress:
     <<: *localnet
     command: ["run", "--server", "server:7443", "--env"]
