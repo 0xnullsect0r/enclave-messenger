@@ -58,6 +58,7 @@ fn lp16(out: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "carrier-serve")]
 fn take16<'a>(b: &mut &'a [u8]) -> Option<&'a [u8]> {
     let n = usize::from(u16::from_be_bytes([*b.first()?, *b.get(1)?]));
     let v = b.get(2..2 + n)?;
