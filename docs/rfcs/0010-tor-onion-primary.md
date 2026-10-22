@@ -116,6 +116,6 @@ Money: nothing recurring, for operators, the foundation, or users.
 
 ## Open questions
 
-1. **Resolved:** Does a 3 s tick fit Tor's round trip to an onion service? Yes for the shaper, which sends requests concurrently and never waits on a reply to start the next tick; `onion-live` records the round trip each night.
+1. **Resolved:** Does a 3 s tick fit Tor's round trip to an onion service? Yes for the shaper, which sends requests concurrently and never waits on a reply to start the next tick; `onion-live` records the round trip each night (first run: 735 ms median, 1.24 s at the 90th percentile, `09-transport.md` §6.3).
 2. **Resolved:** Arti's onion-service proof-of-work defence: off while arti marks it experimental; the stream caps and introduction-point rate limits apply meanwhile.
 3. **Resolved:** What happens to the credential gate, the zk-nym wallet and the M4 cost gate: they apply only with the optional mixnet, and External Gate G7 (Nym funding) is no longer needed to ship.
