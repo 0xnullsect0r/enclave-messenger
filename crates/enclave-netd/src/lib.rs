@@ -78,10 +78,11 @@ struct Routed {
     waiting: tokio::sync::Mutex<Option<Waiting>>,
     pending_routes: std::sync::Mutex<HashMap<ServerId, String>>,
     over_nym: std::sync::RwLock<HashSet<ServerId>>,
-    /// Whether Tor is up (`--tor`).
-    tor: bool,
-    /// tord carrying requests to onion services and fetches.
-    carrier: Option<Arc<enclave_tord::carrier::Client>>,
+    /// Tor (`--tor`): how far it has come. It comes up in the background
+    /// (a bootstrap can take minutes), so netd answers at once.
+    tor: tokio::sync::watch::Receiver<TorUp>,
+    /// Tor was asked for (`--tor`): onion routes are kept for it.
+    tor_wanted: bool,
     /// Maximum privacy (`Transport::require_private`): the private routes
     /// only (Tor, or the mixnet behind Tor).
     private: std::sync::atomic::AtomicBool,
@@ -91,12 +92,44 @@ struct Routed {
     onion: std::sync::RwLock<HashMap<ServerId, String>>,
     /// The user chose the fallback route (`Transport::use_fallback`).
     fallback: std::sync::atomic::AtomicBool,
-    /// Tor didn't come up (the network may be blocking it): no mixnet
-    /// client was started.
-    tor_blocked: bool,
+}
+
+/// How Tor is doing, as netd's requests see it.
+#[derive(Clone)]
+enum TorUp {
+    /// Not asked for (no `--tor`).
+    Off,
+    /// tord is bootstrapping.
+    Starting,
+    /// Up; with the carrier when tord carries netd's requests.
+    Up(Option<Arc<enclave_tord::carrier::Client>>),
+    /// It didn't come up in time: the network may be blocking Tor.
+    Blocked,
+    /// It didn't start at all.
+    Failed,
 }
 
 impl Routed {
+    /// tord's carrier, once Tor is up: a request made while Tor is still
+    /// coming up waits for it (at most as long as a request may take).
+    async fn carrier(&self) -> Option<Arc<enclave_tord::carrier::Client>> {
+        let mut rx = self.tor.clone();
+        let _ = tokio::time::timeout(
+            enclave_tord::carrier::TIMEOUT,
+            rx.wait_for(|t| !matches!(t, TorUp::Starting)),
+        )
+        .await;
+        let up = rx.borrow();
+        match &*up {
+            TorUp::Up(c) => c.clone(),
+            _ => None,
+        }
+    }
+
+    fn tor_up(&self) -> bool {
+        matches!(*self.tor.borrow(), TorUp::Up(_))
+    }
+
     /// The onion service to reach `server` at: always for a server with no
     /// Nym route; for one on the mixnet only when the user chose the
     /// fallback route, never in Maximum privacy.
@@ -123,7 +156,7 @@ impl Routed {
         request: Vec<u8>,
         oneway: bool,
     ) -> enclave_net::Result<Option<Vec<u8>>> {
-        if let Some(c) = &self.carrier {
+        if let Some(c) = self.carrier().await {
             let r = c
                 .exchange(host, enclave_net::transport::ONION_PORT, &request, oneway)
                 .await
@@ -154,7 +187,7 @@ impl Routed {
             .map(|s| s.contains(server))
             .unwrap_or(false);
         match self.nym.get() {
-            Some(_) if over_nym && private && !self.tor => Err(NetError::Unavailable(
+            Some(_) if over_nym && private && !self.tor_up() => Err(NetError::Unavailable(
                 "Maximum privacy needs Tor, which isn't available on this device",
             )),
             Some(n) if over_nym => Ok(n),
@@ -214,12 +247,10 @@ impl Transport for Routed {
     }
 
     async fn tor_status(&self) -> enclave_net::Result<u8> {
-        Ok(if self.tor_blocked {
-            2
-        } else if self.tor {
-            1
-        } else {
-            0
+        Ok(match &*self.tor.borrow() {
+            TorUp::Blocked => 2,
+            TorUp::Up(_) => 1,
+            _ => 0,
         })
     }
 
@@ -242,7 +273,7 @@ impl Transport for Routed {
         url: &str,
         body: Vec<u8>,
     ) -> enclave_net::Result<(u16, Vec<u8>)> {
-        if let Some(c) = &self.carrier {
+        if let Some(c) = self.carrier().await {
             return c
                 .fetch(method, url, &body)
                 .await
@@ -309,7 +340,7 @@ impl Transport for Routed {
         // An onion service: the route for a server with no Nym route, kept
         // aside as the fallback for one with. It needs Tor to carry it.
         if let Route::Onion(h) = &route {
-            if (self.carrier.is_some() || self.has_nym)
+            if (self.tor_wanted || self.has_nym)
                 && let Ok(mut o) = self.onion.write()
             {
                 o.insert(server, h.clone());
@@ -348,14 +379,15 @@ impl Transport for Routed {
 /// How long Tor may take to bootstrap.
 const TOR_BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// Start `enclave-tord` keeping its state in `state`, and wait until Tor is
-/// up (`docs/09-transport.md` §1). `direct` (development) dials without Tor.
-async fn start_tord(
+/// Start `enclave-tord` keeping its state in `state` (`docs/09-transport.md`
+/// §1), as the carrier of netd's requests; [`enclave_tord::launch::Starting::ready`]
+/// says when Tor is up. `direct` (development) dials without Tor.
+async fn spawn_tord(
     bin: &std::path::Path,
     state: &str,
     direct: bool,
     bridges: &[String],
-) -> Result<enclave_tord::launch::Running, String> {
+) -> Result<enclave_tord::launch::Starting, String> {
     // Where the helpers share the app's process (Android, iOS), the app
     // chose Tor's port and secret at start and named them in the proxy
     // variables the mixnet client reads; elsewhere they are this run's.
@@ -380,7 +412,7 @@ async fn start_tord(
             .map(|b| format!("{b:02x}"))
             .collect(),
     };
-    enclave_tord::launch::start(
+    enclave_tord::launch::spawn(
         bin,
         std::path::Path::new(state),
         secret,
@@ -388,7 +420,6 @@ async fn start_tord(
         false,
         true,
         &extra,
-        TOR_BOOTSTRAP,
     )
     .await
 }
@@ -511,48 +542,68 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     let mut tor_blocked = false;
     // Tor starts whenever the vault asks (`--tor`): it carries requests to
     // servers' onion services (RFC 0010), and the mixnet client's gateway
-    // connection when there is one.
-    let tor = match flag("--tor") {
-        Some(state) => {
-            let bin = flag("--tord").map(std::path::PathBuf::from).or_else(|| {
-                std::env::current_exe().ok().map(|e| {
-                    e.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX))
-                })
-            });
-            let started = match bin {
-                Some(bin) => rt.block_on(start_tord(
-                    &bin,
-                    &state,
-                    args.iter().any(|a| a == "--tor-direct"),
-                    &bridges,
-                )),
-                None => Err("no enclave-tord".into()),
-            };
-            match started {
-                Ok(t) => Some(t),
-                // Tor is blocked here: stay up to say so (the vault offers
-                // bridges), without a mixnet client.
-                Err(e) if e == enclave_tord::launch::BLOCKED => {
-                    eprintln!("enclave-netd: {e}");
-                    tor_blocked = true;
-                    None
-                }
-                Err(e) if mixnet => {
-                    // Without Tor the mixnet client doesn't start: the
-                    // entry gateway would see this device's address.
-                    eprintln!("enclave-netd: {e}");
-                    return ExitCode::FAILURE;
-                }
-                // No onion service is reachable then; the vault sees its
-                // requests fail and says so.
-                Err(e) => {
-                    eprintln!("enclave-netd: {e}");
-                    None
-                }
+    // connection when there is one. Without a mixnet nothing waits for it:
+    // tord is started now (netd can start no program once confined) and
+    // comes up in the background, and requests for onion services wait
+    // for it. The mixnet client needs Tor's port first, so with one netd
+    // waits.
+    let (tor_tx, tor_rx) = tokio::sync::watch::channel(if flag("--tor").is_some() {
+        TorUp::Starting
+    } else {
+        TorUp::Off
+    });
+    let mut tor: Option<enclave_tord::launch::Running> = None;
+    let mut tor_pending: Option<enclave_tord::launch::Starting> = None;
+    if let Some(state) = flag("--tor") {
+        let bin = flag("--tord").map(std::path::PathBuf::from).or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .map(|e| e.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX)))
+        });
+        let spawned = match bin {
+            Some(bin) => rt.block_on(spawn_tord(
+                &bin,
+                &state,
+                args.iter().any(|a| a == "--tor-direct"),
+                &bridges,
+            )),
+            None => Err("no enclave-tord".into()),
+        };
+        let started = match spawned {
+            Ok(s) if !mixnet => {
+                tor_pending = Some(s);
+                Ok(None)
+            }
+            Ok(s) => rt.block_on(s.ready(TOR_BOOTSTRAP)).map(Some),
+            Err(e) => Err(e),
+        };
+        match started {
+            Ok(Some(t)) => {
+                let _ = tor_tx.send(TorUp::Up(t.carrier.clone()));
+                tor = Some(t);
+            }
+            Ok(None) => {}
+            // Tor is blocked here: stay up to say so (the vault offers
+            // bridges), without a mixnet client.
+            Err(e) if e == enclave_tord::launch::BLOCKED => {
+                eprintln!("enclave-netd: {e}");
+                tor_blocked = true;
+                let _ = tor_tx.send(TorUp::Blocked);
+            }
+            Err(e) if mixnet => {
+                // Without Tor the mixnet client doesn't start: the
+                // entry gateway would see this device's address.
+                eprintln!("enclave-netd: {e}");
+                return ExitCode::FAILURE;
+            }
+            // No onion service is reachable then; the vault sees its
+            // requests fail and says so.
+            Err(e) => {
+                eprintln!("enclave-netd: {e}");
+                let _ = tor_tx.send(TorUp::Failed);
             }
         }
-        _ => None,
-    };
+    }
     let nymd = if !mixnet || tor_blocked {
         None
     } else {
@@ -582,11 +633,11 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
             None => None,
         }
     };
-    let carrier = tor.as_ref().and_then(|t| t.carrier.clone());
+    let tor_spawned = tor.is_some() || tor_pending.is_some();
     // Nothing on disk is needed from here on, and no TCP socket either
     // when Tor or nymd carry the requests (development TCP routes aside):
     // only the UDP sockets calls use.
-    let tcp_allowed = !tcp.is_empty() || (nymd.is_none() && carrier.is_none());
+    let tcp_allowed = !tcp.is_empty() || (nymd.is_none() && !tor_spawned);
     // IPv4 and IPv6 sockets (datagrams only, without TCP); no programs, no
     // debugging.
     let profile = if tcp_allowed {
@@ -622,16 +673,15 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     let transport = Arc::new(Routed {
         tcp: TcpTransport::new(tcp),
         tcp_allowed,
-        tor: tor.is_some(),
+        tor: tor_rx,
+        tor_wanted: tor_spawned,
         private: std::sync::atomic::AtomicBool::new(false),
-        onion: std::sync::RwLock::new(if has_nym || carrier.is_some() {
+        onion: std::sync::RwLock::new(if has_nym || tor_spawned {
             onion
         } else {
             HashMap::new()
         }),
-        carrier,
         fallback: std::sync::atomic::AtomicBool::new(false),
-        tor_blocked,
         over_nym: std::sync::RwLock::new(if has_nym {
             over_nym.keys().copied().collect()
         } else {
@@ -642,6 +692,27 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         has_nym,
         nym,
     });
+    // Tor coming up, in the background; the running tord is kept as
+    // long as netd runs.
+    if let Some(starting) = tor_pending {
+        rt.spawn(async move {
+            match starting.ready(TOR_BOOTSTRAP).await {
+                Ok(t) => {
+                    let _ = tor_tx.send(TorUp::Up(t.carrier.clone()));
+                    let _kept = t;
+                    std::future::pending::<()>().await;
+                }
+                Err(e) => {
+                    eprintln!("enclave-netd: {e}");
+                    let _ = tor_tx.send(if e == enclave_tord::launch::BLOCKED {
+                        TorUp::Blocked
+                    } else {
+                        TorUp::Failed
+                    });
+                }
+            }
+        });
+    }
     let Ok((mut stdin, mut stdout)) = enclave_ipc::stdio::stdio() else {
         return ExitCode::FAILURE;
     };
@@ -976,6 +1047,11 @@ mod tests {
         );
     }
 
+    /// Tor as a test has it, settled.
+    fn tor_state(t: TorUp) -> tokio::sync::watch::Receiver<TorUp> {
+        tokio::sync::watch::channel(t).1
+    }
+
     fn routed(tor: bool) -> (Routed, ServerId, ServerId) {
         let over_nym: ServerId = [1; 16];
         let over_tcp: ServerId = [2; 16];
@@ -993,12 +1069,11 @@ mod tests {
             waiting: tokio::sync::Mutex::new(None),
             pending_routes: std::sync::Mutex::new(HashMap::new()),
             over_nym: std::sync::RwLock::new(HashSet::from([over_nym])),
-            tor,
+            tor: tor_state(if tor { TorUp::Up(None) } else { TorUp::Off }),
+            tor_wanted: tor,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
-            tor_blocked: false,
-            carrier: None,
         };
         (r, over_nym, over_tcp)
     }
@@ -1052,12 +1127,11 @@ mod tests {
             ))),
             pending_routes: std::sync::Mutex::new(HashMap::new()),
             over_nym: std::sync::RwLock::new(HashSet::new()),
-            tor: true,
+            tor: tor_state(TorUp::Up(None)),
+            tor_wanted: true,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
-            tor_blocked: false,
-            carrier: None,
         };
         r.set_route(id, Route::Nym("ingress".into()));
         r.set_route(id, Route::Onion("stack.onion".into()));
@@ -1153,12 +1227,11 @@ mod tests {
             waiting: tokio::sync::Mutex::new(None),
             pending_routes: std::sync::Mutex::new(HashMap::new()),
             over_nym: std::sync::RwLock::new(HashSet::new()),
-            tor: true,
+            tor: tor_state(TorUp::Up(Some(carrier))),
+            tor_wanted: true,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
-            tor_blocked: false,
-            carrier: Some(carrier),
         }
     }
 
@@ -1176,6 +1249,33 @@ mod tests {
         assert_eq!(r.exchange(&id, b"max".to_vec()).await.unwrap(), b"echo:max");
         // A server with no route at all isn't reached.
         assert!(r.exchange(&[8; 16], b"x".to_vec()).await.is_err());
+    }
+
+    /// Tor comes up in the background: netd answers at once, a request to
+    /// an onion service made meanwhile waits for it, and Tor's status says
+    /// "not yet" until then.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn onion_requests_wait_for_tor_to_come_up() {
+        let mut r = over_tor(carried().await);
+        let (tx, rx) = tokio::sync::watch::channel(TorUp::Starting);
+        r.tor = rx;
+        let r = Arc::new(r);
+        let id: ServerId = [11; 16];
+        r.set_route(id, Route::Onion("stack.onion".into()));
+        assert_eq!(r.tor_status().await.unwrap(), 0);
+        let waiting = {
+            let r = Arc::clone(&r);
+            tokio::spawn(async move { r.exchange(&id, b"early".to_vec()).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!waiting.is_finished(), "it waits for Tor");
+        let _ = tx.send(TorUp::Up(Some(carried().await)));
+        assert_eq!(waiting.await.unwrap().unwrap(), b"echo:early");
+        assert_eq!(r.tor_status().await.unwrap(), 1);
+        // Tor that never came up: the request fails instead of waiting.
+        let _ = tx.send(TorUp::Blocked);
+        assert!(r.exchange(&id, b"late".to_vec()).await.is_err());
+        assert_eq!(r.tor_status().await.unwrap(), 2);
     }
 
     /// Maximum privacy takes the onion route and refuses a direct one.
@@ -1238,12 +1338,11 @@ mod tests {
             ))),
             pending_routes: std::sync::Mutex::new(HashMap::new()),
             over_nym: std::sync::RwLock::new(HashSet::new()),
-            tor: true,
+            tor: tor_state(TorUp::Up(None)),
+            tor_wanted: true,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
-            tor_blocked: false,
-            carrier: None,
         };
         r.set_route(id, Route::Nym("ingress".into()));
         assert!(matches!(

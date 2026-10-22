@@ -59,7 +59,7 @@ pub const BLOCKED: &str = "enclave-tord: Tor didn't come up; the network may be 
 /// Tor; `report` logs each connection's destination; `extra` are more
 /// arguments (`--bridge LINE`, `--builtin-bridges`, `--snowflake`). With
 /// `carrier`, tord also carries requests to onion services and HTTPS
-/// fetches ([`Running::carrier`]).
+/// fetches ([`Running::carrier`]). [`spawn`] and [`Starting::ready`] in one.
 #[allow(clippy::too_many_arguments)]
 pub async fn start(
     bin: &std::path::Path,
@@ -71,6 +71,35 @@ pub async fn start(
     extra: &[String],
     within: std::time::Duration,
 ) -> Result<Running, String> {
+    spawn(bin, state, secret, direct, report, carrier, extra)
+        .await?
+        .ready(within)
+        .await
+}
+
+/// A started `enclave-tord` that hasn't said yet whether Tor is up. A
+/// caller that confines itself starts tord first (no new process after
+/// that) and waits for it afterwards, in the background, so that nothing
+/// else waits on Tor's bootstrap.
+pub struct Starting {
+    secret: String,
+    carrier: bool,
+    stdin: Box<dyn tokio::io::AsyncWrite + Send + Unpin>,
+    reader: tokio::io::BufReader<Box<dyn tokio::io::AsyncRead + Send + Unpin>>,
+    child: Option<tokio::process::Child>,
+}
+
+/// Start `bin` and hand it `secret`, as [`start`] does, without waiting for
+/// Tor.
+pub async fn spawn(
+    bin: &std::path::Path,
+    state: &std::path::Path,
+    secret: String,
+    direct: bool,
+    report: bool,
+    carrier: bool,
+    extra: &[String],
+) -> Result<Starting, String> {
     let mut args: Vec<String> = vec!["--state".into(), state.display().to_string()];
     args.extend(extra.iter().cloned());
     if carrier {
@@ -121,37 +150,57 @@ pub async fn start(
         .flush()
         .await
         .map_err(|e| format!("enclave-tord: {e}"))?;
-    let mut reader = tokio::io::BufReader::new(stdout);
-    let mut line = String::new();
-    tokio::time::timeout(within, reader.read_line(&mut line))
-        .await
-        .map_err(|_| BLOCKED.to_string())?
-        .map_err(|e| format!("enclave-tord: {e}"))?;
-    if line.trim() == "blocked" {
-        return Err(BLOCKED.into());
-    }
-    let port = line
-        .trim()
-        .strip_prefix("ready ")
-        .and_then(|p| p.parse().ok())
-        .ok_or_else(|| "enclave-tord: Tor didn't start".to_string())?;
-    let (carrier, stdin) = if carrier {
-        (
-            Some(std::sync::Arc::new(crate::carrier::Client::new(
-                reader, stdin,
-            ))),
-            None,
-        )
-    } else {
-        (None, Some(stdin))
-    };
-    Ok(Running {
-        port,
+    Ok(Starting {
         secret,
         carrier,
-        _stdin: stdin,
-        _child: child,
+        stdin,
+        reader: tokio::io::BufReader::new(stdout),
+        child,
     })
+}
+
+impl Starting {
+    /// Wait up to `within` for Tor to be up: the running tord, or
+    /// [`BLOCKED`], or why it didn't start.
+    pub async fn ready(self, within: std::time::Duration) -> Result<Running, String> {
+        let Starting {
+            secret,
+            carrier,
+            stdin,
+            mut reader,
+            child,
+        } = self;
+        let mut line = String::new();
+        tokio::time::timeout(within, reader.read_line(&mut line))
+            .await
+            .map_err(|_| BLOCKED.to_string())?
+            .map_err(|e| format!("enclave-tord: {e}"))?;
+        if line.trim() == "blocked" {
+            return Err(BLOCKED.into());
+        }
+        let port = line
+            .trim()
+            .strip_prefix("ready ")
+            .and_then(|p| p.parse().ok())
+            .ok_or_else(|| "enclave-tord: Tor didn't start".to_string())?;
+        let (carrier, stdin) = if carrier {
+            (
+                Some(std::sync::Arc::new(crate::carrier::Client::new(
+                    reader, stdin,
+                ))),
+                None,
+            )
+        } else {
+            (None, Some(stdin))
+        };
+        Ok(Running {
+            port,
+            secret,
+            carrier,
+            _stdin: stdin,
+            _child: child,
+        })
+    }
 }
 
 #[cfg(all(test, feature = "dev-direct"))]
