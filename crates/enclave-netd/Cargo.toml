@@ -37,6 +37,8 @@ async-trait = "0.1"
 tokio = { version = "1", features = ["rt", "macros", "sync", "io-util", "io-std", "process", "time", "fs"] }
 
 [dev-dependencies]
+# tord's carrier loop, with a test dialer.
+enclave-tord = { path = "../enclave-tord", default-features = false, features = ["launch", "carrier-serve"] }
 # The tests reach servers over the development transport.
 enclave-net = { path = "../enclave-net", features = ["dev-transport"] }
 enclave-ingress = { path = "../enclave-ingress" }

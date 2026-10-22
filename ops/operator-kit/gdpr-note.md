@@ -15,7 +15,7 @@ The server holds:
 | Usernames in the key-transparency log | **Yes, if a user chooses a name that identifies them** | Permanent (append-only log); a deleted account leaves a tombstone |
 | Sealed push tokens | Not by the server | Until replaced or the inbox is idle |
 | Reports users send | **Yes: quoted messages may contain personal data** | At most 1,000 kept; delete them once handled |
-| IP addresses | Not received (Nym, Tor); not logged | — |
+| IP addresses | Not received (Tor, and the Nym mixnet when enabled); not logged | — |
 | Backups | The same as above | `[backup] keep` snapshots (default 7) |
 
 So the personal data you process is mainly **usernames** and the

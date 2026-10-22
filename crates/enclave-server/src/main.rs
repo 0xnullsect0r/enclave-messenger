@@ -743,6 +743,10 @@ fn spawn_push_forwarder(server: Arc<Mutex<Server>>, to: String) {
 async fn serve(listener: TcpListener, server: Arc<Mutex<Server>>) -> Result<(), String> {
     loop {
         let (mut sock, _) = listener.accept().await.map_err(|e| e.to_string())?;
+        // Each reply goes out whole at once: many requests share a stream
+        // (an onion service's, the ingress's), and Nagle would hold every
+        // answer back for the client's delayed acknowledgement.
+        let _ = sock.set_nodelay(true);
         let server = Arc::clone(&server);
         tokio::spawn(async move {
             loop {
@@ -750,7 +754,10 @@ async fn serve(listener: TcpListener, server: Arc<Mutex<Server>>) -> Result<(), 
                 if sock.read_exact(&mut len).await.is_err() {
                     return;
                 }
-                let n = u32::from_be_bytes(len) as usize;
+                let len = u32::from_be_bytes(len);
+                // No reply wanted (a write, a cover unit): an empty frame.
+                let oneway = len & enclave_wire::STREAM_ONEWAY != 0;
+                let n = (len & !enclave_wire::STREAM_ONEWAY) as usize;
                 if n > enclave_wire::UNIT_LEN {
                     return;
                 }
@@ -766,12 +773,9 @@ async fn serve(listener: TcpListener, server: Arc<Mutex<Server>>) -> Result<(), 
                         s.handle(&buf, now())
                     }
                 };
-                if sock
-                    .write_all(&(reply.len() as u32).to_be_bytes())
-                    .await
-                    .is_err()
-                    || sock.write_all(&reply).await.is_err()
-                {
+                let reply = if oneway { Vec::new() } else { reply };
+                let frame = [&(reply.len() as u32).to_be_bytes()[..], &reply].concat();
+                if sock.write_all(&frame).await.is_err() {
                     return;
                 }
             }

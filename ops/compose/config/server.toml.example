@@ -3,8 +3,8 @@
 # overridden the same way.
 
 [server]
-# The stack's internal network only: the Nym ingress (or, in development,
-# compose.dev.yml) reaches it here.
+# The stack's internal network only: its onion service (and the Nym
+# ingress, or in development compose.dev.yml) reaches it here.
 listen = "0.0.0.0:7443"
 data_dir = "/var/lib/enclave/server"
 keys_dir = "/var/lib/enclave/keys"
@@ -13,14 +13,19 @@ public_dir = "/var/lib/enclave/public"
 server_list = "/etc/enclave/foundation/server-list.bin"
 # The release update bundle the front fetches, relayed to clients.
 update_bundle = "/var/lib/enclave/updates/enclave-update.bin"
-# This server's Nym address. Empty: the ingress's own, which it writes to
-# public_dir/ingress.addr and the server publishes in its descriptor.
+# This server's Nym address, with the optional mixnet. Empty: the ingress's
+# own, which it writes to public_dir/ingress.addr and the server publishes
+# in its descriptor (its onion service's address, public_dir/onion.addr,
+# goes there too).
 nym_address = ""
 
 [push]
-# Due wakes go to the push egress (compose service `push-egress`, profile
-# nym), which carries them over the mixnet to the push relay. Unset: no push.
-# forward = "push-egress:7446"
+# Due wakes go to the push egress (compose service `push-egress`), which
+# carries them through Tor to the push relay's onion service
+# (PUSH_RELAY_ONION in .env). A stack running the push relay itself may
+# send them to it directly: forward = "push-relay:7445". With the optional
+# mixnet: "push-egress-nym:7446". Unset: no push.
+forward = "push-egress:7446"
 
 [policy]
 # Proof-of-work efforts (Equihash work factor) and quotas (blob_tokens_per_day:

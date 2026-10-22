@@ -18,8 +18,9 @@ responsible for its own server.
   who you talk to stay on your devices.
 - **Your phone number or email.** Enclave doesn't ask for either. Your
   account is a set of keys made on your device.
-- **Your IP address.** The app reaches servers through Tor and the Nym
-  mixnet, so a server sees traffic from the network, not from you. Every
+- **Your IP address.** The app reaches servers through Tor onion services
+  (and the Nym mixnet where a server offers it), so a server sees traffic
+  from the network, not from you. Every
   message is the same size, and the app sends cover traffic, so a server
   can't tell when you are talking.
 - **Analytics, advertising or tracking.** The app has none.

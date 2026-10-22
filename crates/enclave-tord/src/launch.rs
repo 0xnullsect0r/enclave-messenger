@@ -8,7 +8,10 @@ pub struct Running {
     /// Its loopback SOCKS5 port.
     pub port: u16,
     secret: String,
-    _stdin: Box<dyn tokio::io::AsyncWrite + Send + Unpin>,
+    /// Requests to onion services and HTTPS fetches through it (started
+    /// with `carrier`); it holds tord's stdin and stdout.
+    pub carrier: Option<std::sync::Arc<crate::carrier::Client>>,
+    _stdin: Option<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     /// The process (none when tord runs as a thread of this one).
     _child: Option<tokio::process::Child>,
 }
@@ -54,18 +57,25 @@ pub const BLOCKED: &str = "enclave-tord: Tor didn't come up; the network may be 
 /// least 32 characters, from the caller's own randomness), and wait up to
 /// `within` for Tor to be up. `direct` (a `dev-direct` build) dials without
 /// Tor; `report` logs each connection's destination; `extra` are more
-/// arguments (`--bridge LINE`, `--builtin-bridges`, `--snowflake`).
+/// arguments (`--bridge LINE`, `--builtin-bridges`, `--snowflake`). With
+/// `carrier`, tord also carries requests to onion services and HTTPS
+/// fetches ([`Running::carrier`]).
+#[allow(clippy::too_many_arguments)]
 pub async fn start(
     bin: &std::path::Path,
     state: &std::path::Path,
     secret: String,
     direct: bool,
     report: bool,
+    carrier: bool,
     extra: &[String],
     within: std::time::Duration,
 ) -> Result<Running, String> {
     let mut args: Vec<String> = vec!["--state".into(), state.display().to_string()];
     args.extend(extra.iter().cloned());
+    if carrier {
+        args.push("--carrier".into());
+    }
     if direct {
         args.push("--direct".into());
     }
@@ -111,14 +121,12 @@ pub async fn start(
         .flush()
         .await
         .map_err(|e| format!("enclave-tord: {e}"))?;
+    let mut reader = tokio::io::BufReader::new(stdout);
     let mut line = String::new();
-    tokio::time::timeout(
-        within,
-        tokio::io::BufReader::new(stdout).read_line(&mut line),
-    )
-    .await
-    .map_err(|_| BLOCKED.to_string())?
-    .map_err(|e| format!("enclave-tord: {e}"))?;
+    tokio::time::timeout(within, reader.read_line(&mut line))
+        .await
+        .map_err(|_| BLOCKED.to_string())?
+        .map_err(|e| format!("enclave-tord: {e}"))?;
     if line.trim() == "blocked" {
         return Err(BLOCKED.into());
     }
@@ -127,9 +135,20 @@ pub async fn start(
         .strip_prefix("ready ")
         .and_then(|p| p.parse().ok())
         .ok_or_else(|| "enclave-tord: Tor didn't start".to_string())?;
+    let (carrier, stdin) = if carrier {
+        (
+            Some(std::sync::Arc::new(crate::carrier::Client::new(
+                reader, stdin,
+            ))),
+            None,
+        )
+    } else {
+        (None, Some(stdin))
+    };
     Ok(Running {
         port,
         secret,
+        carrier,
         _stdin: stdin,
         _child: child,
     })
@@ -149,6 +168,7 @@ mod tests {
             &state,
             "a".repeat(64),
             true,
+            false,
             false,
             &[],
             std::time::Duration::from_secs(20),

@@ -268,7 +268,7 @@ msgid "Also hides when you're using Enclave, but only while it's open: iPhone st
 msgstr ""
 
 #: ui/app.slint
-msgid "Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly."
+msgid "Also hides when you're using Enclave. Uses about 1.1 GB a day. Large files send slowly."
 msgstr ""
 
 #: ui/app.slint
@@ -1700,11 +1700,11 @@ msgid "Hide from screenshots"
 msgstr ""
 
 #: ui/app.slint
-msgid "Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background."
+msgid "Hides who you talk to. Uses about 45 MB an hour while Enclave is open, and about 30 MB a day in the background."
 msgstr ""
 
 #: ui/app.slint
-msgid "Hides who you talk to. Uses about 80 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives."
+msgid "Hides who you talk to. Uses about 45 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives."
 msgstr ""
 
 #: ui/app.slint

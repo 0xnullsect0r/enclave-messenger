@@ -98,6 +98,9 @@ async fn pair(net: &LocalTransport) -> (Client, Client) {
 async fn inbox_rotates_weekly() {
     use enclave_core::client::outbox::RESEND_AFTER;
     let net = network();
+    // Start just after a week begins, so the re-sends' hours below stay in
+    // the week they are meant for whatever the time of the run.
+    net.advance(WEEK - net.now() % WEEK + 60);
     let (mut ada, mut ben) = pair(&net).await;
     let a = ada.root();
 

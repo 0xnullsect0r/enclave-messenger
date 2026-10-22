@@ -6,33 +6,42 @@ The M4 gate (`roadmap.md`): the `09-transport.md` §7 go/no-go numbers,
 measured data within ±20% of `math/cover-traffic.md`, and battery. This
 report says, for each criterion, what has been measured, what CI checks
 on every run or every night, and what waits on an External Gate
-(`completion-plan.md`: G7 funded Nym accounts, G8 reference devices). The
-history of the spike that preceded it follows.
+(`completion-plan.md`: G7 funded Nym accounts, no longer needed since
+RFC 0010; G8 reference devices). The history of the spike that preceded it
+follows.
+
+Since RFC 0010 (`rfcs/0010-tor-onion-primary.md`) devices reach their
+servers over Tor onion services, and the Nym mixnet is optional and off by
+default. The Nym rows below apply to the optional mixnet. The onion route's
+numbers are in `09-transport.md` §6.3 and §6.7 (CI `federation-e2e-onion`,
+nightly `onion-live` in `live.yml`).
 
 ## Verdict per criterion
 
 | Criterion | Threshold | Measured | Checked by | Status |
 |---|---|---|---|---|
 | nym-sdk memory | ≤ 150 MB on Android and iOS | 26 MiB peak for an ingress-role client and a device client together (desktop Linux, release build, local mixnet) | `live_bench` (`peak_rss_kib_both_clients`), every CI run and nightly | Met on desktop; phones wait on G8 |
-| Cold connect | ≤ 5 s | 0.05 s (device) and 0.09 s (ingress) on the local mixnet | `live_bench` `connect_ms`; live networks through Tor nightly | Met locally; live numbers once G7 funds the nightly |
-| Raw throughput | ≥ 200 KB/s of nym-sdk raw throughput (`roadmap.md` note 1) | 726 KiB/s unpaced; the Bulk profile's paced window 55 KiB/s, at its 40 packets/s cap | `live_bench` `raw` and `bulk` | Met locally; live networks with G7 |
+| Cold connect | ≤ 5 s | 0.05 s (device) and 0.09 s (ingress) on the local mixnet | `live_bench` `connect_ms`; live networks through Tor nightly | Met locally; live numbers only with a funded account (G7, no longer needed since RFC 0010) |
+| Raw throughput | ≥ 200 KB/s of nym-sdk raw throughput (`roadmap.md` note 1) | 726 KiB/s unpaced; the Bulk profile's paced window 55 KiB/s, at its 40 packets/s cap | `live_bench` `raw` and `bulk` | Met locally; live networks only with a funded account (G7, no longer needed) |
 | Round trips | — (informative) | p50 219 ms, p95 279 ms, none of 20 lost | `live_bench` `round_trips` | Measured |
-| Credential path | Works end to end | A device's ticketbook bought through the credential gate (Equi-X, Privacy Pass, the device's own ecash keys) over Tor, imported into its client; CI run 37870818145 ("50 zk-nym tickets in hand") | `federation-e2e-localnet` on every run; spending against checking gateways in the sandbox nightly | Met in CI; live spending waits on G7 |
-| Cost | ≤ $1 per user per month | Five books a month (expiry decides, `math/cover-traffic.md` §11): met while a book costs ≤ $0.20 | `nym-live.yml` `nym-bench`: deposit × NYM price, fails above $1 on mainnet | Waits on G7 (the deposit is read from the contract each run) |
-| Tor → gateway | Works | Gateway WebSocket dialled through `enclave-tord` (dev-direct in CI, real Tor nightly) | `federation-e2e-localnet` (through tord), `nym-bench` through real Tor | Met with dev-direct; live with G7 |
+| Credential path | Works end to end | A device's ticketbook bought through the credential gate (Equi-X, Privacy Pass, the device's own ecash keys) over Tor, imported into its client; CI run 37870818145 ("50 zk-nym tickets in hand") | `federation-e2e-localnet` on every run; spending against checking gateways in the sandbox nightly | Met in CI; live spending only with a funded account (G7, no longer needed) |
+| Cost | ≤ $1 per user per month | Five books a month (expiry decides, `math/cover-traffic.md` §11): met while a book costs ≤ $0.20 | `live.yml` `nym-bench`: deposit × NYM price, fails above $1 on mainnet | Only with the optional mixnet; G7 no longer needed (RFC 0010). With the default onion route there is no recurring cost |
+| Tor → gateway | Works | Gateway WebSocket dialled through `enclave-tord` (dev-direct in CI, real Tor nightly) | `federation-e2e-localnet` (through tord), `nym-bench` through real Tor | Met with dev-direct; live only with a funded account (G7, no longer needed) |
 | Data per profile | ±20% of the model | Foreground 16.2–16.6 packets a tick against 16.3; 73–76 MB/h at the WebSocket level, ≈80 MB/h with Tor | `gen.sh shape` + `pcap-check.py` on every run | Met for Foreground (and so Maximum); Background scales by 3/120 |
-| Poisson off, loop cover on | A supported configuration | Runs that way on the local mixnet and in CI | — | Confirm with Nym on live networks (G7 nightly) |
+| Poisson off, loop cover on | A supported configuration | Runs that way on the local mixnet and in CI | — | Confirm with Nym on live networks, if the optional mixnet is funded (G7, no longer needed) |
 | Battery | ≤ 5 percentage points an hour above idle, Foreground | — | — | Waits on G8 (reference phones) |
 
-Nothing measured so far fails a threshold. The rows marked G7 and G8 need
-one action each: funding the sandbox and mainnet accounts the nightly
-reads (`NYM_SANDBOX_MNEMONIC`, `NYM_MAINNET_MNEMONIC`), and running
-`live_bench` and a battery run on the reference phones once the mobile
-builds exist (A1, I1). If a live number then fails, the roadmap's rule
-applies: the fallback transport and the scheduler design are revisited in
-an RFC.
+Nothing measured so far fails a threshold. The rows marked G7 needed the
+sandbox and mainnet accounts the nightly reads (`NYM_SANDBOX_MNEMONIC`,
+`NYM_MAINNET_MNEMONIC`) to be funded, and then a token bill per stack and
+per user every month, with nobody to pay it. So the roadmap's rule was
+applied and the transport revisited in an RFC: RFC 0010 makes Tor onion
+services the primary route and the Nym mixnet optional, and G7 is no longer
+needed. The rows marked G8 still need `live_bench` (for the optional
+mixnet) and a battery run (for every route) on the reference phones once
+the mobile builds exist (A1, I1).
 
-**Post-quantum Nym (G13).** nym-sdk 1.21.5 offers Sphinx and Outfox; both
+**Post-quantum Nym (G13, only with the optional mixnet).** nym-sdk 1.21.5 offers Sphinx and Outfox; both
 use X25519 only (`nym-outfox` has no KEM), so there is no post-quantum
 packet format to adopt yet. The point to switch is the client's packet
 type in `nym/enclave-nym-sdk` (`build`), with the packet counts the pacing
@@ -84,7 +93,7 @@ exchanged.** Everything below is build-level evidence plus in-process tests.
 | f | A local mixnet in Docker? | Yes, with a small patch (`ci/nym-localnet/offline.patch`): nym-node 1.21.5 wants a chain at start (network monitors, chain watcher, initial topology) and ignores its LP bind-address flags. Three mix nodes and a gateway run on 127.0.0.1 (`run-local.sh`) or in Docker (`compose.localnet.yml`); a static file stands in for nym-api. Measured: connect ≈0.2 s; request plus full reply ≈0.37–0.42 s. |
 | g | Packets per unit and poll | A unit is 11 regular packets, a poll with its 12 reply blocks 5, a reply 11 (`localnet_roundtrip` fails if they change). On the wire (`localnet_ticks` and `ci/federation/pcap-check.py`): 16.3 packets up a tick with loop cover and probes, frames of 2,452 B, 150 ms apart, the same idle and busy; 73 MB/h in Foreground at the WebSocket level, ≈80 MB/h with Tor (`math/cover-traffic.md` §10). CI checks the shape on every run (`09-transport.md` §6.7). |
 | h | In-memory storage | Devices use nym-sdk's ephemeral (in-memory) storage; nymd confines itself with nothing writable, and the round trip works that way. The ingress keeps its identity and reply store on disk. |
-| i | Sandbox credentials | The device path is built and runs end to end in CI against a stand-in proxy (N3, `09-transport.md` §7): Privacy Pass tokens from the credential gate, a ticketbook whose ecash keys never leave nymd, imported into the running client. Spending against the sandbox's gateways needs a funded account (External Gate G7); `nym-live.yml` runs `live_bench` there nightly once the `NYM_SANDBOX_MNEMONIC` secret exists. |
+| i | Sandbox credentials | The device path is built and runs end to end in CI against a stand-in proxy (N3, `09-transport.md` §7): Privacy Pass tokens from the credential gate, a ticketbook whose ecash keys never leave nymd, imported into the running client. Spending against the sandbox's gateways needs a funded account (External Gate G7, no longer needed since RFC 0010); `live.yml` runs `live_bench` there nightly when the `NYM_SANDBOX_MNEMONIC` secret exists. |
 
 The TLS under nym's gateway connection was on rustls 0.21; the patched copies use tungstenite 0.24 on rustls 0.23.
 
@@ -96,7 +105,7 @@ device client, 20 round trips (a poll with its reply blocks, answered with a
 unit), 40 units one way in a bulk window, peak resident memory, tickets
 spent, and the ecash contract's ticketbook deposit. It runs on the local
 mixnet in every CI run (`gen.sh bench`, job summary and artifact), and on
-the sandbox nightly and mainnet weekly through real Tor (`nym-live.yml`),
+the sandbox nightly and mainnet weekly through real Tor (`live.yml`, when a funded account is configured),
 which also turns the deposit into dollars per user per month and fails
 above $1 on mainnet. The table above is a release build on the local mixnet (2026-10-09); a
 debug build measured connect 0.07–0.19 s, p50 432 ms and 45 MiB.

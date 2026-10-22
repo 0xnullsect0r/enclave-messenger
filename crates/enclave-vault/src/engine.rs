@@ -115,7 +115,7 @@ impl Mode {
                 .map(|p| {
                     enclave_net::transport::parse_route(&p[1]).ok_or_else(|| {
                         format!(
-                            "{flag} {}: expected SERVER_ID=nym:ADDRESS or SERVER_ID=HOST:PORT",
+                            "{flag} {}: expected SERVER_ID=onion:NAME.onion, SERVER_ID=nym:ADDRESS or SERVER_ID=HOST:PORT",
                             p[1]
                         )
                     })
@@ -139,6 +139,36 @@ impl Mode {
             server_list: arg("--server-list").map(Into::into),
             shaping: !args.iter().any(|a| a == "--no-shaping"),
         })
+    }
+
+    /// Whether this mode needs the mixnet client: a Nym route given, or a
+    /// server on the mixnet in the server list. A list of onion services
+    /// only (RFC 0010) needs Tor and nothing else: no mixnet client, no
+    /// tickets.
+    pub fn uses_mixnet(&self) -> bool {
+        let Mode::Server {
+            home,
+            others,
+            server_list,
+            ..
+        } = self
+        else {
+            return false;
+        };
+        if home
+            .iter()
+            .chain(others)
+            .any(|(_, r)| matches!(r, Route::Nym(_)))
+        {
+            return true;
+        }
+        let bytes = match server_list {
+            Some(p) => std::fs::read(p).ok(),
+            None => crate::built::SERVER_LIST.map(<[u8]>::to_vec),
+        };
+        bytes
+            .and_then(|b| enclave_federation::ServerList::decode_unverified(&b).ok())
+            .is_some_and(|l| l.servers.iter().any(|s| !s.nym_address.is_empty()))
     }
 
     /// This build offers a server list (built in, or `--server-list`).
@@ -408,6 +438,8 @@ struct Engine {
     /// The mixnet client has been given its tickets (or told there are
     /// none to wait for).
     mixnet_up: bool,
+    /// Whether the mixnet client is in use at all ([`Mode::uses_mixnet`]).
+    uses_mixnet: bool,
     /// This device was removed from the account.
     removed: bool,
     /// Why the PIN wasn't taken.
@@ -1185,6 +1217,7 @@ pub async fn run_with(
         }
     };
     let (foundation, list) = federation(&mode);
+    let uses_mixnet = mode.uses_mixnet();
     let file_keys = match &mode {
         Mode::Server { profile, .. } => crate::keystore::uses_files(profile),
         Mode::Demo => false,
@@ -1269,6 +1302,7 @@ pub async fn run_with(
         share_release: None,
         share_request: None,
         mixnet_up: false,
+        uses_mixnet,
         removed: false,
         pin_error: String::new(),
         mixnet_retry_at: 0,
@@ -4083,6 +4117,10 @@ impl Engine {
                 self.transport
                     .set_route(s.id(), Route::Nym(s.nym_address.clone()));
             }
+            // Its onion service: the route through Tor (RFC 0010).
+            if let Some(r) = Route::parse(&format!("onion:{}", s.onion)) {
+                self.transport.set_route(s.id(), r);
+            }
         }
         if self.server == ServerId::default() {
             let draw = enclave_crypto::rng::HedgedRng::new()
@@ -4171,6 +4209,12 @@ impl Engine {
         }
         let now = self.transport.now();
         if self.mixnet_up || self.locked || now < self.mixnet_retry_at {
+            return;
+        }
+        // Onion services only (RFC 0010): Tor carries everything, nothing
+        // to connect or buy.
+        if !self.uses_mixnet {
+            self.mixnet_up = true;
             return;
         }
         let result = match self.client.as_mut() {
@@ -4281,6 +4325,13 @@ impl Engine {
             match c.refresh_server_list().await {
                 Ok(_) | Err(CoreError::Server(enclave_rpc::api::Status::NotFound)) => {}
                 Err(e) => eprintln!("enclave-vault: server list: {e}"),
+            }
+            // And the home server's descriptor: an onion (or Nym) address
+            // that moved since the list was built is learned here, not at
+            // the next list (RFC 0010).
+            let home = c.home_server();
+            if let Err(e) = c.fetch_descriptor(&home).await {
+                eprintln!("enclave-vault: server descriptor: {e}");
             }
         }
         // Once a day: release updates the home server relays, checked
@@ -5302,16 +5353,19 @@ impl Engine {
         s.recovery_saved = matches!(c.setting("recovery-saved"), Ok(Some(v)) if v == [1]);
         s.privacy = i32::from(matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
         // The backup route: offered after a minute without the mixnet, when
-        // the home server has an onion service and Maximum is off.
+        // the home server is on the mixnet and has an onion service too, and
+        // Maximum is off. A server reached only by its onion service is on
+        // Tor already (RFC 0010): there is nothing to switch to.
         s.route = if self.backup_route {
             2
-        } else if self.net_failures >= OFFER_BACKUP_AFTER
+        } else if self.uses_mixnet
+            && self.net_failures >= OFFER_BACKUP_AFTER
             && !self.backup_declined
             && s.privacy != 1
             && c.server_descriptor(&self.server)
                 .ok()
                 .flatten()
-                .is_some_and(|d| !d.onion.is_empty())
+                .is_some_and(|d| !d.onion.is_empty() && !d.nym_address.is_empty())
         {
             1
         } else {

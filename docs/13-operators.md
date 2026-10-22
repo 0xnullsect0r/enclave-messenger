@@ -26,7 +26,7 @@ The software provides no admin interface that would suggest otherwise.
 ## 2. User reports
 
 - A report is created by the user in the app: "Report" on a message or conversation. The user chooses what to include. Reports **voluntarily include the reported plaintext** and, for attachments, the blob pointer.
-- Reports are sent through Enclave (end-to-end encrypted, over the mixnet) to the operator's report address published in the server descriptor.
+- Reports are sent through Enclave (end-to-end encrypted, over Tor or the optional mixnet) to the operator's report address published in the server descriptor.
 - **Off-the-record chats:** a report is an unverifiable claim. The report UI says so: "Because this chat is off the record, the operator can't confirm who wrote these messages."
 - **On-the-record chats:** the report includes the messages' composite signatures, which the operator checks against the sender's manifest, so the operator can verify authorship.
 - Spam reports on message requests additionally feed local blocking and, if the reporter agrees, raise the request-inbox PoW effort for that sender's capability.
@@ -47,7 +47,7 @@ The kit's guide MUST list, per data type, what an operator **can** and **cannot*
 |---|---|---|
 | Account identity | No | The server has no accounts |
 | Phone number, email | No | Never collected |
-| IP addresses | No | Requests arrive through Nym and Tor; not logged |
+| IP addresses | No | Requests arrive through Tor, at the stack's onion service (or through the Nym mixnet when enabled); not logged |
 | Message content | No | End-to-end encrypted; keys are only on devices |
 | Contacts, group membership | No | Not visible to the server |
 | Inbox activity (for a known inbox address) | Counts and 60 s timing buckets of writes and polls, from the moment logging is ordered | RT-28 residual: pseudonymous activity from that point on |

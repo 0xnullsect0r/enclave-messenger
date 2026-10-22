@@ -10,4 +10,4 @@
 | Recipients | None. The username log is public by design (any client can look a name up) |
 | Transfers to third countries | [None / describe hosting location] |
 | Retention | Encrypted envelopes and files: [30] days. Usernames: append-only log, tombstoned on deletion. Reports: deleted once handled, at most [90] days. Backups: [7] daily snapshots |
-| Security measures | End-to-end encryption; requests sealed to daily keys from a forward-secure chain; no IP logging (Nym, Tor); TLS 1.3 with post-quantum key exchange on the public front; containers without shell, as an unprivileged user, read-only filesystem; encrypted off-host key backups; reproducible builds |
+| Security measures | End-to-end encryption; requests sealed to daily keys from a forward-secure chain; no IP logging (Tor, and the Nym mixnet when enabled); TLS 1.3 with post-quantum key exchange on the public front; containers without shell, as an unprivileged user, read-only filesystem; encrypted off-host key backups; reproducible builds |

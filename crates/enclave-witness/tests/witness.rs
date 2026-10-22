@@ -111,6 +111,7 @@ async fn two_remote_witnesses_meet_threshold_two() {
         operator: "server-op".into(),
         family: "server-fam".into(),
         nym_address: String::new(),
+        onion: String::new(),
         weight: 1,
         kt: Some(KtKeys {
             head_key: head.public().clone(),

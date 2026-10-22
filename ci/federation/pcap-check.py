@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """The traffic-shape check (docs/09-transport.md §6.7): from a packet
-capture of a device's link to its Nym gateway, is the traffic the same
-whether the device is idle or busy, and what the model says?
+capture of a device's link to its Nym gateway (or, with --stream, to its
+servers' onion services), is the traffic the same whether the device is
+idle or busy, and what the model says?
 
     pcap-check.py CAPTURE MARKS [--port 9000] [--src HOST] [--dst HOST]
                   [--window 15] [--tick 3] [--per-tick 16] [--self-rate 0.1]
+    pcap-check.py CAPTURE MARKS --stream --port 7441 --port 7442 …
+                  [--per-tick 2] [--self-rate 0]
 
 CAPTURE is a pcap file (tcpdump -w; Ethernet, Linux cooked v1/v2, raw IP or
 BSD loopback). MARKS holds `idle_start idle_end busy_start busy_end` in Unix
@@ -12,6 +15,14 @@ milliseconds (`enclave-e2e shape --marks`). The link is WebSocket over TCP
 (`ws://`, the local mixnet): this reassembles the device's stream to the
 gateway, finds the WebSocket frames in it, and counts the binary frames of
 the size a Sphinx packet takes (the commonest size; one packet per frame).
+
+With --stream the link is Enclave's own stream framing (RFC 0010: what the
+onion carrier sends a server, here dialled directly as the CI stacks are):
+`u32 len ‖ request` up, the top bit of the length marking a one-way
+request, and `u32 len ‖ reply` down, an empty frame acknowledging a
+one-way one. Each request counts as a packet (a tick is one unit and one
+poll: --per-tick 2), each non-empty reply as one down; acknowledgements
+count as other frames.
 
 It passes when, over windows of WINDOW seconds inside each phase:
 
@@ -108,11 +119,13 @@ class Stream:
 
     def __init__(self):
         self.isn = None
+        self.synced = False
         self.segments = []  # (relative seq, timestamp, payload)
 
     def add(self, ts, seq, flags, payload):
         if flags & 0x02:  # SYN: data starts at the next sequence number
             self.isn = (seq + 1) & 0xFFFFFFFF
+            self.synced = True
             return
         if not payload:
             return
@@ -122,6 +135,14 @@ class Stream:
         if rel > 0x80000000:  # before the first segment seen
             return
         self.segments.append((rel, ts, payload))
+
+    @property
+    def start(self):
+        """Where the first data captured is in the stream (0: from the
+        connection's start), or None without the SYN."""
+        if not self.synced or not self.segments:
+            return None
+        return min(rel for rel, _, _ in self.segments)
 
     def runs(self):
         """Contiguous runs of the stream: (bytes, [(offset, timestamp)])."""
@@ -196,14 +217,29 @@ def frames(buf, marks, masked=True):
             i += 1
 
 
+def stream_frames(buf, marks):
+    """(timestamp, opcode, length) of each `u32 len ‖ bytes` frame in a run
+    that starts at the beginning of a connection: opcode 2 for a frame with
+    bytes, 0 for an empty one (an acknowledgement)."""
+    offsets = [m[0] for m in marks]
+    i = 0
+    while i + 4 <= len(buf):
+        n = struct.unpack("!I", buf[i : i + 4])[0] & 0x7FFFFFFF
+        if i + 4 + n > len(buf):
+            break
+        ts = marks[bisect.bisect_right(offsets, i) - 1][1]
+        yield ts, 2 if n else 0, n
+        i += 4 + n
+
+
 def window_counts(found, size, t0, t1, width):
-    """Per window of `width` seconds in [t0, t1): (packets of `size`, other
-    frames, payload bytes)."""
+    """Per window of `width` seconds in [t0, t1): (packets of `size` (any
+    non-empty frame for None), other frames, payload bytes)."""
     out, k = [], 0
     while t0 + (k + 1) * width <= t1:
         w0, w1 = t0 + k * width, t0 + (k + 1) * width
         inside = [(op, n) for ts, op, n in found if w0 <= ts < w1]
-        p = sum(1 for op, n in inside if op == 2 and n == size)
+        p = sum(1 for op, n in inside if op == 2 and (n == size if size is not None else n > 0))
         out.append((p, len(inside) - p, sum(n for _, n in inside)))
         k += 1
     return out
@@ -213,7 +249,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("capture")
     ap.add_argument("marks")
-    ap.add_argument("--port", type=int, default=9000, help="the gateway's WebSocket port")
+    ap.add_argument("--port", type=int, action="append",
+                    help="the gateway's WebSocket port (9000), or with --stream the servers' ports")
+    ap.add_argument("--stream", action="store_true",
+                    help="Enclave's stream framing (the onion route) instead of WebSocket")
     ap.add_argument("--dst", help="the gateway's address")
     ap.add_argument("--src", help="the device's address")
     ap.add_argument("--window", type=float, default=15.0)
@@ -221,6 +260,7 @@ def main():
     ap.add_argument("--per-tick", type=float, default=16.0)
     ap.add_argument("--self-rate", type=float, default=0.1)
     a = ap.parse_args()
+    ports = set(a.port or [9000])
 
     marks = [int(x) / 1000 for x in open(a.marks).read().split()]
     if len(marks) != 4:
@@ -234,9 +274,9 @@ def main():
         if seg is None:
             continue
         src, sport, dst, dport, seq, flags, payload = seg
-        if dport == a.port and (not a.dst or dst == a.dst) and (not a.src or src == a.src):
+        if dport in ports and (not a.dst or dst == a.dst) and (not a.src or src == a.src):
             way = "up"
-        elif sport == a.port and (not a.dst or src == a.dst) and (not a.src or dst == a.src):
+        elif sport in ports and (not a.dst or src == a.dst) and (not a.src or dst == a.src):
             way = "down"
         else:
             continue
@@ -249,20 +289,34 @@ def main():
     for way, flows in streams.items():
         for key, st in flows.items():
             n = 0
-            for buf, m in st.runs():
-                for f in frames(buf, m, masked=way == "up"):
+            for k, (buf, m) in enumerate(st.runs()):
+                if a.stream and (k > 0 or st.start != 0):
+                    # Framing can't be found mid-stream: only what follows
+                    # the connection's start counts.
+                    break
+                got = stream_frames(buf, m) if a.stream else frames(buf, m, masked=way == "up")
+                for f in got:
                     found[way].append(f)
                     n += 1
             print(f"{way:<4} {key[0]}:{key[1]} → {key[2]}:{key[3]}: {n} frames")
     sizes = {}
-    for way in ("up", "down"):
+    for way in ("up", "down") if not a.stream else ():
         binary = collections.Counter(n for _, op, n in found[way] if op == 2)
         if binary:
             sizes[way] = binary.most_common(1)[0][0]
             others = sum(binary.values()) - binary[sizes[way]]
             print(f"{way}: Sphinx packets are binary frames of {sizes[way]} B "
                   f"({binary[sizes[way]]}); {others} other binary frames")
-    if "up" not in sizes:
+    if a.stream:
+        for way in ("up", "down"):
+            lengths = collections.Counter(n for _, op, n in found[way] if op == 2)
+            sizes[way] = None
+            print(f"{way}: frames by length: "
+                  + ", ".join(f"{n} B ×{c}" for n, c in lengths.most_common(4)))
+        if not any(op == 2 for _, op, _ in found["up"]):
+            print("pcap-check: no requests to the servers")
+            return 1
+    elif "up" not in sizes:
         print("pcap-check: no WebSocket binary frames to the gateway")
         return 1
 
@@ -276,6 +330,7 @@ def main():
     for name, (t0, t1) in phases.items():
         ups = window_counts(found["up"], sizes["up"], t0, t1, a.window)
         downs = window_counts(found["down"], sizes.get("down", -1), t0, t1, a.window)
+        up_size = sizes["up"]
         for k, ((p, o, b), (dp, do, db)) in enumerate(zip(ups, downs)):
             print(f"{name:<6}{k:>7}{p:>6}{p * a.tick / a.window:>8.2f}{o:>7}{b:>9}"
                   f"{dp:>7}{do:>7}{db:>9}")
@@ -288,7 +343,10 @@ def main():
             statistics.mean(b for _, _, b in ups) * per_hour,
             statistics.mean(b for _, _, b in downs) * per_hour,
         )
-        times = sorted(ts for ts, op, n in found["up"] if op == 2 and n == sizes["up"] and t0 <= ts < t1)
+        times = sorted(
+            ts for ts, op, n in found["up"]
+            if op == 2 and (n == up_size if up_size is not None else n > 0) and t0 <= ts < t1
+        )
         gaps = sorted(y - x for x, y in zip(times, times[1:]))
         if gaps:
             spacing[name] = (statistics.median(gaps), gaps[len(gaps) // 20])
@@ -305,7 +363,8 @@ def main():
             print(f"{name}: packets {med * 1000:.0f} ms apart (median), 5% under {low * 1000:.0f} ms")
         up_h, down_h = down[name]
         print(f"{name}: {up_h / 1e6:.1f} MB/h up, {down_h / 1e6:.1f} MB/h down, "
-              f"{(up_h + down_h) / 1e6:.1f} MB/h in all (WebSocket payloads)")
+              f"{(up_h + down_h) / 1e6:.1f} MB/h in all "
+              f"({'frame' if a.stream else 'WebSocket'} payloads)")
         if abs(off) > 0.20:
             failures.append(f"{name}: {per_tick:.2f} packets a tick is {off:+.1%} of the model")
         if top > 1.5 * median:

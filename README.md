@@ -7,9 +7,10 @@ disappearing messages) and a much stronger design against surveillance:
 * **Post-quantum from the first message.** Every session combines three
   independent key-exchange families (X448, ML-KEM-1024 and Classic
   McEliece-8192128), and every ratchet turn takes a full post-quantum step.
-* **Metadata hidden, not just content.** Traffic goes through the Nym mixnet
-  over Tor, every message is the same size, and cover traffic hides when you
-  are talking. Servers never learn who writes to whom.
+* **Metadata hidden, not just content.** Traffic goes through Tor to each
+  server's onion service (the Nym mixnet is optional), every message is the
+  same size, and constant-rate cover traffic hides when you are talking.
+  Servers never learn who writes to whom.
 * **No phone number, no email.** Your account is a key. Usernames are optional
   and checked by public key-transparency logs with independent witnesses.
 * **No trusted server.** Anyone can run one; none of them can read messages,
@@ -21,7 +22,8 @@ The full design is in [`docs/PLAN.md`](docs/PLAN.md). Specifications are in
 
 ## Status
 
-The protocol, the servers, the network layer (Nym over Tor), the desktop
+The protocol, the servers, the network layer (Tor onion services, with the
+Nym mixnet as an option), the desktop
 app and the release pipeline are built and tested in CI; Android and iOS
 are being built (`docs/completion.md` tracks every item). Enclave has not
 been audited yet: don't rely on it to protect anyone until it has.
@@ -96,14 +98,15 @@ gh attestation verify FILE --repo 0xnullsect0r/enclave-messenger   # build prove
 
 An operator runs one stack: the server (keys, inboxes, the
 key-transparency log), a witness that cosigns other operators' logs, the
-front (the stack's only HTTPS surface), a call relay, the Nym ingress
-through which devices reach the server, and an updater. The images are on
+front (the stack's only HTTPS surface), a call relay, the onion service
+through which devices reach the server over Tor, and an updater. Nothing in
+it costs money to run beyond the host. The images are on
 GHCR, built and signed by the release workflow:
 
 | Image | What |
 |---|---|
 | `ghcr.io/0xnullsect0r/enclave-server` | server, witness, front, relay, push relay, credential gate, onion service, `enclave-admin` |
-| `ghcr.io/0xnullsect0r/enclave-nym` | the Nym ingress and push egress |
+| `ghcr.io/0xnullsect0r/enclave-nym` | the Nym ingress and push egress, only for the optional mixnet |
 | `ghcr.io/0xnullsect0r/enclave-updater` | keeps the stack on the newest signed release |
 
 You need a Linux host with Docker Engine 24 or later and the compose
@@ -126,6 +129,14 @@ docker compose up -d
 docker compose ps                              # every service healthy
 ```
 
+Devices reach the server through Tor. The `onion` service writes the
+stack's onion address to `public/onion.addr` once Tor says it is reachable
+(this can take a few minutes), and the server puts it in its descriptor for
+the foundation's list. Back up the `onion-data` volume with the keys:
+losing it changes the address. There is no Nym account to fund; the Nym
+mixnet is optional (`COMPOSE_PROFILES=nym` in `.env`, with a funded Nyx
+account).
+
 The same stack is published as an OCI artifact with each release
 (`docker compose -f oci://ghcr.io/0xnullsect0r/enclave-stack:VERSION up -d`).
 
@@ -138,8 +149,8 @@ leaves updating to you (`docker compose pull && docker compose up -d`).
 The updater holds the Docker socket (root on the host), the price of
 updating unattended. Run compose from the stack's folder.
 
-Joining the foundation's list, backups, key rotation, the onion backup
-route and push are in
+Joining the foundation's list, backups, key rotation, the onion service,
+push and the optional mixnet are in
 [`ops/operator-kit/deployment.md`](ops/operator-kit/deployment.md).
 
 <details>
@@ -154,8 +165,12 @@ route and push are in
 #   docker compose run --rm server init       # prints the server id
 #   docker compose run --rm witness init      # prints the witness id
 #   docker compose run --rm relay init        # prints the relay descriptor
-#   docker compose run --rm credgate init     # foundation only: the issuer key
 #   docker compose up -d
+#
+# Devices reach the server through Tor, at the stack's onion service
+# (`onion`, RFC 0010): nothing to pay for, no account to fund. The Nym
+# mixnet is optional (profile `nym`: the ingress, its push egress and the
+# foundation's credential gate, which need a funded Nyx account).
 #
 # The stack follows the newest release by itself: `updater` checks the
 # images' signatures every hour and restarts what changed (set
@@ -165,8 +180,9 @@ route and push are in
 # What faces the internet: the front (80 and 443, TLS with the Enclave
 # profile) and the call relay (UDP). The server holds the keys and has no
 # HTTP surface; it sits on the internal `backend` network, reached only
-# through the stack's Nym ingress (compose.dev.yml maps its port for
-# development). Every container runs as
+# through the stack's onion service (and its Nym ingress with profile
+# `nym`; compose.dev.yml maps its port for development). Every container
+# runs as
 # an unprivileged user with no capabilities and a read-only root
 # filesystem; state lives in the named volumes below.
 
@@ -226,15 +242,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # The fallback route (docs/09-transport.md §7): an onion service in
-  # front of the server, which devices use only with their user's consent
-  # when the mixnet is unreachable, and never in Maximum privacy. Its
-  # address (public/onion.addr) goes in the server's descriptor; its Tor
-  # identity key stays in the onion-data volume (back it up with the
-  # keys). Recommended for every operator.
+  # How devices reach the server (RFC 0010): an onion service in front of
+  # it. Its address (public/onion.addr, written once Tor says the service
+  # is reachable) goes in the server's descriptor and the foundation's
+  # list; its Tor identity key stays in the onion-data volume. Back it up
+  # with the keys: losing it changes the address, and the list must be
+  # signed again.
   onion:
     <<: *service
-    profiles: [onion]
     entrypoint: ["/usr/local/bin/enclave-onion"]
     command: ["run", "--forward", "server:7443"]
     volumes:
@@ -297,12 +312,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # The stack's Nym client in front of the server (docs/09-transport.md §1):
-  # it takes requests off the mixnet and hands them to the server on the
-  # internal network, the only way devices reach it. Its Nym address goes
-  # into the server's descriptor (through the shared public volume).
+  # The optional mixnet route (profile `nym`; docs/09-transport.md §1): the
+  # stack's Nym client in front of the server takes requests off the
+  # mixnet and hands them to the server on the internal network. Its Nym
+  # address goes into the server's descriptor (through the shared public
+  # volume).
   ingress:
     <<: *service
+    profiles: [nym]
     image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
     # On Nym's networks it buys its own zk-nym tickets from the operator's
@@ -321,13 +338,25 @@ services:
       timeout: 10s
       retries: 3
 
-  # The stack's push egress (docs/10-push.md): the server hands it due
-  # wakes ([push] forward = "push-egress:7446") and it sends each one way
-  # over the mixnet to the push relay's Nym address (PUSH_RELAY_NYM, from
+  # The stack's push egress (docs/10-push.md, RFC 0010): the server hands
+  # it due wakes ([push] forward = "push-egress:7446") and it sends them
+  # through Tor to the push relay's onion service (PUSH_RELAY_ONION, from
   # the foundation's list), so the relay can't tell which server woke
-  # whom. A fresh mixnet identity each start.
+  # whom. Without PUSH_RELAY_ONION the wakes are dropped.
   push-egress:
     <<: *service
+    entrypoint: ["/usr/local/bin/enclave-onion"]
+    command: ["forward", "--listen", "0.0.0.0:7446", "--to", "${PUSH_RELAY_ONION:-}", "--state", "/var/lib/enclave/onion"]
+    volumes:
+      - push-egress-tor:/var/lib/enclave/onion
+    networks: [backend, egress]
+
+  # The same over the mixnet (profile `nym`): to the push relay's Nym
+  # address (PUSH_RELAY_NYM), a fresh mixnet identity each start; the
+  # server's `[push] forward` is then "push-egress-nym:7446".
+  push-egress-nym:
+    <<: *service
+    profiles: [nym]
     image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
     command: ["forward", "--listen", "0.0.0.0:7446", "--to", "${PUSH_RELAY_NYM:-}", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
@@ -360,12 +389,34 @@ services:
       timeout: 10s
       retries: 3
 
-  # The push relay's Nym client: takes wakes off the mixnet and hands them
-  # to the relay. Its address (public/push-ingress.addr) goes in the
+  # The push relay's onion service: takes wakes from other stacks' push
+  # egress through Tor and hands them to the relay. Its address
+  # (public/push-onion.addr) goes in the foundation's list; its key stays
+  # in the push-onion-data volume.
+  push-onion:
+    <<: *service
+    profiles: [push]
+    entrypoint: ["/usr/local/bin/enclave-onion"]
+    command: ["run", "--forward", "push-relay:7445", "--addr-file", "push-onion.addr"]
+    volumes:
+      - push-onion-data:/var/lib/enclave/onion
+      - public:/var/lib/enclave/public
+    networks: [backend, egress]
+    depends_on: [push-relay]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/enclave-onion", "healthcheck", "--addr-file", "push-onion.addr"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 5m
+
+  # The push relay's Nym client (profile `push-nym`: a push relay's stack
+  # with the optional mixnet): takes wakes off the mixnet and hands them to
+  # the relay. Its address (public/push-ingress.addr) goes in the
   # foundation's list.
   push-ingress:
     <<: *service
-    profiles: [push]
+    profiles: [push-nym]
     image: ${ENCLAVE_NYM_IMAGE:-ghcr.io/0xnullsect0r/enclave-nym}:${ENCLAVE_VERSION:-latest}
     entrypoint: ["/usr/local/bin/enclave-ingress"]
     command: ["oneway", "--relay", "push-relay:7445", "--mnemonic-file", "/run/secrets/nym/mnemonic"]
@@ -381,10 +432,11 @@ services:
       timeout: 10s
       retries: 3
 
-  # The foundation's credential gate (docs/09-transport.md §7): proof of work
-  # work for Privacy Pass tokens, a token for a Nym ticketbook from the
-  # foundation's nym-credential-proxy (CREDGATE_PROXY_URL, its bearer token
-  # in secrets/credgate-proxy-token). The front serves it at
+  # The foundation's credential gate, only with the optional mixnet
+  # (docs/09-transport.md §7): proof of work for Privacy Pass tokens, a
+  # token for a Nym ticketbook from the foundation's nym-credential-proxy
+  # (CREDGATE_PROXY_URL, its bearer token in
+  # secrets/credgate-proxy-token). The front serves it at
   # https://DOMAIN/credgate/v1/ when CREDGATE_UPSTREAM is
   # http://credgate:7448. Only the foundation's stack runs it.
   credgate:
@@ -462,6 +514,8 @@ volumes:
   ingress-data:
   push-egress-data:
   push-ingress-data:
+  push-onion-data:
+  push-egress-tor:
   credgate-keys:
   credgate-data:
   onion-data:

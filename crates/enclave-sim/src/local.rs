@@ -84,6 +84,7 @@ impl LocalTransport {
             operator: info.operator.clone(),
             family: format!("family-{domain}"),
             nym_address: String::new(),
+            onion: String::new(),
             weight,
             kt: Some(enclave_federation::KtKeys {
                 head_key: info.head_key,

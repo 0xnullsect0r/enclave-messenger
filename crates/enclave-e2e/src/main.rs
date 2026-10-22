@@ -7,13 +7,19 @@
 //!                           [--push-relay-keys FILE --push-listen ADDR --push-endpoint URL]
 //! enclave-e2e after-restart --state DIR --servers … --foundation FILE --server-list FILE
 //! enclave-e2e shape         --state DIR --servers … --foundation FILE --server-list FILE
-//!                           --nymd PATH [--tord PATH] --marks FILE [--seconds N] [--warmup N]
+//!                           [--nymd PATH] [--tord PATH] --marks FILE [--seconds N] [--warmup N]
 //!                           [--profile foreground|maximum]
 //! ```
 //!
 //! A route is `HOST:PORT` (the development TCP transport, CI job
-//! `federation-e2e-tcp`) or `nym:ADDRESS` (the stack's ingress, over the
-//! mixnet: CI job `federation-e2e-localnet`). Nym routes go through
+//! `federation-e2e-tcp`), `onion:NAME.onion` (the stack's onion service,
+//! RFC 0010: CI job `federation-e2e-onion`) or `nym:ADDRESS` (the stack's
+//! ingress, over the mixnet: CI job `federation-e2e-localnet`). Onion
+//! routes go through `enclave-tord` at `--tord PATH` as the carrier, the
+//! way netd sends a device's requests: one long-lived stream pair per
+//! server, writes one way. In CI that is a `dev-direct` build, which
+//! dials the names in `ENCLAVE_DEV_ONION_MAP` (`NAME.onion=HOST:PORT,…`)
+//! directly instead of through Tor. Nym routes go through
 //! `enclave-nymd` at `--nymd PATH`, started with `--env` (so a local
 //! mixnet's `ENCLAVE_NYM_TOPOLOGY` and `ENCLAVE_NYM_API` reach it), as
 //! netd drives it on a device. With `--tord PATH` (a `dev-direct` build of
@@ -53,14 +59,14 @@
 //! (`ci/federation/pcap-check.py`, `docs/09-transport.md` §6.7): Ada's
 //! client runs shaped in the Foreground (or Maximum) profile, as the vault
 //! runs it,
-//! over this process's mixnet client. After `--warmup` seconds she is idle
+//! over this process's onion carrier or mixnet client. After `--warmup` seconds she is idle
 //! for `--seconds`, then busy for as long (a message every 6 s, to Ben and
 //! Cyrus in turn: an idle contact refills write tokens only as it reads, so
 //! one alone would run out),
 //! syncing on the vault's 3 s clock throughout. The phases' wall-clock
 //! bounds go to `--marks` (`idle_start idle_end busy_start busy_end`, Unix
 //! ms) for the checker, which compares a packet capture of the link to the
-//! gateway in both. Ben and Cyrus, idle meanwhile, then check every message
+//! gateway (or, over onion, to the stack) in both. Ben and Cyrus, idle meanwhile, then check every message
 //! arrived.
 
 use enclave_core::{Client, ContactCard, Event, Options, TicketWallet};
@@ -290,6 +296,7 @@ async fn world(args: &[String]) -> R<World> {
     std::fs::create_dir_all(&state).map_err(e)?;
     let mut tcp = HashMap::new();
     let mut nym = HashMap::new();
+    let mut onion = HashMap::new();
     let mut servers = Vec::new();
     for s in need("--servers")?.split(',') {
         match parse_route(s).ok_or_else(|| format!("--servers: {s}"))? {
@@ -301,11 +308,19 @@ async fn world(args: &[String]) -> R<World> {
                 nym.insert(id, a);
                 servers.push(id);
             }
-            (_, Route::Onion(_)) => return Err(format!("--servers: {s}: TCP or Nym only")),
+            (id, Route::Onion(h)) => {
+                onion.insert(id, h);
+                servers.push(id);
+            }
         }
     }
-    if !tcp.is_empty() && !nym.is_empty() {
-        return Err("--servers: all TCP or all Nym".into());
+    if [!tcp.is_empty(), !nym.is_empty(), !onion.is_empty()]
+        .iter()
+        .filter(|x| **x)
+        .count()
+        > 1
+    {
+        return Err("--servers: all TCP, all Nym or all onion".into());
     }
     if servers.len() != 3 {
         return Err("--servers: three stacks expected".into());
@@ -329,9 +344,14 @@ async fn world(args: &[String]) -> R<World> {
         .collect::<R<Vec<_>>>()?;
     // `--tord PATH` (a dev-direct build): nymd reaches its gateway and
     // nym-api through enclave-tord's SOCKS5 port, as on a device (Tor),
-    // dialling directly behind it.
+    // dialling directly behind it. With onion routes tord carries the
+    // requests itself, as netd's carrier (RFC 0010), its onion names
+    // mapped to the stacks by `ENCLAVE_DEV_ONION_MAP`.
+    if !onion.is_empty() && flag(args, "--tord").is_none() {
+        return Err("--servers: onion routes need --tord".into());
+    }
     let tord = match flag(args, "--tord") {
-        Some(bin) if !nym.is_empty() => {
+        Some(bin) if !nym.is_empty() || !onion.is_empty() => {
             let secret: String = enclave_crypto::rng::HedgedRng::new()
                 .and_then(|mut r| r.array::<32>("e2e/tor-secret"))
                 .map_err(e)?
@@ -344,6 +364,7 @@ async fn world(args: &[String]) -> R<World> {
                 secret,
                 true,
                 true,
+                !onion.is_empty(),
                 &[],
                 Duration::from_secs(30),
             )
@@ -353,7 +374,19 @@ async fn world(args: &[String]) -> R<World> {
         }
         _ => None,
     };
-    let (transport, nymd): (Arc<dyn Transport>, _) = if nym.is_empty() {
+    let (transport, nymd): (Arc<dyn Transport>, _) = if !onion.is_empty() {
+        let carrier = tord
+            .as_ref()
+            .and_then(|t| t.carrier.clone())
+            .ok_or("enclave-tord didn't start as a carrier")?;
+        (
+            Arc::new(OnionTransport {
+                carrier,
+                hosts: onion,
+            }),
+            None,
+        )
+    } else if nym.is_empty() {
         (Arc::new(TcpTransport::new(tcp)), None)
     } else {
         let gate = parsed.credgates.first();
@@ -381,6 +414,60 @@ async fn world(args: &[String]) -> R<World> {
         list,
         domains,
     })
+}
+
+/// Servers reached through tord's carrier, at their onion services (what
+/// netd does on a device without a mixnet, RFC 0010).
+struct OnionTransport {
+    carrier: Arc<enclave_tord::carrier::Client>,
+    hosts: HashMap<[u8; 16], String>,
+}
+
+impl OnionTransport {
+    async fn carry(
+        &self,
+        server: &[u8; 16],
+        request: &[u8],
+        oneway: bool,
+    ) -> enclave_net::Result<Vec<u8>> {
+        let host = self
+            .hosts
+            .get(server)
+            .ok_or_else(|| enclave_net::NetError::Unreachable("unknown server".into()))?;
+        Ok(self
+            .carrier
+            .exchange(host, enclave_net::transport::ONION_PORT, request, oneway)
+            .await?)
+    }
+}
+
+#[async_trait::async_trait]
+impl Transport for OnionTransport {
+    async fn exchange(&self, server: &[u8; 16], request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+        self.carry(server, &request, false).await
+    }
+
+    async fn exchange_oneway(
+        &self,
+        server: &[u8; 16],
+        request: Vec<u8>,
+    ) -> enclave_net::Result<Option<Vec<u8>>> {
+        self.carry(server, &request, true).await.map(|_| None)
+    }
+
+    async fn server_key(&self, server: &[u8; 16]) -> enclave_net::Result<enclave_rpc::ServerKey> {
+        let bundle = self.carry(server, &[], false).await?;
+        enclave_net::transport::verify_key_bundle(server, &bundle, self.now())
+    }
+
+    async fn fetch(
+        &self,
+        method: &str,
+        url: &str,
+        body: Vec<u8>,
+    ) -> enclave_net::Result<(u16, Vec<u8>)> {
+        Ok(self.carrier.fetch(method, url, &body).await?)
+    }
 }
 
 fn options(dir: &Path) -> R<Options> {

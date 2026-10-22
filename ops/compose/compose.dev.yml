@@ -1,6 +1,6 @@
 # Development: reach the server directly over TCP (the dev transport) with
 # a self-signed front. Never on the internet: production servers are
-# reached only through their Nym ingress.
+# reached only through their onion service (or Nym ingress).
 #
 #   docker compose -f compose.yml -f compose.dev.yml up -d
 
@@ -12,12 +12,15 @@ services:
   front:
     environment:
       ENCLAVE_FRONT__TLS: self-signed
-  # Over TCP the stack needs no Nym clients (`--profile nym` adds them),
-  # and a development stack isn't updated behind its developer's back.
-  ingress:
-    profiles: [nym]
+  # Over TCP the stack needs no Tor or Nym clients (`--profile onion` and
+  # `--profile nym` add them), and a development stack isn't updated
+  # behind its developer's back.
+  onion:
+    profiles: [onion]
   push-egress:
-    profiles: [nym]
+    profiles: [onion]
+  push-onion:
+    profiles: [push-tor]
   updater:
     profiles: [updater]
 

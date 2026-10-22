@@ -270,8 +270,8 @@ msgid "Also hides when you're using Enclave, but only while it's open: iPhone st
 msgstr "[Álsó hídés whéñ ýóú'ré úsíñg Éñçlávé, bút óñlý whílé ít's ópéñ: íPhóñé stóps ít íñ thé báçkgróúñd, áñd púsh ís óff. Lárgé fílés séñd slówlý.························································]"
 
 #: ui/app.slint
-msgid "Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly."
-msgstr "[Álsó hídés whéñ ýóú'ré úsíñg Éñçlávé. Úsés ábóút 2 GB á dáý. Lárgé fílés séñd slówlý.··································]"
+msgid "Also hides when you're using Enclave. Uses about 1.1 GB a day. Large files send slowly."
+msgstr "[Álsó hídés whéñ ýóú'ré úsíñg Éñçlávé. Úsés ábóút 1.1 GB á dáý. Lárgé fílés séñd slówlý.··································]"
 
 #: ui/app.slint
 msgid "An admin needs to let you in. You'll see the group here when they do."
@@ -1702,12 +1702,12 @@ msgid "Hide from screenshots"
 msgstr "[Hídé fróm sçrééñshóts········]"
 
 #: ui/app.slint
-msgid "Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background."
-msgstr "[Hídés whó ýóú tálk tó. Úsés ábóút 80 MB áñ hóúr whílé Éñçlávé ís ópéñ, áñd ábóút 50 MB á dáý íñ thé báçkgróúñd.············································]"
+msgid "Hides who you talk to. Uses about 45 MB an hour while Enclave is open, and about 30 MB a day in the background."
+msgstr "[Hídés whó ýóú tálk tó. Úsés ábóút 45 MB áñ hóúr whílé Éñçlávé ís ópéñ, áñd ábóút 30 MB á dáý íñ thé báçkgróúñd.············································]"
 
 #: ui/app.slint
-msgid "Hides who you talk to. Uses about 80 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives."
-msgstr "[Hídés whó ýóú tálk tó. Úsés ábóút 80 MB áñ hóúr whílé Éñçlávé ís ópéñ. Íñ thé báçkgróúñd íPhóñé léts Éñçlávé séñd ñóthíñg; Ápplé's púsh wákés ít whéñ sóméthíñg árrívés.···································································]"
+msgid "Hides who you talk to. Uses about 45 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives."
+msgstr "[Hídés whó ýóú tálk tó. Úsés ábóút 45 MB áñ hóúr whílé Éñçlávé ís ópéñ. Íñ thé báçkgróúñd íPhóñé léts Éñçlávé séñd ñóthíñg; Ápplé's púsh wákés ít whéñ sóméthíñg árrívés.···································································]"
 
 #: ui/app.slint
 msgid "Hold their code up to the camera."

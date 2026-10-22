@@ -53,20 +53,15 @@ pub fn start_netd(
         // Bridges the user set (censorship mode).
         extra.extend(crate::netd::bridge_args(profile));
     }
-    // With a server list the servers are reached over the mixnet, their
-    // routes given once the list is read: the mixnet client starts anyway.
-    let listed = mode.has_server_list();
-    if listed {
-        extra.push("--mixnet".into());
-    }
-    // The mixnet client waits for its zk-nym tickets, which the vault
-    // gives it once it can read its wallet (`docs/09-transport.md` §7).
-    if listed
-        || home
-            .iter()
-            .chain(others)
-            .any(|(_, r)| matches!(r, enclave_net::transport::Route::Nym(_)))
-    {
+    // With servers on the mixnet in the list, their routes are given once
+    // the list is read: the mixnet client starts anyway, and waits for its
+    // zk-nym tickets, which the vault gives it once it can read its wallet
+    // (`docs/09-transport.md` §7). A list of onion services only needs
+    // Tor alone (RFC 0010).
+    if mode.uses_mixnet() {
+        if mode.has_server_list() {
+            extra.push("--mixnet".into());
+        }
         extra.push("--await-tickets".into());
     }
     match crate::netd::PipeTransport::spawn(&bin, &servers, &extra) {

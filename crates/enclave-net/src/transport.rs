@@ -82,14 +82,17 @@ pub trait Transport: Send + Sync {
     /// transports ignore it.
     fn set_pacing(&self, _pacing: enclave_nym::Pacing) {}
     /// Use only the private route from now on (`on`), or not (Maximum
-    /// privacy, `docs/09-transport.md` §6.6): no development TCP route or
-    /// fallback, and nothing at all without Tor in front of the mixnet.
-    /// Requests that would break that fail instead.
+    /// privacy, `docs/09-transport.md` §6.6): the onion route or the
+    /// mixnet only, never a development TCP route or the consented
+    /// fallback, and nothing at all without Tor. Requests that would break
+    /// that fail instead.
     fn require_private(&self, _on: bool) {}
-    /// Reach servers that have an onion route ([`Route::Onion`]) over it
-    /// from now on (`on`), or over the mixnet again: the fallback route,
-    /// only ever with the user's consent, and ignored in Maximum privacy
-    /// (`docs/09-transport.md` §7). Transports without one ignore it.
+    /// Reach servers that have both a Nym route and an onion route
+    /// ([`Route::Onion`]) over the onion route from now on (`on`), or over
+    /// the mixnet again: the fallback, only ever with the user's consent,
+    /// and ignored in Maximum privacy (`docs/09-transport.md` §7). Servers
+    /// with only an onion route always use it (RFC 0010). Transports
+    /// without one ignore it.
     fn use_fallback(&self, _on: bool) {}
     /// How Tor in front of the mixnet is doing: 0 not used, 1 up, 2 it
     /// didn't come up (the network may be blocking it; bridges may help,
@@ -302,9 +305,10 @@ pub enum Route {
     Tcp(SocketAddr),
     /// Over the mixnet, to the server's ingress: `nym:ADDRESS`.
     Nym(String),
-    /// The fallback route, over Tor to the stack's onion service:
-    /// `onion:HOST.onion` (port [`ONION_PORT`]). Used only with the user's
-    /// consent and never in Maximum privacy (`docs/09-transport.md` §7).
+    /// Over Tor to the stack's onion service: `onion:HOST.onion` (port
+    /// [`ONION_PORT`]). The primary route (RFC 0010); for a server that also
+    /// has a Nym route, the fallback, used only with the user's consent and
+    /// never in Maximum privacy (`docs/09-transport.md` §7).
     Onion(String),
 }
 
@@ -461,9 +465,10 @@ impl Transport for TcpTransport {
     }
 }
 
-/// Tor transport (arti, embedded): the consented fallback route when the
-/// mixnet is unreachable, and the underlay for Nym. Servers are addressed by
-/// onion service. Requires the `tor` feature.
+/// Tor transport (arti, embedded, a fresh stream per request): servers
+/// addressed by onion service. Devices use netd's carrier instead
+/// (`enclave_tord::carrier`, RFC 0010), which keeps streams open. Requires
+/// the `tor` feature.
 #[cfg(feature = "tor")]
 pub struct TorTransport {
     client: std::sync::Arc<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>,

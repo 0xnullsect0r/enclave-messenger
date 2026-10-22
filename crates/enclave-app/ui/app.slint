@@ -4289,11 +4289,11 @@ export component AppWindow inherits Window {
         // iPhone suspends apps in the background: nothing is sent then, and
         // new messages wake Enclave through Apple's push (PC-05).
         for option[i] in root.capture-platform == 4 ? [
-            { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 80 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives.") },
+            { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 45 MB an hour while Enclave is open. In the background iPhone lets Enclave send nothing; Apple's push wakes it when something arrives.") },
             { title: @tr("Maximum"), text: @tr("Also hides when you're using Enclave, but only while it's open: iPhone stops it in the background, and push is off. Large files send slowly.") },
         ] : [
-            { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 80 MB an hour while Enclave is open, and about 50 MB a day in the background.") },
-            { title: @tr("Maximum"), text: @tr("Also hides when you're using Enclave. Uses about 2 GB a day. Large files send slowly.") },
+            { title: @tr("Standard"), text: @tr("Hides who you talk to. Uses about 45 MB an hour while Enclave is open, and about 30 MB a day in the background.") },
+            { title: @tr("Maximum"), text: @tr("Also hides when you're using Enclave. Uses about 1.1 GB a day. Large files send slowly.") },
         ]: Rectangle {
             min-height: row.preferred-height;
             border-radius: Tokens.radius-control;

@@ -11,17 +11,17 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-01 Long-term intersection attack
 - **Adversary:** A-GPO, A-INF.
 - **Attack:** Correlate when you are online with writes to an inbox, over weeks or months.
-- **Fix:** Always-on Background profile on Android and desktop. Fixed send slots on the tick schedule. Unlinkable single-use write tokens. Push wakes quantized into 60 s windows. Maximum privacy mode.
-- **Residual:** iOS app-open times remain visible. A pair who talk often can be narrowed down over months.
-- **Spec:** `09-transport.md` §3, §6; `10-push.md` §3.
+- **Fix:** Always-on Background profile on Android and desktop. Fixed send slots on the tick schedule, the same over the onion route and the optional mixnet (CI `federation-e2e-onion` checks the shape on the carrier's streams on every change). Unlinkable single-use write tokens. Push wakes quantized into 60 s windows. Maximum privacy mode.
+- **Residual:** iOS app-open times remain visible. A pair who talk often can be narrowed down over months. Tor doesn't mix (RFC 0010): an observer of both a device's guard link and its server's link can match timing, which constant-rate shaping limits to "this device is online and talking to that server".
+- **Spec:** `09-transport.md` §3, §6; `10-push.md` §3; `01-threat-model.md` §4.
 - **Tests:** `rt01_background_profile_constant_when_idle` (Shape, M4); `rt01_send_slots_independent_of_real_traffic` (Shape, M4); `rt01_tokens_unlinkable_across_writes` (Sim, M3).
 - **Milestone:** M3, M4.
 
 ### RT-02 n-1 attack or flooding by a malicious gateway or mix
 - **Adversary:** A-INF, A-NET.
 - **Attack:** Hold back or flood all traffic except the target's to isolate one message.
-- **Fix:** Nym loop cover (1 per 10 s in Foreground and Maximum, 1 per tick in Background). Enclave self-loop probes. If loss exceeds 10% or latency exceeds 5× the rolling median, the client switches gateway and records a local event.
-- **Residual:** A single message can be targeted this way.
+- **Fix:** Only with the optional mixnet (RFC 0010): Nym loop cover (1 per 10 s in Foreground and Maximum, 1 per tick in Background). Enclave self-loop probes. If loss exceeds 10% or latency exceeds 5× the rolling median, the client switches gateway and records a local event.
+- **Residual:** A single message can be targeted this way. Over Tor, the default route, there are no gateways or mixes: Tor doesn't mix, so the attack gains nothing beyond the timing correlation in RT-01's residual.
 - **Spec:** `09-transport.md` §6.4.
 - **Tests:** `rt02_gateway_switch_on_loss_over_10pct` (Sim, M4); `rt02_gateway_switch_on_latency_over_5x_median` (Sim, M4).
 - **Milestone:** M4.
@@ -29,8 +29,8 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-03 Active tagging of Sphinx packets
 - **Adversary:** A-INF, A-NET.
 - **Attack:** Modify packet bits at one hop and watch for the malformed result downstream.
-- **Fix:** A tagged unit fails the EnclaveSeal tag check at the server and is dropped with no distinguishable response. Tor hides the client IP from the gateway.
-- **Residual:** A colluding gateway and server can learn "this Tor circuit talks to server S".
+- **Fix:** A tagged unit fails the EnclaveSeal tag check at the server and is dropped with no distinguishable response, whether it came in Sphinx packets (the optional mixnet) or Tor's cells (the onion route, RFC 0010). Tor hides the client IP from the server, and with the mixnet from the gateway.
+- **Residual:** A colluding Tor guard (or, with the mixnet, gateway) and server can learn "this Tor circuit talks to server S".
 - **Spec:** `02-cryptography.md` §4.4; `09-transport.md` §2.
 - **Tests:** `rt03_bitflip_in_any_unit_byte_rejected` (Unit, M1); `rt03_rejected_request_gets_no_distinct_reply` (Sim, M3).
 - **Milestone:** M1, M3.
@@ -110,7 +110,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-12 Fingerprinting the cover-traffic implementation
 - **Adversary:** A-GPO.
 - **Attack:** Distinguish Enclave users or individual clients by traffic shape.
-- **Fix:** Three global profiles. Packet-paced traffic. Nym default delays. Profile changes only at foreground/background transitions.
+- **Fix:** Three global profiles. The same unit and poll every tick on the onion route's streams; packet-paced traffic and Nym default delays with the optional mixnet. Profile changes only at foreground/background transitions. Checked over both routes in CI (`federation-e2e-onion`, `federation-e2e-localnet`).
 - **Residual:** "Is an Enclave user" and "screen is on" remain visible.
 - **Spec:** `09-transport.md` §6.
 - **Tests:** `rt12_profiles_identical_across_clients` (Shape, M4); `rt12_profile_change_only_on_visibility_transition` (Unit, M4).
@@ -119,7 +119,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-13 Targeted malicious update
 - **Adversary:** A-SUP, A-LEG.
 - **Attack:** Serve one user a backdoored build.
-- **Fix:** Reproducible builds. TUF with 2-of-3 SLH-DSA + Ed448 maintainer signatures. Sigsum log. Update manifests fetched over the mixnet.
+- **Fix:** Reproducible builds. TUF with 2-of-3 SLH-DSA + Ed448 maintainer signatures. Sigsum log. Update manifests fetched over Tor (or the optional mixnet; RFC 0010).
 - **Residual:** App stores can serve a targeted binary. Detectable, not preventable.
 - **Spec:** `19-ops.md` §1.
 - **Tests:** `rt13_update_rejected_without_2_of_3` (Unit, M10); `rt13_update_rejected_without_sigsum_inclusion` (Unit, M10); `rt13_reproducible_build_diff_empty` (CI, M10).
@@ -182,7 +182,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 ### RT-20 Deanonymizing push tokens
 - **Adversary:** A-INF, A-LEG.
 - **Attack:** Link a device's mailboxes or server through its push token.
-- **Fix:** Tokens are sealed to the relay and re-randomized on each registration. The relay is reached over Nym. The Android default avoids FCM.
+- **Fix:** Tokens are sealed to the relay and re-randomized on each registration. Servers reach the relay over Tor, at its onion service, through anonymous push egress clients (or over the optional mixnet; RFC 0010). The Android default avoids FCM.
 - **Residual:** On iOS, activity windows can be tied to a device.
 - **Spec:** `10-push.md` §2.
 - **Tests:** `rt20_sealed_token_differs_per_registration` (Unit, M4); `rt20_server_never_sees_plain_token` (Sim, M4).
@@ -244,9 +244,9 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 
 ### RT-27 Quantum computer used on recorded transport metadata
 - **Adversary:** A-QC, A-GPO.
-- **Attack:** Break recorded Sphinx and Tor layers after 2035.
+- **Attack:** Break recorded Tor layers (and, with the optional mixnet, Sphinx) after 2035. Tor's circuits use X25519.
 - **Fix:** Sealed requests (X448 + ML-KEM-1024) to a daily server key that is deleted after use.
-- **Residual:** Recorded traffic reveals routing, but not mailbox IDs or content.
+- **Residual:** Recorded traffic reveals routing (which server a device talked to), but not mailbox IDs or content.
 - **Spec:** `09-transport.md` §2.
 - **Tests:** `rt27_request_fields_only_inside_pq_seal` (Unit, M1); `rt27_server_request_key_deleted_after_rotation` (Unit, M3).
 - **Milestone:** M1, M3.
@@ -264,8 +264,8 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 
 | ID | Attack | Fix (short) | Residual (short) | Spec | Primary test |
 |---|---|---|---|---|---|
-| RT-01 | Long-term intersection | Background profile, fixed slots, tokens, push windows, Maximum | iOS open times; frequent pairs over months | 09 §3 §6, 10 §3 | `rt01_background_profile_constant_when_idle` |
-| RT-02 | n-1 / flooding | Loop cover, self-probes, gateway switch | One message targetable | 09 §6.4 | `rt02_gateway_switch_on_loss_over_10pct` |
+| RT-01 | Long-term intersection | Background profile, fixed slots, tokens, push windows, Maximum | iOS open times; frequent pairs over months; Tor timing at both ends | 09 §3 §6, 10 §3 | `rt01_background_profile_constant_when_idle` |
+| RT-02 | n-1 / flooding | Loop cover, self-probes, gateway switch (optional mixnet only) | One message targetable | 09 §6.4 | `rt02_gateway_switch_on_loss_over_10pct` |
 | RT-03 | Sphinx tagging | Seal check drops; Tor | Circuit-to-server link | 02 §4.4, 09 §2 | `rt03_bitflip_in_any_unit_byte_rejected` |
 | RT-04 | KT split view | ≥3 witnesses, gossip, self-audit | Colluding quorum | 12 §3 | `rt04_split_view_detected_by_gossip` |
 | RT-05 | Prekey withhold/replay | 14-day SPK, replay cache, bundle epoch | First-message FS on SPK only | 04 §2 §10 | `rt05_replayed_initial_message_rejected` |
@@ -276,14 +276,14 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 | RT-10 | Invite leak | Fragment, limits, revocation, quarantine | Spam until revoked | 03 §9 | `rt10_revoked_invite_rejected` |
 | RT-11 | Admin fork | Hash chain, frontier, visible changes | Legit adds visible | 07 §7 | `rt11_group_fork_detected` |
 | RT-12 | Cover fingerprinting | 3 global profiles | User/screen-on visible | 09 §6 | `rt12_profiles_identical_across_clients` |
-| RT-13 | Targeted update | Repro, TUF 2-of-3, Sigsum, mixnet fetch | Store binaries | 19 §1 | `rt13_update_rejected_without_2_of_3` |
+| RT-13 | Targeted update | Repro, TUF 2-of-3, Sigsum, fetch over Tor | Store binaries | 19 §1 | `rt13_update_rejected_without_2_of_3` |
 | RT-14 | Crate supply chain | vet, deny, vendoring, split | iOS single process | 19 §2, 15 §1 | `rt14_netd_has_no_key_material` |
 | RT-15 | Crypto side channels | subtle, dudect, ctgrind, DIT | Physical channels | 02 §12 | `rt15_dudect_mac_compare` |
 | RT-16 | iOS push timing | Windows, jitter, fixed capsule | Windows with messages | 10 §3 §5 | `rt16_one_wake_per_window` |
 | RT-17 | Blob correlation | Buckets, random IDs, decoys | Fan-out count | 08 §9, 09 §9 | `rt17_attachment_padded_to_bucket` |
 | RT-18 | Relay collusion | Distinct families, anon PSK, Max tunnel | Call times | 11 §3 §7 | `rt18_relays_from_distinct_operator_families` |
 | RT-19 | CBR media analysis | CBR, no DTX, no RFC 6464, padding | Audio vs video tier | 11 §6 | `rt19_call_packets_constant_size_and_rate` |
-| RT-20 | Push-token deanon | Sealed, re-randomized, via Nym | iOS windows per device | 10 §2 | `rt20_sealed_token_differs_per_registration` |
+| RT-20 | Push-token deanon | Sealed, re-randomized, via Tor | iOS windows per device | 10 §2 | `rt20_sealed_token_differs_per_registration` |
 | RT-21 | Temporary compromise | 1-RT heal, rekey, Secure my account | Stored history | 05 §8, 07 §8 | `rt21_pcs_after_one_round_trip` |
 | RT-22 | Stolen recovery words | 72 h pending + veto | Slow recovery | 03 §8.1 | `rt22_pending_root_veto_honored` |
 | RT-23 | Clock manipulation | Witness median time | Offline tampered device | 12 §3.5 | `rt23_clock_skew_warning_shown` |

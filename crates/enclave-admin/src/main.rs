@@ -47,7 +47,7 @@
 //! descriptor = "ops/r1/relay.bin"
 //!
 //! [[push]]
-//! nym_address = "…"
+//! onion = "….onion"          # and/or nym_address = "…"
 //! keys = "push/push-relay-keys.bin"
 //!
 //! [[credgate]]
@@ -135,7 +135,12 @@ struct FileSpec {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PushSpec {
+    /// Its Nym address (optional: a relay reached only through Tor).
+    #[serde(default)]
     nym_address: String,
+    /// Its onion service, where servers send wakes through Tor (RFC 0010).
+    #[serde(default)]
+    onion: String,
     keys: PathBuf,
 }
 
@@ -305,6 +310,7 @@ fn build(args: &[String]) -> Result<(), String> {
             operator: d.operator.clone(),
             family: d.family.clone(),
             nym_address: d.nym_address.clone(),
+            onion: d.onion.clone(),
             weight: s.weight,
             kt: d.kt.clone(),
         });
@@ -349,8 +355,15 @@ fn build(args: &[String]) -> Result<(), String> {
         if b.is_empty() || b.len() % PUSH_KEY_LEN != 0 {
             return Err(format!("{}: not a push-relay key file", p.display()));
         }
+        if x.nym_address.is_empty() && x.onion.is_empty() {
+            return Err(format!(
+                "{}: a push relay needs an onion or a Nym address",
+                p.display()
+            ));
+        }
         push.push(PushRelayEntry {
             nym_address: x.nym_address.clone(),
+            onion: x.onion.clone(),
             keys: b.chunks(PUSH_KEY_LEN).map(<[u8]>::to_vec).collect(),
         });
     }
@@ -545,6 +558,12 @@ fn print_list(l: &ServerList) {
             s.weight,
             if s.kt.is_some() { "  kt" } else { "" }
         );
+        if !s.onion.is_empty() {
+            println!("        onion {}", s.onion);
+        }
+        if !s.nym_address.is_empty() {
+            println!("        nym   {}", s.nym_address);
+        }
     }
     for w in &l.witnesses {
         println!(
@@ -565,7 +584,12 @@ fn print_list(l: &ServerList) {
         );
     }
     for p in &l.push {
-        println!("push    {}  {} keys", p.nym_address, p.keys.len());
+        let at = [p.onion.as_str(), p.nym_address.as_str()]
+            .into_iter()
+            .filter(|a| !a.is_empty())
+            .collect::<Vec<_>>()
+            .join("  ");
+        println!("push    {}  {} keys", at, p.keys.len());
     }
     for g in &l.credgates {
         let epochs: Vec<String> = g.keys.iter().map(|(e, _)| e.to_string()).collect();

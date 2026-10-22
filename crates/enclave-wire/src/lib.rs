@@ -44,6 +44,11 @@ pub const MLKEM_PK_LEN: usize = 1568;
 
 /// Every wire unit is exactly this long.
 pub const UNIT_LEN: usize = 16_384;
+/// In a server's stream framing (`u32 len ‖ request`, from the Nym ingress,
+/// an onion service or the development transport), a length with this bit
+/// set asks for no reply: the server handles the request and answers an
+/// empty frame (RFC 0010), so a write or a cover unit costs nothing back.
+pub const STREAM_ONEWAY: u32 = 0x8000_0000;
 /// Every stored envelope and blob chunk is exactly this long.
 pub const ENVELOPE_LEN: usize = 14_336;
 /// Every poll request is exactly this long (one Sphinx payload).

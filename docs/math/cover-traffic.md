@@ -16,7 +16,9 @@ Source: PLAN.md §9.4, §9.5, honest limit 5, Appendix A; `crates/enclave-net/sr
 
 Each tick sends one 16,384 B unit (real or cover) and one 2,048 B poll. Bulk bursts are allowed in Foreground and Background and disabled in Maximum.
 
-**Replies.** The server answers every request with a 16,384 B reply unit, and the transports implemented so far (`TcpTransport`, `TorTransport`) return it. PLAN §9.4 counts **one** unit down per tick: writes and cover units get no reply over the mixnet. The data figures in §3 to §5 follow PLAN's model, which requires the Nym transport to send writes and cover units without reply SURBs. That is where the implementation must change; §2.1 gives the figures if it does not.
+**Replies.** The server answers a request with a 16,384 B reply unit unless the request is one way. PLAN §9.4 counts **one** unit down per tick: writes and cover units get no reply. Over the optional mixnet they go without reply SURBs; on a stream to an onion service (the default route since RFC 0010) the carrier sets the one-way bit in the request's length (`enclave_wire::STREAM_ONEWAY`) and the server answers an empty frame, 4 bytes (`09-transport.md` §1, §6.1). Only the development transports (`TcpTransport`, `TorTransport`) still bring back a full reply for every request; §2.1 gives those figures.
+
+§2 to §6 model the optional mixnet (Sphinx packets). The onion route is modelled in §10.1.
 
 ## 2. Assumptions
 
@@ -50,7 +52,7 @@ PLAN's model (1 unit up, 1 poll up, 1 reply down):
 packets per tick  = k (unit up) + p (poll up) + k (poll reply down) = 2k + p
 ```
 
-With a reply for the write or cover unit too (before one-way writes; what TCP and Tor transports still do, since only the mixnet can carry a request without reply blocks):
+With a reply for the write or cover unit too (before one-way writes; what the development TCP and Tor transports still do):
 
 ```
 packets per tick  = k + p + k + k (write reply down) = 3k + p
@@ -126,7 +128,7 @@ loop per day  = 8,640 × 4,826 = 41.7 MB
 | 10, 1 | 1.459 GB | 1.501 GB | 1.65 GB/day |
 | 10, 2 | 1.529 GB | 1.571 GB | 1.73 GB/day |
 
-PLAN's **≈1.5–1.7 GB/day** matches the model. Measured (§10), Maximum runs Foreground's tick around the clock: ≈80 MB/h with Tor, ≈1.9 GB/day, so the UI states "about 2 GB a day" (and "about 80 MB an hour" and "about 50 MB a day in the background" for Standard).
+PLAN's **≈1.5–1.7 GB/day** matches the model. Measured over the optional mixnet (§10.2), Maximum runs Foreground's tick around the clock: ≈80 MB/h with Tor, ≈1.9 GB/day. The UI states the onion route's figures (§10.1): "about 45 MB an hour" and "about 30 MB a day in the background" for Standard, and "about 1.1 GB a day" for Maximum.
 
 ## 6. Bulk mode and media
 
@@ -208,7 +210,28 @@ See `12-servers.md` §7: 100k accounts with 5% of 150,000 devices in Foreground 
 
 If any measured data rate falls outside ±20% of §3 to §5, the tick length is adjusted **globally** (never per user; D10) through an RFC.
 
-## 10. Measured on a local mixnet (Foreground, 2026-10-08)
+## 10. Data on the wire
+
+### 10.1 Over the onion route (model, RFC 0010)
+
+The default route: each tick's unit and poll go as frames on the carrier's two long-lived Tor streams to the server's onion service (`09-transport.md` §1). A frame is `u32 len ‖ bytes`. The unit is one way (the length's top bit set), so the server answers it with an empty frame; the poll gets its full reply. There is no loop cover and no self-loop probe on this route.
+
+```
+up per tick     = (4 + 16,384) unit + (4 + 2,048) poll     = 16,388 + 2,052 = 18,440 B
+down per tick   = (4 + 16,384) poll reply + 4 unit ack      = 16,388 + 4     = 16,392 B
+per tick                                                                    = 34,832 B
+
+Foreground      = 1,200 ticks × 34,832 B = 41.8 MB/h of payload
+                  × o ≈ 1.10             ≈ 46 MB/h on the wire
+Background      = 720 ticks × 34,832 B × 1.10 ≈ 28 MB/day
+Maximum         = 24 h × 46 MB/h              ≈ 1.1 GB/day
+```
+
+`o` here is Tor's cells (498 data bytes in 514), TLS and TCP/IP on the device's link to its guard, taken as ≈1.10 like §2.2 until it is measured on live Tor. To the Tor network that is about 13 kB/s per device in Foreground, the same whether or not anything real is sent. These are the figures `09-transport.md` §6.3 and the UI give. CI's `federation-e2e-onion` checks the shape on the carrier's streams (two requests a tick, within ±20%; `ci/federation/pcap-check.py --stream`); its capture is on loopback, so it measures the payload without Tor's cells.
+
+### 10.2 Measured on a local mixnet (Foreground, 2026-10-08)
+
+With the optional mixnet:
 
 `nym/enclave-nym-sdk/examples/localnet_ticks.rs` on `ci/nym-localnet/run-local.sh` (nym-node 1.21.5, three mix nodes, two gateways): a device sends a Foreground tick's poll (with its reply blocks) and one-way unit every 3 s, paced as the shaper sets it, to an ingress on the other gateway that answers every poll with a full reply unit. A capture of the device's link to its gateway, read by `ci/federation/pcap-check.py`, over 120 s:
 
@@ -228,6 +251,8 @@ With TCP/IP headers (≈3.5%) and Tor's cells (≈6.5%, §2.2) on top, Foregroun
 
 ## 11. What the mixnet costs a user (zk-nym tickets)
 
+This applies only with the optional mixnet (RFC 0010). With the default route, Tor onion services, running Enclave costs nothing recurring: Tor is free and volunteer-run, call-relay tickets are paid with proof of work (RFC 0006), blob tokens are issued by each user's own server, and APNs and FCM cost nothing with the developer accounts already held.
+
 Nym's gateways take a device's traffic against zk-nym tickets (`09-transport.md` §7). The units, from nym-network-defaults 1.21.5: a mixnet-entry ticket is 200 MB of traffic through one gateway (`MIXNET_ENTRY_TICKET_SIZE`), a ticketbook holds 50 tickets (`TICKETBOOK_SIZE`, 10 GB) and is valid for 7 days (`TICKETBOOK_VALIDITY_DAYS`). The wallet lets a book go after 6 days (`BOOK_LIFETIME`).
 
 A device spends tickets three ways:
@@ -239,7 +264,7 @@ by connection   one ticket each time it connects to a gateway: every start of th
 by expiry       whatever is left in a book after 6 days is lost
 ```
 
-A day of 4 h in Foreground and 20 h in Background, with the measured Foreground rate (§10, ≈80 MB/h with Tor) and Background at 3/120 of it (≈2 MB/h):
+A day of 4 h in Foreground and 20 h in Background, with the measured Foreground rate over the mixnet (§10.2, ≈80 MB/h with Tor) and Background at 3/120 of it (≈2 MB/h):
 
 ```
 traffic per day   = 4 × 80 + 20 × 2  = 360 MB  → 1.8 tickets
@@ -255,7 +280,7 @@ cost per user per month ≈ 5 × P      (typical)    ≈ 7 × P   (all-day Foreg
 target ≤ $1                       →   P ≤ $0.20             P ≤ $0.14
 ```
 
-The work a device does for its tokens (Equi-X, 4 tokens a proof) and the gate's own costs are small next to that. `P` isn't fixed by the protocol: it is the deposit the proxy makes per ticketbook on the Nyx chain, priced in NYM, so it moves with the token. The nightly sandbox job (`nym-live.yml`, N4) records the deposit nym-api asks and checks `5 × P ≤ $1` at the day's price; until a funded proxy exists that check is External Gate G7. Ways to lower the cost if it fails: fewer starts (keep the mixnet client running in Background, which costs tickets by traffic only), books that last longer if Nym adds a validity option, or a smaller book type.
+The work a device does for its tokens (Equi-X, 4 tokens a proof) and the gate's own costs are small next to that. `P` isn't fixed by the protocol: it is the deposit the proxy makes per ticketbook on the Nyx chain, priced in NYM, so it moves with the token. The nightly sandbox job (`live.yml`, N4) records the deposit nym-api asks and checks `5 × P ≤ $1` at the day's price, when a funded account is configured; only whoever funds the optional mixnet needs that check, so External Gate G7 is no longer needed (RFC 0010). Ways to lower the cost if it fails: fewer starts (keep the mixnet client running in Background, which costs tickets by traffic only), books that last longer if Nym adds a validity option, or a smaller book type.
 
 ## Open questions
 
@@ -263,3 +288,4 @@ The work a device does for its tokens (Equi-X, 4 tokens a proof) and the gate's 
 2. **Resolved:** yes, on every platform. The same Nym client code (`enclave-nym-sdk`, run by nymd) sends loop cover at the same profile rates everywhere (`09-transport.md` §6.3), so it counts toward the downlink in the same way. The CI wire check counts it too: its model is 16 packets a tick plus 0.1 a second addressed to the device itself (`ci/federation/pcap-check.py`). iOS has no background profile, so it sends none in the background.
 3. **Resolved:** writes and cover units now go one way over the mixnet, with no reply blocks, and delivery is confirmed by receipts only (`09-transport.md` §6.1, Open question 5). Tests `writes_go_one_way`, `deferred_answers_come_back_through_status_polls` (`enclave-ingress`) and `receipts_resends_and_not_delivered_yet` (`enclave-core`). §1's note on reply units describes the TCP and Tor development transports.
 4. **Resolved:** the Background median latency with other mailboxes present was ≈140 s; Background now polls the inbox on 3 of every 4 ticks (≈112 s, §7.3).
+5. **Resolved:** over the onion route a write or cover unit no longer brings back a full 16 KiB reply, which would have doubled the data down: the stream's one-way bit gets an empty acknowledgement instead (§1, §10.1; RFC 0010).

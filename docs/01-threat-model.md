@@ -26,8 +26,8 @@ The adversary has all of these capabilities at once. Each capability is referenc
 | Tag | Capability | Details |
 |---|---|---|
 | A-GPO | Global passive observer | Sees every link on the internet and records everything indefinitely. |
-| A-NET | Active network attacker | Injects, drops, delays, replays, and tags packets. Can block Nym or Tor, fully or selectively. |
-| A-INF | Infrastructure control | Runs or coerces 50% or more of Nym nodes, and 50% or more of Enclave servers, relays, and witnesses. Any single operator MAY be malicious. |
+| A-NET | Active network attacker | Injects, drops, delays, replays, and tags packets. Can block Tor (bridges help: obfs4, Snowflake, WebTunnel, `09-transport.md` §7), or the optional Nym mixnet, fully or selectively. |
+| A-INF | Infrastructure control | Runs or coerces a large share of Tor relays (enough to hold both ends of many circuits and match their timing, §4), 50% or more of Nym nodes (with the optional mixnet), and 50% or more of Enclave servers, relays, and witnesses. Any single operator MAY be malicious. |
 | A-LEG | Legal reach | Subpoenas Apple, Google, and operators. Compels operators to begin logging from a given date. |
 | A-QC | Quantum | A cryptographically relevant quantum computer (CRQC) is available in 2035 and is applied to every recording made before then. |
 | A-DEV | Temporary device compromise | Gains full read access to a device for a bounded time, for example during a border search or a transient exploit. The compromise then ends. |
@@ -36,7 +36,8 @@ The adversary has all of these capabilities at once. Each capability is referenc
 
 Assumptions the design relies on:
 
-- At least one mix layer on a Nym route is honest (for unlinkability through the mixnet).
+- At least one mix layer on a Nym route is honest (for unlinkability through the optional mixnet).
+- Over Tor, Tor's own assumptions: no one watches both a device's link to its guard and the server's link to Tor. Someone who does can match timing (§4).
 - At least one of X448, ML-KEM-1024, and McEliece-8192128 is secure, or the in-person PSK was not recorded.
 - At least one of XChaCha20 and AES-256 is a secure stream cipher, and KMAC256 is a PRF.
 - At least one of Ed448 and ML-DSA-87 is unforgeable, and SLH-DSA-SHAKE-256s is unforgeable.
@@ -66,21 +67,22 @@ This matrix is normative: an implementation that leaks more than the "Learns" co
 | Observer | Learns | Does not learn |
 |---|---|---|
 | Your ISP | That you use Enclave (unless you use a pluggable transport). When you are online. Traffic volume, which is fixed per profile. On iOS, when the app is open. | Your contacts, recipients, or message timing (on Android and desktop in Foreground or Background profile, and in Maximum mode) |
-| Tor guard | The same as your ISP | Which Nym gateway you use |
-| Nym entry gateway | The Tor exit's IP, your rotating Nym identity, and Poisson-smoothed timing | Your real IP, content, or destination server |
-| Mix nodes | Nothing linkable, as long as one layer is honest | |
-| Your home server | Pseudonymous inbox write counts, poll timing (smoothed by the scheduler), object counts at fixed sizes. As directory host: the number of devices listed in a hosted manifest, which is not linked to any inbox (see note 1). | Who writes to you, your contacts, content, your IP, or the device count behind your inbox |
-| Push relay | The push token and wake timing, quantized into 60 s windows | Your inbox, your server, or any content |
+| Tor guard | The same as your ISP: that you use Tor, when you are online, and the traffic volume, which is fixed per profile | Which server you talk to (it is behind an onion service), or, with the optional mixnet, which Nym gateway you use |
+| Nym entry gateway (only with the optional mixnet) | The Tor exit's IP, your rotating Nym identity, and Poisson-smoothed timing | Your real IP, content, or destination server |
+| Mix nodes (only with the optional mixnet) | Nothing linkable, as long as one layer is honest | |
+| Your home server | Pseudonymous inbox write counts, poll timing (smoothed by the scheduler), object counts at fixed sizes. As directory host: the number of devices listed in a hosted manifest, which is not linked to any inbox (see note 1). Nothing new from requests arriving over its onion service: every client is a Tor circuit. | Who writes to you, your contacts, content, your IP, or the device count behind your inbox |
+| Push relay | The push token and wake timing, quantized into 60 s windows | Your inbox, your server (wakes arrive from Tor, from anonymous push egress clients), or any content |
 | Apple / Google | Wake timing for each device. Capsule ciphertext if previews are on (the capsule is always present, so they cannot tell whether previews are on). | Content |
 | Call relay | Its own caller's IP, stream timing, and the IP of the peer relay | The other caller's IP, or content |
 | Peer in a direct call | Your IP, which you opted into | |
 | Group-mailbox host server | The number and timing of writes to one group mailbox address per day; that the address is a group mailbox | Who the members are, who wrote which message, content |
 | Blob store | Chunk counts per bucket, fetch counts (including 1 to 3 decoys per real fetch) | Who uploaded, who fetched, content |
-| KT operator | Username lookups (hidden behind the VRF from enumeration, classically only) | Who is looking up (requests arrive over the mixnet) |
+| An observer of both your guard link and the server (a global passive observer, or your Tor guard working with the server's operator; onion route only) | Timing correlation: that your device is online and talking to that server. Tor relays forward cells at once, without mixing (RFC 0010). | When you send a message: constant-rate shaping makes idle and busy the same on the wire. Content or your contacts. (The optional mixnet's delays and cover defeat the correlation.) |
+| KT operator | Username lookups (hidden behind the VRF from enumeration, classically only) | Who is looking up (requests arrive over Tor, or the optional mixnet) |
 
 Note 1. PLAN §1.3 says the home server does not learn your device count, while PLAN §12.1 stores manifests in plaintext at the directory. This specification keeps plaintext manifests (PLAN §12.1) and states the narrower claim above. See `00-overview.md` §9, I-13.
 
-Note 2. After A-QC, recorded Sphinx and Tor traffic reveals routes (who connected to which gateway and server), but not mailbox IDs, tokens, or content, because every request is sealed to the server with X448 + ML-KEM-1024 (RT-27).
+Note 2. After A-QC, recorded Tor traffic (Tor's circuits use X25519), and Sphinx traffic with the optional mixnet, reveals routes (which server a device talked to; with the mixnet, which gateway too), but not mailbox IDs, tokens, or content, because every request is sealed to the server with X448 + ML-KEM-1024 (RT-27).
 
 ## 5. Trust boundaries
 
@@ -89,8 +91,8 @@ Note 2. After A-QC, recorded Sphinx and Tor traffic reveals routes (who connecte
 | Enclave server | Availability (can drop, cannot read or forge) | Content, metadata, key directory honesty |
 | KT server | Nothing without witness quorum | Username bindings |
 | Witnesses | Honest-quorum cosignature and time (≥3 independent) | Individually |
-| Nym network | Unlinkability if one layer is honest | Content, availability |
-| Tor | Hiding client IP from the Nym entry gateway | Anything post-quantum |
+| Nym network (optional) | Unlinkability if one layer is honest | Content, availability |
+| Tor | Hiding client IP and server location (and, with the optional mixnet, the client IP from the Nym entry gateway) | Anything post-quantum; timing against an observer of both ends |
 | Push relay | Delivering wakes | Content, linking |
 | Apple / Google | Delivering pushes, hosting store listings | Binary integrity (detectable via reproducible builds on non-iOS) |
 | Call relay | Forwarding packets | Content, the other party's IP |
@@ -107,13 +109,14 @@ Note 2. After A-QC, recorded Sphinx and Tor traffic reveals routes (who connecte
 
 ## 7. Residual risk summary
 
-The accepted residual for each attack is in `redteam-matrix.md`. The five largest are:
+The accepted residual for each attack is in `redteam-matrix.md`. The six largest are:
 
 1. Long-term intersection attacks, strongest on iOS (RT-01, RT-16).
 2. A small anonymity set at launch.
 3. Call start and stop times without Maximum mode (RT-18).
 4. Targeted app-store binaries: detectable but not preventable (RT-13).
 5. Classical anonymity layer after A-QC (RT-27).
+6. Timing correlation over Tor by an observer of both ends, limited by constant-rate shaping to "online and talking to that server" (§4, RFC 0010).
 
 ## Open questions
 

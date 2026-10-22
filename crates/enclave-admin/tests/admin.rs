@@ -28,6 +28,14 @@ fn admin(args: &[&str]) -> (bool, String, String) {
 }
 
 fn server_descriptor(domain: &str, rng: &mut HedgedRng) -> (ServerDescriptor, [u8; 16]) {
+    onion_server_descriptor(domain, "", rng)
+}
+
+fn onion_server_descriptor(
+    domain: &str,
+    onion: &str,
+    rng: &mut HedgedRng,
+) -> (ServerDescriptor, [u8; 16]) {
     let identity = CompositeSigningKey::generate(rng).unwrap();
     let head = CompositeSigningKey::generate(rng).unwrap();
     let day = (NOW / 86_400) as u32;
@@ -41,7 +49,7 @@ fn server_descriptor(domain: &str, rng: &mut HedgedRng) -> (ServerDescriptor, [u
         &format!("op-{domain}"),
         &format!("fam-{domain}"),
         "",
-        "",
+        onion,
         Policy::default(),
         Some(KtKeys {
             head_key: head.public().clone(),
@@ -59,6 +67,75 @@ fn server_descriptor(domain: &str, rng: &mut HedgedRng) -> (ServerDescriptor, [u
 
 fn write(dir: &Path, name: &str, b: &[u8]) {
     std::fs::write(dir.join(name), b).unwrap();
+}
+
+/// RFC 0010: the list carries each server's onion address from its
+/// descriptor, and a push relay may be listed by its onion address alone.
+#[test]
+fn build_copies_onion_and_push_onion() {
+    let dir = std::env::temp_dir().join(format!("enclave-admin-onion-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = |n: &str| dir.join(n).display().to_string();
+    let mut rng = HedgedRng::new().unwrap();
+    let (ok, _, err) = admin(&[
+        "foundation-keygen",
+        &p("foundation.key"),
+        &p("foundation.pub"),
+    ]);
+    assert!(ok, "{err}");
+    let onion = format!("{}.onion", "a".repeat(56));
+    let (a, a_id) = onion_server_descriptor("a.example", &onion, &mut rng);
+    write(&dir, "a.bin", &a.encode());
+    write(&dir, "push.bin", &vec![0u8; 2 * (4 + 56 + 1568)]);
+    let spec = |push: &str| {
+        format!(
+            "seq = 1\nvalid_days = 30\nwitness_threshold = 0\n\
+             [[server]]\ndescriptor = \"a.bin\"\nweight = 1\n\
+             [[push]]\n{push}keys = \"push.bin\"\n"
+        )
+    };
+    let build = || {
+        admin(&[
+            "server-list",
+            "build",
+            &p("spec.toml"),
+            "--key",
+            &p("foundation.key"),
+            "--out",
+            &p("list.bin"),
+        ])
+    };
+    // A push relay with neither address can't be reached.
+    std::fs::write(dir.join("spec.toml"), spec("")).unwrap();
+    let (ok, _, _) = build();
+    assert!(!ok, "a push relay without an address");
+    std::fs::write(dir.join("spec.toml"), spec("onion = \"push.onion\"\n")).unwrap();
+    let (ok, _, err) = build();
+    assert!(ok, "{err}");
+    let (ok, out, err) = admin(&[
+        "server-list",
+        "verify",
+        &p("list.bin"),
+        "--foundation",
+        &p("foundation.pub"),
+    ]);
+    assert!(ok, "{err}");
+    assert!(out.contains(&format!("onion {onion}")), "{out}");
+    assert!(out.contains("push    push.onion  2 keys"), "{out}");
+    let public =
+        FoundationPublic::decode(&std::fs::read(dir.join("foundation.pub")).unwrap()).unwrap();
+    let list = ServerList::verify(
+        &std::fs::read(dir.join("list.bin")).unwrap(),
+        &public,
+        NOW,
+        0,
+    )
+    .unwrap();
+    assert_eq!(list.server(&a_id).unwrap().onion, onion);
+    assert_eq!(list.push[0].onion, "push.onion");
+    assert!(list.push[0].nym_address.is_empty());
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

@@ -38,3 +38,7 @@ test-hooks = []
 [[bin]]
 name = "enclave-server"
 path = "src/main.rs"
+
+[dev-dependencies]
+# The stream framing test starts the development server.
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time", "process"] }

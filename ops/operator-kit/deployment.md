@@ -2,11 +2,12 @@
 
 One operator runs one stack: the server (keys, inboxes, key-transparency
 log), a witness (cosigns other operators' logs), the front (the stack's
-only HTTPS surface), a call relay and, optionally, a push relay. They come
-as images on GHCR, `ghcr.io/0xnullsect0r/enclave-server` (every service but
-the Nym client), `ghcr.io/0xnullsect0r/enclave-nym` (the Nym ingress, the
-only way devices reach the server) and `ghcr.io/0xnullsect0r/enclave-updater`,
-and one compose file, `ops/compose/compose.yml`, also published with each
+only HTTPS surface), a call relay, the onion service through which devices
+reach the server over Tor, and, optionally, a push relay. They come as
+images on GHCR, `ghcr.io/0xnullsect0r/enclave-server` (every service but
+the Nym clients), `ghcr.io/0xnullsect0r/enclave-nym` (the Nym clients, only
+for the optional mixnet) and `ghcr.io/0xnullsect0r/enclave-updater`, and one
+compose file, `ops/compose/compose.yml`, also published with each
 release as `oci://ghcr.io/0xnullsect0r/enclave-stack:<version>`. See
 `docs/12-servers.md` for what each part does.
 
@@ -33,6 +34,27 @@ docker compose run --rm relay init      # prints the relay descriptor
 ```
 
 `OPERATOR` and `FAMILY` must be honest (see `operator-family.md`).
+
+## How devices reach you
+
+Devices reach your server through Tor, at your stack's onion service
+(RFC 0010). The `onion` service runs by default: it publishes an onion
+service in front of the server and, once Tor says the service is reachable
+(this can take a few minutes after the first start), writes its address to
+`public/onion.addr`. The server puts the address in its descriptor, and the
+foundation copies it into the server list. Check it:
+
+```sh
+docker run --rm -v enclave_public:/p:ro alpine cat /p/onion.addr
+```
+
+The service's Tor identity key is in the `onion-data` volume. Back it up
+with the keys (below): losing it changes the address, and devices can't
+reach you until the foundation signs a new list with the new one. The
+service takes at most 16 streams per circuit and 4,096 in all.
+
+There is nothing to pay for and no account to fund. Tor is free and run by
+volunteers. The Nym mixnet is optional (below).
 
 ## Joining the foundation's list
 
@@ -117,8 +139,9 @@ Two things must survive a lost host, and they are backed up differently:
    into the `backups` volume and keeps the newest `keep`. Copy that volume
    off the host regularly. You may also take one by hand while the server
    is stopped: `docker compose run --rm server backup /var/lib/enclave/backups`.
-2. **Keys** (`server-keys`, `witness-keys`, `relay-keys`, `push-keys`
-   volumes): written once by `init`. They are not in the snapshots. Back
+2. **Keys** (`server-keys`, `witness-keys`, `relay-keys`, `push-keys`,
+   `onion-data`, and `push-onion-data` on the push relay's stack, volumes):
+   written once by `init` or at the first start. They are not in the snapshots. Back
    them up once, **encrypted**, to a place that is not the host, for
    example with `age`:
 
@@ -127,7 +150,8 @@ Two things must survive a lost host, and they are backed up differently:
    ```
 
    Losing the server's identity key means a new server id: every account
-   on it would have to move (`docs/12-servers.md` §4.4). Losing the
+   on it would have to move (`docs/12-servers.md` §4.4). Losing
+   `onion-data` changes your onion address and needs a new list. Losing the
    key-transparency head key or VRF secret breaks the pins every client
    holds for your log.
 
@@ -169,12 +193,20 @@ into PostgreSQL in a single transaction. The key-transparency log stays in
 existing stack: stop the server, take a `backup`, switch to
 `compose.postgres.yml`, and `restore` that snapshot.
 
-## Paying for the mixnet
+## Optional: the Nym mixnet
 
-Nym's gateways carry traffic against zk-nym tickets. Your stack's mixnet
-clients (`ingress`, and with profile `push`, `push-egress` and
-`push-ingress`) buy their own from a Nyx account you fund with NYM: put
-its mnemonic in `secrets/nym/mnemonic`.
+The Nym mixnet gives stronger timing protection than Tor, but it costs
+money every month: Nym's gateways carry traffic only against zk-nym
+tickets bought with NYM. It is off by default. To run it, add `nym` to the
+profiles in `.env` (so the updater updates it too):
+
+```sh
+COMPOSE_PROFILES=nym          # with the push relay: push,nym,push-nym
+```
+
+The stack's mixnet clients (`ingress`, `push-egress-nym`, and on the push
+relay's stack `push-ingress`) buy their own tickets from a Nyx account you
+fund with NYM: put its mnemonic in `secrets/nym/mnemonic`.
 
 ```sh
 mkdir -p secrets/nym
@@ -188,7 +220,19 @@ log says how many are left. When one runs low and can't buy (the account
 is empty), it logs `LOW BALANCE` and its health check fails until a
 purchase works again: watch for an unhealthy `ingress`. The account pays
 only for your stack's own traffic; devices get their tickets from the
-foundation's credential gate.
+foundation's credential gate (profile `foundation`, only with the mixnet).
+
+The ingress writes its Nym address to `public/ingress.addr` and the server
+puts it in its descriptor next to the onion address. Devices then reach
+your server over the mixnet, and use the onion service only as a fallback
+their user agrees to (never in Maximum privacy). To send wakes over the
+mixnet too, set `PUSH_RELAY_NYM` in `.env` to the relay's Nym address from
+the foundation's list, and in `config/server.toml`:
+
+```toml
+[push]
+forward = "push-egress-nym:7446"
+```
 
 ## Keys and rotation
 
@@ -197,9 +241,10 @@ foundation's credential gate.
   recovered from disk.
 - **Push relay keys** rotate every 30 days with a 7-day overlap; the
   published file is `public/push-relay-keys.bin`. A push relay operator
-  also runs `push-ingress` (profile `push`), whose Nym address
-  (`public/push-ingress.addr`) goes into the foundation's list with the
-  keys.
+  also runs `push-onion` (profile `push`), whose onion address
+  (`public/push-onion.addr`) goes into the foundation's list with the
+  keys, and with the optional mixnet `push-ingress` (profile `push-nym`),
+  whose Nym address (`public/push-ingress.addr`) goes there too.
 - **Call relay ticket keys** rotate daily.
 - **Identity keys** (server, witness, relay) don't rotate: they are what
   the foundation's list names. Replacing one is leaving the list and
@@ -208,37 +253,31 @@ foundation's credential gate.
   days are left (`TLS_MODE=acme`), or re-reads your files hourly
   (`TLS_MODE=files`).
 
-## Backup route (onion service)
-
-When the mixnet is unreachable, a device can offer its user a backup route
-to your server through Tor, never in Maximum privacy. It needs your stack to
-run the onion service (profile `onion`, recommended):
-
-```sh
-docker compose --profile onion up -d
-```
-
-`onion` publishes an onion service in front of the server and writes its
-address to `public/onion.addr`; the server puts it in its descriptor, so
-devices learn it while the mixnet works. The service's Tor identity key is
-in the `onion-data` volume: back it up with the keys, or the address
-changes (devices learn the new one from the next descriptor).
-
 ## Push
 
-With profile `nym`, `push-egress` carries the server's due wakes to the
-push relay over the mixnet. Set `PUSH_RELAY_NYM` in `.env` to the relay's
-Nym address from the foundation's list, and in `config/server.toml`:
+Push wakes travel over Tor too. The server hands its due wakes to
+`push-egress`, which sends them over one long-lived stream through Tor to
+the push relay's onion service. Set `PUSH_RELAY_ONION` in `.env` to the
+relay's onion address from the foundation's list; `config/server.toml`
+already has:
 
 ```toml
 [push]
 forward = "push-egress:7446"
 ```
 
+Without `PUSH_RELAY_ONION` the wakes are dropped. A stack that runs the
+push relay itself may send them to it directly instead:
+`forward = "push-relay:7445"`. With the optional mixnet, see above.
+
 ### Running the push relay
 
 Only the operator the foundation names runs `push-relay` and
-`push-ingress` (profile `push`). UnifiedPush endpoints need nothing
+`push-onion` (profile `push`; with the optional mixnet also `push-ingress`,
+profile `push-nym`). `push-onion` is the relay's onion service: it takes
+wakes from other stacks' push egress and writes its address to
+`public/push-onion.addr` for the foundation's list. Its key is in the
+`push-onion-data` volume; back it up with the keys. UnifiedPush endpoints need nothing
 more; APNs and FCM need the project's credentials (External Gate G6),
 kept in `secrets/push/` and named in `config/push-relay.toml`:
 
@@ -276,6 +315,13 @@ descriptors.
 
 ## Nix
 
-A Nix flake with the same pinned toolchain arrives with the release
-pipeline (milestone R2). Until then, use the image or build from source
-(`cargo build --release --locked -p enclave-server`).
+The flake in the repository builds the server image's programs with the
+same pinned toolchain, from the repository alone:
+
+```sh
+nix build .#enclave-server    # server, witness, front, relays, enclave-admin, enclave-onion
+nix build .#enclave-nym       # the Nym clients, only for the optional mixnet
+```
+
+There is no NixOS module: the compose stack uses the images, and programs
+you build this way you run yourself, with the same configuration files.

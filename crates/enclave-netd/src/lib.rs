@@ -4,16 +4,20 @@
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
-//! (stdout), and fetches servers' public request keys. A server named by a
-//! Nym address is reached over the mixnet (`NymTransport`) through
-//! `enclave-nymd`, a mixnet client netd starts next to itself (nym-sdk
-//! can't be linked here: `docs/09-transport.md` §1); others over the
+//! (stdout), and fetches servers' public request keys. A server named by an
+//! onion service is reached through Tor: `enclave-tord`, started next to
+//! netd with `--tor`, carries each request over its own Tor client
+//! (`enclave_tord::carrier`, RFC 0010), so netd itself opens no TCP
+//! connection. A server named by a Nym address is reached over the mixnet
+//! (`NymTransport`) through `enclave-nymd` (nym-sdk can't be linked here:
+//! `docs/09-transport.md` §1), when the mixnet is enabled; others over the
 //! development TCP transport. The vault adds or changes routes as it
 //! learns them (`NetRequest::SetRoute`: the server list, descriptors); a
 //! Nym route needs the mixnet client, which netd starts only when a Nym
 //! route is given at start. It confines itself first: no core dumps, not
 //! dumpable, `no_new_privs`, and (Linux) no filesystem access at all, after
-//! starting nymd; with only Nym routes it can't open a socket at all.
+//! starting its helpers; without development TCP routes it can make no TCP
+//! socket at all, only the UDP sockets calls use.
 
 #![forbid(unsafe_code)]
 
@@ -74,13 +78,16 @@ struct Routed {
     waiting: tokio::sync::Mutex<Option<Waiting>>,
     pending_routes: std::sync::Mutex<HashMap<ServerId, String>>,
     over_nym: std::sync::RwLock<HashSet<ServerId>>,
-    /// Whether Tor is in front of the mixnet client (`--tor`).
+    /// Whether Tor is up (`--tor`).
     tor: bool,
-    /// Maximum privacy (`Transport::require_private`): the mixnet behind
-    /// Tor only.
+    /// tord carrying requests to onion services and fetches.
+    carrier: Option<Arc<enclave_tord::carrier::Client>>,
+    /// Maximum privacy (`Transport::require_private`): the private routes
+    /// only (Tor, or the mixnet behind Tor).
     private: std::sync::atomic::AtomicBool,
-    /// Servers' onion services (from their descriptors): the fallback
-    /// route, carried by nymd over its Tor.
+    /// Servers' onion services (from the server list and descriptors): the
+    /// route to a server with no Nym route, and the fallback route to one
+    /// with a Nym route.
     onion: std::sync::RwLock<HashMap<ServerId, String>>,
     /// The user chose the fallback route (`Transport::use_fallback`).
     fallback: std::sync::atomic::AtomicBool,
@@ -90,18 +97,43 @@ struct Routed {
 }
 
 impl Routed {
-    /// The onion service to reach `server` at, when the user chose the
-    /// fallback route and Maximum privacy is off.
+    /// The onion service to reach `server` at: always for a server with no
+    /// Nym route; for one on the mixnet only when the user chose the
+    /// fallback route, never in Maximum privacy.
     fn onion_for(&self, server: &ServerId) -> Option<String> {
         use std::sync::atomic::Ordering::SeqCst;
-        if !self.fallback.load(SeqCst) || self.private.load(SeqCst) {
+        let host = self.onion.read().ok()?.get(server).cloned()?;
+        let over_nym = self
+            .over_nym
+            .read()
+            .map(|s| s.contains(server))
+            .unwrap_or(false);
+        if over_nym && (!self.fallback.load(SeqCst) || self.private.load(SeqCst)) {
             return None;
         }
-        self.onion.read().ok()?.get(server).cloned()
+        Some(host)
     }
 
-    /// One request over the fallback route (nymd's Tor), connected or not.
-    async fn via_tor(&self, host: &str, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+    /// One request to an onion service through Tor: tord's own Tor client,
+    /// or (without it) nymd's, connected or not. `oneway` asks for no
+    /// reply; the answer is then `None`.
+    async fn via_tor(
+        &self,
+        host: &str,
+        request: Vec<u8>,
+        oneway: bool,
+    ) -> enclave_net::Result<Option<Vec<u8>>> {
+        if let Some(c) = &self.carrier {
+            let r = c
+                .exchange(host, enclave_net::transport::ONION_PORT, &request, oneway)
+                .await
+                .map_err(|e| NetError::Unreachable(e.to_string()))?;
+            return Ok((!oneway).then_some(r));
+        }
+        self.via_nymd_tor(host, request).await.map(Some)
+    }
+
+    async fn via_nymd_tor(&self, host: &str, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
         if let Some(n) = self.nym.get() {
             return n.exchange_tor(host, request).await;
         }
@@ -147,14 +179,20 @@ type Waiting = enclave_nym::pipe::Starting<
 impl Transport for Routed {
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
         if let Some(h) = self.onion_for(server) {
-            return self.via_tor(&h, request).await;
+            return self
+                .via_tor(&h, request, false)
+                .await?
+                .ok_or(NetError::BadReply);
         }
         self.pick(server)?.exchange(server, request).await
     }
 
     async fn server_key(&self, server: &ServerId) -> enclave_net::Result<enclave_rpc::ServerKey> {
         if let Some(h) = self.onion_for(server) {
-            let bundle = self.via_tor(&h, Vec::new()).await?;
+            let bundle = self
+                .via_tor(&h, Vec::new(), false)
+                .await?
+                .ok_or(NetError::BadReply)?;
             return enclave_net::transport::verify_key_bundle(server, &bundle, self.now());
         }
         self.pick(server)?.server_key(server).await
@@ -166,7 +204,7 @@ impl Transport for Routed {
         request: Vec<u8>,
     ) -> enclave_net::Result<Option<Vec<u8>>> {
         if let Some(h) = self.onion_for(server) {
-            return self.via_tor(&h, request).await.map(Some);
+            return self.via_tor(&h, request, true).await;
         }
         self.pick(server)?.exchange_oneway(server, request).await
     }
@@ -204,6 +242,12 @@ impl Transport for Routed {
         url: &str,
         body: Vec<u8>,
     ) -> enclave_net::Result<(u16, Vec<u8>)> {
+        if let Some(c) = &self.carrier {
+            return c
+                .fetch(method, url, &body)
+                .await
+                .map_err(|e| NetError::Unreachable(e.to_string()));
+        }
         if let Some(n) = self.nym.get() {
             return n.fetch(method, url, body).await;
         }
@@ -212,7 +256,7 @@ impl Transport for Routed {
                 .fetch(method, url, &body)
                 .await
                 .map_err(|e| NetError::Unreachable(e.to_string())),
-            None => Err(NetError::Unavailable("no mixnet client")),
+            None => Err(NetError::Unavailable("no Tor")),
         }
     }
 
@@ -262,10 +306,10 @@ impl Transport for Routed {
     }
 
     fn set_route(&self, server: ServerId, route: Route) {
-        // An onion service is kept aside, for when the user chooses the
-        // fallback route; it needs nymd (and its Tor) to carry it.
+        // An onion service: the route for a server with no Nym route, kept
+        // aside as the fallback for one with. It needs Tor to carry it.
         if let Route::Onion(h) = &route {
-            if self.has_nym
+            if (self.carrier.is_some() || self.has_nym)
                 && let Ok(mut o) = self.onion.write()
             {
                 o.insert(server, h.clone());
@@ -273,7 +317,7 @@ impl Transport for Routed {
             return;
         }
         let nym = matches!(route, Route::Nym(_));
-        // Maximum privacy takes no route but the mixnet.
+        // Maximum privacy takes no route but the private ones.
         if !nym && self.private.load(std::sync::atomic::Ordering::SeqCst) {
             return;
         }
@@ -342,6 +386,7 @@ async fn start_tord(
         secret,
         direct,
         false,
+        true,
         &extra,
         TOR_BOOTSTRAP,
     )
@@ -464,8 +509,11 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     // for ones the vault gives later, from the server list.
     let mixnet = !over_nym.is_empty() || args.iter().any(|a| a == "--mixnet");
     let mut tor_blocked = false;
+    // Tor starts whenever the vault asks (`--tor`): it carries requests to
+    // servers' onion services (RFC 0010), and the mixnet client's gateway
+    // connection when there is one.
     let tor = match flag("--tor") {
-        Some(state) if mixnet => {
+        Some(state) => {
             let bin = flag("--tord").map(std::path::PathBuf::from).or_else(|| {
                 std::env::current_exe().ok().map(|e| {
                     e.with_file_name(format!("enclave-tord{}", std::env::consts::EXE_SUFFIX))
@@ -489,11 +537,17 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                     tor_blocked = true;
                     None
                 }
-                Err(e) => {
+                Err(e) if mixnet => {
                     // Without Tor the mixnet client doesn't start: the
                     // entry gateway would see this device's address.
                     eprintln!("enclave-netd: {e}");
                     return ExitCode::FAILURE;
+                }
+                // No onion service is reachable then; the vault sees its
+                // requests fail and says so.
+                Err(e) => {
+                    eprintln!("enclave-netd: {e}");
+                    None
                 }
             }
         }
@@ -528,14 +582,17 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
             None => None,
         }
     };
-    // Nothing on disk is needed from here on, and over Nym (no TCP route)
-    // no socket either: nymd has the network.
-    let tcp_allowed = !tcp.is_empty() || nymd.is_none();
-    // IPv4 and IPv6 sockets only (or none); no programs, no debugging.
+    let carrier = tor.as_ref().and_then(|t| t.carrier.clone());
+    // Nothing on disk is needed from here on, and no TCP socket either
+    // when Tor or nymd carry the requests (development TCP routes aside):
+    // only the UDP sockets calls use.
+    let tcp_allowed = !tcp.is_empty() || (nymd.is_none() && carrier.is_none());
+    // IPv4 and IPv6 sockets (datagrams only, without TCP); no programs, no
+    // debugging.
     let profile = if tcp_allowed {
         enclave_sandbox::Profile::Netd
     } else {
-        enclave_sandbox::Profile::Vault
+        enclave_sandbox::Profile::NetdUdp
     };
     let (fs, sc) = if standalone {
         (
@@ -546,7 +603,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         ("the app's", "the app's")
     };
     if args.iter().any(|a| a == "--report") {
-        let sockets = if tcp_allowed { "ip" } else { "none" };
+        let sockets = if tcp_allowed { "ip" } else { "udp" };
         eprintln!("enclave-netd: filesystem {fs}, syscalls {sc}, sockets {sockets}");
     }
     let has_nym = nymd.is_some();
@@ -567,7 +624,12 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         tcp_allowed,
         tor: tor.is_some(),
         private: std::sync::atomic::AtomicBool::new(false),
-        onion: std::sync::RwLock::new(if has_nym { onion } else { HashMap::new() }),
+        onion: std::sync::RwLock::new(if has_nym || carrier.is_some() {
+            onion
+        } else {
+            HashMap::new()
+        }),
+        carrier,
         fallback: std::sync::atomic::AtomicBool::new(false),
         tor_blocked,
         over_nym: std::sync::RwLock::new(if has_nym {
@@ -936,6 +998,7 @@ mod tests {
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
             tor_blocked: false,
+            carrier: None,
         };
         (r, over_nym, over_tcp)
     }
@@ -994,6 +1057,7 @@ mod tests {
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
             tor_blocked: false,
+            carrier: None,
         };
         r.set_route(id, Route::Nym("ingress".into()));
         r.set_route(id, Route::Onion("stack.onion".into()));
@@ -1022,6 +1086,125 @@ mod tests {
         r.require_private(false);
         r.use_fallback(false);
         assert!(unavailable(r.exchange(&id, vec![1; 4]).await));
+    }
+
+    /// Dials every name at one address: a stack's onion service in a test.
+    struct To(std::net::SocketAddr);
+
+    #[async_trait::async_trait]
+    impl enclave_tord::Dialer for To {
+        async fn dial(
+            &self,
+            _: &str,
+            _: u16,
+        ) -> std::io::Result<Box<dyn enclave_tord::socks::Stream>> {
+            Ok(Box::new(tokio::net::TcpStream::connect(self.0).await?))
+        }
+    }
+
+    /// A server in Enclave's framing answering `echo:` + the request (an
+    /// empty frame when sent one way), and tord carrying requests to it.
+    async fn carried() -> Arc<enclave_tord::carrier::Client> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = l.accept().await.unwrap();
+                tokio::spawn(async move {
+                    loop {
+                        let mut n = [0u8; 4];
+                        if s.read_exact(&mut n).await.is_err() {
+                            return;
+                        }
+                        let n = u32::from_be_bytes(n);
+                        let oneway = n & enclave_tord::carrier::ONEWAY_BIT != 0;
+                        let mut b = vec![0u8; (n & !enclave_tord::carrier::ONEWAY_BIT) as usize];
+                        s.read_exact(&mut b).await.unwrap();
+                        let reply = if oneway {
+                            Vec::new()
+                        } else {
+                            [&b"echo:"[..], &b].concat()
+                        };
+                        s.write_all(&(reply.len() as u32).to_be_bytes())
+                            .await
+                            .unwrap();
+                        s.write_all(&reply).await.unwrap();
+                    }
+                });
+            }
+        });
+        let (to_tord, tord_in) = tokio::io::duplex(1 << 20);
+        let (tord_out, from_tord) = tokio::io::duplex(1 << 20);
+        tokio::spawn(enclave_tord::carrier::serve(
+            Arc::new(To(addr)),
+            tord_in,
+            tord_out,
+        ));
+        Arc::new(enclave_tord::carrier::Client::new(from_tord, to_tord))
+    }
+
+    fn over_tor(carrier: Arc<enclave_tord::carrier::Client>) -> Routed {
+        Routed {
+            tcp: TcpTransport::new(HashMap::new()),
+            tcp_allowed: false,
+            nym: std::sync::OnceLock::new(),
+            has_nym: false,
+            waiting: tokio::sync::Mutex::new(None),
+            pending_routes: std::sync::Mutex::new(HashMap::new()),
+            over_nym: std::sync::RwLock::new(HashSet::new()),
+            tor: true,
+            private: std::sync::atomic::AtomicBool::new(false),
+            onion: std::sync::RwLock::new(HashMap::new()),
+            fallback: std::sync::atomic::AtomicBool::new(false),
+            tor_blocked: false,
+            carrier: Some(carrier),
+        }
+    }
+
+    /// RFC 0010: a server with only an onion service is reached through
+    /// tord without anyone choosing a fallback, in Maximum privacy too;
+    /// one-way sends get no reply back.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn onion_route_is_primary_without_consent() {
+        let r = over_tor(carried().await);
+        let id: ServerId = [7; 16];
+        r.set_route(id, Route::Onion("stack.onion".into()));
+        assert_eq!(r.exchange(&id, b"hi".to_vec()).await.unwrap(), b"echo:hi");
+        assert_eq!(r.exchange_oneway(&id, vec![1; 8]).await.unwrap(), None);
+        r.require_private(true);
+        assert_eq!(r.exchange(&id, b"max".to_vec()).await.unwrap(), b"echo:max");
+        // A server with no route at all isn't reached.
+        assert!(r.exchange(&[8; 16], b"x".to_vec()).await.is_err());
+    }
+
+    /// Maximum privacy takes the onion route and refuses a direct one.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn maximum_accepts_onion_refuses_tcp() {
+        let mut r = over_tor(carried().await);
+        let direct: ServerId = [9; 16];
+        r.tcp = TcpTransport::new(HashMap::from([(direct, "127.0.0.1:9".parse().unwrap())]));
+        r.tcp_allowed = true;
+        let onion: ServerId = [10; 16];
+        r.set_route(onion, Route::Onion("stack.onion".into()));
+        r.require_private(true);
+        assert!(matches!(
+            r.exchange(&direct, b"x".to_vec()).await,
+            Err(NetError::Unavailable(_))
+        ));
+        assert_eq!(r.exchange(&onion, b"y".to_vec()).await.unwrap(), b"echo:y");
+    }
+
+    /// Fetches go to tord when it carries (no mixnet client needed): its
+    /// own rules answer, here refusing a plain-HTTP address.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_goes_to_tord_without_nymd() {
+        let r = over_tor(carried().await);
+        let e = r
+            .fetch("GET", "web+http://example.org/", Vec::new())
+            .await
+            .unwrap_err();
+        assert!(e.to_string().contains("https only"), "{e}");
     }
 
     /// With `--await-tickets`: Nym routes wait for the client, which
@@ -1060,6 +1243,7 @@ mod tests {
             onion: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
             tor_blocked: false,
+            carrier: None,
         };
         r.set_route(id, Route::Nym("ingress".into()));
         assert!(matches!(

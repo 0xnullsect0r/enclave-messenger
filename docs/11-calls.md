@@ -6,7 +6,7 @@ Source: PLAN.md §11 (D8, D9). Crates: `enclave-calls`, `enclave-relay`, `enclav
 
 ## 1. Overview
 
-- Signalling travels as ordinary Lockstep messages over the mixnet. Calls take 3 to 10 s to start ringing.
+- Signalling travels as ordinary Lockstep messages over the private route: Tor to the onion service, or the optional mixnet (RFC 0010). Calls take 3 to 10 s to start ringing.
 - Every call does a fresh X448 + ML-KEM-1024 exchange. **Call keys are independent of chat keys.**
 - Media is end-to-end encrypted with **SFrame (RFC 9605)** using a private-use EnclaveSeal suite.
 - Transport is **WireGuard** in both modes. There is no DTLS-SRTP, no SCTP, and no RingRTC (D9).
@@ -57,7 +57,7 @@ caller ──WireGuard (ticket PSK)──▶ relay R1 ══X448 + ML-KEM link�
 ### 3.3 Relay tickets
 
 ```
-TicketRequest (client → relay ticket service, over the mixnet, as an ISSUE-class request):
+TicketRequest (client → relay ticket service, over the onion route or the mixnet, as an ISSUE-class request):
     fresh WireGuard X25519 key pair (wg_sk, wg_pk) for this call
     (eph, ct) = X448 + ML-KEM-1024 encapsulation to the relay's daily ticket key
     ss_ticket = Combine2(… transcript = E("enclave/v1/calls/ticket-transcript") ‖ relay_id ‖ u32(key_epoch))
@@ -73,7 +73,7 @@ PSK schedule:
 ```
 
 - WireGuard keys are fresh per call. The PSK changes every 2 minutes; both ends switch at the period boundary and WireGuard's own 120 s rekey picks it up.
-- Tickets are obtained **anonymously** over the mixnet and paid with Privacy Pass, so the relay cannot link a ticket to an account. Clients MAY pre-fetch one ticket per relay family to cut setup time.
+- Tickets are obtained **anonymously** over the onion route or the mixnet and paid with Privacy Pass, so the relay cannot link a ticket to an account. Clients MAY pre-fetch one ticket per relay family to cut setup time.
 
 ### 3.4 As implemented
 
@@ -267,4 +267,4 @@ The first codec pair, `opus-rs`, failed this: its packets scored 1.0, unintellig
 
 1. **Resolved:** the SFrame suite ID 0xF0E1 lies in the private-use range of RFC 9605's cipher suite registry (0xF000–0xFFFF, reserved for private use, needing no registration), so no allocation is asked for. Both ends are Enclave, which knows the suite.
 2. **Resolved:** audio packets are 160 B (§6). That holds a 20 ms Opus frame at 32 kbit/s (80 B), the SFrame header and its 32 B tag, and the RTP header with room to spare. Tests `rt19_call_packets_constant_size_and_rate` and `rt19_mute_keeps_rate` check that every packet of a call leg is this size at a constant rate, muted or not.
-3. **Resolved:** the Maximum-mode tunnel (§7) runs only while the app is in front, as PLAN says. In the background a Maximum device keeps the always-on mixnet traffic of its profile, and a call wakes the tunnel when it starts (test `rt18_max_mode_tunnel_constant`).
+3. **Resolved:** the Maximum-mode tunnel (§7) runs only while the app is in front, as PLAN says. In the background a Maximum device keeps the always-on traffic of its profile (over Tor or the mixnet), and a call wakes the tunnel when it starts (test `rt18_max_mode_tunnel_constant`).

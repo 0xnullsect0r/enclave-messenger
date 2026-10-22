@@ -20,8 +20,8 @@ The software we run is open source and built reproducibly. With it:
   groups: they are end-to-end encrypted, and the keys exist only on your
   devices;
 - we **do not know** who you are, who writes to you or who you write to:
-  requests reach us through the Nym mixnet and Tor, and we keep no IP
-  addresses;
+  requests reach us through Tor (and the Nym mixnet when enabled), and we
+  keep no IP addresses;
 - we **cannot** add a device to your account, change your keys, or change
   what our username log says without other operators' witnesses noticing.
 

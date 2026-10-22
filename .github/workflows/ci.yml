@@ -397,6 +397,59 @@ jobs:
       - if: always()
         run: ci/federation/gen.sh down
 
+  federation-e2e-onion:
+    name: federation e2e (3 stacks over the onion route, RFC 0010)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          # Docker Hub rate-limits anonymous pulls from shared runners (a
+          # 429 on a base image failed this job once); its mirror at
+          # mirror.gcr.io serves the same digests, Docker Hub stays the
+          # fallback.
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Server image (ops/docker/Dockerfile)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ops/docker/Dockerfile
+          target: server
+          tags: enclave-server:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Host tools
+        run: |
+          cargo build --release --locked -p enclave-admin -p enclave-e2e
+          # The onion carrier netd runs on a device, dialling the stacks'
+          # onion names directly here (ENCLAVE_DEV_ONION_MAP; no Tor network
+          # in CI: live.yml's onion-live runs it through Tor).
+          cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
+      - name: Three stacks, one foundation, onion addresses in the list
+        run: TRANSPORT=onion ci/federation/gen.sh up
+      - name: End to end over the onion carrier, with a restart of one stack
+        run: TRANSPORT=onion TORD=$PWD/target/release/enclave-tord ci/federation/gen.sh e2e
+      - name: Traffic shape, from a capture of the carrier's streams
+        run: |
+          command -v tcpdump >/dev/null || sudo apt-get install -y --no-install-recommends tcpdump
+          TRANSPORT=onion TORD=$PWD/target/release/enclave-tord ci/federation/gen.sh shape
+          { echo '### Traffic shape over the onion route'; echo '```'; tail -n 12 target/federation/shape/report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: traffic-shape-onion
+          path: target/federation/shape/
+          if-no-files-found: ignore
+      - if: failure()
+        run: TRANSPORT=onion ci/federation/gen.sh logs
+      - if: always()
+        run: TRANSPORT=onion ci/federation/gen.sh down
+
   federation-e2e-localnet:
     name: federation e2e (3 stacks over a local Nym mixnet)
     runs-on: ubuntu-24.04

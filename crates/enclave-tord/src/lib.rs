@@ -20,6 +20,13 @@ pub mod managed;
 
 pub mod daemon;
 
+pub mod carrier;
+
+#[cfg(feature = "carrier-serve")]
+pub mod fetch;
+
+pub mod forward;
+
 #[cfg(feature = "launch")]
 pub mod launch;
 
@@ -115,9 +122,25 @@ mod arti {
 #[cfg(feature = "dev-direct")]
 pub const DEV_DIRECT_MARKER: &str = "ENCLAVE-DEV-DIRECT-ENABLED";
 
-/// Dials directly: tests and the local mixnet only (`dev-direct`).
+/// Dials directly: tests and the local mixnet only (`dev-direct`). An
+/// onion service named in [`DEV_ONION_MAP`] (`NAME.onion=HOST:PORT,…`) is
+/// dialled at that address instead, so the onion route runs without the
+/// Tor network (the CI stacks).
 #[cfg(any(test, feature = "dev-direct"))]
 pub struct DirectDialer;
+
+/// The variable naming where development onion services really are.
+#[cfg(any(test, feature = "dev-direct"))]
+pub const DEV_ONION_MAP: &str = "ENCLAVE_DEV_ONION_MAP";
+
+/// Where `host` is in `map` (`NAME.onion=HOST:PORT,…`).
+#[cfg(any(test, feature = "dev-direct"))]
+pub fn dev_onion(map: &str, host: &str) -> Option<String> {
+    map.split(',')
+        .filter_map(|e| e.trim().split_once('='))
+        .find(|(name, _)| *name == host)
+        .map(|(_, to)| to.to_string())
+}
 
 #[cfg(any(test, feature = "dev-direct"))]
 #[async_trait::async_trait]
@@ -125,8 +148,17 @@ impl Dialer for DirectDialer {
     async fn dial(&self, host: &str, port: u16) -> std::io::Result<Box<dyn socks::Stream>> {
         #[cfg(feature = "dev-direct")]
         std::hint::black_box(DEV_DIRECT_MARKER);
-        Ok(Box::new(
-            tokio::net::TcpStream::connect((host, port)).await?,
-        ))
+        if host.ends_with(".onion") {
+            let to = std::env::var(DEV_ONION_MAP)
+                .ok()
+                .and_then(|m| dev_onion(&m, host))
+                .ok_or_else(|| std::io::Error::other(format!("{host}: not in {DEV_ONION_MAP}")))?;
+            let s = tokio::net::TcpStream::connect(to).await?;
+            s.set_nodelay(true)?;
+            return Ok(Box::new(s));
+        }
+        let s = tokio::net::TcpStream::connect((host, port)).await?;
+        s.set_nodelay(true)?;
+        Ok(Box::new(s))
     }
 }

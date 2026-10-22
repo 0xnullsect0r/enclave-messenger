@@ -230,6 +230,7 @@ fn server_lists_need_both_signatures_and_only_move_forward() {
                 operator: "A".into(),
                 family: "a".into(),
                 nym_address: "a-nym".into(),
+                onion: "aaaa.onion".into(),
                 weight: 1,
                 kt: None,
             },
@@ -239,6 +240,7 @@ fn server_lists_need_both_signatures_and_only_move_forward() {
                 operator: "B".into(),
                 family: "b".into(),
                 nym_address: String::new(),
+                onion: String::new(),
                 weight: 3,
                 kt: None,
             },
@@ -247,6 +249,7 @@ fn server_lists_need_both_signatures_and_only_move_forward() {
         relays: Vec::new(),
         push: vec![PushRelayEntry {
             nym_address: "nym-address".into(),
+            onion: "push.onion".into(),
             keys: vec![vec![0; 4 + 56 + 1568]],
         }],
         credgates: vec![CredGateEntry {

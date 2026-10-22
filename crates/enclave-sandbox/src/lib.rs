@@ -55,6 +55,10 @@ pub enum Profile {
     Vault,
     /// netd, tord and nymd: the vault's, plus new IPv4 and IPv6 sockets.
     Netd,
+    /// netd when Tor carries its requests (RFC 0010): the vault's, plus
+    /// new IPv4 and IPv6 *datagram* sockets for calls; no TCP socket can
+    /// be made at all.
+    NetdUdp,
     /// mediad: no files and no sockets at all, only the pipes it holds.
     Media,
 }
@@ -330,7 +334,7 @@ fn filter(profile: Profile) -> Option<seccompiler::BpfProgram> {
         #[cfg(target_arch = "x86_64")]
         allow(FILES_X86);
     }
-    if profile == Profile::Netd {
+    if matches!(profile, Profile::Netd | Profile::NetdUdp) {
         allow(NET);
         #[cfg(target_arch = "x86_64")]
         allow(&[libc::SYS_accept]);
@@ -391,6 +395,24 @@ fn filter(profile: Profile) -> Option<seccompiler::BpfProgram> {
             [libc::AF_INET, libc::AF_INET6]
                 .iter()
                 .map(|af| one(Cond::new(0, Len::Dword, Op::Eq, *af as u64)))
+                .collect::<Option<Vec<_>>>()?,
+        );
+    }
+    if profile == Profile::NetdUdp {
+        // IPv4 and IPv6 datagrams only (the type without its CLOEXEC and
+        // NONBLOCK flags).
+        let dgram = |af: i32| {
+            SeccompRule::new(vec![
+                Cond::new(0, Len::Dword, Op::Eq, af as u64).ok()?,
+                Cond::new(1, Len::Dword, Op::MaskedEq(0xf), libc::SOCK_DGRAM as u64).ok()?,
+            ])
+            .ok()
+        };
+        rules.insert(
+            libc::SYS_socket,
+            [libc::AF_INET, libc::AF_INET6]
+                .iter()
+                .map(|af| dgram(*af))
                 .collect::<Option<Vec<_>>>()?,
         );
     }
@@ -613,6 +635,32 @@ mod seccomp_tests {
         assert!(tcp, "netd must reach servers");
         assert!(udp, "netd must carry calls");
         assert!(!unix && !exec);
+    }
+
+    #[test]
+    fn netd_udp_profile_carries_calls_but_makes_no_tcp() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let peer = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let udp_to = peer.local_addr().unwrap();
+        let (status, tcp, tcp6, udp, unix) = in_thread(move || {
+            let status = syscalls(Profile::NetdUdp, true);
+            let udp = std::net::UdpSocket::bind("127.0.0.1:0")
+                .and_then(|s| s.connect(udp_to).map(|_| s))
+                .and_then(|s| s.send(b"call"))
+                .is_ok();
+            (
+                status,
+                std::net::TcpStream::connect(addr).is_ok(),
+                std::net::TcpListener::bind("[::1]:0").is_ok(),
+                udp,
+                std::os::unix::net::UnixDatagram::unbound().is_ok(),
+            )
+        });
+        assert_eq!(status, "filtered");
+        assert!(udp, "netd must carry calls");
+        assert!(!tcp && !tcp6, "TCP allowed");
+        assert!(!unix);
     }
 
     /// mediad's profile: no files, no sockets, no programs, and no turning

@@ -476,6 +476,7 @@ async fn picks_a_server_from_the_list_and_moves() {
         operator: format!("Operator of {domain}"),
         family: domain.into(),
         nym_address: String::new(),
+        onion: String::new(),
         weight,
         kt: None,
     };
@@ -578,5 +579,71 @@ async fn picks_a_server_from_the_list_and_moves() {
     .await;
     wait(&mut rx, "the new home", |s| s.home == hex(&a) && !s.moving).await;
     drop(tx);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// RFC 0010: a list of onion services only needs Tor, so the vault starts
+/// no mixnet client and buys no tickets; a server on the mixnet in the list,
+/// or a Nym route given, still does.
+#[test]
+fn a_tor_only_list_starts_no_mixnet() {
+    use enclave_federation::{FoundationKey, ListedServer, ServerList};
+    let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+    let foundation = FoundationKey::generate(&mut rng).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let identity = enclave_crypto::sig::CompositeSigningKey::generate(&mut rng)
+        .unwrap()
+        .public()
+        .clone();
+    let dir = std::env::temp_dir().join(format!("enclave-vault-tor-only-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let write_list = |name: &str, nym: &str| {
+        let list = ServerList {
+            seq: 1,
+            issued: now,
+            expires: now + 30 * 86_400,
+            witness_threshold: 0,
+            servers: vec![ListedServer {
+                identity: identity.clone(),
+                domain: "a.example".into(),
+                operator: "Operator of a.example".into(),
+                family: "a.example".into(),
+                nym_address: nym.into(),
+                onion: format!("{}.onion", "a".repeat(56)),
+                weight: 1,
+                kt: None,
+            }],
+            witnesses: Vec::new(),
+            relays: Vec::new(),
+            push: Vec::new(),
+            credgates: Vec::new(),
+        };
+        let mut rng = enclave_crypto::rng::HedgedRng::new().unwrap();
+        std::fs::write(dir.join(name), list.sign(&foundation, &mut rng).unwrap()).unwrap();
+        dir.join(name)
+    };
+    let mode = |list: Option<std::path::PathBuf>, others| enclave_vault::Mode::Server {
+        profile: dir.join("profile"),
+        home: None,
+        others,
+        nym_env: false,
+        kt_pins: None,
+        foundation: None,
+        server_list: list,
+        shaping: true,
+    };
+    let tor_only = write_list("tor-only", "");
+    assert!(!mode(Some(tor_only.clone()), Vec::new()).uses_mixnet());
+    let with_nym = write_list("with-nym", "nym-address");
+    assert!(mode(Some(with_nym), Vec::new()).uses_mixnet());
+    let nym_route = vec![(
+        [7; 16],
+        enclave_net::transport::Route::Nym("ingress".into()),
+    )];
+    assert!(mode(Some(tor_only), nym_route).uses_mixnet());
     let _ = std::fs::remove_dir_all(&dir);
 }

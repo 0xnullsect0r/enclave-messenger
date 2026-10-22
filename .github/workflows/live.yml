@@ -1,17 +1,26 @@
 name: Live networks
-# Checks against the real Tor network, the Nym sandbox (nightly) and Nym
-# mainnet (weekly, Mondays). They depend on networks outside this
+# Checks against the real Tor network (nightly, and on every change to the
+# Tor side) and, with the optional mixnet funded, the Nym sandbox (nightly)
+# and mainnet (weekly, Mondays). They depend on networks outside this
 # repository, so they never block a merge (`docs/09-transport.md` §1,
-# `docs/completion-plan.md` X16 tier 3, N4).
+# RFC 0010).
+#
+# `onion-live` is the route devices take: a dev server behind
+# enclave-onion's onion service on this runner, reached through
+# enclave-tord as netd's carrier over the live Tor network
+# (ci/onion/carrier-bench.py: bootstrap, first answer, round trips), and a
+# wake sent through `enclave-onion forward` to a second onion service, as
+# push egress reaches a push relay. Its numbers go in
+# docs/09-transport.md §6.3.
 #
 # The Nym jobs run `live_bench` (nym/enclave-nym-sdk/examples) through real
 # Tor: an ingress-role client and a device client, both buying zk-nym
 # tickets from the Nyx account whose mnemonic is the NYM_SANDBOX_MNEMONIC or
-# NYM_MAINNET_MNEMONIC secret (External Gate G7: until it is funded, the job
-# says so and stops). The report has connect times, round trips, bulk
-# throughput, memory, tickets spent, and the ticketbook deposit; the job
-# turns the deposit into dollars per user per month (math/cover-traffic.md
-# §11: five books a month) and fails above $1.
+# NYM_MAINNET_MNEMONIC secret (only with the optional mixnet, RFC 0010:
+# without one the job says so and stops). The report has connect times,
+# round trips, bulk throughput, memory, tickets spent, and the ticketbook
+# deposit; the job turns the deposit into dollars per user per month
+# (math/cover-traffic.md §11: five books a month) and fails above $1.
 
 on:
   schedule:
@@ -23,7 +32,8 @@ on:
     paths:
       - crates/enclave-tord/**
       - ci/tor/**
-      - .github/workflows/nym-live.yml
+      - ci/onion/**
+      - .github/workflows/live.yml
   workflow_dispatch:
     inputs:
       network:
@@ -115,40 +125,74 @@ jobs:
         continue-on-error: true
         run: ci/tor/builtin-bridges.sh --check
 
-  onion-smoke:
-    name: enclave-onion publishes a server and a client reaches it through Tor
+  onion-live:
+    name: a server's onion service reached through enclave-tord's carrier over Tor
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
-      - name: Build enclave-server, enclave-onion and enclave-tord (Tor)
+      - name: Build enclave-server, enclave-onion and enclave-tord (Tor, as shipped)
         run: |
           cargo build --release --locked -p enclave-server
           cargo build --release --locked -p enclave-tord --features onion-service --bins
-      - name: A dev server behind an onion service, asked for its key bundle over Tor
+      - name: A dev server behind an onion service, through the carrier
         run: |
           set -euo pipefail
           work=$(mktemp -d)
+          echo "WORK=$work" >> "$GITHUB_ENV"
           target/release/enclave-server dev 127.0.0.1:17443 > "$work/server.out" 2>&1 &
           target/release/enclave-onion run --state "$work/onion" --forward 127.0.0.1:17443 \
             --public "$work/public" > "$work/onion.log" 2>&1 &
-          for _ in $(seq 600); do [ -s "$work/public/onion.addr" ] && break; sleep 1; done
+          for _ in $(seq 900); do [ -s "$work/public/onion.addr" ] && break; sleep 1; done
           cat "$work/onion.log"
           host=$(tr -d '\n' < "$work/public/onion.addr")
           test -n "$host"
-          secret=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
-          mkfifo "$work/tord.in"
-          (echo "$secret"; sleep 1800) > "$work/tord.in" &
-          target/release/enclave-tord --state "$work/tor" < "$work/tord.in" > "$work/tord.out" &
-          for _ in $(seq 300); do grep -q ready "$work/tord.out" && break; sleep 1; done
-          port=$(awk '/ready/{print $2}' "$work/tord.out")
-          # A new onion service takes a while to be reachable: retry.
-          for i in $(seq 10); do
-            if python3 ci/onion/keybundle.py "$port" "$secret" "$host" 7443; then exit 0; fi
-            sleep 30
+          python3 ci/onion/carrier-bench.py target/release/enclave-tord "$work/tor" "$host" \
+            --rounds 30 --out onion-bench.json
+          { echo '### The onion route over live Tor'; echo '```json'; cat onion-bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: A wake through enclave-onion forward to a push relay's onion service
+        run: |
+          set -euo pipefail
+          work=$WORK
+          # The relay stand-in: prints the first wake it gets.
+          python3 - > "$work/relay.out" 2>&1 <<'EOF' &
+          import socket, struct
+          s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+          s.bind(("127.0.0.1", 17445)); s.listen(4)
+          c, _ = s.accept()
+          def read(n):
+              b = b""
+              while len(b) < n:
+                  x = c.recv(n - len(b)); assert x; b += x
+              return b
+          n = struct.unpack("!I", read(4))[0]
+          print(read(n).decode(), flush=True)
+          EOF
+          target/release/enclave-onion run --state "$work/push-onion" --forward 127.0.0.1:17445 \
+            --public "$work/public" --addr-file push-onion.addr > "$work/push-onion.log" 2>&1 &
+          for _ in $(seq 900); do [ -s "$work/public/push-onion.addr" ] && break; sleep 1; done
+          cat "$work/push-onion.log"
+          relay=$(tr -d '\n' < "$work/public/push-onion.addr")
+          test -n "$relay"
+          target/release/enclave-onion forward --listen 127.0.0.1:17446 --to "$relay" \
+            --state "$work/egress" > "$work/egress.log" 2>&1 &
+          for _ in $(seq 300); do grep -q 'wakes from' "$work/egress.log" && break; sleep 1; done
+          # The server's side: one `u32 len ‖ wake` frame; resent until the
+          # relay's new service is reachable.
+          for i in $(seq 30); do
+            python3 -c 'import socket,struct; s=socket.create_connection(("127.0.0.1",17446)); w=b"wake-through-tor"; s.sendall(struct.pack("!I",len(w))+w); s.close()'
+            sleep 20
+            grep -q wake-through-tor "$work/relay.out" && break
           done
-          exit 1
+          cat "$work/egress.log" "$work/relay.out"
+          grep -q wake-through-tor "$work/relay.out"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: onion-bench
+          path: onion-bench.json
+          if-no-files-found: ignore
 
   nym-bench:
     name: live_bench on the Nym ${{ matrix.network }}, through Tor
@@ -173,7 +217,7 @@ jobs:
             run=no
           fi
           if [ "$run" = yes ] && [ -z "$MNEMONIC" ]; then
-            echo "::notice::No funded Nyx account for the ${{ matrix.network }} (External Gate G7): skipping the bench."
+            echo "::notice::No funded Nyx account for the ${{ matrix.network }} (the mixnet is optional, RFC 0010): skipping the bench."
             run=no
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"

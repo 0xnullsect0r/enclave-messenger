@@ -19,7 +19,7 @@ has no account records.
 |---|---|---|
 | Account identity | No | The server has no accounts |
 | Phone number, email | No | Never collected |
-| IP addresses | No | Requests arrive through Nym and Tor; not logged |
+| IP addresses | No | Requests arrive through Tor (and the Nym mixnet when enabled); not logged |
 | Message content | No | End-to-end encrypted; keys exist only on users' devices |
 | Contacts, group membership | No | Not visible to the server |
 | Inbox activity, for an inbox address you name | From the date of the order only | Counts of writes and polls in 60-second buckets, if we are ordered to start recording them. Pseudonymous: we can't say whose inbox it is or who writes to it |

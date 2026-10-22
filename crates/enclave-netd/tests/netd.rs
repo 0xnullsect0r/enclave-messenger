@@ -209,7 +209,8 @@ async fn carries_requests_over_nym() {
     assert_eq!(replies[1].result.as_ref().unwrap().len(), 4 + 56 + 1568);
 
     // With only Nym routes netd has the mixnet client's pipes and no
-    // socket, and (Linux) can't open one.
+    // socket open, and (Linux) can open datagram sockets only: UDP for
+    // calls, never TCP.
     let mut report = String::new();
     let mut stderr = child.stderr.take().unwrap();
     let mut b = [0u8; 256];
@@ -218,7 +219,7 @@ async fn carries_requests_over_nym() {
         assert!(n > 0, "no report: {report}");
         report.push_str(&String::from_utf8_lossy(&b[..n]));
     }
-    assert!(report.contains("sockets none"), "{report}");
+    assert!(report.contains("sockets udp"), "{report}");
     #[cfg(target_os = "linux")]
     {
         assert!(report.contains("syscalls filtered"), "{report}");

@@ -10,6 +10,13 @@ x-localnet: &localnet
     ENCLAVE_NYM_API: http://10.77.0.2:8000/
 
 services:
+  # The local mixnet is the only route here: no Tor.
+  onion:
+    profiles: [onion]
+  push-egress:
+    profiles: [onion]
+  push-onion:
+    profiles: [push-tor]
   ingress:
     <<: *localnet
     command: ["run", "--server", "server:7443", "--env"]
@@ -18,7 +25,7 @@ services:
       - public:/var/lib/enclave/public
       - ${LOCALNET_DIR:?set LOCALNET_DIR}:/localnet:ro
     networks: [backend, egress, nymnet]
-  push-egress:
+  push-egress-nym:
     <<: *localnet
     command: ["forward", "--listen", "0.0.0.0:7446", "--to", "${PUSH_RELAY_NYM:-}", "--env"]
     volumes:

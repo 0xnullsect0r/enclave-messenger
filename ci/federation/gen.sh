@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Three operators' stacks on one host, federated by a test foundation
-# (CI jobs `federation-e2e-tcp` and `federation-e2e-localnet`;
-# docs/13-operators.md).
+# (CI jobs `federation-e2e-tcp`, `federation-e2e-onion` and
+# `federation-e2e-localnet`; docs/13-operators.md).
 #
 #   ci/federation/gen.sh up      # build the federation and start it
 #   ci/federation/gen.sh e2e     # run enclave-e2e against it (restarts B midway)
-#   ci/federation/gen.sh shape   # TRANSPORT=nym, after e2e: capture the
-#                                # device's link to its gateway, idle and
+#   ci/federation/gen.sh shape   # TRANSPORT=onion or nym, after e2e:
+#                                # capture the device's link (to the
+#                                # servers, or to its gateway), idle and
 #                                # busy, and check the traffic shape
 #   ci/federation/gen.sh bench   # TRANSPORT=nym: live_bench on the local
 #                                # mixnet (connect, round trips, bulk,
@@ -24,6 +25,16 @@
 # descriptors the stacks sign, the way the foundation builds it. Every log
 # is witnessed by the other two stacks' witnesses, threshold 2. Stack c keeps
 # its server state in PostgreSQL (compose.postgres.yml).
+#
+# TRANSPORT=onion is the route devices take (RFC 0010): every stack's
+# server has an onion address (compose.onion.yml here puts it where
+# enclave-onion would write it, so the descriptors and the list carry it),
+# and enclave-e2e reaches them only at those addresses, through $TORD as
+# its carrier, the way netd does on a device. $TORD is a dev-direct build:
+# it dials the names in ENCLAVE_DEV_ONION_MAP (each stack's server port on
+# this host) instead of through the Tor network, which CI can't depend on
+# (live.yml's `onion-live` runs the real thing). Stack b's push relay takes
+# wakes straight from its own server, as on a stack that runs its own.
 #
 # TRANSPORT=nym runs it over a local Nym mixnet instead
 # (ops/compose/compose.localnet.yml, image $LOCALNET_IMAGE from
@@ -49,8 +60,9 @@ TRANSPORT=${TRANSPORT:-tcp}
 NYM_IMAGE=${NYM_IMAGE:-enclave-nym:ci}
 LOCALNET_IMAGE=${LOCALNET_IMAGE:-enclave-nym-localnet:ci}
 NYMD=${NYMD:-$ROOT/nym/target/release/enclave-nymd}
-# enclave-tord (a dev-direct build): nymd dials its gateway and nym-api
-# through its SOCKS5 port, as a device does through Tor. Empty: directly.
+# enclave-tord (a dev-direct build): the onion carrier (TRANSPORT=onion),
+# or nymd dials its gateway and nym-api through its SOCKS5 port, as a
+# device does through Tor (TRANSPORT=nym; empty: directly).
 TORD=${TORD:-}
 DEVPROXY=${DEVPROXY:-$ROOT/nym/target/release/enclave-dev-proxy}
 DEVPROXY_PORT=${DEVPROXY_PORT:-7449}
@@ -67,6 +79,7 @@ profiles() {
   local s=$1 p=()
   [ "$s" = b ] && p+=(--profile push)
   [ "$TRANSPORT" = nym ] && p+=(--profile nym)
+  [ "$s" = b ] && [ "$TRANSPORT" = nym ] && p+=(--profile push-nym)
   [ "$s" = a ] && [ "$TRANSPORT" = nym ] && p+=(--profile foundation)
   echo "${p[@]}"
 }
@@ -81,11 +94,15 @@ dc() {
   extra+=(-f "$WORK/$s/compose.e2e.yml")
   [ -f "$WORK/$s/compose.postgres.yml" ] && extra+=(-f "$WORK/$s/compose.postgres.yml")
   [ -f "$WORK/$s/compose.localnet-stack.yml" ] && extra+=(-f "$WORK/$s/compose.localnet-stack.yml")
+  [ -f "$WORK/$s/compose.onion.yml" ] && extra+=(-f "$WORK/$s/compose.onion.yml")
   docker compose -p "e2e-$s" --project-directory "$WORK/$s" \
     -f "$WORK/$s/compose.yml" "${extra[@]}" "$@"
 }
 
 n_of() { case $1 in a) echo 1 ;; b) echo 2 ;; c) echo 3 ;; esac; }
+
+# A stack's onion name (TRANSPORT=onion; dialled through ENCLAVE_DEV_ONION_MAP).
+onion_of() { echo "e2e$1server.onion"; }
 
 wait_healthy() {
   local s=$1 i
@@ -159,12 +176,26 @@ up() {
     for o in "${STACKS[@]}"; do [ "$o" != "$s" ] && others+=("\"http://witness-$o:7446\""); done
     sed -i "s|^witnesses = \[\]|witnesses = [$(IFS=,; echo "${others[*]}")]|" "$d/config/server.toml"
     # Stack b's due wakes: to its push egress over the mixnet, or straight
-    # to the push relay on the dev transport ([push] is in the example).
+    # to the push relay on its own stack ([push] forward is in the example).
     if [ "$s" = b ]; then
       local fwd=push-relay:7445
-      [ "$TRANSPORT" = nym ] && fwd=push-egress:7446
-      sed -i "s|^# forward = .*|forward = \"$fwd\"|" "$d/config/server.toml"
+      [ "$TRANSPORT" = nym ] && fwd=push-egress-nym:7446
+      sed -i "s|^forward = .*|forward = \"$fwd\"|" "$d/config/server.toml"
       grep -q "^forward = \"$fwd\"" "$d/config/server.toml"
+    else
+      # Only b's users register for push here.
+      sed -i 's|^forward = |# forward = |' "$d/config/server.toml"
+    fi
+    if [ "$TRANSPORT" = onion ]; then
+      onion_of "$s" > "$d/onion.addr"
+      chmod 0644 "$d/onion.addr"
+      cat > "$d/compose.onion.yml" <<EOF
+# CI: the address enclave-onion would publish, for the descriptors.
+services:
+  server:
+    volumes:
+      - ./onion.addr:/var/lib/enclave/public/onion.addr:ro
+EOF
     fi
     cat >> "$d/config/front.toml" <<EOF
 tls = "files"
@@ -239,7 +270,7 @@ EOF
   dc b --profile push up -d push-relay
   if [ "$TRANSPORT" = nym ]; then
     # Its ingress on the mixnet; every stack's push egress sends there.
-    dc b --profile push up -d push-ingress
+    dc b --profile push --profile push-nym up -d push-ingress
     fetch b push-ingress /var/lib/enclave/public/push-ingress.addr "$WORK/push-ingress.addr"
     for s in "${STACKS[@]}"; do
       echo "PUSH_RELAY_NYM=$(tr -d '\n' < "$WORK/push-ingress.addr")" >> "$WORK/$s/.env"
@@ -270,7 +301,7 @@ EOF
   done
   cat >> "$WORK/spec.toml" <<EOF
 [[push]]
-nym_address = "e2e-push-relay"
+onion = "e2epushrelay.onion"
 keys = "push-relay-keys.bin"
 EOF
   if [ "$TRANSPORT" = nym ]; then
@@ -289,16 +320,8 @@ EOF
   echo "== start"
   for s in "${STACKS[@]}"; do
     cp "$WORK/foundation/server-list.bin" "$WORK/$s/foundation/"
-    # Without the mixnet the push relay's ingress has nothing to join (and
-    # its image isn't built): name the services to start without it, since
-    # compose pulls images even for services scaled to zero.
-    local only=()
-    if [ "$s" = b ] && [ "$TRANSPORT" != nym ]; then
-      # shellcheck disable=SC2046
-      mapfile -t only < <(dc "$s" $(profiles "$s") config --services | grep -vx push-ingress)
-    fi
     # shellcheck disable=SC2046
-    dc "$s" $(profiles "$s") up -d "${only[@]}"
+    dc "$s" $(profiles "$s") up -d
   done
   for s in "${STACKS[@]}"; do wait_healthy "$s"; done
   if [ "$TRANSPORT" = nym ]; then
@@ -320,6 +343,8 @@ servers_arg() {
   for s in "${STACKS[@]}"; do
     if [ "$TRANSPORT" = nym ]; then
       out+=("$(cat "$WORK/$s/server.id")=nym:$(tr -d '\n' < "$WORK/$s/ingress.addr")")
+    elif [ "$TRANSPORT" = onion ]; then
+      out+=("$(cat "$WORK/$s/server.id")=onion:$(onion_of "$s")")
     else
       out+=("$(cat "$WORK/$s/server.id")=127.0.0.1:744$(n_of "$s")")
     fi
@@ -331,6 +356,14 @@ servers_arg() {
 common_args() {
   COMMON=(--state "$WORK/e2e" --servers "$(servers_arg)"
     --foundation "$WORK/foundation/foundation.pub" --server-list "$WORK/foundation/server-list.bin")
+  if [ "$TRANSPORT" = onion ]; then
+    if [ -z "$TORD" ]; then echo "TRANSPORT=onion needs TORD (a dev-direct enclave-tord)" >&2; exit 2; fi
+    COMMON+=(--tord "$TORD")
+    local s map=()
+    for s in "${STACKS[@]}"; do map+=("$(onion_of "$s")=127.0.0.1:744$(n_of "$s")"); done
+    ENCLAVE_DEV_ONION_MAP=$(IFS=,; echo "${map[*]}")
+    export ENCLAVE_DEV_ONION_MAP
+  fi
   if [ "$TRANSPORT" = nym ]; then
     COMMON+=(--nymd "$NYMD")
     if [ -n "$TORD" ]; then COMMON+=(--tord "$TORD"); fi
@@ -355,15 +388,20 @@ e2e() {
   "$E2E" after-restart "${common[@]}"
 }
 
-# The traffic-shape check (docs/09-transport.md §6.7): tcpdump on the
-# mixnet's bridge records this host's link to the gateway's WebSocket port
-# (both ways) while `enclave-e2e shape` runs Ada's shaped client idle, then busy;
-# pcap-check.py compares the two and the model. Only the host's link is
-# captured: the stacks' ingresses reach the gateway from their own
-# addresses on the bridge.
+# The traffic-shape check (docs/09-transport.md §6.7): tcpdump records the
+# device's link while `enclave-e2e shape` runs Ada's shaped client idle,
+# then busy; pcap-check.py compares the two and the model. Over onion that
+# is the carrier's streams to the servers (on loopback: what Tor would
+# carry, without Tor's cells); over the mixnet, this host's link to the
+# gateway's WebSocket port on the mixnet's bridge (the stacks' ingresses
+# reach the gateway from their own addresses on the bridge).
 shape() {
+  if [ "$TRANSPORT" = onion ]; then
+    shape_onion
+    return
+  fi
   if [ "$TRANSPORT" != nym ]; then
-    echo "shape: TRANSPORT=nym only" >&2
+    echo "shape: TRANSPORT=onion or nym only" >&2
     exit 2
   fi
   local out=$WORK/shape gateway=10.77.0.21 br host rc=0
@@ -389,9 +427,32 @@ shape() {
   return "${PIPESTATUS[0]}"
 }
 
+shape_onion() {
+  local out=$WORK/shape rc=0
+  rm -rf "$out"
+  mkdir -p "$out"
+  common_args
+  echo "== capturing the carrier's streams to 127.0.0.1:7441-7443 on lo"
+  sudo tcpdump -Z root -i lo -n -s 0 -U -w "$out/link.pcap" \
+    "tcp and (port 7441 or port 7442 or port 7443)" 2> "$out/tcpdump.log" &
+  local capture=$!
+  sleep 2
+  "$E2E" shape "${COMMON[@]}" --marks "$out/marks" \
+    --seconds "${SHAPE_SECONDS:-90}" --warmup "${SHAPE_WARMUP:-30}" \
+    --profile "${SHAPE_PROFILE:-foreground}" || rc=$?
+  sudo kill -INT "$capture" 2>/dev/null || true
+  wait "$capture" || true
+  cat "$out/tcpdump.log"
+  [ "$rc" = 0 ] || return "$rc"
+  # A tick is one 16 KiB unit and one 2 KiB poll; nothing loops back.
+  python3 "$ROOT/ci/federation/pcap-check.py" "$out/link.pcap" "$out/marks" --stream \
+    --port 7441 --port 7442 --port 7443 --per-tick 2 --self-rate 0 | tee "$out/report.txt"
+  return "${PIPESTATUS[0]}"
+}
+
 # The mixnet path's numbers on the local mixnet (N4): live_bench from the
 # nym/ workspace, its JSON in $WORK/bench.json. A regression check, not
-# the M4 gate's device numbers (nym-live.yml measures live networks).
+# the M4 gate's device numbers (live.yml measures live networks).
 bench() {
   if [ "$TRANSPORT" != nym ]; then
     echo "bench: TRANSPORT=nym only" >&2
@@ -403,7 +464,7 @@ bench() {
 
 down() {
   for s in "${STACKS[@]}"; do
-    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym --profile foundation down -v --remove-orphans || true
+    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation down -v --remove-orphans || true
   done
   if [ -f "$WORK/dev-proxy.pid" ]; then
     kill "$(cat "$WORK/dev-proxy.pid")" 2>/dev/null || true
@@ -418,7 +479,7 @@ down() {
 
 logs() {
   for s in "${STACKS[@]}"; do
-    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile nym --profile foundation logs --no-color --tail 200 || true
+    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation logs --no-color --tail 200 || true
   done
   [ -f "$WORK/dev-proxy.log" ] && cat "$WORK/dev-proxy.log" || true
   [ "$TRANSPORT" = nym ] && ln_dc logs --no-color --tail 100 || true

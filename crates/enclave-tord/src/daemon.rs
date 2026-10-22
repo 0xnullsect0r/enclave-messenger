@@ -1,7 +1,7 @@
 //! The `enclave-tord` program ([`main_with`]; `src/bin/enclave-tord.rs`
 //! runs it).
 //!
-//! `enclave-tord --state DIR [--port N] [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--direct] [--report]`
+//! `enclave-tord --state DIR [--port N] [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--carrier] [--direct] [--report]`
 //!
 //! Reads the SOCKS5 secret from its stdin (one line), confines itself
 //! (IP sockets only; the filesystem limited to `DIR` and what TLS needs),
@@ -15,7 +15,9 @@
 //! §7): obfs4 in this process, Snowflake and WebTunnel through lyrebird
 //! (`--pt`, or next to this program), started before confinement.
 //! `--direct` dials without Tor, in a `dev-direct` build only (tests and
-//! the local mixnet).
+//! the local mixnet). With `--carrier`, after `ready` its stdin and stdout
+//! carry netd's requests to servers' onion services and its HTTPS fetches
+//! ([`crate::carrier`], RFC 0010) instead of only telling it to exit.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -69,6 +71,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         bridges.extend(crate::managed::builtin_snowflake());
     }
     let report = args.iter().any(|a| a == "--report");
+    let carrier = args.iter().any(|a| a == "--carrier");
     let Some(state) = flag("--state").map(std::path::PathBuf::from) else {
         eprintln!("enclave-tord: --state DIR is required");
         return ExitCode::FAILURE;
@@ -160,10 +163,26 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         if say(&mut stdout, &format!("ready {}", addr.port())).await.is_err() {
             return ExitCode::FAILURE;
         }
-        tokio::select! {
-            () = crate::serve(listener, secret, dialer) => {}
-            // netd closed our stdin: it's gone, so are we.
-            _ = async { let mut l = String::new(); while stdin.read_line(&mut l).await.is_ok_and(|n| n > 0) { l.clear(); } } => {}
+        if carrier {
+            // netd's requests to onion services and its fetches, over our
+            // stdin and stdout (RFC 0010); the SOCKS port stays for nymd.
+            #[cfg(feature = "carrier-serve")]
+            tokio::select! {
+                () = crate::serve(listener, secret, Arc::clone(&dialer)) => {}
+                // netd closed our stdin: it's gone, so are we.
+                () = crate::carrier::serve(dialer, stdin, stdout) => {}
+            }
+            #[cfg(not(feature = "carrier-serve"))]
+            {
+                eprintln!("enclave-tord: --carrier needs a build with Tor");
+                return ExitCode::FAILURE;
+            }
+        } else {
+            tokio::select! {
+                () = crate::serve(listener, secret, dialer) => {}
+                // netd closed our stdin: it's gone, so are we.
+                _ = async { let mut l = String::new(); while stdin.read_line(&mut l).await.is_ok_and(|n| n > 0) { l.clear(); } } => {}
+            }
         }
         drop(managed);
         ExitCode::SUCCESS

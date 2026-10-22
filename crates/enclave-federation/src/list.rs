@@ -7,16 +7,17 @@
 //! services themselves, signed by the identity keys listed here.
 //!
 //! ```text
-//! list    = u8(2) ‖ u64(seq) ‖ u64(issued) ‖ u64(expires) ‖ u8(witness threshold)
+//! list    = u8(3) ‖ u64(seq) ‖ u64(issued) ‖ u64(expires) ‖ u8(witness threshold)
 //!         ‖ u32(n) ‖ n × server   ‖ u32(n) ‖ n × witness
 //!         ‖ u32(n) ‖ n × relay    ‖ u32(n) ‖ n × push relay
 //!         ‖ u32(n) ‖ n × credential gate
 //!         ‖ SLH-DSA-SHAKE-256s signature (29,792) ‖ composite signature (4,741)
 //! server  = identity pk (2,649) ‖ bytes(domain) ‖ bytes(operator) ‖ bytes(family)
-//!         ‖ bytes(Nym address) ‖ u32(weight) ‖ u8(has kt) [‖ head key (2,649) ‖ bytes(VRF public key)]
+//!         ‖ bytes(Nym address) ‖ bytes(onion address) ‖ u32(weight)
+//!         ‖ u8(has kt) [‖ head key (2,649) ‖ bytes(VRF public key)]
 //! witness = key (2,649) ‖ bytes(operator) ‖ bytes(family) ‖ bytes(url)
 //! relay   = identity pk (2,649) ‖ bytes(operator) ‖ bytes(family) ‖ bytes(addr) ‖ link key (56)
-//! push    = bytes(Nym address) ‖ u8(n) ‖ n × (u32 epoch ‖ X448 (56) ‖ ML-KEM-1024 (1,568))
+//! push    = bytes(Nym address) ‖ bytes(onion address) ‖ u8(n) ‖ n × (u32 epoch ‖ X448 (56) ‖ ML-KEM-1024 (1,568))
 //! gate    = bytes(url) ‖ bytes(issuer name) ‖ u8(n) ‖ n × (u32 epoch ‖ P-384 key (49))
 //! ```
 //!
@@ -25,8 +26,9 @@
 //! a device blinds its token requests to the listed key, so the gate can't
 //! hand one device a key of its own to tell its tokens apart later.
 //!
-//! ```text
-//! ```
+//! Version 3 (RFC 0010) adds each server's and push relay's onion service,
+//! the route devices reach them by through Tor; either address may be
+//! empty. Version 2 lists (no onion addresses) are still read.
 //!
 //! Both signatures are under context `enclave/v1/update/server-list` and
 //! both must verify: a break of either the hash-based or the
@@ -47,7 +49,9 @@ use zeroize::Zeroizing;
 pub const CTX_SERVER_LIST: &str = "enclave/v1/update/server-list";
 /// KMAC label deriving the foundation's SLH-DSA key from its seed.
 pub const FOUNDATION_KEYGEN: &str = "enclave/v1/update/foundation-keygen";
-const VERSION: u8 = 2;
+const VERSION: u8 = 3;
+/// The version before onion addresses, still read.
+const VERSION_2: u8 = 2;
 /// Most entries of each kind.
 pub const MAX_ENTRIES: usize = 1024;
 const MAX_VRF: usize = 64;
@@ -70,8 +74,11 @@ pub struct ListedServer {
     pub family: String,
     /// Nym address of the server's ingress (stable: a persistent identity
     /// on a fixed gateway; a server that moves publishes the new one in
-    /// its descriptor).
+    /// its descriptor). Empty when the server isn't on the mixnet.
     pub nym_address: String,
+    /// Its onion service (`NAME.onion`): the route devices take through Tor
+    /// (RFC 0010). Empty when it has none.
+    pub onion: String,
     /// Relative weight for new accounts (0: listed but not offered).
     pub weight: u32,
     /// Its key-transparency log.
@@ -123,8 +130,11 @@ pub struct ListedRelay {
 /// A push relay: where it is and its keys (current and next epoch).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PushRelayEntry {
-    /// Nym address.
+    /// Nym address (empty when it isn't on the mixnet).
     pub nym_address: String,
+    /// Its onion service, where servers send wakes through Tor (empty when
+    /// it has none).
+    pub onion: String,
     /// `u32 epoch ‖ X448 ‖ ML-KEM-1024` each.
     pub keys: Vec<Vec<u8>>,
 }
@@ -300,6 +310,7 @@ impl ServerList {
                 || s.operator.len() > MAX_NAME
                 || s.family.len() > MAX_NAME
                 || s.nym_address.len() > MAX_ADDRESS
+                || s.onion.len() > MAX_ADDRESS
             {
                 return Err(FedError::Malformed);
             }
@@ -308,6 +319,7 @@ impl ServerList {
                 .bytes(s.operator.as_bytes())
                 .bytes(s.family.as_bytes())
                 .bytes(s.nym_address.as_bytes())
+                .bytes(s.onion.as_bytes())
                 .u32(s.weight);
             match &s.kt {
                 Some(k) => {
@@ -345,13 +357,16 @@ impl ServerList {
         w.u32(self.push.len() as u32);
         for p in &self.push {
             if p.nym_address.len() > MAX_ADDRESS
+                || p.onion.len() > MAX_ADDRESS
                 || p.keys.is_empty()
                 || p.keys.len() > 4
                 || p.keys.iter().any(|k| k.len() != PUSH_KEY_LEN)
             {
                 return Err(FedError::Malformed);
             }
-            w.bytes(p.nym_address.as_bytes()).u8(p.keys.len() as u8);
+            w.bytes(p.nym_address.as_bytes())
+                .bytes(p.onion.as_bytes())
+                .u8(p.keys.len() as u8);
             for k in &p.keys {
                 w.fixed(k);
             }
@@ -404,9 +419,11 @@ impl ServerList {
 
     fn read(b: &[u8]) -> Result<(Self, usize)> {
         let mut r = Reader::new(b);
-        if r.u8()? != VERSION {
-            return Err(FedError::Malformed);
-        }
+        let v2 = match r.u8()? {
+            VERSION => false,
+            VERSION_2 => true,
+            _ => return Err(FedError::Malformed),
+        };
         let seq = r.u64()?;
         let issued = r.u64()?;
         let expires = r.u64()?;
@@ -421,6 +438,11 @@ impl ServerList {
                 operator: utf8(r.bytes(MAX_NAME)?)?,
                 family: utf8(r.bytes(MAX_NAME)?)?,
                 nym_address: utf8(r.bytes(MAX_ADDRESS)?)?,
+                onion: if v2 {
+                    String::new()
+                } else {
+                    utf8(r.bytes(MAX_ADDRESS)?)?
+                },
                 weight: r.u32()?,
                 kt: match r.u8()? {
                     0 => None,
@@ -460,6 +482,11 @@ impl ServerList {
         let mut push = Vec::with_capacity(n);
         for _ in 0..n {
             let nym_address = utf8(r.bytes(MAX_ADDRESS)?)?;
+            let onion = if v2 {
+                String::new()
+            } else {
+                utf8(r.bytes(MAX_ADDRESS)?)?
+            };
             let k = usize::from(r.u8()?);
             if k == 0 || k > 4 {
                 return Err(FedError::Malformed);
@@ -467,7 +494,11 @@ impl ServerList {
             let keys = (0..k)
                 .map(|_| Ok(r.fixed(PUSH_KEY_LEN)?.to_vec()))
                 .collect::<Result<Vec<_>>>()?;
-            push.push(PushRelayEntry { nym_address, keys });
+            push.push(PushRelayEntry {
+                nym_address,
+                onion,
+                keys,
+            });
         }
         let n = r.u32()? as usize;
         check_len(n)?;
@@ -505,6 +536,13 @@ impl ServerList {
             },
             body_len,
         ))
+    }
+
+    /// Read a signed list without checking it: only to decide whether a
+    /// device needs its mixnet client at all (some server on the mixnet),
+    /// never to trust what it says ([`Self::verify`] does that).
+    pub fn decode_unverified(b: &[u8]) -> Result<Self> {
+        Self::read(b).map(|(l, _)| l)
     }
 
     /// Decode a signed list and check it: both signatures under `key`, not
@@ -568,5 +606,78 @@ impl ServerList {
             x -= w;
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod v2_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    /// A list written before onion addresses (version 2) still reads, its
+    /// servers and push relays with none; a list now writes version 3.
+    #[test]
+    fn list_v2_still_reads() {
+        let mut rng = HedgedRng::new().unwrap();
+        let id = CompositeSigningKey::generate(&mut rng).unwrap();
+        let mut w = Writer::new();
+        w.u8(VERSION_2).u64(5).u64(100).u64(200).u8(1);
+        w.u32(1)
+            .fixed(&id.public().to_bytes())
+            .bytes(b"a.example")
+            .bytes(b"A")
+            .bytes(b"a")
+            .bytes(b"a-nym")
+            .u32(2)
+            .u8(0);
+        w.u32(0).u32(0);
+        w.u32(1).bytes(b"push-nym").u8(1).fixed(&[7; PUSH_KEY_LEN]);
+        w.u32(0);
+        let old = w.finish();
+        let l = ServerList::decode_unsigned(&old).unwrap();
+        assert_eq!(l.servers[0].nym_address, "a-nym");
+        assert_eq!(l.servers[0].onion, "");
+        assert_eq!(l.servers[0].weight, 2);
+        assert_eq!(l.push[0].nym_address, "push-nym");
+        assert_eq!(l.push[0].onion, "");
+        // Written again, it is version 3 and keeps everything.
+        let new = l.encode_unsigned().unwrap();
+        assert_eq!(new[0], VERSION);
+        assert_eq!(ServerList::decode_unsigned(&new).unwrap(), l);
+    }
+
+    /// Onion addresses round-trip, and one too long is refused.
+    #[test]
+    fn list_v3_round_trips_onion() {
+        let mut rng = HedgedRng::new().unwrap();
+        let id = CompositeSigningKey::generate(&mut rng).unwrap();
+        let mut l = ServerList {
+            seq: 1,
+            issued: 1,
+            expires: 2,
+            witness_threshold: 0,
+            servers: vec![ListedServer {
+                identity: id.public().clone(),
+                domain: "a.example".into(),
+                operator: "A".into(),
+                family: "a".into(),
+                nym_address: String::new(),
+                onion: "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx.onion".into(),
+                weight: 1,
+                kt: None,
+            }],
+            witnesses: Vec::new(),
+            relays: Vec::new(),
+            push: vec![PushRelayEntry {
+                nym_address: String::new(),
+                onion: "push.onion".into(),
+                keys: vec![vec![1; PUSH_KEY_LEN]],
+            }],
+            credgates: Vec::new(),
+        };
+        let b = l.encode_unsigned().unwrap();
+        assert_eq!(ServerList::decode_unsigned(&b).unwrap(), l);
+        l.servers[0].onion = "x".repeat(MAX_ADDRESS + 1);
+        assert_eq!(l.encode_unsigned(), Err(FedError::Malformed));
     }
 }
