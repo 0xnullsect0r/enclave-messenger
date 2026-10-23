@@ -62,7 +62,7 @@ def frame(canvas_size, shot_path, line, font_size, radius, out):
 
 
 for n, (name, line) in enumerate(PHONE, 1):
-    frame((1320, 2868), phone_dir / f"{name}-light.png", line, 92, 66,
+    frame((1320, 2868), phone_dir / f"{name}-light.png", line, 84, 66,
           here / "iphone-6.9" / f"{n}-{name.removesuffix('-phone')}.png")
 for n, (name, line) in enumerate(WIDE, 1):
     frame((2752, 2064), wide_dir / f"{name}-light.png", line, 104, 36,
