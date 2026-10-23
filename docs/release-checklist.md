@@ -15,6 +15,19 @@ including the red-team matrix's "Manual" rows (`redteam-matrix.md`).
   `docker pull ghcr.io/0xnullsect0r/enclave-server:latest` works.
 - [ ] **TestFlight.** Make the public TestFlight link and put it in
   `ci/release/notes.md`.
+- [ ] **Export compliance.** In App Store Connect (App Information → App
+  Encryption Documentation), copy the approved document's key into the
+  repository variable `IOS_EXPORT_COMPLIANCE_CODE`; `apps/ios/bundle.sh`
+  writes it into the app's Info.plist, so builds upload without the
+  question.
+- [ ] **Google Play.** Upload the first `Enclave-VERSION.aab` by hand
+  (Play Console → Testing → Internal testing; Google takes an app's first
+  bundle only that way), then create a Google Cloud service account, invite
+  it in Play Console (Users and permissions) with release rights for the
+  app, and put its JSON key in the `release-android` environment's secret
+  `PLAY_SERVICE_ACCOUNT_JSON`. Release `play` (`ci/release/play.sh`) then
+  sends every release to the internal track (the repository variable
+  `PLAY_TRACK` picks another).
 
 ## Tor bridges
 

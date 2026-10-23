@@ -906,12 +906,10 @@ pub fn bundle_macos(args: &[String]) -> ExitCode {
             std::env::var("ASC_KEY_ID"),
             std::env::var("ASC_ISSUER_ID"),
         ) {
-            run(Command::new("xcrun")
-                .args(["notarytool", "submit"])
-                .arg(&dmg)
-                .args([
-                    "--key", &key, "--key-id", &key_id, "--issuer", &issuer, "--wait",
-                ]))?;
+            notarize(
+                &dmg,
+                &["--key", &key, "--key-id", &key_id, "--issuer", &issuer],
+            )?;
             run(Command::new("xcrun").args(["stapler", "staple"]).arg(&dmg))?;
             run(Command::new("xcrun").args(["stapler", "staple"]).arg(&app))?;
         } else {
@@ -926,6 +924,74 @@ pub fn bundle_macos(args: &[String]) -> ExitCode {
         eprintln!("bundle-macos: {} and {}", dmg.display(), zip.display());
         Ok(())
     })())
+}
+
+/// Send `file` to Apple's notary service and wait for its verdict. The
+/// submission and the waiting are separate steps, each tried a few times:
+/// the runner's connection dropping while `notarytool` polls (rc.3) would
+/// otherwise fail the release after Apple had the file.
+fn notarize(file: &Path, auth: &[&str]) -> Result<(), String> {
+    let tries = |what: &str, f: &mut dyn FnMut() -> Result<String, String>| {
+        let mut last = String::new();
+        for n in 1..=5 {
+            match f() {
+                Ok(out) => return Ok(out),
+                Err(e) => {
+                    eprintln!("bundle-macos: {what} failed (try {n} of 5): {e}");
+                    last = e;
+                    std::thread::sleep(std::time::Duration::from_secs(20 * n));
+                }
+            }
+        }
+        Err(last)
+    };
+    let notary = |args: &[&str]| {
+        let mut cmd = Command::new("xcrun");
+        cmd.arg("notarytool")
+            .args(args)
+            .args(auth)
+            .args(["--output-format", "json"]);
+        eprintln!("dist: xcrun notarytool {}", args.join(" "));
+        let out = cmd.output().map_err(|e| format!("notarytool: {e}"))?;
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        if !out.status.success() {
+            return Err(format!(
+                "{}: {} {}",
+                out.status,
+                text.trim(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        serde_json::from_str::<serde_json::Value>(&text)
+            .map_err(|e| format!("notarytool said {text:?}: {e}"))
+    };
+    let file = file.to_str().ok_or("a path that isn't UTF-8")?;
+    let id = tries("submitting", &mut || {
+        let v = notary(&["submit", file])?;
+        v["id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| format!("no id in {v}"))
+    })?;
+    eprintln!("bundle-macos: notarization {id} submitted");
+    let status = tries("waiting", &mut || {
+        // `wait` also fails for a refused file; `info` says which.
+        let _ = notary(&["wait", &id, "--timeout", "2h"]);
+        let v = notary(&["info", &id])?;
+        match v["status"].as_str() {
+            Some("In Progress") | None => Err(format!("not done: {v}")),
+            Some(s) => Ok(s.to_string()),
+        }
+    })?;
+    if status == "Accepted" {
+        eprintln!("bundle-macos: notarized ({id})");
+        return Ok(());
+    }
+    let _ = Command::new("xcrun")
+        .args(["notarytool", "log", &id])
+        .args(auth)
+        .status();
+    Err(format!("notarization {id}: {status}"))
 }
 
 /// Sign every program, then the bundle, with the hardened runtime and each

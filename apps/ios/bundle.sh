@@ -18,7 +18,12 @@
 # which a sideloading tool (AltStore, SideStore) re-signs with its user's
 # Apple ID, and which the simulator runs. With ASC_KEY_ID, ASC_ISSUER_ID and
 # ASC_KEY_PATH (an App Store Connect API key) a signed .ipa is uploaded to
-# TestFlight.
+# TestFlight; App Store Connect takes only builds made with the iOS 26 SDK
+# (Xcode 26) or later. IOS_EXPORT_COMPLIANCE_CODE is the key App Store
+# Connect gives the app's approved encryption documentation (App
+# Information → App Encryption Documentation); without it every build
+# asks the export compliance question again, and an app that has
+# documentation refuses the upload.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$(mkdir -p "$1" && cd "$1" && pwd)
@@ -57,6 +62,9 @@ app=$work/Enclave.app
 rm -rf "$work" && mkdir -p "$app"
 cp "$ROOT/nym/target/$TARGET/release/enclave-ios" "$app/Enclave"
 sed -e "s/@VERSION@/${V%%-*}/" -e "s/@BUILD@/$BUILD/" "$ROOT/apps/ios/Info.plist" > "$app/Info.plist"
+if [ -n "${IOS_EXPORT_COMPLIANCE_CODE:-}" ]; then
+  /usr/libexec/PlistBuddy -c "Add :ITSEncryptionExportComplianceCode string $IOS_EXPORT_COMPLIANCE_CODE" "$app/Info.plist"
+fi
 printf 'APPL????' > "$app/PkgInfo"
 
 # The icon: an asset catalog compiled by actool, which also says what to
@@ -79,7 +87,8 @@ built() {
   plist DTPlatformVersion string "$(xcrun --sdk "$SDK" --show-sdk-version)"
   plist DTSDKName string "$SDK$(xcrun --sdk "$SDK" --show-sdk-version)"
   plist DTSDKBuild string "$(xcrun --sdk "$SDK" --show-sdk-build-version)"
-  plist DTXcode string "$(xcodebuild -version | awk '/Xcode/{gsub(/\./,""); printf "%04d", $2}')"
+  # 16.4 → 1640, 26.0.1 → 2601.
+  plist DTXcode string "$(xcodebuild -version | awk '/^Xcode/{split($2, v, "."); printf "%02d%d%d", v[1], v[2], v[3]}')"
   plist DTXcodeBuild string "$(xcodebuild -version | awk '/Build version/{print $3}')"
   plist DTCompiler string com.apple.compilers.llvm.clang.1_0
   plist BuildMachineOSBuild string "$(sw_vers -buildVersion)"

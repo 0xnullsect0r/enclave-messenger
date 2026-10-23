@@ -3,7 +3,7 @@ name: Release
 # programs for Linux, macOS and Windows with their packages and
 # installers, the Android APKs and app bundle, the iOS app (and TestFlight), the service images on GHCR, the compose stack as an OCI
 # artifact, SBOMs, checksums with Sigstore bundles and build provenance,
-# then install tests and the AUR.
+# then install tests, Google Play and the AUR.
 #
 # A `v*` tag publishes (a tag with a pre-release part, `v1.2.3-rc.1`, as a
 # pre-release). `workflow_dispatch` and `workflow_call` (CI's dry run, when
@@ -16,10 +16,13 @@ name: Release
 # and for iOS IOS_DISTRIBUTION_P12_BASE64, IOS_DISTRIBUTION_P12_PASSWORD,
 # IOS_PROVISIONING_PROFILE_BASE64, IOS_NSE_PROVISIONING_PROFILE_BASE64 and
 # IOS_BROADCAST_PROVISIONING_PROFILE_BASE64,
-# the extensions' profiles), release-android (ANDROID_KEYSTORE_BASE64,
+# the extensions' profiles; the repository variable IOS_EXPORT_COMPLIANCE_CODE
+# is the app's export compliance key), release-android (ANDROID_KEYSTORE_BASE64,
 # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD; optionally
 # FCM_PROJECT_ID, FCM_APP_ID, FCM_API_KEY, FCM_SENDER_ID for Google's push
-# in the Play bundle) and aur
+# in the Play bundle, and PLAY_SERVICE_ACCOUNT_JSON to send the bundle to
+# Google Play, on the track the repository variable PLAY_TRACK names,
+# internal by default) and aur
 # (AUR_SSH_PRIVATE_KEY, AUR_KNOWN_HOSTS). Windows ships unsigned
 # until a certificate exists: the repository variable ENCLAVE_WIN_SIGN_CMD
 # (a command with %1 for the file) signs every program and installer.
@@ -459,7 +462,8 @@ jobs:
   ios:
     name: iOS (.ipa; TestFlight on a release)
     needs: prepare
-    runs-on: macos-15
+    # App Store Connect takes builds made with the iOS 26 SDK or later.
+    runs-on: macos-26
     timeout-minutes: 180
     environment: ${{ needs.prepare.outputs.dry == 'true' && 'dry-run' || 'release-apple' }}
     env:
@@ -472,6 +476,11 @@ jobs:
           go-version: "1.26"
           cache: false
       - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim wasm32-wasip1
+      - name: Xcode 26 or later
+        run: |
+          xcodebuild -version
+          major=$(xcodebuild -version | awk '/^Xcode/{split($2, v, "."); print v[1]}')
+          [ "$major" -ge 26 ] || { echo "Xcode $major: App Store Connect needs Xcode 26 (the iOS 26 SDK) or later"; exit 1; }
       - name: Distribution certificate, provisioning profile, App Store Connect key
         if: needs.prepare.outputs.dry != 'true'
         env:
@@ -552,6 +561,7 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          IOS_EXPORT_COMPLIANCE_CODE: ${{ vars.IOS_EXPORT_COMPLIANCE_CODE }}
         run: apps/ios/bundle.sh out
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -895,6 +905,26 @@ jobs:
       - name: Install silently, start, uninstall
         shell: pwsh
         run: ./ci/release/install-windows.ps1 -Kind ${{ matrix.kind }} -Dist dist
+
+  play:
+    name: Google Play (ci/release/play.sh)
+    needs: [prepare, android, install-android]
+    if: needs.prepare.outputs.dry != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: release-android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-android
+          path: dist
+      - name: Upload the app bundle and release it on the track
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ vars.PLAY_TRACK }}
+        run: ci/release/play.sh "$V" dist
 
   aur:
     name: AUR (enclave-messenger, enclave-messenger-bin)
