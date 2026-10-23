@@ -30200,7 +30200,7 @@ Under BSD-2-Clause. These packages carry no licence file of their own; the full 
 === alloc-stdlib 0.3.0, boringtun 0.7.1, sonora-aec3 0.2.0
 Under BSD-3-Clause. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
-=== clipboard-win 5.4.1
+=== clipboard-win 5.4.3
 Under BSL-1.0. These packages carry no licence file of their own; the full text of each licence named is in this file (the GNU GPL's is Enclave's own licence).
 
 === bitcoin_hashes 0.14.101
