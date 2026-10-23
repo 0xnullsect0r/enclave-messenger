@@ -910,8 +910,14 @@ pub fn bundle_macos(args: &[String]) -> ExitCode {
                 &dmg,
                 &["--key", &key, "--key-id", &key_id, "--issuer", &issuer],
             )?;
-            run(Command::new("xcrun").args(["stapler", "staple"]).arg(&dmg))?;
-            run(Command::new("xcrun").args(["stapler", "staple"]).arg(&app))?;
+            // Stapling fetches the ticket from Apple too (rc.3's second
+            // try lost its connection there).
+            for f in [&dmg, &app] {
+                retry(&format!("stapling {}", f.display()), &mut || {
+                    run(Command::new("xcrun").args(["stapler", "staple"]).arg(f))
+                        .map(|()| String::new())
+                })?;
+            }
         } else {
             eprintln!("bundle-macos: no App Store Connect key, so not notarized");
         }
@@ -926,25 +932,31 @@ pub fn bundle_macos(args: &[String]) -> ExitCode {
     })())
 }
 
-/// Send `file` to Apple's notary service and wait for its verdict. The
-/// submission and the waiting are separate steps, each tried a few times:
-/// the runner's connection dropping while `notarytool` polls (rc.3) would
-/// otherwise fail the release after Apple had the file.
-fn notarize(file: &Path, auth: &[&str]) -> Result<(), String> {
-    let tries = |what: &str, f: &mut dyn FnMut() -> Result<String, String>| {
-        let mut last = String::new();
-        for n in 1..=5 {
-            match f() {
-                Ok(out) => return Ok(out),
-                Err(e) => {
-                    eprintln!("bundle-macos: {what} failed (try {n} of 5): {e}");
-                    last = e;
+/// `f` until it succeeds, at most five times with a growing pause: for
+/// steps that talk to Apple, whose connection from CI runners drops now
+/// and then.
+fn retry(what: &str, f: &mut dyn FnMut() -> Result<String, String>) -> Result<String, String> {
+    let mut last = String::new();
+    for n in 1..=5 {
+        match f() {
+            Ok(out) => return Ok(out),
+            Err(e) => {
+                eprintln!("bundle-macos: {what} failed (try {n} of 5): {e}");
+                last = e;
+                if n < 5 {
                     std::thread::sleep(std::time::Duration::from_secs(20 * n));
                 }
             }
         }
-        Err(last)
-    };
+    }
+    Err(last)
+}
+
+/// Send `file` to Apple's notary service and wait for its verdict. The
+/// submission and the waiting are separate steps, each retried: the
+/// runner's connection dropping while `notarytool` polls (rc.3) would
+/// otherwise fail the release after Apple had the file.
+fn notarize(file: &Path, auth: &[&str]) -> Result<(), String> {
     let notary = |args: &[&str]| {
         let mut cmd = Command::new("xcrun");
         cmd.arg("notarytool")
@@ -966,7 +978,7 @@ fn notarize(file: &Path, auth: &[&str]) -> Result<(), String> {
             .map_err(|e| format!("notarytool said {text:?}: {e}"))
     };
     let file = file.to_str().ok_or("a path that isn't UTF-8")?;
-    let id = tries("submitting", &mut || {
+    let id = retry("submitting", &mut || {
         let v = notary(&["submit", file])?;
         v["id"]
             .as_str()
@@ -974,7 +986,7 @@ fn notarize(file: &Path, auth: &[&str]) -> Result<(), String> {
             .ok_or_else(|| format!("no id in {v}"))
     })?;
     eprintln!("bundle-macos: notarization {id} submitted");
-    let status = tries("waiting", &mut || {
+    let status = retry("waiting", &mut || {
         // `wait` also fails for a refused file; `info` says which.
         let _ = notary(&["wait", &id, "--timeout", "2h"]);
         let v = notary(&["info", &id])?;
