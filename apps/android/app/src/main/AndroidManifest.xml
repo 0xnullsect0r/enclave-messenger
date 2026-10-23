@@ -96,7 +96,7 @@
             android:foregroundServiceType="specialUse|phoneCall|microphone|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keeps an end-to-end encrypted messenger connected to its mixnet so messages arrive without Google's push service, or fetches them after a push woke it." />
+                android:value="Keeps an end-to-end encrypted messenger connected to its server over Tor so messages arrive without Google's push service, or fetches them after a push woke it." />
         </service>
 
         <service
