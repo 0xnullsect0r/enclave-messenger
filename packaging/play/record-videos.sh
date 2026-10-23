@@ -19,7 +19,12 @@
 set -euo pipefail
 
 REPO=0xnullsect0r/enclave-messenger
+# An SDK this user can write to: a system-wide one (/opt/android-sdk from a
+# distribution package) usually isn't, so then one under the home directory.
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}
+if ! { mkdir -p "$SDK" 2>/dev/null && [ -w "$SDK" ]; }; then
+  SDK=$HOME/Android/Sdk
+fi
 IMAGE="system-images;android-34;google_apis;x86_64"
 OUT=$HOME/enclave-play-videos
 A=emulator-5554
@@ -31,6 +36,7 @@ wait_enter() { read -r -p "   Press Enter $1 " _ </dev/tty; }
 die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- checks
+[ "$(id -u)" != 0 ] || die "Run this as yourself, not with sudo: the emulators and the SDK belong in your home directory."
 [ -r /dev/kvm ] && [ -w /dev/kvm ] || die "No access to /dev/kvm. Enable virtualization in the BIOS, then: sudo usermod -aG kvm \$USER (and log in again)."
 command -v java >/dev/null || die "Java is missing. Arch: sudo pacman -S jdk17-openjdk   Debian/Ubuntu: sudo apt install openjdk-17-jdk-headless"
 for t in curl unzip sha256sum; do command -v $t >/dev/null || die "$t is missing"; done
@@ -72,8 +78,8 @@ done
 if [ -n "${1:-}" ]; then
   V=${1#v}
 else
-  V=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1" \
-    | grep -m1 '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+  releases=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1")
+  V=$(printf '%s\n' "$releases" | grep -m1 '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
 fi
 [ -n "$V" ] || die "Couldn't find the newest release."
 mkdir -p "$OUT/apk"
