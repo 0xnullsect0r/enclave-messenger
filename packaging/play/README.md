@@ -29,7 +29,7 @@ No phone number. No email.
 Your account is a set of keys made on your phone. Add people by scanning their code, sharing a link, or by an optional username.
 
 Hides who you talk to
-Messages travel through Tor and the Nym mixnet, so no server sees your IP address. Every message is the same size and the app sends cover traffic, so even the network can't tell when you're talking.
+Enclave reaches its servers through Tor onion services, so no server sees your IP address. Every message is the same size and the app sends cover traffic, so even the network can't tell when you're talking.
 
 Post-quantum encryption from the first message
 Everything is end-to-end encrypted with keys that resist future quantum computers: messages, photos, files, voice notes, locations, stickers and calls.

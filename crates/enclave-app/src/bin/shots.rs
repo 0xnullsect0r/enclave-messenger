@@ -1,6 +1,9 @@
 //! Headless screenshots of every screen, light and dark, phone and desktop,
 //! rendered with Slint's software renderer. Used for design review and the
 //! screenshot diff in CI: `cargo run -p enclave-app --bin enclave-shots -- OUT_DIR`.
+//! `ENCLAVE_SHOT_SCALE` renders at that many pixels per point (the store
+//! screenshots, packaging/appstore, are 3x), and `ENCLAVE_SHOTS` (names,
+//! comma-separated) renders only those.
 //!
 //! The people and messages here are illustrative placeholders.
 #![deny(unsafe_code)]
@@ -363,7 +366,17 @@ fn group_fixture(base: &Snapshot) -> Snapshot {
     g
 }
 
-fn render(window: &MinimalSoftwareWindow, ui: &AppWindow, size: (u32, u32), out: &Path) {
+fn render(
+    window: &MinimalSoftwareWindow,
+    ui: &AppWindow,
+    size: (u32, u32),
+    scale: f32,
+    out: &Path,
+) {
+    let size = (
+        (size.0 as f32 * scale).round() as u32,
+        (size.1 as f32 * scale).round() as u32,
+    );
     window.set_size(PhysicalSize::new(size.0, size.1));
     ui.window().request_redraw();
     // Let layouts settle (Flickable viewport bindings run after the first pass).
@@ -438,6 +451,18 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let desktop = (1180, 780);
     let phone = (390, 844);
+    let scale = std::env::var("ENCLAVE_SHOT_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(1.0);
+    if scale != 1.0 {
+        window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged {
+            scale_factor: scale,
+        });
+    }
+    let only: Vec<String> = std::env::var("ENCLAVE_SHOTS")
+        .map(|s| s.split(',').map(str::to_string).collect())
+        .unwrap_or_default();
     let data = fixture();
 
     for dark in [false, true] {
@@ -453,8 +478,17 @@ fn main() -> Result<(), slint::PlatformError> {
         {
             ui.global::<Tokens>().set_text_scale(scale);
         }
-        let shot =
-            |name: &str, size| render(&window, &ui, size, &out.join(format!("{name}-{mode}.png")));
+        let shot = |name: &str, size| {
+            if only.is_empty() || only.iter().any(|o| o == name) {
+                render(
+                    &window,
+                    &ui,
+                    size,
+                    scale,
+                    &out.join(format!("{name}-{mode}.png")),
+                );
+            }
+        };
 
         ui.set_screen(Screen::Welcome);
         ui.set_sheet(Sheet::None);
