@@ -118,8 +118,10 @@ features".
   - phoneCall and microphone: "Voice and video calls the user starts or
     answers."
   - mediaProjection: "Screen sharing in a call, started by the user."
-  - Play may ask for a short screen recording of each: record the
-    notification, a call, and a screen share.
+  - Play asks for a short screen recording of each.
+    `packaging/play/record-videos.sh` makes them on two emulators on your
+    computer: it installs the release, says what to tap, and saves the
+    three videos (a call, a screen share, staying connected).
 - **Full-screen intent** (`USE_FULL_SCREEN_INTENT`): "Calling: shows the
   incoming-call screen when someone calls."
 - **Advertising ID:** the app does not use it.
