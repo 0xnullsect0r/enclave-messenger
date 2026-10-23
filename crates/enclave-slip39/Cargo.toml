@@ -13,9 +13,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-hmac = "0.12"
-sha2 = "0.10"
-pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+hmac = "0.13"
+sha2 = "0.11"
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 thiserror = "2"
 zeroize = "1"
 
