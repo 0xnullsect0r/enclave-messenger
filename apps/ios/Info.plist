@@ -53,8 +53,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Export compliance: standard algorithms only, not distributed in
+	     France, for which App Store Connect asks for no documentation
+	     (docs/release-checklist.md). -->
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<false/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Enclave uses the microphone for calls. Your voice is encrypted on this iPhone before it leaves.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

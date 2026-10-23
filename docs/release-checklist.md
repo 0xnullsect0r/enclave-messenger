@@ -15,11 +15,14 @@ including the red-team matrix's "Manual" rows (`redteam-matrix.md`).
   `docker pull ghcr.io/0xnullsect0r/enclave-server:latest` works.
 - [ ] **TestFlight.** Make the public TestFlight link and put it in
   `ci/release/notes.md`.
-- [ ] **Export compliance.** In App Store Connect (App Information → App
-  Encryption Documentation), copy the approved document's key into the
-  repository variable `IOS_EXPORT_COMPLIANCE_CODE`; `apps/ios/bundle.sh`
-  writes it into the app's Info.plist, so builds upload without the
-  question.
+- [x] **Export compliance.** In App Store Connect (App Information → App
+  Encryption Documentation): standard encryption algorithms only, not
+  available in France, so no documentation is needed and the app's
+  Info.plist says `ITSAppUsesNonExemptEncryption` false. Distributing in
+  France would need the French encryption declaration uploaded there, and
+  its approved key in the repository variable `IOS_EXPORT_COMPLIANCE_CODE`
+  (which `apps/ios/bundle.sh` writes into the Info.plist) with the key set
+  back to true.
 - [ ] **Google Play.** Upload the first `Enclave-VERSION.aab` by hand
   (Play Console → Testing → Internal testing; Google takes an app's first
   bundle only that way), then create a Google Cloud service account, invite
