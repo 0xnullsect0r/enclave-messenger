@@ -5,8 +5,10 @@ phone and 2x wide renders of enclave-shots (README.md says how).
     ENCLAVE_SHOT_SCALE=2 ENCLAVE_SHOTS=05-conversation,... enclave-shots WIDE_DIR
     python3 make.py REPO PHONE_DIR WIDE_DIR
 
-Needs Pillow. Writes iphone-6.9/ (1320 x 2868) and ipad-13/ (2752 x 2064)
-next to this file.
+Needs Pillow. Writes, next to this file, the sizes App Store Connect
+takes: iphone-6.3/ (1206 x 2622, iPhone with Dynamic Island, medium: the
+required one), iphone-6.9/ (1320 x 2868, the large one) and ipad-13/
+(2752 x 2064).
 """
 import sys
 from pathlib import Path
@@ -36,12 +38,14 @@ WIDE = [
 ]
 
 
-def frame(canvas_size, shot_path, line, font_size, radius, out):
+def frame(canvas_size, shot_path, line, font_size, radius, out, shot_width=None):
     cw, ch = canvas_size
     canvas = Image.new("RGB", canvas_size, PAPER)
     d = ImageDraw.Draw(canvas)
     font = ImageFont.truetype(SEMI, font_size)
     shot = Image.open(shot_path).convert("RGB")
+    if shot_width and shot_width != shot.width:
+        shot = shot.resize((shot_width, round(shot.height * shot_width / shot.width)), Image.LANCZOS)
     margin = (cw - shot.width) // 2
     top = ch - shot.height - margin
     assert top > font_size * 2, (shot_path, top)
@@ -64,6 +68,8 @@ def frame(canvas_size, shot_path, line, font_size, radius, out):
 for n, (name, line) in enumerate(PHONE, 1):
     frame((1320, 2868), phone_dir / f"{name}-light.png", line, 84, 66,
           here / "iphone-6.9" / f"{n}-{name.removesuffix('-phone')}.png")
+    frame((1206, 2622), phone_dir / f"{name}-light.png", line, 72, 60,
+          here / "iphone-6.3" / f"{n}-{name.removesuffix('-phone')}.png", shot_width=1072)
 for n, (name, line) in enumerate(WIDE, 1):
     frame((2752, 2064), wide_dir / f"{name}-light.png", line, 104, 36,
           here / "ipad-13" / f"{n}-{name}.png")

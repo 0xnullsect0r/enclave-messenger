@@ -3,14 +3,18 @@
 What to enter in App Store Connect for Enclave (bundle ID
 `com.aricummings.enclave`). The screenshots in this folder are rendered by
 `enclave-shots` at 3x (`ENCLAVE_SHOT_SCALE=3`; iPad from the wide layout at
-2x) and framed by `make.py`; every limit below is App Store Connect's.
+2x) and framed by `make.py` at the sizes in Apple's screenshot
+specifications; every limit below is App Store Connect's.
 
 | Folder | App Store Connect field |
 | --- | --- |
-| `iphone-6.9/` (1320 x 2868) | iPhone 6.9" Display screenshots, in file order |
-| `ipad-13/` (2752 x 2064, landscape) | iPad 13" Display screenshots, in file order |
+| `iphone-6.3/` (1206 x 2622) | iPhone with Dynamic Island, medium display (6.3"): **required** |
+| `iphone-6.9/` (1320 x 2868) | iPhone with Dynamic Island, large display (6.9"): optional |
+| `ipad-13/` (2752 x 2064, landscape) | iPad 13" Display: required, as the app runs on iPad |
 
-Apple scales these down for the smaller displays; nothing else is needed.
+Upload each folder in file order to its own display size; a file sent to
+another size is refused for its dimensions. Apple scales them down for the
+smaller displays.
 The app icon comes from the build.
 
 ## App Information
