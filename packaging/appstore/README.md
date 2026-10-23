@@ -17,6 +17,24 @@ another size is refused for its dimensions. Apple scales them down for the
 smaller displays.
 The app icon comes from the build.
 
+## Header and search results (optional)
+
+Creative assets for the Asset Library (App Store Connect → the app →
+Asset Library, or with a new version). Both are optional: without them
+the App Store shows the screenshots. Upload either the two separate
+images or the universal one, which works for both places.
+
+| File | Placement | Size |
+| --- | --- | --- |
+| `header-21x9.png` | Product page header (21:9) | 3840 x 1646 |
+| `search-3x2.png` | Search results (3:2) | 3840 x 2560 |
+| `universal-16x9.png` | Header and search results (16:9) | 5244 x 2950 |
+
+Apple crops them on narrow screens, so the name and the line sit in the
+middle (the header, the universal one) or are large enough to survive a
+crop (search results). They carry no prices, URLs or other platforms'
+names, as Apple's asset guidelines ask.
+
 ## App Information
 
 - **Name** (30 max): `Enclave: Private Messenger`
