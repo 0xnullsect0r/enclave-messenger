@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.1.1" date="2026-10-24">
+      <description>
+        <p>Setting up an account no longer waits forever: Tor could fail to start on a new install, and the app now says so if it can't reach the server.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-10">
       <description>
         <p>The first release.</p>
