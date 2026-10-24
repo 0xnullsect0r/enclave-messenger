@@ -1965,6 +1965,8 @@ impl Engine {
                 if !self.has_server() {
                     return;
                 }
+                // A failure from an earlier try no longer applies.
+                self.status.clear();
                 let name = name.trim().to_string();
                 let protect = !passphrase.is_empty() && matches!(self.mode, Mode::Server { .. });
                 match Client::create(

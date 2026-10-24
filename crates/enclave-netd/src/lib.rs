@@ -1,6 +1,6 @@
 //! The `enclave-netd` program ([`main_with`]; `src/main.rs` runs it).
 //!
-//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--bridge LINE]… [--builtin-bridges] [--snowflake]] [--report]`
+//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--tor-standby] [--bridge LINE]… [--builtin-bridges] [--snowflake]] [--report]`
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
@@ -535,6 +535,11 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         if args.iter().any(|a| a == f) {
             bridges.push(f.into());
         }
+    }
+    // A spare netd's tord stands by until the one in use is gone: one Tor
+    // per state directory.
+    if args.iter().any(|a| a == "--tor-standby") {
+        bridges.push("--standby".into());
     }
     // The mixnet client starts for Nym routes given now, or (`--mixnet`)
     // for ones the vault gives later, from the server list.

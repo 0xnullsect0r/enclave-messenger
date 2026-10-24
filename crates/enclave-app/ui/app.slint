@@ -1418,6 +1418,8 @@ export component AppWindow inherits Window {
     // Maximum privacy is holding what was written here until all three
     // KEMs protect the conversation.
     in property <bool> finishing;
+    // Setting up the account failed (the status line says why).
+    in property <bool> setup-failed;
     in property <bool> gap;
     // The current conversation is on the record; its contact closed their
     // account.
@@ -1983,6 +1985,10 @@ export component AppWindow inherits Window {
         HorizontalLayout { alignment: center; Seal { size: 48px; } }
         Body { text: @tr("Setting up your private address…"); horizontal-alignment: center; }
         Secondary { text: root.status-line; horizontal-alignment: center; }
+        if root.setup-failed: HorizontalLayout {
+            alignment: center;
+            QuietButton { text: @tr("Back"); outlined: true; clicked => { root.screen = Screen.name; } }
+        }
     }
 
     // ------------------------------------------------------ link this device

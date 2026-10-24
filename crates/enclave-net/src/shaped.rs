@@ -83,8 +83,14 @@ struct State {
     /// Servers cover may go to (the home server first).
     servers: Vec<ServerId>,
     keys: HashMap<ServerId, ServerKey>,
+    /// Key fetches in a row that failed, per server.
+    key_failures: HashMap<ServerId, u32>,
     log: Option<Vec<TickLog>>,
 }
+
+/// Failed key fetches in a row after which whoever waits for that
+/// server's key is told why, rather than waiting on.
+const KEY_TRIES: u32 = 3;
 
 /// The shaping wrapper. Create it with [`ShapedTransport::start`].
 pub struct ShapedTransport {
@@ -108,6 +114,7 @@ impl ShapedTransport {
                 polls: VecDeque::new(),
                 servers,
                 keys: HashMap::new(),
+                key_failures: HashMap::new(),
                 log: None,
             })),
             bulk: std::sync::atomic::AtomicUsize::new(0),
@@ -209,6 +216,38 @@ impl ShapedTransport {
             .iter()
             .find(|s| st.keys.get(*s).is_none_or(|k| k.key_id != today))
             .copied()
+    }
+
+    /// Keep a key fetched in an empty poll slot. After [`KEY_TRIES`]
+    /// failures in a row, the requests for that server's key fail with the
+    /// last error (Tor that didn't start, a server that is down), so that
+    /// what waits for them can say so.
+    fn key_fetched(&self, server: ServerId, r: Result<ServerKey>) {
+        let Ok(mut st) = self.state.lock() else {
+            return;
+        };
+        let e = match r {
+            Ok(k) => {
+                st.keys.insert(server, k);
+                st.key_failures.remove(&server);
+                return;
+            }
+            Err(e) => e,
+        };
+        let n = st.key_failures.entry(server).or_default();
+        *n += 1;
+        if *n < KEY_TRIES {
+            return;
+        }
+        st.key_failures.remove(&server);
+        let (failed, keep): (VecDeque<Job>, VecDeque<Job>) = std::mem::take(&mut st.polls)
+            .into_iter()
+            .partition(|j| j.key && j.server == server);
+        st.polls = keep;
+        drop(st);
+        for j in failed {
+            let _ = j.reply.send(Err(NetError::Unreachable(e.to_string())));
+        }
     }
 
     /// Fetch `server`'s key now (in a poll slot), keep it and answer.
@@ -399,11 +438,8 @@ impl ShapedTransport {
                     && let Some(server) = self.missing_key()
                 {
                     log.sizes.push(POLL_LEN);
-                    if let Ok(k) = self.inner.server_key(&server).await
-                        && let Ok(mut st) = self.state.lock()
-                    {
-                        st.keys.insert(server, k);
-                    }
+                    let r = self.inner.server_key(&server).await;
+                    self.key_fetched(server, r);
                 } else if let Some((server, bytes)) = self.cover(size, rng).await {
                     log.sizes.push(bytes.len());
                     self.send_cover(server, bytes);

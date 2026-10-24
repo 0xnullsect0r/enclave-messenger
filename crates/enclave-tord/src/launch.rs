@@ -161,7 +161,8 @@ pub async fn spawn(
 
 impl Starting {
     /// Wait up to `within` for Tor to be up: the running tord, or
-    /// [`BLOCKED`], or why it didn't start.
+    /// [`BLOCKED`], or why it didn't start. While another tord has the
+    /// state directory this waits for it to go first, however long.
     pub async fn ready(self, within: std::time::Duration) -> Result<Running, String> {
         let Starting {
             secret,
@@ -171,10 +172,31 @@ impl Starting {
             child,
         } = self;
         let mut line = String::new();
-        tokio::time::timeout(within, reader.read_line(&mut line))
-            .await
-            .map_err(|_| BLOCKED.to_string())?
-            .map_err(|e| format!("enclave-tord: {e}"))?;
+        let read = |r: std::io::Result<usize>| match r {
+            Ok(0) => Err("enclave-tord: Tor didn't start".to_string()),
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("enclave-tord: {e}")),
+        };
+        read(
+            tokio::time::timeout(within, reader.read_line(&mut line))
+                .await
+                .map_err(|_| BLOCKED.to_string())?,
+        )?;
+        // Another tord has the state directory (one at a time): as long as
+        // that lasts, then the bootstrap's time from when this one has it.
+        if line.trim() == "waiting" {
+            line.clear();
+            read(reader.read_line(&mut line).await)?;
+            if line.trim() != "claimed" {
+                return Err("enclave-tord: Tor didn't start".into());
+            }
+            line.clear();
+            read(
+                tokio::time::timeout(within, reader.read_line(&mut line))
+                    .await
+                    .map_err(|_| BLOCKED.to_string())?,
+            )?;
+        }
         if line.trim() == "blocked" {
             return Err(BLOCKED.into());
         }

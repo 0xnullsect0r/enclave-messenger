@@ -234,7 +234,13 @@ impl PipeTransport {
         extra: &[String],
     ) -> std::io::Result<Self> {
         let mut links = vec![Link::spawn(bin, servers, extra)?];
-        links.extend((0..SPARES).filter_map(|_| Link::spawn(bin, servers, extra).ok()));
+        // The spares' Tor stands by: one Tor per state directory, the one
+        // in use first.
+        let mut spare = extra.to_vec();
+        if extra.iter().any(|a| a == "--tor") {
+            spare.push("--tor-standby".into());
+        }
+        links.extend((0..SPARES).filter_map(|_| Link::spawn(bin, servers, &spare).ok()));
         // Without --await-tickets every netd's client connects by itself.
         let waits = extra.iter().any(|a| a == "--await-tickets");
         for l in &links {

@@ -1,7 +1,7 @@
 //! The `enclave-tord` program ([`main_with`]; `src/bin/enclave-tord.rs`
 //! runs it).
 //!
-//! `enclave-tord --state DIR [--port N] [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--carrier] [--direct] [--report]`
+//! `enclave-tord --state DIR [--port N] [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--carrier] [--standby] [--direct] [--report]`
 //!
 //! Reads the SOCKS5 secret from its stdin (one line), confines itself
 //! (IP sockets only; the filesystem limited to `DIR` and what TLS needs),
@@ -18,6 +18,11 @@
 //! the local mixnet). With `--carrier`, after `ready` its stdin and stdout
 //! carry netd's requests to servers' onion services and its HTTPS fetches
 //! ([`crate::carrier`], RFC 0010) instead of only telling it to exit.
+//!
+//! One tord at a time keeps Tor's state in a `DIR`: arti's cache can't be
+//! set up by two at once. One that finds `DIR` taken prints `waiting`,
+//! and `claimed` once it has it. With `--standby` (a spare netd's) it
+//! waits for another to take `DIR` first, then for that one to go.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -72,6 +77,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     }
     let report = args.iter().any(|a| a == "--report");
     let carrier = args.iter().any(|a| a == "--carrier");
+    let standby = args.iter().any(|a| a == "--standby");
     let Some(state) = flag("--state").map(std::path::PathBuf::from) else {
         eprintln!("enclave-tord: --state DIR is required");
         return ExitCode::FAILURE;
@@ -138,11 +144,22 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
         let secret = Arc::new(secret.trim().to_string());
-        let dialer: Arc<dyn crate::Dialer> =
-            match tokio::time::timeout(BOOTSTRAP, dialer(direct, &state, &bridges, &methods)).await {
+        // The state directory, ours alone while we run.
+        let _claim = match claim(&state, standby, &mut stdin, &mut stdout).await {
+            Ok(Some(c)) => c,
+            // netd went away while we waited.
+            Ok(None) => return ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("enclave-tord: {}: {e}", state.join(CLAIM).display());
+                return ExitCode::FAILURE;
+            }
+        };
+        let boot = tokio::time::timeout(BOOTSTRAP, dialer(direct, &state, &bridges, &methods));
+        let dialer: Arc<dyn crate::Dialer> = tokio::select! {
+            r = boot => match r {
                 Ok(Ok(d)) => d,
                 Ok(Err(e)) => {
-                    eprintln!("enclave-tord: {e}");
+                    eprintln!("enclave-tord: {}", chain(&e));
                     return ExitCode::FAILURE;
                 }
                 Err(_) => {
@@ -150,7 +167,11 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                     let _ = say(&mut stdout, "blocked").await;
                     return ExitCode::FAILURE;
                 }
-            };
+            },
+            // netd went away while Tor came up: so do we, rather than
+            // keep the state directory from the next one.
+            () = gone(&mut stdin) => return ExitCode::SUCCESS,
+        };
         // The port the app chose, where helpers share its process (the
         // proxy variables name it), else any.
         let port: u16 = flag("--port").and_then(|p| p.parse().ok()).unwrap_or(0);
@@ -187,6 +208,79 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         drop(managed);
         ExitCode::SUCCESS
     })
+}
+
+/// The file in the state directory a running tord holds locked.
+const CLAIM: &str = "enclave-tord.lock";
+
+/// How often a waiting tord looks at the state directory again.
+const CLAIM_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Take the state directory for this process: lock [`CLAIM`] in it,
+/// waiting (and saying so: `waiting`, then `claimed`) while another tord
+/// has it. A `standby` one waits until it has seen another holding it, so
+/// the netd in use always gets Tor first. `None`: our stdin closed while
+/// we waited.
+async fn claim(
+    state: &std::path::Path,
+    standby: bool,
+    stdin: &mut (impl tokio::io::AsyncBufRead + Unpin),
+    out: &mut tokio::fs::File,
+) -> std::io::Result<Option<std::fs::File>> {
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state.join(CLAIM))?;
+    let mut seen_held = !standby;
+    let mut waited = false;
+    loop {
+        match f.try_lock() {
+            Ok(()) if seen_held => break,
+            // Not taken yet by the one we stand in for.
+            Ok(()) => f.unlock()?,
+            Err(std::fs::TryLockError::WouldBlock) => seen_held = true,
+            Err(std::fs::TryLockError::Error(e)) => return Err(e),
+        }
+        if !waited {
+            say(out, "waiting").await?;
+            waited = true;
+        }
+        tokio::select! {
+            () = tokio::time::sleep(CLAIM_POLL) => {}
+            () = gone(stdin) => return Ok(None),
+        }
+    }
+    if waited {
+        say(out, "claimed").await?;
+    }
+    Ok(Some(f))
+}
+
+/// Returns once `stdin` has closed. Nothing is read from it: before
+/// `ready` netd sends nothing more.
+async fn gone(stdin: &mut (impl tokio::io::AsyncBufRead + Unpin)) {
+    loop {
+        match stdin.fill_buf().await {
+            Ok(b) if !b.is_empty() => tokio::time::sleep(CLAIM_POLL).await,
+            _ => return,
+        }
+    }
+}
+
+/// An error with what caused it (arti's say which file, which check).
+fn chain(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut s = e.to_string();
+    let mut cause = e.source();
+    while let Some(c) = cause {
+        let c_s = c.to_string();
+        if !s.contains(&c_s) {
+            s.push_str(": ");
+            s.push_str(&c_s);
+        }
+        cause = c.source();
+    }
+    s
 }
 
 /// How long lyrebird may take to name its transports' ports.

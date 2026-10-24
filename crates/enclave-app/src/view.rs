@@ -497,6 +497,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_code_words(strings(&s.code_words));
     ui.set_code_words_english(s.code_words_english);
     ui.set_status_line(crate::i18n::tr(&s.status).into());
+    ui.set_setup_failed(s.status.starts_with("Couldn't set up your address"));
     ui.set_recovery_words(strings(&s.recovery_words));
     ui.set_recovery_saved(s.recovery_saved);
     ui.set_words_language(s.words_language.clone().into());

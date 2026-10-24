@@ -293,3 +293,43 @@ async fn the_first_tick_has_both_sizes_with_a_poll_waiting() {
         "{log:?}"
     );
 }
+
+/// A network whose server can't be reached (Tor that didn't start).
+struct Down;
+
+#[async_trait::async_trait]
+impl Transport for Down {
+    async fn exchange(&self, _: &ServerId, _: Vec<u8>) -> Result<Vec<u8>> {
+        Err(NetError::Unreachable("Tor didn't start".into()))
+    }
+    async fn server_key(&self, _: &ServerId) -> Result<ServerKey> {
+        Err(NetError::Unreachable("Tor didn't start".into()))
+    }
+    fn now(&self) -> u64 {
+        86_400 * 20_000
+    }
+}
+
+/// A key that can't be fetched fails the request for it after a few
+/// tries, with why, instead of leaving it waiting forever (setting up an
+/// account waits for the home server's key); the ticks keep their shape.
+#[tokio::test(start_paused = true)]
+async fn a_key_that_cant_be_fetched_fails_its_request() {
+    let s = ShapedTransport::start(Arc::new(Down), Shaping::On(Profile::Foreground), vec![HOME]);
+    s.record();
+    let k = {
+        let s = Arc::clone(&s);
+        tokio::spawn(async move { s.server_key(&HOME).await })
+    };
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    assert!(k.is_finished(), "it doesn't wait on");
+    let e = k.await.unwrap().unwrap_err();
+    assert!(e.to_string().contains("Tor didn't start"), "{e}");
+    let log = s.take_log();
+    assert!(!log.is_empty());
+    assert!(
+        log.iter()
+            .all(|t| t.sizes == vec![UNIT_LEN, POLL_LEN] || t.sizes == vec![POLL_LEN]),
+        "{log:?}"
+    );
+}
