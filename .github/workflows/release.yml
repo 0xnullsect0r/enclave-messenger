@@ -486,9 +486,12 @@ jobs:
           set -euo pipefail
           ls -d /Applications/Xcode*.app
           sudo xcode-select -s "/Applications/Xcode_${IOS_XCODE}.app"
-          xcodebuild -version
+          # Read whole: grep -q closing the pipe early makes xcodebuild
+          # abort (SIGPIPE), which pipefail counts as a failure.
+          v=$(xcodebuild -version)
+          echo "$v"
           xcrun --sdk iphoneos --show-sdk-version
-          xcodebuild -version | grep -q "^Xcode ${IOS_XCODE}" \
+          grep -q "^Xcode ${IOS_XCODE}\$" <<<"$v" \
             || { echo "not Xcode ${IOS_XCODE}"; exit 1; }
       - name: Distribution certificate, provisioning profile, App Store Connect key
         if: needs.prepare.outputs.dry != 'true'
