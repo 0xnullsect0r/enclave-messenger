@@ -56,6 +56,22 @@ service takes at most 16 streams per circuit and 4,096 in all.
 There is nothing to pay for and no account to fund. Tor is free and run by
 volunteers. The Nym mixnet is optional (below).
 
+## Behind a reverse proxy
+
+The front serves HTTPS with the Enclave TLS profile only (a post-quantum
+handshake), so a reverse proxy that decrypts and re-encrypts, such as
+Nginx Proxy Manager, gets no connection from it (the proxy answers 502).
+Devices don't need the front (they reach the server over Tor), but other
+operators and `enclave-admin descriptor fetch` do. Pass the stack's TLS
+through by server name instead. For Nginx Proxy Manager,
+`npm-passthrough.sh DOMAIN FRONT_IP [NPM_DIR]` does it on the proxy
+machine (an `ssl_preread` stream listener in front of NPM's own HTTPS),
+and NPM keeps port 80, forwarding `DOMAIN` to `http://FRONT_IP:80` with
+no SSL so the front's ACME answers get through. Test with a client that
+offers the hybrid group, for example
+`curl --curves SecP384r1MLKEM1024 https://DOMAIN/.well-known/enclave`
+(OpenSSL 3.5 or newer); a plain `curl` is refused, as intended.
+
 ## Joining the foundation's list
 
 Sign descriptors and send them to the foundation:
