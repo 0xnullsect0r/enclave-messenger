@@ -94,6 +94,8 @@ built() {
   plist BuildMachineOSBuild string "$(sw_vers -buildVersion)"
 }
 built "$app/Info.plist"
+# The privacy manifest: required-reason APIs and the data App Privacy lists.
+cp "$ROOT/apps/ios/PrivacyInfo.xcprivacy" "$app/"
 
 # The notification service extension (docs/10-push.md §5.1): the Swift
 # class calling crates/enclave-nse, as an .appex in PlugIns.
@@ -108,6 +110,7 @@ xcrun --sdk "$SDK" swiftc -target "$swift_target" -O -parse-as-library -applicat
   -Xlinker -e -Xlinker _NSExtensionMain -o "$nse/EnclaveNSE"
 sed -e "s/@VERSION@/${V%%-*}/" -e "s/@BUILD@/$BUILD/" "$ROOT/apps/ios/nse/Info.plist" > "$nse/Info.plist"
 built "$nse/Info.plist"
+cp "$ROOT/apps/ios/nse/PrivacyInfo.xcprivacy" "$nse/"
 
 # The broadcast upload extension (docs/11-calls.md §8.3): sharing the
 # screen in a video call; Swift only.
