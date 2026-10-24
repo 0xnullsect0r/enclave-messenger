@@ -65,9 +65,12 @@ Devices don't need the front (they reach the server over Tor), but other
 operators and `enclave-admin descriptor fetch` do. Pass the stack's TLS
 through by server name instead. For Nginx Proxy Manager,
 `npm-passthrough.sh DOMAIN FRONT_IP [NPM_DIR]` does it on the proxy
-machine (an `ssl_preread` stream listener in front of NPM's own HTTPS),
-and NPM keeps port 80, forwarding `DOMAIN` to `http://FRONT_IP:80` with
-no SSL so the front's ACME answers get through. Test with a client that
+machine: an `ssl_preread` stream listener in front of NPM's own HTTPS,
+and, since NPM keeps port 80, a server that forwards `DOMAIN`'s plain HTTP
+to `http://FRONT_IP:80` so the front's ACME answers get through (both are
+NPM custom files, so they don't show in its web interface). Too many
+failed ACME checks make Let's Encrypt refuse new orders for an hour; the
+front's log says until when. Test with a client that
 offers the hybrid group, for example
 `curl --curves SecP384r1MLKEM1024 https://DOMAIN/.well-known/enclave`
 (OpenSSL 3.5 or newer); a plain `curl` is refused, as intended.

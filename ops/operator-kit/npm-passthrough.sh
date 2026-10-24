@@ -19,8 +19,9 @@
 # is kept as *.before-enclave) and recreates the container. NPM's sites
 # then see 127.0.0.1 as the client address.
 #
-# Port 80 stays with NPM: edit the DOMAIN proxy host to forward http to
-# FRONT_IP port 80 with SSL "None", so the front's ACME answers get through.
+# Port 80 stays with NPM, which hands DOMAIN's plain-HTTP requests (the
+# front's ACME answers and its redirect) to FRONT_IP:80 through a second
+# custom file, http_top.conf, read before NPM's own proxy hosts.
 set -euo pipefail
 
 die() { echo "npm-passthrough: $*" >&2; exit 1; }
@@ -41,11 +42,13 @@ F=$(ls docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/nu
 DATA=$(docker inspect "$C" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}')
 [ -n "$DATA" ] || die "can't find the /data volume of $C"
 CONF=$DATA/nginx/custom/stream.conf
+HTTP=$DATA/nginx/custom/http_top.conf
 echo "container $C, data $DATA, compose file $DIR/$F"
 
 if [ -n "$UNDO" ]; then
   [ -f "$F.before-enclave" ] && cp "$F.before-enclave" "$F"
   rm -f "$CONF"
+  grep -q 'npm-passthrough.sh' "$HTTP" 2>/dev/null && rm -f "$HTTP"
   docker compose up -d
   echo "undone: NPM has 443 again and the passthrough is gone"
   exit 0
@@ -69,8 +72,28 @@ server {
 }
 NGINX
 sed -i -e "s/@DOMAIN@/$DOMAIN/g" -e "s/@IP@/$IP/g" "$CONF"
+HTTP_NEW=
+if [ ! -e "$HTTP" ] || grep -q 'npm-passthrough.sh' "$HTTP"; then
+  HTTP_NEW=1
+  cat > "$HTTP" <<NGINX
+# Enclave (ops/operator-kit/npm-passthrough.sh): $DOMAIN's plain HTTP (ACME
+# answers, the redirect to HTTPS) to its front.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+    location / {
+        proxy_pass http://$IP:80;
+        proxy_set_header Host \$host;
+    }
+}
+NGINX
+else
+  echo "note: $HTTP already exists; add a port-80 server for $DOMAIN to http://$IP:80 to it by hand"
+fi
 if ! docker exec "$C" nginx -t; then
   rm -f "$CONF"
+  [ -n "$HTTP_NEW" ] && rm -f "$HTTP"
   [ -f "$CONF.before-enclave" ] && mv "$CONF.before-enclave" "$CONF"
   die "nginx refused the config; nothing changed"
 fi
@@ -86,5 +109,5 @@ sleep 5
 docker ps --filter "name=$C" --format '{{.Names}}  {{.Ports}}'
 echo
 echo "done. $DOMAIN's HTTPS now goes straight to $IP:443."
-echo "In NPM's web interface, set the $DOMAIN proxy host to http://$IP:80 with SSL \"None\"."
+echo "Its plain HTTP goes to $IP:80, so the front can get its certificate."
 echo "Undo: run this script again with --undo $DIR"
