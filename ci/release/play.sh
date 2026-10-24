@@ -58,8 +58,19 @@ api() {
 base=https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PKG/edits
 edit=$(api POST "$base" | get id)
 echo "play: uploading Enclave-$V.aab ($(du -h "$aab" | cut -f1))"
-code=$(api POST "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PKG/edits/$edit/bundles?uploadType=media" \
-  --max-time 1800 -H 'Content-Type: application/octet-stream' --data-binary @"$aab" | get versionCode)
+# A tag pushed again (a release whose other jobs failed): Play has this
+# version code already and takes no second upload of it.
+if ! up=$(api POST "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PKG/edits/$edit/bundles?uploadType=media" \
+  --max-time 1800 -H 'Content-Type: application/octet-stream' --data-binary @"$aab" 2> "$work/err"); then
+  if grep -qi 'version code .* already been used' "$work/err"; then
+    echo "::warning::Google Play already has this version code (an earlier run of this tag uploaded it); nothing to do"
+    api DELETE "$base/$edit" > /dev/null || true
+    exit 0
+  fi
+  cat "$work/err" >&2
+  exit 1
+fi
+code=$(printf '%s' "$up" | get versionCode)
 echo "play: version code $code"
 
 release() {

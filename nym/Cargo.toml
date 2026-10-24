@@ -30,3 +30,10 @@ libsqlite3-sys = { path = "../third_party/libsqlite3-sys-030" }
 i-slint-backend-android-activity = { path = "../third_party/i-slint-backend-android-activity" }
 rav1d = { path = "../third_party/rav1d" }
 candle-core = { path = "../third_party/candle-core" }
+
+# Build dependencies (proc-macros, build scripts) unstripped: on macOS 27
+# with Xcode 27, cargo's default stripping leaves a proc-macro dylib that
+# dyld refuses to load ("mis-aligned LINKEDIT string pool"), so the iOS
+# build failed at the first one. They run while building and never ship.
+[profile.release.build-override]
+strip = "none"

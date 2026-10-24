@@ -84,6 +84,13 @@ overflow-checks = true
 # (`crates/enclave-crypto/tests/ctgrind.rs`) reports; so these crates,
 # and enclave-crypto (where fiat-crypto's field arithmetic is inlined),
 # are built without them.
+# Build dependencies (proc-macros, build scripts) unstripped: on macOS 27
+# with Xcode 27, cargo's default stripping leaves a proc-macro dylib that
+# dyld refuses to load ("mis-aligned LINKEDIT string pool"), so the iOS
+# build failed at the first one. They run while building and never ship.
+[profile.release.build-override]
+strip = "none"
+
 [profile.release.package.enclave-crypto]
 overflow-checks = false
 
