@@ -1,0 +1,38 @@
+name: Onion probe
+# Is a server's onion service reachable over the live Tor network? Builds
+# enclave-tord as shipped and asks the onion service for the server's key
+# bundle through the carrier (ci/onion/carrier-bench.py), the way netd
+# does on a device. For when devices can't reach a server; never blocking.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: The server's onion address (NAME.onion)
+        required: true
+  push:
+    branches: ['**']
+    paths:
+      - .github/workflows/onion-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # The foundation list's first server (packaging/foundation), when run
+      # by a push.
+      HOST: ${{ inputs.host || 'fonbgorfc4bif2v7eerlnony46nhx5ysaqirpvuslgop3lch36jujryd.onion' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - run: cargo build --release --locked -p enclave-tord
+      - name: The key bundle through the carrier, over Tor
+        run: |
+          set -euo pipefail
+          python3 ci/onion/carrier-bench.py target/release/enclave-tord "$(mktemp -d)" "$HOST" \
+            --rounds 5 --patience 600 --out probe.json
+          { echo "### $HOST"; echo '```json'; cat probe.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
