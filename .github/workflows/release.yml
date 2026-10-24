@@ -462,11 +462,16 @@ jobs:
   ios:
     name: iOS (.ipa; TestFlight on a release)
     needs: prepare
-    # App Store Connect takes builds made with the iOS 26 SDK or later.
-    runs-on: macos-26
+    # App Store Connect takes only builds made with the newest released
+    # Xcode and SDK (or their release candidates): ITMS-90111 refused 0.1.0,
+    # made with Xcode 26.6 once Xcode 27 was out. GitHub's Xcode 27 image
+    # is the `xcode-27` runner; IOS_XCODE picks the release on it (not its
+    # betas). Move both on when Apple ships the next major Xcode.
+    runs-on: xcode-27
     timeout-minutes: 180
     environment: ${{ needs.prepare.outputs.dry == 'true' && 'dry-run' || 'release-apple' }}
     env:
+      IOS_XCODE: "27.1"
       ENCLAVE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -476,11 +481,15 @@ jobs:
           go-version: "1.26"
           cache: false
       - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim wasm32-wasip1
-      - name: Xcode 26 or later
+      - name: Xcode ${{ env.IOS_XCODE }}
         run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s "/Applications/Xcode_${IOS_XCODE}.app"
           xcodebuild -version
-          major=$(xcodebuild -version | awk '/^Xcode/{split($2, v, "."); print v[1]}')
-          [ "$major" -ge 26 ] || { echo "Xcode $major: App Store Connect needs Xcode 26 (the iOS 26 SDK) or later"; exit 1; }
+          xcrun --sdk iphoneos --show-sdk-version
+          xcodebuild -version | grep -q "^Xcode ${IOS_XCODE}" \
+            || { echo "not Xcode ${IOS_XCODE}"; exit 1; }
       - name: Distribution certificate, provisioning profile, App Store Connect key
         if: needs.prepare.outputs.dry != 'true'
         env:
