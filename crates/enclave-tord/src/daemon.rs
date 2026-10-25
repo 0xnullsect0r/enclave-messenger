@@ -135,7 +135,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     let Ok(io) = enclave_platform::process::stdio() else {
         return ExitCode::FAILURE;
     };
-    rt.block_on(async move {
+    let code = rt.block_on(async move {
         let mut stdin = tokio::io::BufReader::new(tokio::fs::File::from_std(io.input));
         let mut stdout = tokio::fs::File::from_std(io.output);
         let mut secret = String::new();
@@ -207,7 +207,12 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         }
         drop(managed);
         ExitCode::SUCCESS
-    })
+    });
+    // Gone at once, without waiting for work still on the runtime's
+    // threads: on Windows a tord whose netd went away otherwise stayed,
+    // holding the state directory from the next one.
+    rt.shutdown_background();
+    code
 }
 
 /// The file in the state directory a running tord holds locked.

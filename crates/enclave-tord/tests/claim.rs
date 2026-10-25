@@ -113,10 +113,12 @@ fn a_standby_tord_lets_the_one_in_use_go_first() {
     );
     std::thread::sleep(Duration::from_secs(1));
     let used = start(&state, false);
-    assert_eq!(
-        used.next(Duration::from_secs(3)),
-        None,
-        "no wait for the one in use"
+    // It goes straight to Tor: `ready` where Tor is reachable, nothing yet
+    // where it isn't, never `waiting`.
+    let said = used.next(Duration::from_secs(3));
+    assert!(
+        said.as_deref().is_none_or(|l| l.starts_with("ready ")),
+        "no wait for the one in use: {said:?}"
     );
     assert_eq!(spare.next(Duration::from_secs(1)), None);
     used.stop();
