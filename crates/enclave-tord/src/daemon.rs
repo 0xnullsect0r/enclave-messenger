@@ -240,12 +240,18 @@ async fn claim(
     let mut seen_held = !standby;
     let mut waited = false;
     loop {
-        match f.try_lock() {
-            Ok(()) if seen_held => break,
+        match try_lock(&f) {
+            Ok(true) if seen_held => break,
             // Not taken yet by the one we stand in for.
-            Ok(()) => f.unlock()?,
-            Err(std::fs::TryLockError::WouldBlock) => seen_held = true,
-            Err(std::fs::TryLockError::Error(e)) => return Err(e),
+            Ok(true) => unlock(&f)?,
+            Ok(false) => seen_held = true,
+            // A system without file locks: Tor starts unguarded rather than
+            // not at all.
+            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {
+                eprintln!("enclave-tord: no lock for {}: {e}", state.display());
+                break;
+            }
+            Err(e) => return Err(e),
         }
         if !waited {
             say(out, "waiting").await?;
@@ -260,6 +266,38 @@ async fn claim(
         say(out, "claimed").await?;
     }
     Ok(Some(f))
+}
+
+/// Lock `f` for this process alone, if no one has: `false` when another
+/// holds it. flock on Unix (std's lock is missing on Android), std's on
+/// Windows.
+#[cfg(unix)]
+fn try_lock(f: &std::fs::File) -> std::io::Result<bool> {
+    use rustix::fs::{FlockOperation, flock};
+    match flock(f, FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(true),
+        Err(e) if e == rustix::io::Errno::WOULDBLOCK => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+#[cfg(unix)]
+fn unlock(f: &std::fs::File) -> std::io::Result<()> {
+    rustix::fs::flock(f, rustix::fs::FlockOperation::Unlock).map_err(Into::into)
+}
+
+#[cfg(not(unix))]
+fn try_lock(f: &std::fs::File) -> std::io::Result<bool> {
+    match f.try_lock() {
+        Ok(()) => Ok(true),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(false),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
+#[cfg(not(unix))]
+fn unlock(f: &std::fs::File) -> std::io::Result<()> {
+    f.unlock()
 }
 
 /// Returns once `stdin` has closed. Nothing is read from it: before

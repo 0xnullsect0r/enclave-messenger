@@ -450,6 +450,9 @@ jobs:
             adb shell dumpsys activity activities | grep -iE 'aricummings|ResumedActivity' | head -20
             adb shell dumpsys window | grep -iE 'mCurrentFocus|mFocusedApp' | head -5
             adb shell pidof com.aricummings.enclave
+            # Tor started in the app's process (0.1.1's stopped at a lock std
+            # doesn't implement on Android, so no account could be set up).
+            ! adb logcat -d -v brief -s enclave | grep -E "enclave-tord: |Tor didn.t start"
             # uiautomator reads the accessibility tree TalkBack reads (PC-28):
             # the first dump turns accessibility on and the app sends its tree,
             # so the second has the welcome screen's controls in it.
