@@ -170,6 +170,9 @@ pub(super) fn stop_screen_capture() {
     });
 }
 
+/// Nothing before the event loop on Android.
+pub fn prepare() {}
+
 /// Register the activity's native methods.
 pub fn init() {
     let _ = with(|env, activity| {

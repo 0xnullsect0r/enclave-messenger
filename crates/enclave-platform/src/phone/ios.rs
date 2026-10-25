@@ -36,9 +36,9 @@ use objc2_ui_kit::{
     UIApplicationKeyboardExtensionPointIdentifier, UIApplicationState,
     UIApplicationWillResignActiveNotification, UIBlurEffect, UIBlurEffectStyle,
     UIDocumentPickerDelegate, UIDocumentPickerViewController, UIPasteboard,
-    UIPasteboardOptionExpirationDate, UIPasteboardOptionLocalOnly, UIScreen,
-    UIScreenCapturedDidChangeNotification, UIView, UIViewAutoresizing, UIVisualEffectView,
-    UIWindow,
+    UIPasteboardOptionExpirationDate, UIPasteboardOptionLocalOnly, UISceneDidActivateNotification,
+    UISceneWillDeactivateNotification, UIScreen, UIScreenCapturedDidChangeNotification, UIView,
+    UIViewAutoresizing, UIVisualEffectView, UIWindow, UIWindowScene,
 };
 use objc2_uniform_type_identifiers::{UTType, UTTypeData, UTTypeImage, UTTypeItem};
 use objc2_user_notifications::{
@@ -95,9 +95,19 @@ fn app(_mtm: MainThreadMarker) -> Option<Retained<UIApplication>> {
     }
 }
 
+/// The key window: its window scene's (the app runs under the UIScene
+/// lifecycle, `prepare`), or the app's while no scene is connected.
 #[allow(deprecated)]
 fn key_window(mtm: MainThreadMarker) -> Option<Retained<UIWindow>> {
-    app(mtm)?.keyWindow()
+    let app = app(mtm)?;
+    app.connectedScenes()
+        .iter()
+        .filter_map(|s| {
+            s.downcast_ref::<UIWindowScene>()
+                .and_then(|w| w.keyWindow())
+        })
+        .next()
+        .or_else(|| app.keyWindow())
 }
 
 /// Lay a blur over the window, or take it away.
@@ -175,7 +185,8 @@ extern "C-unwind" fn registered(_: &AnyObject, _: Sel, _: &AnyObject, token: &NS
     super::emit(super::Event::PushToken(2, hex));
 }
 
-/// A link opened with the app (an `enclave:` URL): to the Add screen.
+/// A link opened with the app (an `enclave:` URL): to the Add screen. The
+/// app delegate's way, from before the UIScene lifecycle (`prepare`).
 extern "C-unwind" fn open_url(
     _: &AnyObject,
     _: Sel,
@@ -189,6 +200,75 @@ extern "C-unwind" fn open_url(
             Bool::YES
         }
         None => Bool::NO,
+    }
+}
+
+/// Links opened with the app while it runs, to the scene's delegate
+/// (`scene:openURLContexts:`).
+extern "C-unwind" fn open_url_contexts(_: &AnyObject, _: Sel, _: &AnyObject, contexts: &AnyObject) {
+    open_contexts(contexts);
+}
+
+/// The scene connecting (`scene:willConnectToSession:options:`): a link the
+/// app was opened with comes in its options.
+extern "C-unwind" fn will_connect(
+    _: &AnyObject,
+    _: Sel,
+    _: &AnyObject,
+    _: &AnyObject,
+    options: &AnyObject,
+) {
+    // SAFETY: `UISceneConnectionOptions.URLContexts`, a set (maybe empty).
+    let contexts: Option<Retained<AnyObject>> = unsafe { msg_send![options, URLContexts] };
+    if let Some(c) = contexts {
+        open_contexts(&c);
+    }
+}
+
+/// Each `UIOpenURLContext` of a set, as a link to open.
+fn open_contexts(set: &AnyObject) {
+    // SAFETY: an `NSSet` of `UIOpenURLContext`s, each with a `URL`.
+    let all: Retained<NSArray<AnyObject>> = unsafe { msg_send![set, allObjects] };
+    for context in all.iter() {
+        // SAFETY: `UIOpenURLContext.URL`, an `NSURL`.
+        let url: Option<Retained<NSURL>> = unsafe { msg_send![&*context, URL] };
+        if let Some(s) = url.and_then(|u| u.absoluteString()) {
+            super::emit(super::Event::OpenLink(s.to_string()));
+        }
+    }
+}
+
+/// Before the event loop starts. The app adopts the UIScene lifecycle,
+/// which apps built with the iOS 27 SDK must (UIKit aborts one that
+/// doesn't): Info.plist's `UIApplicationSceneManifest` names Slint's scene
+/// delegate, which attaches the window to the scene. Links opened with the
+/// app then go to that delegate instead of the app's, so it gets the two
+/// methods that hand them on, before UIKit connects the scene.
+pub fn prepare() {
+    let Some(class) = AnyClass::get(c"SlintWindowSceneDelegate") else {
+        return;
+    };
+    // SAFETY: each function matches its selector's signature, and the type
+    // encoding says so.
+    unsafe {
+        add_method(
+            class,
+            sel!(scene:openURLContexts:),
+            std::mem::transmute::<
+                extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &AnyObject),
+                objc2::runtime::Imp,
+            >(open_url_contexts),
+            c"v@:@@",
+        );
+        add_method(
+            class,
+            sel!(scene:willConnectToSession:options:),
+            std::mem::transmute::<
+                extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &AnyObject, &AnyObject),
+                objc2::runtime::Imp,
+            >(will_connect),
+            c"v@:@@@",
+        );
     }
 }
 
@@ -221,14 +301,27 @@ pub fn init() {
             UIScreenCapturedDidChangeNotification,
         )
     };
-    observe(resign, move || {
-        cover(mtm, secure());
-        super::emit(super::Event::Visible(false));
-    });
-    observe(active, move || {
-        cover(mtm, secure() && captured(mtm));
-        super::emit(super::Event::Visible(true));
-    });
+    // The scene's own, too: under the UIScene lifecycle they are the ones
+    // UIKit documents (the app's still come; doing it twice is harmless).
+    // SAFETY: constants UIKit defines.
+    let (deactivate, activate) = unsafe {
+        (
+            UISceneWillDeactivateNotification,
+            UISceneDidActivateNotification,
+        )
+    };
+    for name in [resign, deactivate] {
+        observe(name, move || {
+            cover(mtm, secure());
+            super::emit(super::Event::Visible(false));
+        });
+    }
+    for name in [active, activate] {
+        observe(name, move || {
+            cover(mtm, secure() && captured(mtm));
+            super::emit(super::Event::Visible(true));
+        });
+    }
     observe(capture, move || cover(mtm, secure() && captured(mtm)));
     cover(mtm, secure() && captured(mtm));
 

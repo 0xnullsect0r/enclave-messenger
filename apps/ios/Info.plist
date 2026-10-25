@@ -86,5 +86,26 @@
 			</array>
 		</dict>
 	</array>
+	<!-- The UIScene lifecycle, which apps built with the iOS 27 SDK must
+	     adopt (UIKit aborts one that doesn't, at launch). Slint's delegate
+	     attaches the window to the scene; enclave-platform's prepare() adds
+	     the opening of links to it. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>SlintWindowSceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 </dict>
 </plist>

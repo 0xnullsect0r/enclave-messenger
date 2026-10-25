@@ -2085,7 +2085,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         ui.hide()
     }
     #[cfg(not(desktop))]
-    ui.run()
+    {
+        enclave_platform::phone::prepare();
+        ui.run()
+    }
 }
 
 const USAGE: &str = "\

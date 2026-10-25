@@ -142,6 +142,12 @@ pub(crate) fn emit(e: Event) {
     }
 }
 
+/// Before the event loop starts (iOS: the scene delegate's link handling;
+/// Android: nothing). Once.
+pub fn prepare() {
+    imp::prepare();
+}
+
 /// Set up what the app needs from the platform (Android: the native
 /// methods; iOS: screen security and the keyboard rule). Once, at start.
 pub fn init() {
