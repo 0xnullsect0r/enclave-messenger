@@ -73,7 +73,7 @@ jobs:
             flatpak run --command=test com.aricummings.Enclave -x "/app/lib/enclave-messenger/$p"
           done
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: flathub-manifest
           path: flathub/
@@ -83,7 +83,7 @@ jobs:
     if: github.event_name != 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo xtask dudect
 
   shape:
@@ -91,7 +91,7 @@ jobs:
     if: github.event_name != 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo xtask shape
 
   fuzz:
@@ -115,7 +115,7 @@ jobs:
         working-directory: fuzz
         run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=600 -rss_limit_mb=4096
       - if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/
@@ -184,7 +184,7 @@ jobs:
           ENCLAVE_CALL_SPEECH="$RUNNER_TEMP/jfk.wav" cargo test --locked -p enclave-vault --test calls call_quality_under_loss -- --nocapture
           "$RUNNER_TEMP/py/bin/python" -I ci/calls/pesq.py "$ENCLAVE_CALL_QUALITY_DIR"
       - if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: call-quality
           path: ${{ runner.temp }}/calls
@@ -219,7 +219,7 @@ jobs:
             nix hash path "$(cat "hashes/$p.path")" > "hashes/$p.nar"
             echo "$p: $(cat "hashes/$p.path") $(cat "hashes/$p.nar")"
           done
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nix-${{ matrix.runner }}
           path: hashes
