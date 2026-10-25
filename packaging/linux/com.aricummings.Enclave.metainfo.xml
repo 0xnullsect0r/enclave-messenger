@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.1.3" date="2026-10-25">
+      <description>
+        <p>Buttons work on the first click. Setting up an account shows each step. Linking a device keeps showing the same words, and a scanned link no longer runs off the screen. Phones don't ask for a passphrase when setting up.</p>
+      </description>
+    </release>
     <release version="0.1.2" date="2026-10-25">
       <description>
         <p>Tor starts again on Android, where 0.1.1 couldn't set up an account ("no Tor"). The AUR source package builds.</p>
