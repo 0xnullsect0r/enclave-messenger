@@ -137,14 +137,37 @@ export component SealClose inherits Rectangle {
 // Buttons: 48 px minimum target, 2 px focus ring, sentence case labels.
 // ---------------------------------------------------------------------------
 
+// A turning arc while something takes a moment (a request over Tor can
+// take seconds).
+export component Spinner inherits Rectangle {
+    in property <length> size: 16px;
+    in property <brush> tint: Tokens.pine;
+    width: root.size;
+    height: root.size;
+    transform-rotation: mod(animation-tick() / 1ms, 900) / 900 * 360deg;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12 3 A 9 9 0 1 1 3 12";
+        stroke: root.tint;
+        stroke-width: 2.5px;
+        fill: transparent;
+    }
+}
+
 export component PrimaryButton inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
     // For destructive confirmations only (Brick/Ember, always with words).
     in property <bool> danger: false;
+    // What it started is under way: a spinner beside the label.
+    in property <bool> working: false;
     callback clicked();
+    property <length> spinner-room: root.working ? 2 * (16px + Tokens.space-s) : 0px;
     min-height: Tokens.space-touch-target-min;
-    min-width: label.preferred-width + 2 * Tokens.space-l;
+    min-width: label.preferred-width + 2 * Tokens.space-l + root.spinner-room;
     border-radius: Tokens.radius-control;
     property <color> base: root.danger ? Tokens.danger : Tokens.pine;
     background: !root.enabled ? Tokens.hairline : touch.pressed ? root.base.darker(20%) : touch.has-hover ? root.base.darker(8%) : root.base;
@@ -161,12 +184,20 @@ export component PrimaryButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
+    if root.working: Spinner {
+        x: (parent.width - label.preferred-width) / 2 - self.width - Tokens.space-s;
+        y: (parent.height - self.height) / 2;
+        tint: label.color;
+    }
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         enabled: root.enabled;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
@@ -212,6 +243,9 @@ export component QuietButton inherits Rectangle {
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
             reject
@@ -272,6 +306,9 @@ export component ActionTile inherits Rectangle {
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
             reject
@@ -315,6 +352,11 @@ export component Field inherits Rectangle {
         padding-top: Tokens.space-sm;
         padding-bottom: Tokens.space-sm;
         input := TextInput {
+            // Its size doesn't follow what is in it: a long link (a scanned
+            // code) scrolls inside the field instead of widening the sheet
+            // past the screen.
+            min-width: 0px;
+            preferred-width: 160px;
             font-size: root.mono ? Tokens.type-secondary : Tokens.type-body;
             font-family: root.mono ? "Atkinson Hyperlegible Mono" : "Atkinson Hyperlegible Next";
             color: Tokens.text;

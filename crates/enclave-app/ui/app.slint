@@ -13,7 +13,7 @@ import { Tokens } from "tokens.slint";
 import { AboutSlint, ListView } from "std-widgets.slint";
 import {
     Body, Secondary, Caption, Title, ScreenTitle, Code, Seal, SealState, SealClose, PrimaryButton,
-    QuietButton, ActionTile, Field, Avatar, Notice, Icons,
+    QuietButton, ActionTile, Field, Avatar, Notice, Icons, Spinner,
 } from "controls.slint";
 
 export { Tokens }
@@ -318,6 +318,9 @@ component Bubble inherits HorizontalLayout {
         // Each message is reached with Tab and selected with Enter or
         // Space, which opens its actions (A-3).
         bubble-focus := FocusScope {
+            // Tab focus only: on top of the TouchArea, a click would
+            // otherwise just focus it, and only a second one would press.
+            focus-on-click: false;
             key-pressed(e) => {
                 if e.text == " " || e.text == "\n" { root.tapped(); return accept; }
                 reject
@@ -739,6 +742,9 @@ component ContactItem inherits Rectangle {
     }
     // Reached with Tab, opened with Enter or Space (A-3).
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
             reject
@@ -847,6 +853,9 @@ component Chip inherits Rectangle {
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
             reject
@@ -955,6 +964,9 @@ component IconButton inherits Rectangle {
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
             reject
@@ -1000,6 +1012,9 @@ component CallButton inherits VerticalLayout {
                 clicked => { root.clicked(); }
             }
             focus := FocusScope {
+                // Tab focus only: on top of the TouchArea, a click would
+                // otherwise just focus it, and only a second one would press.
+                focus-on-click: false;
                 key-pressed(e) => {
                     if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
                     reject
@@ -1046,6 +1061,9 @@ component CallPill inherits Rectangle {
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
+        // Tab focus only: on top of the TouchArea, a click would
+        // otherwise just focus it, and only a second one would press.
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
             reject
@@ -1420,6 +1438,9 @@ export component AppWindow inherits Window {
     in property <bool> finishing;
     // Setting up the account failed (the status line says why).
     in property <bool> setup-failed;
+    // The step setting up the account is on, 1 to setup-steps (0: none yet).
+    in property <int> setup-step;
+    in property <int> setup-steps: 8;
     in property <bool> gap;
     // The current conversation is on the record; its contact closed their
     // account.
@@ -1543,6 +1564,9 @@ export component AppWindow inherits Window {
     in property <string> version;
     // This computer keeps Enclave's keys in files (no keyring).
     in property <bool> file-keys;
+    // A phone: its keys live in the phone's own keystore, so setting up
+    // asks for no passphrase (it stays in Settings).
+    in property <bool> phone;
     // Screen security: the window is kept out of screen capture where the
     // platform can (can-hide-capture).
     in-out property <bool> screen-security: true;
@@ -1759,6 +1783,9 @@ export component AppWindow inherits Window {
                     }
                     Body { text: @tr("No phone number. No email. Only the people you choose can reach you."); color: Tokens.text-muted; }
                 }
+                // Why an existing profile didn't open, rather than a fresh
+                // start that says nothing.
+                if root.status-line != "": Secondary { text: root.status-line; }
                 HorizontalLayout {
                     alignment: start;
                     spacing: Tokens.space-s;
@@ -1846,6 +1873,7 @@ export component AppWindow inherits Window {
                         spacing: Tokens.space-s;
                         PrimaryButton {
                             text: root.busy ? @tr("Restoring…") : (root.restore-file == "" ? @tr("Restore from my server") : @tr("Restore"));
+                            working: root.busy;
                             enabled: (root.restore-words != "" || (root.restore-s1 != "" && root.restore-s2 != "")) && !root.busy;
                             clicked => { root.restore(root.restore-words, root.restore-s1, root.restore-s2, root.restore-s3, root.restore-s4, root.restore-s5, root.restore-file); }
                         }
@@ -1882,7 +1910,7 @@ export component AppWindow inherits Window {
                         clicked => { root.server-pick-for = 0; root.chosen-server = root.home-id; root.sheet = Sheet.servers; }
                     }
                 }
-                if root.can-join: Field {
+                if root.can-join && (!root.phone || root.file-keys): Field {
                     placeholder: root.file-keys ? @tr("Passphrase for this computer") : @tr("Passphrase for this computer (optional)");
                     secret: true;
                     text <=> root.new-passphrase;
@@ -1890,7 +1918,7 @@ export component AppWindow inherits Window {
                 if root.can-join && root.file-keys && root.new-passphrase == "": Secondary {
                     text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. Choose a passphrase: it protects them if someone copies those files.");
                 }
-                if root.can-join && root.new-passphrase != "": Secondary {
+                if root.can-join && (!root.phone || root.file-keys) && root.new-passphrase != "": Secondary {
                     text: @tr("You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.");
                 }
                 HorizontalLayout {
@@ -1926,6 +1954,7 @@ export component AppWindow inherits Window {
                         alignment: start;
                         PrimaryButton {
                             text: root.busy ? @tr("Saving…") : @tr("Set");
+                            working: root.busy;
                             enabled: root.new-passphrase != "" && !root.busy;
                             clicked => { root.set-passphrase(root.new-passphrase); }
                         }
@@ -1965,6 +1994,7 @@ export component AppWindow inherits Window {
                     spacing: Tokens.space-s;
                     PrimaryButton {
                         text: root.busy ? @tr("Opening…") : @tr("Unlock");
+                        working: root.busy;
                         enabled: root.passphrase-input != "" && !root.busy;
                         clicked => { root.unlock(root.passphrase-input); root.passphrase-input = ""; }
                     }
@@ -1984,7 +2014,37 @@ export component AppWindow inherits Window {
         spacing: Tokens.space-m;
         HorizontalLayout { alignment: center; Seal { size: 48px; } }
         Body { text: @tr("Setting up your private address…"); horizontal-alignment: center; }
-        Secondary { text: root.status-line; horizontal-alignment: center; }
+        if root.setup-step > 0 && !root.setup-failed: VerticalLayout {
+            spacing: Tokens.space-s;
+            Secondary { text: @tr("Step {} of {}", root.setup-step, root.setup-steps); horizontal-alignment: center; }
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: min(320px, root.width - 2 * Tokens.space-l);
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Tokens.hairline;
+                    accessible-role: progress-indicator;
+                    accessible-value: root.setup-step;
+                    accessible-value-minimum: 0;
+                    accessible-value-maximum: root.setup-steps;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * root.setup-step / max(1, root.setup-steps);
+                        height: 100%;
+                        border-radius: 3px;
+                        background: Tokens.pine;
+                        animate width { duration: 400ms; easing: ease-out; }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: Tokens.space-s;
+            if !root.setup-failed: Spinner { }
+            Secondary { text: root.status-line; horizontal-alignment: center; }
+        }
         if root.setup-failed: HorizontalLayout {
             alignment: center;
             QuietButton { text: @tr("Back"); outlined: true; clicked => { root.screen = Screen.name; } }
@@ -3238,6 +3298,7 @@ export component AppWindow inherits Window {
             spacing: Tokens.space-s;
             PrimaryButton {
                 text: root.busy ? @tr("Sending request…") : @tr("Send request");
+                working: root.busy;
                 enabled: root.add-link != "" && !root.busy;
                 clicked => { root.add-contact(root.add-link, root.add-text); }
             }
@@ -3455,6 +3516,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Sending…") : @tr("Send");
+                working: root.busy;
                 enabled: root.attach-path != "" && !root.busy;
                 clicked => { root.send-file(root.current-id, root.attach-path, root.attach-caption, root.attach-view-once); }
             }
@@ -3576,6 +3638,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Posting…") : @tr("Post");
+                working: root.busy;
                 enabled: (root.story-text != "" || root.story-path != "") && !root.busy;
                 clicked => { root.post-story(root.story-text, root.story-path); root.story-text = ""; root.story-path = ""; }
             }
@@ -3657,6 +3720,7 @@ export component AppWindow inherits Window {
             }
             PrimaryButton {
                 text: root.busy ? @tr("Searching…") : @tr("Search");
+                working: root.busy;
                 enabled: root.gif-query != "" && !root.busy;
                 clicked => { root.search-gifs(root.gif-query); }
             }
@@ -3767,6 +3831,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Making…") : @tr("Make pack");
+                working: root.busy;
                 enabled: root.pack-title != "" && root.pack-paths != "" && !root.busy;
                 clicked => { root.create-pack(root.pack-title, root.pack-paths); }
             }
@@ -3818,6 +3883,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Sending…") : @tr("Send report");
+                working: root.busy;
                 enabled: !root.busy;
                 clicked => {
                     root.report(root.current-id, root.report-reason, root.report-quote, root.report-block, root.report-costlier);
@@ -4023,6 +4089,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Sending…") : @tr("Ask");
+                working: root.busy;
                 enabled: root.poll-question != "" && root.poll-a != "" && root.poll-b != "" && !root.busy;
                 clicked => { root.create-poll(root.current-id, root.poll-question, root.poll-a, root.poll-b, root.poll-c, root.poll-d, root.current.kind == 1 && root.poll-anonymous); }
             }
@@ -4105,6 +4172,7 @@ export component AppWindow inherits Window {
             spacing: Tokens.space-s;
             PrimaryButton {
                 text: root.busy ? @tr("Checking…") : @tr("They match");
+                working: root.busy;
                 enabled: !root.busy;
                 clicked => { root.meet-confirm(); }
             }
@@ -4473,6 +4541,7 @@ export component AppWindow inherits Window {
             Field { placeholder: "name"; mono: true; text <=> root.username-input; horizontal-stretch: 1; }
             PrimaryButton {
                 text: root.busy ? @tr("Checking…") : (root.my-username == "" ? @tr("Choose") : @tr("Change"));
+                working: root.busy;
                 enabled: root.username-input != "" && !root.busy;
                 clicked => { root.claim-username(root.username-input); }
             }
@@ -4512,6 +4581,7 @@ export component AppWindow inherits Window {
             Field { placeholder: root.can-lock ? @tr("New passphrase") : @tr("Passphrase"); secret: true; text <=> root.new-passphrase; horizontal-stretch: 1; }
             PrimaryButton {
                 text: root.busy ? @tr("Saving…") : (root.can-lock ? @tr("Change") : @tr("Set"));
+                working: root.busy;
                 enabled: root.new-passphrase != "" && !root.busy;
                 clicked => { root.set-passphrase(root.new-passphrase); }
             }
@@ -4844,6 +4914,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Sharing…") : (chosen >= 2 ? @tr("Share with {} ({} needed)", chosen, (floor(chosen / 2) + 1)) : @tr("Share"));
+                working: root.busy;
                 enabled: chosen >= 2 && !root.busy;
                 clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.give-shares(floor(chosen / 2) + 1); root.sheet = Sheet.none; }
             }
@@ -4956,6 +5027,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Creating…") : @tr("Create group");
+                working: root.busy;
                 enabled: root.group-name != "" && !root.busy;
                 clicked => { root.create-group(root.group-name); }
             }
@@ -5095,6 +5167,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Adding…") : @tr("Add to group");
+                working: root.busy;
                 enabled: !root.busy;
                 clicked => { root.add-members(root.current-id); }
             }
@@ -5161,6 +5234,7 @@ export component AppWindow inherits Window {
                         spacing: Tokens.space-s;
                         PrimaryButton {
                             text: root.busy ? @tr("Removing…") : @tr("Remove device");
+                            working: root.busy;
                             danger: true;
                             enabled: !root.busy;
                             clicked => { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.remove-device(d.id); }
@@ -5183,6 +5257,7 @@ export component AppWindow inherits Window {
             alignment: start;
             PrimaryButton {
                 text: root.busy ? @tr("Checking…") : @tr("Continue");
+                working: root.busy;
                 enabled: root.link-code != "" && !root.busy;
                 clicked => { root.link-scan(root.link-code); }
             }
@@ -5435,6 +5510,7 @@ export component AppWindow inherits Window {
             spacing: Tokens.space-s;
             PrimaryButton {
                 text: root.busy ? @tr("Deleting…") : (root.can-change-words ? @tr("Delete my account") : @tr("Erase this device"));
+                working: root.busy;
                 danger: true;
                 enabled: root.delete-confirm == "delete" && !root.busy;
                 clicked => { if root.can-change-words { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.delete-account(); } else { root.erase-device(); } }

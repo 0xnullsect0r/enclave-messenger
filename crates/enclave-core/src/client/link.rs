@@ -572,6 +572,13 @@ pub struct LinkOffer {
     correct: usize,
 }
 
+impl LinkOffer {
+    /// Whether this answers `link`: the same new device's code.
+    pub fn is_for(&self, link: &str) -> bool {
+        LinkCode::from_link(link.trim()).is_ok_and(|c| c.to_link() == self.code.to_link())
+    }
+}
+
 /// A device of this account.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeviceInfo {

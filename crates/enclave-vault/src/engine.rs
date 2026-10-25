@@ -483,6 +483,19 @@ struct Engine {
     out: mpsc::UnboundedSender<Out>,
 }
 
+/// What setting up an account is doing at each step
+/// ([`Client::create_with_progress`], [`enclave_ipc::SETUP_STEPS`]).
+const SETUP_STEP_TEXT: [&str; enclave_ipc::SETUP_STEPS as usize] = [
+    "Making your keys on this device…",
+    "Opening your inbox for message requests…",
+    "Opening this week's inbox…",
+    "Opening next week's inbox…",
+    "Publishing your account's keys…",
+    "Publishing this device's keys…",
+    "Storing your encrypted vault key…",
+    "Saving your profile on this device…",
+];
+
 /// Run the engine on a thread of this process (where a separate vault
 /// process is not available). Returns the command sender and output receiver.
 pub fn spawn(mode: Mode) -> (mpsc::UnboundedSender<Cmd>, mpsc::UnboundedReceiver<Out>) {
@@ -1342,7 +1355,10 @@ pub async fn run_with(
                 e.locked = true;
                 e.passphrase_set = true;
             }
-            Err(err) => e.status = format!("Couldn't open your profile: {err}"),
+            Err(err) => {
+                eprintln!("enclave-vault: couldn't open the profile: {err}");
+                e.status = format!("Couldn't open your profile: {err}");
+            }
         }
         e.load_lock();
         // With an app PIN the window starts locked.
@@ -1969,11 +1985,28 @@ impl Engine {
                 self.status.clear();
                 let name = name.trim().to_string();
                 let protect = !passphrase.is_empty() && matches!(self.mode, Mode::Server { .. });
-                match Client::create(
+                // Each step as it starts, so the minute it can take over
+                // Tor doesn't look frozen: the window as it is, with the
+                // step and what it is doing.
+                let shown = std::sync::Mutex::new(self.snapshot());
+                let out = self.out.clone();
+                let progress = move |step: u8| {
+                    if let Ok(mut s) = shown.lock() {
+                        s.setup_step = step;
+                        s.status = SETUP_STEP_TEXT
+                            .get(usize::from(step.saturating_sub(1)))
+                            .copied()
+                            .unwrap_or_default()
+                            .into();
+                        let _ = out.send(Out::Snapshot(Box::new(s.clone())));
+                    }
+                };
+                match Client::create_with_progress(
                     self.options(Some(&passphrase)),
                     Arc::clone(&self.transport),
                     self.server,
                     &name,
+                    &progress,
                 )
                 .await
                 {
@@ -3941,6 +3974,12 @@ impl Engine {
                 self.busy = false;
             }
             Cmd::LinkScan(code) => {
+                // Pressed again for the same device while its words are up:
+                // the new device keeps the first answer, so a second one
+                // would show words it never shows.
+                if self.link_offer.as_ref().is_some_and(|o| o.is_for(&code)) {
+                    return;
+                }
                 self.link_status.clear();
                 self.busy = true;
                 self.push();

@@ -1144,7 +1144,9 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         }
         if let Some(ui) = w.upgrade() {
             ui.set_screen(Screen::SettingUp);
-            ui.set_status_line(crate::i18n::tr("This takes a few seconds.").into());
+            ui.set_status_line(
+                crate::i18n::tr("This can take a minute: everything goes through Tor.").into(),
+            );
         }
         let passphrase = w
             .upgrade()

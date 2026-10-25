@@ -498,6 +498,8 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_code_words_english(s.code_words_english);
     ui.set_status_line(crate::i18n::tr(&s.status).into());
     ui.set_setup_failed(s.status.starts_with("Couldn't set up your address"));
+    ui.set_setup_step(i32::from(s.setup_step));
+    ui.set_setup_steps(i32::from(enclave_ipc::SETUP_STEPS));
     ui.set_recovery_words(strings(&s.recovery_words));
     ui.set_recovery_saved(s.recovery_saved);
     ui.set_words_language(s.words_language.clone().into());
@@ -612,6 +614,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_backup_check(crate::i18n::tr(&s.backup_check).into());
     apply_servers(ui, s);
     ui.set_file_keys(s.file_keys);
+    ui.set_phone(cfg!(not(desktop)));
     ui.set_biometric(s.biometric.clone().into());
     ui.set_biometric_on(s.biometric_on);
     if ui.get_screen_security() != s.screen_security {

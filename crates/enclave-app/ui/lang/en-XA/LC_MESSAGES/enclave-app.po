@@ -1997,6 +1997,10 @@ msgstr "[Máké ··{} áñ ádmíñ···]"
 msgid "Making a link preview…"
 msgstr "[Mákíñg á líñk prévíéw…········]"
 
+#: enclave-vault/src/engine.rs
+msgid "Making your keys on this device…"
+msgstr "[Mákíñg ýóúr kéýs óñ thís dévíçé…············]"
+
 #: ui/app.slint
 msgid "Making your new words…"
 msgstr "[Mákíñg ýóúr ñéw wórds…········]"
@@ -2413,6 +2417,18 @@ msgstr "[Ópéñ-sóúrçé líçéñçés········]"
 msgid "Opened"
 msgstr "[Ópéñéd··]"
 
+#: enclave-vault/src/engine.rs
+msgid "Opening next week's inbox…"
+msgstr "[Ópéñíñg ñéxt wéék's íñbóx…··········]"
+
+#: enclave-vault/src/engine.rs
+msgid "Opening this week's inbox…"
+msgstr "[Ópéñíñg thís wéék's íñbóx…··········]"
+
+#: enclave-vault/src/engine.rs
+msgid "Opening your inbox for message requests…"
+msgstr "[Ópéñíñg ýóúr íñbóx fór mésságé réqúésts…················]"
+
 #: ui/app.slint
 msgid "Opening…"
 msgstr "[Ópéñíñg…···]"
@@ -2673,6 +2689,14 @@ msgstr "[Príváté róúté·····]"
 msgid "Private route: two relays, run by different operators, so neither sees both of you."
 msgstr "[Príváté róúté: twó réláýs, rúñ bý dífféréñt ópérátórs, só ñéíthér séés bóth óf ýóú.·································]"
 
+#: enclave-vault/src/engine.rs
+msgid "Publishing this device's keys…"
+msgstr "[Públíshíñg thís dévíçé's kéýs…············]"
+
+#: enclave-vault/src/engine.rs
+msgid "Publishing your account's keys…"
+msgstr "[Públíshíñg ýóúr áççóúñt's kéýs…············]"
+
 #: ui/app.slint
 msgid "QR code of this device's link code"
 msgstr "[QR çódé óf thís dévíçé's líñk çódé·············]"
@@ -2876,6 +2900,10 @@ msgstr "[Sávéd tó ···{}]"
 #: enclave-vault/src/engine.rs
 msgid "Saved. Your contacts see it soon."
 msgstr "[Sávéd. Ýóúr çóñtáçts séé ít sóóñ.·············]"
+
+#: enclave-vault/src/engine.rs
+msgid "Saving your profile on this device…"
+msgstr "[Sávíñg ýóúr prófílé óñ thís dévíçé…··············]"
 
 #: ui/app.slint
 msgid "Saving…"
@@ -3250,6 +3278,10 @@ msgid "Stay connected"
 msgstr "[Stáý çóññéçtéd·····]"
 
 #: ui/app.slint
+msgid "Step {} of {}"
+msgstr "[Stép ··{} óf ·{}]"
+
+#: ui/app.slint
 msgid "Sticker"
 msgstr "[Stíçkér··]"
 
@@ -3300,6 +3332,10 @@ msgstr "[Stóríés lást 24 hóúrs. ·········{} dóésñ't léárñ t
 #: enclave-vault/src/engine/stories.rs
 msgid "Stories take pictures and animations. Enclave couldn't read that one."
 msgstr "[Stóríés táké píçtúrés áñd áñímátíóñs. Éñçlávé çóúldñ't réád thát óñé.···························]"
+
+#: enclave-vault/src/engine.rs
+msgid "Storing your encrypted vault key…"
+msgstr "[Stóríñg ýóúr éñçrýptéd váúlt kéý…·············]"
 
 #: ui/app.slint
 msgid "Take back your reaction"
@@ -3621,6 +3657,10 @@ msgstr "[Thís búíld hás ñó sérvér tó sét úp óñ. Stárt ít wíth --
 msgid "This build is Enclave {}: all {} programs match the release its maintainers signed, and each is in the public Sigsum log."
 msgstr "[Thís búíld ís Éñçlávé ········{}: áll ··{} prógráms mátçh thé réléásé íts máíñtáíñérs sígñéd, áñd éáçh ís íñ thé públíç Sígsúm lóg.···································]"
 
+#: enclave-app/src/shell.rs
+msgid "This can take a minute: everything goes through Tor."
+msgstr "[Thís çáñ táké á míñúté: évérýthíñg góés thróúgh Tór.····················]"
+
 #: enclave-vault/src/engine.rs
 msgid "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one."
 msgstr "[Thís çódé líñks á dévíçé tó ýóúr áççóúñt. Óñlý sçáñ ít fróm Séttíñgs → Ýóúr dévíçés, óñ ýóúr ówñ ñéw dévíçé. Ñó óñé fróm Éñçlávé wíll évér ásk ýóú tó sçáñ óñé.·······························································]"
@@ -3708,10 +3748,6 @@ msgstr "[Thís sýstém hás ñó vídéó déçódér. Íñstáll GStréámér 
 #: ui/app.slint
 msgid "This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap."
 msgstr "[Thís sýstém's kérñél dóésñ't súppórt Láñdlóçk, só Éñçlávé çáñ't fúllý límít whíçh fílés íts kéý-hóldíñg párt çáñ réáçh. Ít stíll rúñs wíth íts óthér prótéçtíóñs. Á kérñél fróm 5.13 óñ, wíth Láñdlóçk túrñéd óñ, çlósés thís gáp.··························································································]"
-
-#: enclave-app/src/shell.rs
-msgid "This takes a few seconds."
-msgstr "[Thís tákés á féw séçóñds.··········]"
 
 #: ui/app.slint
 msgid "This version has a serious problem fixed in a newer one. It no longer sends or receives messages until you update."

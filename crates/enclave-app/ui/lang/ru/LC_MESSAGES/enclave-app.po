@@ -1997,6 +1997,10 @@ msgstr ""
 msgid "Making a link preview…"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Making your keys on this device…"
+msgstr ""
+
 #: ui/app.slint
 msgid "Making your new words…"
 msgstr ""
@@ -2413,6 +2417,18 @@ msgstr ""
 msgid "Opened"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Opening next week's inbox…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Opening this week's inbox…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Opening your inbox for message requests…"
+msgstr ""
+
 #: ui/app.slint
 msgid "Opening…"
 msgstr ""
@@ -2673,6 +2689,14 @@ msgstr ""
 msgid "Private route: two relays, run by different operators, so neither sees both of you."
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Publishing this device's keys…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Publishing your account's keys…"
+msgstr ""
+
 #: ui/app.slint
 msgid "QR code of this device's link code"
 msgstr ""
@@ -2875,6 +2899,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Saved. Your contacts see it soon."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Saving your profile on this device…"
 msgstr ""
 
 #: ui/app.slint
@@ -3250,6 +3278,10 @@ msgid "Stay connected"
 msgstr ""
 
 #: ui/app.slint
+msgid "Step {} of {}"
+msgstr ""
+
+#: ui/app.slint
 msgid "Sticker"
 msgstr ""
 
@@ -3299,6 +3331,10 @@ msgstr ""
 
 #: enclave-vault/src/engine/stories.rs
 msgid "Stories take pictures and animations. Enclave couldn't read that one."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Storing your encrypted vault key…"
 msgstr ""
 
 #: ui/app.slint
@@ -3621,6 +3657,10 @@ msgstr ""
 msgid "This build is Enclave {}: all {} programs match the release its maintainers signed, and each is in the public Sigsum log."
 msgstr ""
 
+#: enclave-app/src/shell.rs
+msgid "This can take a minute: everything goes through Tor."
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one."
 msgstr ""
@@ -3707,10 +3747,6 @@ msgstr ""
 
 #: ui/app.slint
 msgid "This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap."
-msgstr ""
-
-#: enclave-app/src/shell.rs
-msgid "This takes a few seconds."
 msgstr ""
 
 #: ui/app.slint

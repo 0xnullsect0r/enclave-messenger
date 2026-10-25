@@ -111,6 +111,7 @@ fn snapshot() -> Snapshot {
         words_language: "fr".into(),
         privacy: 1,
         finishing: true,
+        setup_step: 3,
         gap: true,
         on_record: true,
         closed: false,

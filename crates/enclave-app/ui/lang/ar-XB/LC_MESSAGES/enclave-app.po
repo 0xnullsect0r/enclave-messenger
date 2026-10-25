@@ -1997,6 +1997,10 @@ msgstr "‫Make ‬{}‫ an admin‬"
 msgid "Making a link preview…"
 msgstr "‫Making a link preview…‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Making your keys on this device…"
+msgstr "‫Making your keys on this device…‬"
+
 #: ui/app.slint
 msgid "Making your new words…"
 msgstr "‫Making your new words…‬"
@@ -2413,6 +2417,18 @@ msgstr "‫Open-source licences‬"
 msgid "Opened"
 msgstr "‫Opened‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Opening next week's inbox…"
+msgstr "‫Opening next week's inbox…‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Opening this week's inbox…"
+msgstr "‫Opening this week's inbox…‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Opening your inbox for message requests…"
+msgstr "‫Opening your inbox for message requests…‬"
+
 #: ui/app.slint
 msgid "Opening…"
 msgstr "‫Opening…‬"
@@ -2673,6 +2689,14 @@ msgstr "‫Private route‬"
 msgid "Private route: two relays, run by different operators, so neither sees both of you."
 msgstr "‫Private route: two relays, run by different operators, so neither sees both of you.‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Publishing this device's keys…"
+msgstr "‫Publishing this device's keys…‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Publishing your account's keys…"
+msgstr "‫Publishing your account's keys…‬"
+
 #: ui/app.slint
 msgid "QR code of this device's link code"
 msgstr "‫QR code of this device's link code‬"
@@ -2876,6 +2900,10 @@ msgstr "‫Saved to ‬{}"
 #: enclave-vault/src/engine.rs
 msgid "Saved. Your contacts see it soon."
 msgstr "‫Saved. Your contacts see it soon.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Saving your profile on this device…"
+msgstr "‫Saving your profile on this device…‬"
 
 #: ui/app.slint
 msgid "Saving…"
@@ -3250,6 +3278,10 @@ msgid "Stay connected"
 msgstr "‫Stay connected‬"
 
 #: ui/app.slint
+msgid "Step {} of {}"
+msgstr "‫Step ‬{}‫ of ‬{}"
+
+#: ui/app.slint
 msgid "Sticker"
 msgstr "‫Sticker‬"
 
@@ -3300,6 +3332,10 @@ msgstr "‫Stories last 24 hours. ‬{}‫ doesn't learn that you looked.‬"
 #: enclave-vault/src/engine/stories.rs
 msgid "Stories take pictures and animations. Enclave couldn't read that one."
 msgstr "‫Stories take pictures and animations. Enclave couldn't read that one.‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Storing your encrypted vault key…"
+msgstr "‫Storing your encrypted vault key…‬"
 
 #: ui/app.slint
 msgid "Take back your reaction"
@@ -3621,6 +3657,10 @@ msgstr "‫This build has no server to set up on. Start it with --server, or wit
 msgid "This build is Enclave {}: all {} programs match the release its maintainers signed, and each is in the public Sigsum log."
 msgstr "‫This build is Enclave ‬{}‫: all ‬{}‫ programs match the release its maintainers signed, and each is in the public Sigsum log.‬"
 
+#: enclave-app/src/shell.rs
+msgid "This can take a minute: everything goes through Tor."
+msgstr "‫This can take a minute: everything goes through Tor.‬"
+
 #: enclave-vault/src/engine.rs
 msgid "This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one."
 msgstr "‫This code links a device to your account. Only scan it from Settings → Your devices, on your own new device. No one from Enclave will ever ask you to scan one.‬"
@@ -3708,10 +3748,6 @@ msgstr "‫This system has no video decoder. Install GStreamer to send videos.�
 #: ui/app.slint
 msgid "This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap."
 msgstr "‫This system's kernel doesn't support Landlock, so Enclave can't fully limit which files its key-holding part can reach. It still runs with its other protections. A kernel from 5.13 on, with Landlock turned on, closes this gap.‬"
-
-#: enclave-app/src/shell.rs
-msgid "This takes a few seconds."
-msgstr "‫This takes a few seconds.‬"
 
 #: ui/app.slint
 msgid "This version has a serious problem fixed in a newer one. It no longer sends or receives messages until you update."

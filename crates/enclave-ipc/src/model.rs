@@ -339,6 +339,9 @@ pub struct Snapshot {
     /// conversation until all three KEMs protect it ("Extra protection:
     /// finishing…").
     pub finishing: bool,
+    /// Setting up the account: the step under way, 1 to
+    /// [`SETUP_STEPS`] (0 when not setting up).
+    pub setup_step: u8,
     /// A message in the current conversation may not have arrived: later
     /// ones did, over a minute ago (RT-24).
     pub gap: bool,
@@ -991,6 +994,9 @@ pub enum Effect {
     Erased,
 }
 
+/// How many steps setting up an account takes ([`Snapshot::setup_step`]).
+pub const SETUP_STEPS: u8 = 8;
+
 /// Vault → UI.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Out {
@@ -1327,6 +1333,7 @@ impl Snapshot {
             .str(&self.words_language)
             .u8(u8::from(self.privacy == 1))
             .bool(self.finishing)
+            .u8(self.setup_step)
             .bool(self.gap)
             .bool(self.on_record)
             .bool(self.closed)
@@ -1592,6 +1599,7 @@ impl Snapshot {
             _ => return Err(IpcError::Malformed),
         };
         let finishing = r.bool()?;
+        let setup_step = r.u8()?;
         let gap = r.bool()?;
         let on_record = r.bool()?;
         let closed = r.bool()?;
@@ -1639,6 +1647,7 @@ impl Snapshot {
             words_language,
             privacy,
             finishing,
+            setup_step,
             gap,
             on_record,
             closed,
