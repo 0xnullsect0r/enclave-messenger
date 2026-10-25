@@ -1109,6 +1109,10 @@ msgstr ""
 msgid "Couldn't send your vote. The poll may be closed."
 msgstr ""
 
+#: enclave-app/src/view.rs
+msgid "Couldn't set up your address"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Couldn't set up your address: {}"
 msgstr ""
