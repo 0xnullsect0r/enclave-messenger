@@ -8,7 +8,8 @@ once a build like it was accepted.
     ci/ios/verdict.py IPA VERSION BUILD
 
 ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH name the App Store Connect API
-key (the one TestFlight uploads use). Only the standard library and
+key (the one TestFlight uploads use). Once Apple has its verdict the
+build is expired, so TestFlight offers only the release's own builds. Only the standard library and
 openssl: the token is an ES256 JWT signed with `openssl dgst`.
 """
 
@@ -74,6 +75,31 @@ def get(path: str, query: dict, auth: str) -> dict:
         return json.load(r)
 
 
+def patch(path: str, body: dict, auth: str) -> None:
+    req = urllib.request.Request(
+        f"{API}/{path}",
+        data=json.dumps(body).encode(),
+        method="PATCH",
+        headers={"Authorization": f"Bearer {auth}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=60):
+        pass
+
+
+def expire(build_id: str, auth: str) -> None:
+    """The check's build stops being offered to testers; a failure here
+    leaves it listed and doesn't change the verdict."""
+    try:
+        patch(
+            f"builds/{build_id}",
+            {"data": {"type": "builds", "id": build_id, "attributes": {"expired": True}}},
+            auth,
+        )
+        print("verdict: the check's build is expired in TestFlight")
+    except Exception as e:  # noqa: BLE001 - only a warning
+        print(f"verdict: couldn't expire the check's build: {e}")
+
+
 def main() -> int:
     ipa, version, build = sys.argv[1:4]
     key_id = os.environ["ASC_KEY_ID"]
@@ -115,6 +141,8 @@ def main() -> int:
         if found:
             state = found[0]["attributes"]["processingState"]
             print(f"verdict: {version} ({build}): {state}", flush=True)
+            if state in ("VALID", "INVALID", "FAILED"):
+                expire(found[0]["id"], token(key_id, issuer, key_path))
             if state == "VALID":
                 return 0
             if state in ("INVALID", "FAILED"):

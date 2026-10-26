@@ -1,0 +1,61 @@
+name: Android APK check
+# The published APKs (a release's, as a person downloads them): each
+# per-processor APK is the universal one cut down (ci/android/apk-check.py),
+# and the x86_64 one installs and starts on an emulator as the universal
+# does in release.yml `install-android`. 0.1.5's arm64-v8a APK didn't work
+# on a phone while the universal did; this shows how they differ.
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - .github/workflows/android-apk-check.yml
+      - ci/android/**
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (default the newest)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  apks:
+    name: The release's APKs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The release's APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag=${TAG:-$(gh release view --json tagName -q .tagName)}
+          gh release download "$tag" --pattern '*.apk' --dir dist
+          ls -la dist
+          echo "V=${tag#v}" >> "$GITHUB_ENV"
+      - name: Build tools
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;36.0.0" > /dev/null
+      - name: Each per-processor APK against the universal
+        run: |
+          python3 ci/android/apk-check.py "$ANDROID_HOME/build-tools/36.0.0" \
+            "dist/Enclave-$V-android.apk" dist/Enclave-"$V"-android-*.apk
+      - name: KVM for the emulator
+        if: always()
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: The x86_64 APK installs, starts and shows its first screen
+        if: always()
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          script: ci/android/start-check.sh dist/Enclave-${{ env.V }}-android-x86_64.apk

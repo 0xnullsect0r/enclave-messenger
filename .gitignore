@@ -6,3 +6,4 @@
 /fuzz/corpus
 /nym/target
 crates/enclave-crypto/proofs/
+__pycache__/
