@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.1.7" date="2026-10-26">
+      <description>
+        <p>obfs4 bridges, Tor's built-in ones and your own, now go through lyrebird, the same implementation Tor Browser uses, so bridges that work there work here. Setting up takes your own bridge lines right on the page, and the bridge switch answers at once.</p>
+      </description>
+    </release>
     <release version="0.1.6" date="2026-10-26">
       <description>
         <p>Enclave is dark by default, with a light theme in Settings; a phone's status and navigation bars follow the theme. Setting up now offers a Tor bridge switch (Snowflake, the built-in bridges, or your own) for networks that block Tor.</p>

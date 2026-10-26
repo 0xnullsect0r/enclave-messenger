@@ -3,7 +3,7 @@ plugins {
 }
 
 // Set by build.sh from the release version (`cargo xtask version`).
-val enclaveVersion = System.getenv("ENCLAVE_VERSION") ?: "0.1.6"
+val enclaveVersion = System.getenv("ENCLAVE_VERSION") ?: "0.1.7"
 val enclaveVersionCode = (System.getenv("ENCLAVE_VERSION_CODE") ?: "1").toInt()
 // The release key (environment release-android); without it the build is
 // signed with a key made for the run (CI dry runs), which installs but
