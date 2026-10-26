@@ -326,6 +326,8 @@ fn stderr_to_logcat() {
             .name("enclave-stderr".into())
             .spawn(move || {
                 for line in std::io::BufReader::new(read).lines().map_while(Result::ok) {
+                    // Also for the window's "Copy log" (no terminal here).
+                    enclave_platform::log::keep(&line);
                     if let Ok(text) = std::ffi::CString::new(line) {
                         // SAFETY: both are NUL-terminated strings that
                         // outlive the call.

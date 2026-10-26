@@ -2030,7 +2030,9 @@ impl Engine {
         }
         match cmd {
             Cmd::Create(name, passphrase) => {
-                if !self.has_server() {
+                // With an account open (a window that hadn't heard so
+                // yet), a second one would replace it.
+                if !self.has_server() || self.client.is_some() {
                     return;
                 }
                 // A failure from an earlier try no longer applies.

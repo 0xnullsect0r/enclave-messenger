@@ -766,6 +766,10 @@ msgid "Copy invite link"
 msgstr "‫Copy invite link‬"
 
 #: ui/app.slint
+msgid "Copy log"
+msgstr "‫Copy log‬"
+
+#: ui/app.slint
 msgid "Copy username"
 msgstr "‫Copy username‬"
 
@@ -1396,6 +1400,10 @@ msgstr "‫Enclave couldn't read that recording, so it wasn't sent. Use a 16-bit
 #: enclave-app/src/video.rs
 msgid "Enclave couldn't read that video. Try another file."
 msgstr "‫Enclave couldn't read that video. Try another file.‬"
+
+#: enclave-app/src/shell.rs
+msgid "Enclave hasn't written anything to its log yet."
+msgstr "‫Enclave hasn't written anything to its log yet.‬"
 
 #: ui/app.slint
 msgid "Enclave is built with the work of these projects, under the licences below."
@@ -2420,6 +2428,10 @@ msgstr "‫Open-source licences‬"
 #: ui/app.slint
 msgid "Opened"
 msgstr "‫Opened‬"
+
+#: ui/app.slint
+msgid "Opening Enclave…"
+msgstr "‫Opening Enclave…‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Opening next week's inbox…"
@@ -3732,6 +3744,10 @@ msgstr "‫This hands ‬{}‫ to a maps app you pick. That app may look the pla
 #: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
 msgstr "‫This invite link was already used, has expired or was cancelled. Ask them for a new one.‬"
+
+#: ui/app.slint
+msgid "This is taking longer than it should. If it stays like this, copy Enclave's log and send it to whoever helps you with Enclave."
+msgstr "‫This is taking longer than it should. If it stays like this, copy Enclave's log and send it to whoever helps you with Enclave.‬"
 
 #: enclave-vault/src/engine.rs
 msgid "This link is damaged. Ask them to send it again."

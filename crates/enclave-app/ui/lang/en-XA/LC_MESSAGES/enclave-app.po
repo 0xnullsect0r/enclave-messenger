@@ -766,6 +766,10 @@ msgid "Copy invite link"
 msgstr "[Çópý íñvíté líñk······]"
 
 #: ui/app.slint
+msgid "Copy log"
+msgstr "[Çópý lóg···]"
+
+#: ui/app.slint
 msgid "Copy username"
 msgstr "[Çópý úsérñámé·····]"
 
@@ -1396,6 +1400,10 @@ msgstr "[Éñçlávé çóúldñ't réád thát réçórdíñg, só ít wásñ't
 #: enclave-app/src/video.rs
 msgid "Enclave couldn't read that video. Try another file."
 msgstr "[Éñçlávé çóúldñ't réád thát vídéó. Trý áñóthér fílé.····················]"
+
+#: enclave-app/src/shell.rs
+msgid "Enclave hasn't written anything to its log yet."
+msgstr "[Éñçlávé hásñ't wríttéñ áñýthíñg tó íts lóg ýét.··················]"
 
 #: ui/app.slint
 msgid "Enclave is built with the work of these projects, under the licences below."
@@ -2420,6 +2428,10 @@ msgstr "[Ópéñ-sóúrçé líçéñçés········]"
 #: ui/app.slint
 msgid "Opened"
 msgstr "[Ópéñéd··]"
+
+#: ui/app.slint
+msgid "Opening Enclave…"
+msgstr "[Ópéñíñg Éñçlávé…······]"
 
 #: enclave-vault/src/engine.rs
 msgid "Opening next week's inbox…"
@@ -3732,6 +3744,10 @@ msgstr "[Thís háñds ····{} tó á máps ápp ýóú píçk. Thát ápp m�
 #: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
 msgstr "[Thís íñvíté líñk wás álréádý úséd, hás éxpíréd ór wás çáñçélléd. Ásk thém fór á ñéw óñé.···································]"
+
+#: ui/app.slint
+msgid "This is taking longer than it should. If it stays like this, copy Enclave's log and send it to whoever helps you with Enclave."
+msgstr "[Thís ís tákíñg lóñgér tháñ ít shóúld. Íf ít stáýs líké thís, çópý Éñçlávé's lóg áñd séñd ít tó whóévér hélps ýóú wíth Éñçlávé.··················································]"
 
 #: enclave-vault/src/engine.rs
 msgid "This link is damaged. Ask them to send it again."

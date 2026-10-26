@@ -44,6 +44,14 @@ fn main() -> ExitCode {
     // vault confines itself to it.
     if let enclave_vault::Mode::Server { profile, .. } = &mode {
         enclave_crash::install(&profile.join(enclave_crash::DIR), "vault");
+        // What the vault and its helpers say also goes to the profile's
+        // log, for the window's "Copy log" (started from the desktop's
+        // menu there is no terminal). Not with --report, whose last line
+        // must reach the error output before the process ends.
+        if !verbose {
+            let _ = std::fs::create_dir_all(profile);
+            enclave_platform::log::tee_stderr(profile);
+        }
     }
     // McEliece key generation needs a deep stack.
     let worker = std::thread::Builder::new()

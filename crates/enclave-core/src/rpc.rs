@@ -39,6 +39,11 @@ pub type Sending = std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>
 
 /// A chunk of an upload on its way, to the server's status for it.
 type Sent = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Status>> + Send>>;
+/// A chunk of a download on its way: its index, the server's status and
+/// reply.
+type Got = std::pin::Pin<
+    Box<dyn std::future::Future<Output = (u32, Result<(Status, Option<DirReply>)>)> + Send>,
+>;
 
 /// Status polls for one answer before giving up (`Rpc::fetch_answer`).
 /// Each is a round trip through the mixnet (and, shaped, waits for its
@@ -330,30 +335,15 @@ impl Rpc {
             let server_key = server_key.clone();
             let server = *server;
             sending.push(Box::pin(async move {
-                let mut tried = 0;
-                loop {
-                    tried += 1;
-                    match put_chunk(&*transport, &server_key, &server, &env, &mut own).await {
-                        Err(CoreError::Net(_)) if tried < tries => continue,
-                        r => return r,
-                    }
-                }
+                chunk_tried(&*transport, &server_key, &server, &env, &mut own, tries)
+                    .await
+                    .map(|(s, _)| s)
             }));
         }
         let mut done = 0;
         while !sending.is_empty() {
-            // Whichever chunk is answered first (no runtime here to spawn
-            // on: they are polled together).
-            let status = std::future::poll_fn(|cx| {
-                for i in 0..sending.len() {
-                    if let std::task::Poll::Ready(r) = sending[i].as_mut().poll(cx) {
-                        drop(sending.swap_remove(i));
-                        return std::task::Poll::Ready(r);
-                    }
-                }
-                std::task::Poll::Pending
-            })
-            .await?;
+            // Whichever chunk is answered first.
+            let status = next_done(&mut sending).await?;
             // The last chunk the server takes answers for the whole object.
             if status != Status::Ok {
                 return Err(CoreError::Server(status));
@@ -401,6 +391,11 @@ impl Rpc {
         } else {
             (key, action)
         };
+        // The rest together (a vault key is about a hundred chunks: one at
+        // a time over Tor, each waiting for its slot and its answer's, that
+        // was minutes), each sent again if its answer didn't come.
+        let server_key = self.key(server, now).await?;
+        let mut getting: Vec<Got> = Vec::new();
         for i in 1..r.total {
             let req = DirRequest {
                 kind,
@@ -411,11 +406,35 @@ impl Rpc {
                 proof,
                 data: vec![],
             };
-            let (s, rr) = self.dir(server, req, now, rng).await?;
+            let env = api::frame(&req.encode(), rng)?;
+            let mut own = HedgedRng::with_hedge(rng.array("rpc/chunk-hedge")?);
+            let transport = Arc::clone(&self.transport);
+            let server_key = server_key.clone();
+            let server = *server;
+            getting.push(Box::pin(async move {
+                let r = chunk_tried(
+                    &*transport,
+                    &server_key,
+                    &server,
+                    &env,
+                    &mut own,
+                    CHUNK_TRIES,
+                )
+                .await;
+                (i, r)
+            }));
+        }
+        let mut parts: Vec<Option<Vec<u8>>> = vec![None; r.total as usize];
+        while !getting.is_empty() {
+            let (i, got) = next_done(&mut getting).await;
+            let (s, rr) = got?;
             if s != Status::Ok {
                 return Err(CoreError::Server(s));
             }
-            out.extend_from_slice(&rr.ok_or(CoreError::Server(Status::Malformed))?.data);
+            parts[i as usize] = Some(rr.ok_or(CoreError::Server(Status::Malformed))?.data);
+        }
+        for p in parts.into_iter().skip(1) {
+            out.extend_from_slice(&p.ok_or(CoreError::Server(Status::Malformed))?);
         }
         Ok(out)
     }
@@ -676,15 +695,16 @@ impl Rpc {
     }
 }
 
-/// One chunk of an upload, as `Rpc::call` sends it (one way, the answer
-/// polled for), to the server's status for it.
-async fn put_chunk(
+/// One directory request (a chunk of an upload or a download), as
+/// `Rpc::call` sends it (one way, the answer polled for): the server's
+/// status and its reply.
+async fn chunk(
     transport: &dyn Transport,
     key: &ServerKey,
     server: &ServerId,
     env: &[u8],
     rng: &mut HedgedRng,
-) -> Result<Status> {
+) -> Result<(Status, Option<DirReply>)> {
     let h = RequestHeader {
         op: Op::Directory,
         flags: FLAG_DEFER,
@@ -692,11 +712,53 @@ async fn put_chunk(
         token: [0; 32],
     };
     let (bytes, ex) = enclave_rpc::seal_request(key, &h, env, rng)?;
-    let (rh, _) = match transport.exchange_deferred(server, bytes).await? {
+    let (rh, renv) = match transport.exchange_deferred(server, bytes).await? {
         Some(reply) => ex.open_reply(&reply)?,
         None => answer(transport, key, server, ex.status_id(), rng).await?,
     };
-    Ok(Status::from_u8(rh.flags))
+    let reply = api::unframe(&renv)
+        .ok()
+        .filter(|p| !p.is_empty())
+        .and_then(|p| DirReply::decode(p).ok());
+    Ok((Status::from_u8(rh.flags), reply))
+}
+
+/// [`chunk`], sent again (up to [`CHUNK_TRIES`]) when its answer didn't
+/// come: a stalled stream over Tor. Chunks are kept and served by index,
+/// so a repeat changes nothing.
+async fn chunk_tried(
+    transport: &dyn Transport,
+    key: &ServerKey,
+    server: &ServerId,
+    env: &[u8],
+    rng: &mut HedgedRng,
+    tries: u32,
+) -> Result<(Status, Option<DirReply>)> {
+    let mut tried = 0;
+    loop {
+        tried += 1;
+        match chunk(transport, key, server, env, rng).await {
+            Err(CoreError::Net(_)) if tried < tries => continue,
+            r => return r,
+        }
+    }
+}
+
+/// Futures polled together until each is done (no runtime to spawn on
+/// here), their outputs in the order they finish.
+async fn next_done<T>(
+    pending: &mut Vec<std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send>>>,
+) -> T {
+    std::future::poll_fn(|cx| {
+        for i in 0..pending.len() {
+            if let std::task::Poll::Ready(r) = pending[i].as_mut().poll(cx) {
+                drop(pending.swap_remove(i));
+                return std::task::Poll::Ready(r);
+            }
+        }
+        std::task::Poll::Pending
+    })
+    .await
 }
 
 /// The answer to a request sent one way: status polls until the server

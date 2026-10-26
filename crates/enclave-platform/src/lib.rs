@@ -9,6 +9,7 @@
 //! - [`backup`]: keeping the profile directory out of OS backups.
 //! - [`process`]: no console windows on Windows.
 //! - [`fatal`]: a scrubbed record of a native crash.
+//! - [`log`]: the last lines of error output, for the person to copy.
 //! - [`keystore`] (feature `keystores`): the Keychain, DPAPI and the
 //!   Secret Service.
 //! - [`window`] (feature `window`): keeping the window out of screen
@@ -44,6 +45,7 @@ pub mod fatal;
 mod jvm;
 #[cfg(feature = "keystores")]
 pub mod keystore;
+pub mod log;
 pub mod mem;
 #[cfg(all(feature = "window", target_os = "macos"))]
 pub mod open_url;

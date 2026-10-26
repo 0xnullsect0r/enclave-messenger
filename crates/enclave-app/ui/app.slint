@@ -1441,6 +1441,12 @@ export component AppWindow inherits Window {
     // The step setting up the account is on, 1 to setup-steps (0: none yet).
     in property <int> setup-step;
     in property <int> setup-steps: 8;
+    // The vault has said how things are (its first state came): until then
+    // the welcome screen offers nothing to set up, as an account may be
+    // there, not shown yet. slow-start: it is taking long (a log to copy).
+    in property <bool> vault-ready;
+    in property <bool> slow-start;
+    callback copy-log();
     // A step sent in parts (the vault key): parts done, how many, and about
     // how many seconds the rest take (0: not known yet).
     in property <int> setup-part;
@@ -1802,13 +1808,27 @@ export component AppWindow inherits Window {
                     // Why an existing profile didn't open, rather than a fresh
                     // start that says nothing.
                     if root.status-line != "": Secondary { text: root.status-line; }
-                    HorizontalLayout {
+                    if !root.vault-ready: HorizontalLayout {
+                        alignment: start;
+                        spacing: Tokens.space-s;
+                        Spinner { }
+                        Secondary { text: @tr("Opening Enclave…"); horizontal-stretch: 1; }
+                    }
+                    if !root.vault-ready && root.slow-start: Secondary {
+                        text: @tr("This is taking longer than it should. If it stays like this, copy Enclave's log and send it to whoever helps you with Enclave.");
+                    }
+                    if root.vault-ready: HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
                         PrimaryButton { text: @tr("Get started"); clicked => { root.get-started(); } }
                         if root.can-join: QuietButton { text: @tr("I already have Enclave"); clicked => { root.start-join(); } }
                     }
-                    if root.can-join: HorizontalLayout {
+                    // Something went wrong, or it is slow: what Enclave said.
+                    if (!root.vault-ready && root.slow-start) || root.status-line != "": HorizontalLayout {
+                        alignment: start;
+                        QuietButton { text: @tr("Copy log"); outlined: true; clicked => { root.copy-log(); } }
+                    }
+                    if root.vault-ready && root.can-join: HorizontalLayout {
                         alignment: start;
                         QuietButton { text: @tr("Restore from a backup"); clicked => { root.screen = Screen.restore; } }
                     }
@@ -3355,6 +3375,12 @@ export component AppWindow inherits Window {
                     enabled: root.add-link != "" && !root.busy;
                     clicked => { root.add-contact(root.add-link, root.add-text); }
                 }
+            }
+            // Their keys come from their server over Tor first (one is
+            // large): seconds, sometimes a minute, said so.
+            if root.busy: Caption {
+                text: @tr("Getting their keys from their server over Tor, then sending. This can take a minute.");
+                wrap: word-wrap;
             }
             HorizontalLayout {
                 alignment: start;

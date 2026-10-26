@@ -2071,6 +2071,40 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     ui.on_meet_confirm(move || {
         let _ = t.send(Cmd::MeetConfirm);
     });
+    // What Enclave said, for the person to send when something's wrong:
+    // the vault's log in the profile (on a desktop it is its own
+    // process) and what this process kept (on a phone, everything).
+    let w = ui.as_weak();
+    let log_profile = profile.clone();
+    ui.on_copy_log(move || {
+        let mut text = log_profile
+            .as_deref()
+            .map(enclave_platform::log::read_file)
+            .unwrap_or_default();
+        text.push_str(&enclave_platform::log::recent());
+        if text.is_empty() {
+            text = "Enclave hasn't written anything to its log yet.".into();
+        }
+        let copied = copy_with_timeout(text);
+        if let Some(ui) = w.upgrade() {
+            ui.set_status_line(
+                crate::i18n::tr(if copied {
+                    "Copied. It's cleared from the clipboard after 60 seconds."
+                } else {
+                    "Couldn't copy it."
+                })
+                .into(),
+            );
+        }
+    });
+    // The vault should answer within seconds; past 15 the window says it is
+    // slow and offers the log.
+    let w = ui.as_weak();
+    slint::Timer::single_shot(std::time::Duration::from_secs(15), move || {
+        if let Some(ui) = w.upgrade() {
+            ui.set_slow_start(true);
+        }
+    });
     let w = ui.as_weak();
     ui.on_copy_text(move |text| {
         let copied = copy_with_timeout(text.to_string());

@@ -766,6 +766,10 @@ msgid "Copy invite link"
 msgstr ""
 
 #: ui/app.slint
+msgid "Copy log"
+msgstr ""
+
+#: ui/app.slint
 msgid "Copy username"
 msgstr ""
 
@@ -1395,6 +1399,10 @@ msgstr ""
 
 #: enclave-app/src/video.rs
 msgid "Enclave couldn't read that video. Try another file."
+msgstr ""
+
+#: enclave-app/src/shell.rs
+msgid "Enclave hasn't written anything to its log yet."
 msgstr ""
 
 #: ui/app.slint
@@ -2419,6 +2427,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Opened"
+msgstr ""
+
+#: ui/app.slint
+msgid "Opening Enclave…"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3731,6 +3743,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "This invite link was already used, has expired or was cancelled. Ask them for a new one."
+msgstr ""
+
+#: ui/app.slint
+msgid "This is taking longer than it should. If it stays like this, copy Enclave's log and send it to whoever helps you with Enclave."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
