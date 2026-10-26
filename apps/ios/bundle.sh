@@ -34,7 +34,10 @@ else
   TARGET=aarch64-apple-ios SDK=iphoneos PLATFORM=iPhoneOS
 fi
 V=${ENCLAVE_VERSION:-$(cd "$ROOT" && cargo xtask version)}
-BUILD=$(cd "$ROOT" && cargo xtask version --android-code "$V")
+# The build number: the Android version code, unless a check build gives
+# its own (ios-store-check.yml: below the release's, so the release
+# still uploads after it).
+BUILD=${IOS_BUILD_NUMBER:-$(cd "$ROOT" && cargo xtask version --android-code "$V")}
 export IPHONEOS_DEPLOYMENT_TARGET=16.0
 epoch=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}
 export SOURCE_DATE_EPOCH=$epoch
@@ -77,7 +80,13 @@ xcrun actool "$work/Assets.xcassets" --compile "$app" --platform "$SDK" \
   --output-partial-info-plist "$work/icon.plist" > /dev/null
 /usr/libexec/PlistBuddy -c "Merge $work/icon.plist" "$app/Info.plist"
 
-# What Xcode records about the build (App Store processing checks them).
+# What Xcode records about the build, all of it: App Store processing
+# reads these to tell which Xcode and SDK made the app, and refuses one it
+# can't place as "ITMS-90111: Unsupported SDK or Xcode version". 0.1.3
+# (Xcode 27.1) and 0.1.4 (the 27.2 RC, the newest Apple lists) were
+# refused so; both lacked DTPlatformBuild, which Xcode writes.
+# ios-store-check.yml uploads a build and waits for Apple's verdict, so a
+# release is tagged only once one is accepted.
 built() {
   local info=$1
   plist() { /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$info"; }
@@ -87,6 +96,8 @@ built() {
   plist DTPlatformVersion string "$(xcrun --sdk "$SDK" --show-sdk-version)"
   plist DTSDKName string "$SDK$(xcrun --sdk "$SDK" --show-sdk-version)"
   plist DTSDKBuild string "$(xcrun --sdk "$SDK" --show-sdk-build-version)"
+  # The platform's build is the SDK's (as Xcode writes it).
+  plist DTPlatformBuild string "$(xcrun --sdk "$SDK" --show-sdk-build-version)"
   # 16.4 → 1640, 26.0.1 → 2601.
   plist DTXcode string "$(xcodebuild -version | awk '/^Xcode/{split($2, v, "."); printf "%02d%d%d", v[1], v[2], v[3]}')"
   plist DTXcodeBuild string "$(xcodebuild -version | awk '/Build version/{print $3}')"

@@ -465,13 +465,14 @@ jobs:
   ios:
     name: iOS (.ipa; TestFlight on a release)
     needs: prepare
-    # App Store Connect takes only builds made with the newest released
-    # Xcode and SDK (or their release candidates): ITMS-90111 refused 0.1.0,
-    # made with Xcode 26.6 once Xcode 27 was out. GitHub's Xcode 27 image
-    # is the `xcode-27` runner, and the job takes the newest released
-    # Xcode on it (not a beta or release candidate): 0.1.3 was refused
-    # again, built with 27.1 once 27.2 was on the runner. Move the runner on
-    # when Apple ships the next major Xcode.
+    # App Store Connect takes only builds made with the newest Xcode and
+    # SDK (or their release candidates): ITMS-90111 refused 0.1.0, made
+    # with Xcode 26.6 once Xcode 27 was out. GitHub's Xcode 27 image is the
+    # `xcode-27` runner, and ci/ios/xcode.sh takes the newest Xcode on it.
+    # 0.1.3 and 0.1.4 were refused too, made with the newest Xcode, for
+    # build keys their Info.plist lacked (apps/ios/bundle.sh `built`);
+    # ios-store-check.yml now gets Apple's verdict on a build before a tag.
+    # Move the runner on when Apple ships the next major Xcode.
     runs-on: xcode-27
     timeout-minutes: 180
     environment: ${{ needs.prepare.outputs.dry == 'true' && 'dry-run' || 'release-apple' }}
@@ -486,21 +487,7 @@ jobs:
           cache: false
       - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim wasm32-wasip1
       - name: The newest released Xcode
-        run: |
-          set -euo pipefail
-          ls -d /Applications/Xcode*.app
-          # Xcode_27.2.app, not Xcode_27.2_Release_Candidate.app or a beta.
-          want=$(ls -d /Applications/Xcode_*.app | sed -n 's|^/Applications/Xcode_\([0-9][0-9.]*\)\.app$|\1|p' | sort -V | tail -n 1)
-          [ -n "$want" ] || { echo "no released Xcode on this runner"; exit 1; }
-          sudo xcode-select -s "/Applications/Xcode_${want}.app"
-          # Read whole: grep -q closing the pipe early makes xcodebuild
-          # abort (SIGPIPE), which pipefail counts as a failure.
-          v=$(xcodebuild -version)
-          echo "$v"
-          xcrun --sdk iphoneos --show-sdk-version
-          # Xcode_27.2.0.app and Xcode_27.2.app are the same release.
-          grep -Eq "^Xcode ${want%.0}(\.0)?\$" <<<"$v" \
-            || { echo "not Xcode $want"; exit 1; }
+        run: ci/ios/xcode.sh
       - name: Distribution certificate, provisioning profile, App Store Connect key
         if: needs.prepare.outputs.dry != 'true'
         env:
@@ -510,40 +497,7 @@ jobs:
           NSE_PROFILE: ${{ secrets.IOS_NSE_PROVISIONING_PROFILE_BASE64 }}
           BROADCAST_PROFILE: ${{ secrets.IOS_BROADCAST_PROVISIONING_PROFILE_BASE64 }}
           ASC_P8: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
-        run: |
-          set -euo pipefail
-          kc="$RUNNER_TEMP/ios.keychain-db"
-          kcpw=$(head -c 24 /dev/urandom | base64)
-          security create-keychain -p "$kcpw" "$kc"
-          security set-keychain-settings -lut 21600 "$kc"
-          security unlock-keychain -p "$kcpw" "$kc"
-          echo "$P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
-          security import "$RUNNER_TEMP/dist.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
-          rm "$RUNNER_TEMP/dist.p12"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
-          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
-          id=$(security find-identity -v -p codesigning "$kc" | awk '/Apple Distribution/{print $2; exit}')
-          test -n "$id"
-          echo "IOS_SIGN_IDENTITY=$id" >> "$GITHUB_ENV"
-          # Without the app's profile the .ipa is signed ad hoc (for
-          # sideloading) and not sent to TestFlight; the release still
-          # publishes.
-          if [ -n "$PROFILE" ]; then
-            echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/enclave.mobileprovision"
-            echo "IOS_PROFILE=$RUNNER_TEMP/enclave.mobileprovision" >> "$GITHUB_ENV"
-          else
-            echo "::warning::IOS_PROVISIONING_PROFILE_BASE64 is empty: the .ipa is signed ad hoc and not uploaded to TestFlight"
-          fi
-          if [ -n "$NSE_PROFILE" ]; then
-            echo "$NSE_PROFILE" | base64 --decode > "$RUNNER_TEMP/nse.mobileprovision"
-            echo "IOS_NSE_PROFILE=$RUNNER_TEMP/nse.mobileprovision" >> "$GITHUB_ENV"
-          fi
-          if [ -n "$BROADCAST_PROFILE" ]; then
-            echo "$BROADCAST_PROFILE" | base64 --decode > "$RUNNER_TEMP/broadcast.mobileprovision"
-            echo "IOS_BROADCAST_PROFILE=$RUNNER_TEMP/broadcast.mobileprovision" >> "$GITHUB_ENV"
-          fi
-          echo "$ASC_P8" | base64 --decode > "$RUNNER_TEMP/asc.p8"
-          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
+        run: ci/ios/signing.sh
       - name: The app for the simulator, started until its vault shows its first state
         run: |
           set -euo pipefail
