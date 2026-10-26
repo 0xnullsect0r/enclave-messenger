@@ -40,7 +40,12 @@ pub mod dit;
 pub mod fatal;
 #[cfg(all(
     target_os = "android",
-    any(feature = "keystores", feature = "phone", feature = "video")
+    any(
+        feature = "keystores",
+        feature = "phone",
+        feature = "video",
+        feature = "biometric"
+    )
 ))]
 mod jvm;
 #[cfg(feature = "keystores")]

@@ -2017,8 +2017,18 @@ export component AppWindow inherits Window {
                     spacing: Tokens.space-m;
                     HorizontalLayout { alignment: start; Seal { state: SealState.checked; size: 48px; } }
                     ScreenTitle { text: @tr("Enclave is locked"); }
-                    Secondary { text: root.pin-lock ? @tr("Type your PIN to open Enclave.") : @tr("Type your passphrase to open your messages on this computer."); }
-                    unlock-field := Field {
+                    Secondary {
+                        text: root.pin-lock && !root.app-lock
+                            ? @tr("Use your {} or your phone's screen lock to open Enclave.", root.biometric)
+                            : root.pin-lock ? @tr("Type your PIN to open Enclave.") : @tr("Type your passphrase to open your messages on this computer.");
+                    }
+                    // Locked by the fingerprint alone (a phone): the system's
+                    // prompt comes up by itself.
+                    if root.pin-lock && !root.app-lock: Rectangle {
+                        height: 0;
+                        init => { root.unlock-biometric(); }
+                    }
+                    if !(root.pin-lock && !root.app-lock): Field {
                         placeholder: root.pin-lock ? @tr("PIN") : @tr("Passphrase");
                         secret: true;
                         text <=> root.passphrase-input;
@@ -2034,13 +2044,17 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
-                        PrimaryButton {
+                        if root.pin-lock && !root.app-lock: PrimaryButton {
+                            text: @tr("Unlock");
+                            clicked => { root.unlock-biometric(); }
+                        }
+                        if !(root.pin-lock && !root.app-lock): PrimaryButton {
                             text: root.busy ? @tr("Opening…") : @tr("Unlock");
                             working: root.busy;
                             enabled: root.passphrase-input != "" && !root.busy;
                             clicked => { root.unlock(root.passphrase-input); root.passphrase-input = ""; }
                         }
-                        if root.pin-lock && root.biometric-on: QuietButton {
+                        if root.pin-lock && root.app-lock && root.biometric-on: QuietButton {
                             text: @tr("Use {}", root.biometric);
                             clicked => { root.unlock-biometric(); }
                         }
@@ -4684,7 +4698,22 @@ export component AppWindow inherits Window {
                     ? @tr("Enclave locks itself when you haven't used it for a while, and your passphrase opens it again.")
                     : root.app-lock
                         ? @tr("Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked.")
-                        : @tr("Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked.");
+                        : root.phone && root.biometric-on
+                            ? @tr("Enclave locks itself when you haven't used it for a while, and your {} or your phone's screen lock opens it again. Messages keep arriving while it's locked.", root.biometric)
+                            : root.phone
+                                ? @tr("Lock Enclave with your fingerprint or face (your phone's screen lock works too), or set a PIN. Messages keep arriving while it's locked.")
+                                : @tr("Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked.");
+            }
+            // On a phone the fingerprint is the lock (no PIN needed).
+            if root.phone && !root.can-lock && root.biometric != "": SwitchRow {
+                label: @tr("Lock with {}", root.biometric);
+                detail: @tr("Removing a device, new recovery words and deleting your account still ask for your recovery words or PIN.");
+                on: root.biometric-on;
+                toggled => { root.set-biometric(!root.biometric-on); }
+            }
+            if root.phone && !root.can-lock && root.biometric == "": Caption {
+                text: @tr("To lock Enclave with your fingerprint or face, set a screen lock with one in your phone's settings.");
+                wrap: word-wrap;
             }
             if !root.can-lock: HorizontalLayout {
                 spacing: Tokens.space-s;
@@ -4695,8 +4724,8 @@ export component AppWindow inherits Window {
                     clicked => { root.set-app-lock(root.app-pin-input); root.app-pin-input = ""; }
                 }
             }
-            if root.can-lock || root.app-lock: Caption { text: @tr("Lock after"); }
-            if root.can-lock || root.app-lock: HorizontalLayout {
+            if root.can-lock || root.app-lock || (root.phone && root.biometric-on): Caption { text: @tr("Lock after"); }
+            if root.can-lock || root.app-lock || (root.phone && root.biometric-on): HorizontalLayout {
                 alignment: start;
                 spacing: Tokens.space-xs;
                 for t in [
@@ -4710,17 +4739,17 @@ export component AppWindow inherits Window {
                     clicked => { root.set-lock-timeout(t.secs); }
                 }
             }
-            if root.app-lock && !root.can-lock && root.biometric != "": SwitchRow {
+            if !root.phone && root.app-lock && !root.can-lock && root.biometric != "": SwitchRow {
                 label: @tr("Unlock with {}", root.biometric);
                 detail: @tr("Opens the screen lock only. Removing a device, new recovery words and deleting your account still need your PIN.");
                 on: root.biometric-on;
                 toggled => { root.set-biometric(!root.biometric-on); }
             }
-            if root.app-lock && !root.can-lock: HorizontalLayout {
+            if (root.app-lock || (root.phone && root.biometric-on)) && !root.can-lock: HorizontalLayout {
                 alignment: start;
                 spacing: Tokens.space-s;
                 QuietButton { text: @tr("Lock now"); outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
-                QuietButton { text: @tr("Turn off"); danger: true; clicked => { root.set-app-lock(""); } }
+                if root.app-lock: QuietButton { text: @tr("Turn off the PIN"); danger: true; clicked => { root.set-app-lock(""); } }
             }
             Body { text: @tr("Emergency PIN"); font-weight: 600; }
             Secondary {

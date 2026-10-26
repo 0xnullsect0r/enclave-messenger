@@ -503,6 +503,10 @@ const SETUP_STEP_TEXT: [&str; enclave_ipc::SETUP_STEPS as usize] = [
     "Saving your profile on this device…",
 ];
 
+/// A phone: the fingerprint (with the phone's own screen lock behind it)
+/// is the app lock, no PIN needed.
+const PHONE: bool = cfg!(any(target_os = "android", target_os = "ios"));
+
 /// Tries to open the profile at start, a second apart, before saying it
 /// didn't open.
 const OPEN_TRIES: u32 = 20;
@@ -1399,7 +1403,7 @@ pub async fn run_with(
         }
         e.load_lock();
         // With an app PIN the window starts locked.
-        if e.client.is_some() && e.lock.as_ref().is_some_and(|l| l.app_set) {
+        if e.client.is_some() && e.window_lock() {
             e.lock_now();
         }
         e.apply_privacy();
@@ -2374,8 +2378,14 @@ impl Engine {
             }
             Cmd::Reattach => {
                 // A new window has none of the pictures and starts from
-                // the whole state.
+                // the whole state; on a phone the fingerprint can be asked
+                // about now that there is one.
                 self.previews.clear();
+                if PHONE && self.biometric_name.is_none() {
+                    self.biometric_name = enclave_platform::biometric::available()
+                        .then(enclave_platform::biometric::name)
+                        .flatten();
+                }
                 self.push();
             }
             Cmd::Wake => {
@@ -3776,10 +3786,22 @@ impl Engine {
                 }
             }
             Cmd::SetBiometric(on) => {
+                // Asked again: on a phone the answer needs the window, which
+                // may have come since the vault started.
+                self.biometric_name = enclave_platform::biometric::available()
+                    .then(enclave_platform::biometric::name)
+                    .flatten();
                 if on && self.biometric_name.is_none() {
-                    self.status = "This computer has no Touch ID or Windows Hello set up.".into();
+                    self.status = if PHONE {
+                        "Set a screen lock (and a fingerprint or face) in your phone's settings first."
+                    } else {
+                        "This computer has no Touch ID or Windows Hello set up."
+                    }
+                    .into();
                 } else if self.client.is_some()
-                    && self.lock.as_ref().is_some_and(|l| l.app_set || !on)
+                    // On a phone the fingerprint is a lock of its own;
+                    // elsewhere it opens the PIN's.
+                    && (PHONE || self.lock.as_ref().is_some_and(|l| l.app_set || !on))
                     && let Some(lf) = self.lock_mut()
                 {
                     lf.biometric = on;
@@ -5028,6 +5050,15 @@ impl Engine {
         self.lock.as_mut()
     }
 
+    /// Whether the window has a lock of its own to close: an app PIN, or
+    /// on a phone the fingerprint alone (the phone's screen lock is its
+    /// fallback, so no PIN is needed there).
+    fn window_lock(&self) -> bool {
+        self.lock
+            .as_ref()
+            .is_some_and(|l| l.app_set || (PHONE && l.biometric && self.biometric_name.is_some()))
+    }
+
     /// Lock now: with a passphrase the profile closes (its keys leave
     /// memory); with an app PIN the window locks and the profile keeps
     /// receiving. Neither: nothing to lock with.
@@ -5038,7 +5069,7 @@ impl Engine {
         if self.passphrase_set {
             // Dropping the client drops its keys and the open database.
             self.client = None;
-        } else if self.lock.as_ref().is_some_and(|l| l.app_set) {
+        } else if self.window_lock() {
             self.pin_locked = true;
         } else {
             return;
@@ -5061,7 +5092,7 @@ impl Engine {
         !self.locked
             && self.client.is_some()
             && timeout > 0
-            && (self.passphrase_set || self.lock.as_ref().is_some_and(|l| l.app_set))
+            && (self.passphrase_set || self.window_lock())
             && self.last_use.elapsed() >= Duration::from_secs(u64::from(timeout))
     }
 
@@ -5291,7 +5322,10 @@ impl Engine {
             file_keys: self.file_keys,
             biometric: self.biometric_name.unwrap_or_default().into(),
             biometric_on: self.biometric_name.is_some()
-                && self.lock.as_ref().is_some_and(|l| l.app_set && l.biometric),
+                && self
+                    .lock
+                    .as_ref()
+                    .is_some_and(|l| l.biometric && (l.app_set || PHONE)),
             // On until turned off, and while no profile is open.
             screen_security: self
                 .client

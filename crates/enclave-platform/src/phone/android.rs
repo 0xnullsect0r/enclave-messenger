@@ -214,7 +214,18 @@ pub fn init() {
                 fn_ptr: native_screen_failed as *mut std::ffi::c_void,
             },
         ];
-        env.register_native_methods(&class, &methods)
+        env.register_native_methods(&class, &methods)?;
+        // The fingerprint prompt's answer (the vault's app lock).
+        #[cfg(feature = "biometric")]
+        env.register_native_methods(
+            &class,
+            &[NativeMethod {
+                name: "nativeAuthenticated".into(),
+                sig: "(Z)V".into(),
+                fn_ptr: crate::biometric::android::native_authenticated as *mut std::ffi::c_void,
+            }],
+        )?;
+        Ok(())
     });
 }
 

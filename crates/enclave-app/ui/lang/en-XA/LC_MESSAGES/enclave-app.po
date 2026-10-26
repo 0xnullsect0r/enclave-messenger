@@ -1429,6 +1429,10 @@ msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór 
 msgid "Enclave locks itself when you haven't used it for a while, and your passphrase opens it again."
 msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé, áñd ýóúr pássphrásé ópéñs ít ágáíñ.·····································]"
 
+#: ui/app.slint
+msgid "Enclave locks itself when you haven't used it for a while, and your {} or your phone's screen lock opens it again. Messages keep arriving while it's locked."
+msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé, áñd ýóúr ···························{} ór ýóúr phóñé's sçrééñ lóçk ópéñs ít ágáíñ. Mésságés kéép árrívíñg whílé ít's lóçkéd.··································]"
+
 #: enclave-app/src/camera.rs
 msgid "Enclave may not use the camera. Allow it in System Settings → Privacy & Security → Camera."
 msgstr "[Éñçlávé máý ñót úsé thé çámérá. Állów ít íñ Sýstém Séttíñgs → Príváçý & Séçúrítý → Çámérá.····································]"
@@ -1950,6 +1954,10 @@ msgid "Location: {} {}. "
 msgstr "[Lóçátíóñ: ····{} {}. ]"
 
 #: ui/app.slint
+msgid "Lock Enclave with your fingerprint or face (your phone's screen lock works too), or set a PIN. Messages keep arriving while it's locked."
+msgstr "[Lóçk Éñçlávé wíth ýóúr fíñgérpríñt ór fáçé (ýóúr phóñé's sçrééñ lóçk wórks tóó), ór sét á PÍÑ. Mésságés kéép árrívíñg whílé ít's lóçkéd.······················································]"
+
+#: ui/app.slint
 msgid "Lock after"
 msgstr "[Lóçk áftér····]"
 
@@ -1964,6 +1972,10 @@ msgstr "[Lóçk ñów···]"
 #: enclave-vault/src/engine.rs
 msgid "Lock settings saved."
 msgstr "[Lóçk séttíñgs sávéd.········]"
+
+#: ui/app.slint
+msgid "Lock with {}"
+msgstr "[Lóçk wíth ····{}]"
 
 #: ui/app.slint
 msgid "Longitude, like 13.4050"
@@ -2830,6 +2842,10 @@ msgid "Removed. Your contacts will stop sending to it. If it may be in someone e
 msgstr "[Rémóvéd. Ýóúr çóñtáçts wíll stóp séñdíñg tó ít. Íf ít máý bé íñ sóméóñé élsé's háñds, séçúré ýóúr áççóúñt ñéxt.············································]"
 
 #: ui/app.slint
+msgid "Removing a device, new recovery words and deleting your account still ask for your recovery words or PIN."
+msgstr "[Rémóvíñg á dévíçé, ñéw réçóvérý wórds áñd délétíñg ýóúr áççóúñt stíll ásk fór ýóúr réçóvérý wórds ór PÍÑ.··········································]"
+
+#: ui/app.slint
 msgid "Removing…"
 msgstr "[Rémóvíñg…···]"
 
@@ -3156,6 +3172,10 @@ msgstr "[Sét á PÍÑ, áñd Éñçlávé ásks fór ít béfóré rémóvíñg
 #: ui/app.slint
 msgid "Set a PIN, and Enclave locks itself when you haven't used it for a while. Messages keep arriving while it's locked."
 msgstr "[Sét á PÍÑ, áñd Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé. Mésságés kéép árrívíñg whílé ít's lóçkéd.··············································]"
+
+#: enclave-vault/src/engine.rs
+msgid "Set a screen lock (and a fingerprint or face) in your phone's settings first."
+msgstr "[Sét á sçrééñ lóçk (áñd á fíñgérpríñt ór fáçé) íñ ýóúr phóñé's séttíñgs fírst.······························]"
 
 #: ui/app.slint
 msgid "Setting up your private address…"
@@ -3822,6 +3842,10 @@ msgid "To link a new device, open Enclave on it, choose \"I already have Enclave
 msgstr "[Tó líñk á ñéw dévíçé, ópéñ Éñçlávé óñ ít, çhóósé \"Í álréádý hávé Éñçlávé\", áñd pásté íts líñk çódé héré. Óñlý dó thís wíth ýóúr ówñ dévíçé.·······················································]"
 
 #: ui/app.slint
+msgid "To lock Enclave with your fingerprint or face, set a screen lock with one in your phone's settings."
+msgstr "[Tó lóçk Éñçlávé wíth ýóúr fíñgérpríñt ór fáçé, sét á sçrééñ lóçk wíth óñé íñ ýóúr phóñé's séttíñgs.·······································]"
+
+#: ui/app.slint
 msgid "To report it, save it as a file and attach it to an issue at github.com/0xnullsect0r/enclave-messenger."
 msgstr "[Tó répórt ít, sávé ít ás á fílé áñd áttáçh ít tó áñ íssúé át gíthúb.çóm/0xñúllséçt0r/éñçlávé-mésséñgér.·········································]"
 
@@ -3868,6 +3892,10 @@ msgstr "[Túrñ áwáý···]"
 #: ui/app.slint
 msgid "Turn off"
 msgstr "[Túrñ óff···]"
+
+#: ui/app.slint
+msgid "Turn off the PIN"
+msgstr "[Túrñ óff thé PÍÑ······]"
 
 #: enclave-vault/src/engine/transcribing.rs
 msgid "Turn on transcription in Settings first."
@@ -4008,6 +4036,10 @@ msgstr "[Úsé thís sérvér······]"
 #: ui/app.slint
 msgid "Use where the phone is, or type the coordinates. Enclave doesn't look anything up and shows no map, so nobody else learns the place."
 msgstr "[Úsé whéré thé phóñé ís, ór týpé thé çóórdíñátés. Éñçlávé dóésñ't lóók áñýthíñg úp áñd shóws ñó máp, só ñóbódý élsé léárñs thé pláçé.····················································]"
+
+#: ui/app.slint
+msgid "Use your {} or your phone's screen lock to open Enclave."
+msgstr "[Úsé ýóúr ···{} ór ýóúr phóñé's sçrééñ lóçk tó ópéñ Éñçlávé.··················]"
 
 #: ui/app.slint
 msgid "Use {}"

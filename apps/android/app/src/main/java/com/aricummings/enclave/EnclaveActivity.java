@@ -1,6 +1,7 @@
 package com.aricummings.enclave;
 
 import android.Manifest;
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -12,6 +13,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.ImageFormat;
+import android.hardware.biometrics.BiometricManager;
+import android.hardware.biometrics.BiometricPrompt;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
@@ -24,6 +27,7 @@ import android.media.ImageReader;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -65,6 +69,7 @@ public class EnclaveActivity extends android.app.NativeActivity {
     static native void nativeScanFailed(String why);
     static native void nativeScreenFrame(byte[] rgba, int width, int height);
     static native void nativeScreenFailed(String why);
+    static native void nativeAuthenticated(boolean ok);
 
     @Override
     protected void onCreate(Bundle state) {
@@ -753,6 +758,51 @@ public class EnclaveActivity extends android.app.NativeActivity {
     /** Every account kept whose name starts with `prefix`. */
     public String[] keyList(String prefix) {
         return Keys.list(this, prefix);
+    }
+
+    /** Whether the app lock can ask for a fingerprint, a face or the
+     *  screen lock: a secure screen lock is set (and, from Android 11,
+     *  the system says it can check one now). */
+    public boolean biometricAvailable() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            BiometricManager bm = getSystemService(BiometricManager.class);
+            return bm != null && bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG
+                    | BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS;
+        }
+        KeyguardManager km = getSystemService(KeyguardManager.class);
+        return km != null && km.isDeviceSecure();
+    }
+
+    /** Ask for a fingerprint or face (or the screen lock instead); the
+     *  answer goes to nativeAuthenticated. */
+    @SuppressWarnings("deprecation")
+    public void authenticate(String title) {
+        runOnUiThread(() -> {
+            BiometricPrompt.Builder b = new BiometricPrompt.Builder(this).setTitle(title);
+            if (Build.VERSION.SDK_INT >= 30) {
+                b.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG
+                        | BiometricManager.Authenticators.DEVICE_CREDENTIAL);
+            } else {
+                // Android 9 and 10: the screen lock as the fallback.
+                b.setDeviceCredentialAllowed(true);
+            }
+            try {
+                b.build().authenticate(new CancellationSignal(), getMainExecutor(),
+                        new BiometricPrompt.AuthenticationCallback() {
+                            @Override
+                            public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult r) {
+                                nativeAuthenticated(true);
+                            }
+
+                            @Override
+                            public void onAuthenticationError(int code, CharSequence why) {
+                                nativeAuthenticated(false);
+                            }
+                        });
+            } catch (RuntimeException e) {
+                nativeAuthenticated(false);
+            }
+        });
     }
 
     /** Whether the Android Keystore answers. */

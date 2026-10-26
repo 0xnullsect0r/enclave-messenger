@@ -1,5 +1,7 @@
-//! Touch ID and Windows Hello, to open the app lock
-//! (`docs/14-storage.md` §5). Never for root actions: those take the PIN.
+//! Touch ID, Face ID, Windows Hello and Android's fingerprint prompt, to
+//! open the app lock (`docs/14-storage.md` §5). Never for root actions:
+//! those take the PIN. On a phone it is the whole lock, with the phone's
+//! own screen lock (passcode, PIN, pattern) as its fallback.
 //!
 //! The check runs in the vault, which decides what it unlocks: the window
 //! only names itself (on Windows the prompt is attached to it) and can't
@@ -12,6 +14,13 @@ pub fn name() -> Option<&'static str> {
         Some("Touch ID")
     } else if cfg!(windows) {
         Some("Windows Hello")
+    } else if cfg!(target_os = "ios") {
+        #[cfg(target_os = "ios")]
+        return Some(apple::ios_name());
+        #[allow(unreachable_code)]
+        None
+    } else if cfg!(target_os = "android") {
+        Some("fingerprint")
     } else {
         None
     }
@@ -19,8 +28,10 @@ pub fn name() -> Option<&'static str> {
 
 /// Whether the person can use it now (a sensor, enrolled).
 pub fn available() -> bool {
-    #[cfg(target_os = "macos")]
-    return mac::available();
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    return apple::available();
+    #[cfg(target_os = "android")]
+    return android::available();
     #[cfg(windows)]
     return win::available();
     #[allow(unreachable_code)]
@@ -31,22 +42,49 @@ pub fn available() -> bool {
 /// is the window to attach the prompt to (Windows: its HWND), or 0.
 #[allow(unused_variables)]
 pub fn verify(window: u64, reason: &str) -> bool {
-    #[cfg(target_os = "macos")]
-    return mac::verify(reason);
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    return apple::verify(reason);
+    #[cfg(target_os = "android")]
+    return android::verify(reason);
     #[cfg(windows)]
     return win::verify(window, reason);
     #[allow(unreachable_code)]
     false
 }
 
-#[cfg(target_os = "macos")]
-mod mac {
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod apple {
     use objc2::runtime::Bool;
     use objc2_foundation::{NSError, NSString};
     use objc2_local_authentication::{LAContext, LAPolicy};
     use std::time::Duration;
 
+    /// On a Mac Touch ID alone (the app PIN is the fallback); on a phone
+    /// Face ID or Touch ID, then the phone's passcode.
+    #[cfg(target_os = "macos")]
     const POLICY: LAPolicy = LAPolicy::DeviceOwnerAuthenticationWithBiometrics;
+    #[cfg(target_os = "ios")]
+    const POLICY: LAPolicy = LAPolicy::DeviceOwnerAuthentication;
+
+    /// What this iPhone has.
+    #[cfg(target_os = "ios")]
+    pub fn ios_name() -> &'static str {
+        use objc2_local_authentication::LABiometryType;
+        // SAFETY: a fresh LAContext; biometryType is read after
+        // canEvaluatePolicy, as Apple asks.
+        let kind = unsafe {
+            let c = LAContext::new();
+            let _ = c.canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthenticationWithBiometrics);
+            c.biometryType()
+        };
+        if kind == LABiometryType::TouchID {
+            "Touch ID"
+        } else if kind == LABiometryType::FaceID {
+            "Face ID"
+        } else {
+            "your passcode"
+        }
+    }
 
     pub fn available() -> bool {
         // SAFETY: a fresh LAContext, asked about a policy constant; no
@@ -75,6 +113,55 @@ mod mac {
         let ok = rx.recv_timeout(Duration::from_secs(60)).unwrap_or(false);
         drop(context);
         ok
+    }
+}
+
+/// Android: the system's prompt (`BiometricPrompt`: a fingerprint or
+/// face, else the screen lock), shown by the activity; its answer comes
+/// back through `EnclaveActivity.nativeAuthenticated`.
+#[cfg(target_os = "android")]
+pub(crate) mod android {
+    use jni::objects::{JClass, JValue};
+    use jni::sys::jboolean;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    /// Where the answer to the question being asked goes.
+    static WAITING: Mutex<Option<std::sync::mpsc::SyncSender<bool>>> = Mutex::new(None);
+
+    pub fn available() -> bool {
+        crate::jvm::with(|env, a| env.call_method(a, "biometricAvailable", "()Z", &[])?.z())
+            .unwrap_or(false)
+    }
+
+    pub fn verify(reason: &str) -> bool {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        if let Ok(mut w) = WAITING.lock() {
+            *w = Some(tx);
+        }
+        let asked = crate::jvm::with(|env, a| {
+            let r = env.new_string(reason)?;
+            env.call_method(
+                a,
+                "authenticate",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&r)],
+            )
+            .map(|_| ())
+        })
+        .is_some();
+        asked && rx.recv_timeout(Duration::from_secs(60)).unwrap_or(false)
+    }
+
+    /// Java's `nativeAuthenticated(ok)`: the person's answer.
+    pub(crate) extern "system" fn native_authenticated(
+        _env: jni::JNIEnv<'_>,
+        _class: JClass<'_>,
+        ok: jboolean,
+    ) {
+        if let Some(tx) = WAITING.lock().ok().and_then(|mut w| w.take()) {
+            let _ = tx.try_send(ok != 0);
+        }
     }
 }
 
