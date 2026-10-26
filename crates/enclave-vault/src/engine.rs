@@ -391,6 +391,10 @@ struct Engine {
     code_words_english: bool,
     /// The profile on disk needs its passphrase to open.
     locked: bool,
+    /// A profile is on disk that didn't open, and why: setting up again
+    /// would replace it, so the window says why instead (and Create
+    /// refuses).
+    open_error: Option<String>,
     unlock_error: String,
     /// The open profile has a passphrase (so "Lock now" makes sense).
     passphrase_set: bool,
@@ -495,6 +499,11 @@ const SETUP_STEP_TEXT: [&str; enclave_ipc::SETUP_STEPS as usize] = [
     "Storing your encrypted vault key…",
     "Saving your profile on this device…",
 ];
+
+/// Tries to open the profile at start, a second apart, before saying it
+/// didn't open.
+const OPEN_TRIES: u32 = 20;
+const OPEN_RETRY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Run the engine on a thread of this process (where a separate vault
 /// process is not available). Returns the command sender and output receiver.
@@ -1289,6 +1298,7 @@ pub async fn run_with(
         reveal_words: false,
         code_words_english: false,
         locked: false,
+        open_error: None,
         unlock_error: String::new(),
         passphrase_set: false,
         lock: None,
@@ -1344,21 +1354,44 @@ pub async fn run_with(
     if let Mode::Server { profile, .. } = &e.mode
         && profile.join("profile.redb").exists()
     {
-        match Client::open(e.options(None), Arc::clone(&e.transport)) {
-            Ok(mut c) => {
-                e.configure(&mut c);
-                e.server = c.home_server();
-                e.client = Some(c);
+        // A copy of Enclave that is still going away (its database lock,
+        // its keystore session) or a keyring the desktop unlocks a moment
+        // after login: tried again for a while before it counts.
+        let mut tries = 0;
+        loop {
+            match Client::open(e.options(None), Arc::clone(&e.transport)) {
+                Ok(mut c) => {
+                    e.configure(&mut c);
+                    e.server = c.home_server();
+                    e.client = Some(c);
+                }
+                // Protected by a passphrase: ask for it.
+                Err(CoreError::Store(enclave_store::StoreError::Crypto)) => {
+                    e.locked = true;
+                    e.passphrase_set = true;
+                }
+                Err(err) if tries < OPEN_TRIES => {
+                    tries += 1;
+                    eprintln!("enclave-vault: the profile didn't open yet ({err}); trying again");
+                    if tries == 1 {
+                        e.status = "Opening your profile…".into();
+                        e.push();
+                    }
+                    tokio::time::sleep(OPEN_RETRY).await;
+                    continue;
+                }
+                Err(err) => {
+                    eprintln!("enclave-vault: couldn't open the profile: {err}");
+                    e.status = format!(
+                        "Your profile is on this device but didn't open: {err}. Nothing was changed; start Enclave again to retry."
+                    );
+                    e.open_error = Some(err.to_string());
+                }
             }
-            // Protected by a passphrase: ask for it.
-            Err(CoreError::Store(enclave_store::StoreError::Crypto)) => {
-                e.locked = true;
-                e.passphrase_set = true;
-            }
-            Err(err) => {
-                eprintln!("enclave-vault: couldn't open the profile: {err}");
-                e.status = format!("Couldn't open your profile: {err}");
-            }
+            break;
+        }
+        if e.open_error.is_none() && e.status == "Opening your profile…" {
+            e.status.clear();
         }
         e.load_lock();
         // With an app PIN the window starts locked.
@@ -1982,6 +2015,19 @@ impl Engine {
     }
 
     async fn handle_cmd(&mut self, cmd: Cmd) {
+        // Never a new profile over one that is there but didn't open
+        // (setting up, linking, restoring): the old account would go.
+        if let Some(why) = &self.open_error
+            && matches!(
+                cmd,
+                Cmd::Create(..) | Cmd::StartJoin | Cmd::Restore(..) | Cmd::RestoreFromServer(..)
+            )
+        {
+            self.status = format!(
+                "Your profile is on this device but didn't open: {why}. Nothing was changed; start Enclave again to retry."
+            );
+            return;
+        }
         match cmd {
             Cmd::Create(name, passphrase) => {
                 if !self.has_server() {
@@ -5092,6 +5138,7 @@ impl Engine {
     /// Crypto-erase the profile (its key goes, then its files) and go back
     /// to the welcome screen.
     fn erase_local(&mut self) {
+        self.open_error = None;
         if let Some(c) = self.client.take() {
             let _ = c.erase();
         }

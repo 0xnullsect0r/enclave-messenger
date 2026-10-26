@@ -407,6 +407,36 @@ async fn a_profile_without_a_passphrase_opens_again() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A profile that is there but doesn't open (here: not a database at all)
+/// is said, after its tries, and setting up again is refused: the file is
+/// left as it was, not replaced by a new account.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_profile_that_doesnt_open_is_never_replaced() {
+    let addr = dev_server().await;
+    let dir = std::env::temp_dir().join(format!("enclave-vault-bad-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let profile = dir.join("profile");
+    std::fs::create_dir_all(&profile).unwrap();
+    let junk = b"not a database".to_vec();
+    std::fs::write(profile.join("profile.redb"), &junk).unwrap();
+    let (child, mut rd, mut wr) = start_vault(&dir, addr, &profile, "b1.sock").await;
+    let s = next_snapshot(&mut rd, |s| s.status.contains("didn't open")).await;
+    assert!(s.my_name.is_empty());
+    frame::write_frame(
+        &mut wr,
+        &Cmd::Create("Robin".into(), String::new()).encode(),
+    )
+    .await
+    .unwrap();
+    let s = next_snapshot(&mut rd, |s| s.status.contains("Nothing was changed")).await;
+    assert!(s.my_name.is_empty(), "no new account");
+    drop(rd);
+    drop(wr);
+    let _ = tokio::task::spawn_blocking(move || child.wait_with_output()).await;
+    assert_eq!(std::fs::read(profile.join("profile.redb")).unwrap(), junk);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }

@@ -2433,6 +2433,10 @@ msgstr "‫Opening this week's inbox…‬"
 msgid "Opening your inbox for message requests…"
 msgstr "‫Opening your inbox for message requests…‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Opening your profile…"
+msgstr "‫Opening your profile…‬"
+
 #: ui/app.slint
 msgid "Opening…"
 msgstr "‫Opening…‬"
@@ -4372,6 +4376,10 @@ msgstr "‫Your part of ‬{}‫'s recovery, sealed for their new device‬"
 #: ui/app.slint
 msgid "Your profile"
 msgstr "‫Your profile‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Your profile is on this device but didn't open: {}. Nothing was changed; start Enclave again to retry."
+msgstr "‫Your profile is on this device but didn't open: ‬{}‫. Nothing was changed; start Enclave again to retry.‬"
 
 #: ui/app.slint
 msgid "Your push service (UnifiedPush) wakes Enclave when something arrives. It learns only that something arrived, not what or from whom."

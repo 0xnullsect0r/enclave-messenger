@@ -2433,6 +2433,10 @@ msgstr "[Ópéñíñg thís wéék's íñbóx…··········]"
 msgid "Opening your inbox for message requests…"
 msgstr "[Ópéñíñg ýóúr íñbóx fór mésságé réqúésts…················]"
 
+#: enclave-vault/src/engine.rs
+msgid "Opening your profile…"
+msgstr "[Ópéñíñg ýóúr prófílé…········]"
+
 #: ui/app.slint
 msgid "Opening…"
 msgstr "[Ópéñíñg…···]"
@@ -4372,6 +4376,10 @@ msgstr "[Ýóúr párt óf ·····{}'s réçóvérý, séáléd fór théír 
 #: ui/app.slint
 msgid "Your profile"
 msgstr "[Ýóúr prófílé····]"
+
+#: enclave-vault/src/engine.rs
+msgid "Your profile is on this device but didn't open: {}. Nothing was changed; start Enclave again to retry."
+msgstr "[Ýóúr prófílé ís óñ thís dévíçé bút dídñ't ópéñ: ···················{}. Ñóthíñg wás çháñgéd; stárt Éñçlávé ágáíñ tó rétrý.····················]"
 
 #: ui/app.slint
 msgid "Your push service (UnifiedPush) wakes Enclave when something arrives. It learns only that something arrived, not what or from whom."

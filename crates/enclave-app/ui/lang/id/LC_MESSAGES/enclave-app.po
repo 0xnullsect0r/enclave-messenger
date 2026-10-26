@@ -2433,6 +2433,10 @@ msgstr ""
 msgid "Opening your inbox for message requests…"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Opening your profile…"
+msgstr ""
+
 #: ui/app.slint
 msgid "Opening…"
 msgstr ""
@@ -4371,6 +4375,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Your profile"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Your profile is on this device but didn't open: {}. Nothing was changed; start Enclave again to retry."
 msgstr ""
 
 #: ui/app.slint
