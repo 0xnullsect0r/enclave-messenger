@@ -197,6 +197,10 @@ msgstr "‫About Enclave‬"
 msgid "Accept"
 msgstr "‫Accept‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Accepting the request…"
+msgstr "‫Accepting the request…‬"
+
 #: ui/app.slint
 msgid "Add"
 msgstr "‫Add‬"
@@ -584,6 +588,10 @@ msgstr "‫Checked, but couldn't reach the server to update your conversation. I
 #: enclave-app/src/updater.rs
 msgid "Checking the download…"
 msgstr "‫Checking the download…‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Checking you in person…"
+msgstr "‫Checking you in person…‬"
 
 #: ui/app.slint
 msgid "Checking…"
@@ -1644,6 +1652,10 @@ msgstr "‫Getting the video ready…‬"
 #: enclave-app/src/video.rs
 msgid "Getting the video ready… {}%"
 msgstr "‫Getting the video ready… ‬{}‫%‬"
+
+#: ui/app.slint
+msgid "Getting their keys from their server over Tor, then sending. This can take a minute."
+msgstr "‫Getting their keys from their server over Tor, then sending. This can take a minute.‬"
 
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
@@ -2873,6 +2885,10 @@ msgstr "‫Restore from a backup‬"
 msgid "Restore from my server"
 msgstr "‫Restore from my server‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Restoring your account…"
+msgstr "‫Restoring your account…‬"
+
 #: ui/app.slint
 msgid "Restoring…"
 msgstr "‫Restoring…‬"
@@ -3104,6 +3120,10 @@ msgstr "‫Sending privately‬"
 #: ui/app.slint
 msgid "Sending request…"
 msgstr "‫Sending request…‬"
+
+#: enclave-vault/src/engine.rs
+msgid "Sending your request…"
+msgstr "‫Sending your request…‬"
 
 #: ui/app.slint
 msgid "Sending…"
@@ -4614,6 +4634,10 @@ msgid "{} wants to talk"
 msgstr "{}‫ wants to talk‬"
 
 #: ui/app.slint
+msgid "{} {}: {} of {}"
+msgstr "{}‫ ‬{}‫: ‬{}‫ of ‬{}"
+
+#: ui/app.slint
 msgid "{} · {}"
 msgstr "{}‫ · ‬{}"
 
@@ -4648,6 +4672,10 @@ msgstr "{}‫, hand raised‬"
 #: ui/app.slint
 msgid "{}, run by {}"
 msgstr "{}‫, run by ‬{}"
+
+#: ui/app.slint
+msgid "{}: {} of {}"
+msgstr "{}‫: ‬{}‫ of ‬{}"
 
 #: ui/app.slint
 msgid "Čeština"

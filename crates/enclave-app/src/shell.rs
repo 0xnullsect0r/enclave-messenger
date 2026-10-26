@@ -1121,6 +1121,12 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         let _ = ui.show();
                     }
                     Out::PackPreview(title, n) => view::apply_pack_preview(&ui, &title, n),
+                    Out::Activity(a) => {
+                        ui.set_activity_doing(crate::i18n::tr(&a.doing).into());
+                        ui.set_activity_part(crate::i18n::tr(&a.part).into());
+                        ui.set_activity_done(i32::try_from(a.done).unwrap_or(i32::MAX));
+                        ui.set_activity_total(i32::try_from(a.total).unwrap_or(i32::MAX));
+                    }
                     Out::Gifs(names) => view::apply_gifs(&ui, &names),
                     Out::Gallery(rows) => {
                         let rows: Vec<crate::GalleryRow> = rows

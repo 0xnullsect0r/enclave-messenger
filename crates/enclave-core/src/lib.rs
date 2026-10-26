@@ -26,6 +26,7 @@ mod content_pb;
 pub mod files;
 mod persist;
 mod rpc;
+pub use rpc::ProgressFn;
 
 pub use card::{ContactCard, DeepLink, Invite, LinkError, open_deep_link};
 pub use client::{BackupCheck, SERVER_BACKUP_EVERY, check_archive};

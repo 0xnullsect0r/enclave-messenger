@@ -449,7 +449,8 @@ pub(super) fn report_ended() {
 }
 
 /// An event from the Java side (`Native.event`): 1 in front ("1") or not,
-/// 2 a push token ("platform:token"), 3 a wake, 4 the activity is gone,
+/// 2 a push token ("platform:token"), 3 a wake, 4 the activity is gone
+/// (its `System.identityHashCode`),
 /// 5 the way messages arrive changed (its number), 6 the system's call
 /// screen ("answer", "end", "mute:1", "mute:0"), 7 a link opened with the
 /// app (its text), 8 "Open with…" failed (why), 9 a location ("lat,lon"),
@@ -457,7 +458,8 @@ pub(super) fn report_ended() {
 pub fn event(kind: i32, data: &str) {
     let e = match kind {
         4 => {
-            crate::jvm::detach_activity();
+            // Which one: its identity hash (empty from an older app).
+            crate::jvm::detach_activity(data.parse().ok());
             return;
         }
         5 => {

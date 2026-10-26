@@ -1073,6 +1073,26 @@ pub enum Out {
     /// Frames of the video being made encoded so far (so a file is read
     /// no faster than that).
     RecordProgress(u32),
+    /// Something slow under way (over Tor most things take seconds; a key
+    /// a hundred chunks): what ("Sending your request…", empty when it is
+    /// done), the part being fetched or sent ("Their keys"), and how far
+    /// (done of total; 0 of 0 when not known). The window shows it as a
+    /// bar until an empty one comes.
+    Activity(Activity),
+}
+
+/// What [`Out::Activity`] says.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Activity {
+    /// What is being done, in English for the window to translate; empty
+    /// when nothing is.
+    pub doing: String,
+    /// The part under way, or empty.
+    pub part: String,
+    /// Chunks done.
+    pub done: u32,
+    /// Chunks in all (0: not known).
+    pub total: u32,
 }
 
 /// A piece of a video playing: about half a second of frames and sound.
@@ -2400,6 +2420,11 @@ impl Out {
                 w.u8(23).u32(*n);
                 w.0
             }
+            Out::Activity(a) => {
+                let mut w = Writer::default();
+                w.u8(24).str(&a.doing).str(&a.part).u32(a.done).u32(a.total);
+                w.0
+            }
             Out::VideoPiece(p) => {
                 let mut w = Writer::default();
                 let frames = &p.frames[..p.frames.len().min(MAX_PIECE_FRAMES)];
@@ -2556,6 +2581,17 @@ impl Out {
             [23, ..] => {
                 let mut r = Reader(&b[1..]);
                 let o = Out::RecordProgress(r.u32()?);
+                r.end()?;
+                Ok(o)
+            }
+            [24, ..] => {
+                let mut r = Reader(&b[1..]);
+                let o = Out::Activity(Activity {
+                    doing: r.str()?,
+                    part: r.str()?,
+                    done: r.u32()?,
+                    total: r.u32()?,
+                });
                 r.end()?;
                 Ok(o)
             }

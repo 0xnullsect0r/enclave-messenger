@@ -195,6 +195,10 @@ msgstr ""
 msgid "Accept"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Accepting the request…"
+msgstr ""
+
 #: ui/app.slint
 msgid "Add"
 msgstr ""
@@ -581,6 +585,10 @@ msgstr ""
 
 #: enclave-app/src/updater.rs
 msgid "Checking the download…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Checking you in person…"
 msgstr ""
 
 #: ui/app.slint
@@ -1641,6 +1649,10 @@ msgstr ""
 
 #: enclave-app/src/video.rs
 msgid "Getting the video ready… {}%"
+msgstr ""
+
+#: ui/app.slint
+msgid "Getting their keys from their server over Tor, then sending. This can take a minute."
 msgstr ""
 
 #: ui/app.slint
@@ -2871,6 +2883,10 @@ msgstr ""
 msgid "Restore from my server"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Restoring your account…"
+msgstr ""
+
 #: ui/app.slint
 msgid "Restoring…"
 msgstr ""
@@ -3101,6 +3117,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Sending request…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Sending your request…"
 msgstr ""
 
 #: ui/app.slint
@@ -4612,6 +4632,10 @@ msgid "{} wants to talk"
 msgstr ""
 
 #: ui/app.slint
+msgid "{} {}: {} of {}"
+msgstr ""
+
+#: ui/app.slint
 msgid "{} · {}"
 msgstr ""
 
@@ -4645,6 +4669,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "{}, run by {}"
+msgstr ""
+
+#: ui/app.slint
+msgid "{}: {} of {}"
 msgstr ""
 
 #: ui/app.slint

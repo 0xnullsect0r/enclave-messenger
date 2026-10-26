@@ -986,6 +986,12 @@ impl Client {
         &self.profile.name
     }
 
+    /// Tell `f` how each transfer in several chunks goes (a key of a
+    /// hundred chunks over Tor takes a while): which part, done, in all.
+    pub fn set_progress(&mut self, f: crate::ProgressFn) {
+        self.rpc.set_progress(f);
+    }
+
     /// The home server: where our inboxes are.
     pub fn home_server(&self) -> ServerId {
         self.profile.server

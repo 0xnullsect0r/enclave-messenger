@@ -154,7 +154,10 @@ public class EnclaveActivity extends android.app.NativeActivity {
 
     @Override
     protected void onDestroy() {
-        Native.event(Native.ACTIVITY_GONE, "");
+        // Which activity: a newer one may already be running (Android
+        // often creates the next before destroying the last), and must
+        // stay the one the app calls.
+        Native.event(Native.ACTIVITY_GONE, Integer.toString(System.identityHashCode(this)));
         EnclaveService.windowOpen = false;
         super.onDestroy();
     }

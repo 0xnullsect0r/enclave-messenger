@@ -13,6 +13,9 @@ use std::sync::{Mutex, OnceLock};
 
 static VM: OnceLock<JavaVM> = OnceLock::new();
 static ACTIVITY: Mutex<Option<GlobalRef>> = Mutex::new(None);
+/// The held activity's `System.identityHashCode`, so the one being
+/// destroyed is told from a newer one ([`detach_activity`]).
+static ACTIVITY_ID: Mutex<Option<i32>> = Mutex::new(None);
 static SERVICE: Mutex<Option<GlobalRef>> = Mutex::new(None);
 
 /// Take the activity from android-activity's context (call from
@@ -32,15 +35,40 @@ pub fn attach_activity() {
     // SAFETY: as above: the context is a valid global reference to the
     // activity for as long as the activity lives.
     let obj = unsafe { JObject::from_raw(c.context().cast()) };
-    if let (Ok(g), Ok(mut a)) = (env.new_global_ref(&obj), ACTIVITY.lock()) {
+    let mut env = env;
+    let id = env
+        .call_static_method(
+            "java/lang/System",
+            "identityHashCode",
+            "(Ljava/lang/Object;)I",
+            &[jni::objects::JValue::Object(&obj)],
+        )
+        .and_then(|v| v.i())
+        .ok();
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
+    }
+    if let (Ok(g), Ok(mut a), Ok(mut i)) = (
+        env.new_global_ref(&obj),
+        ACTIVITY.lock(),
+        ACTIVITY_ID.lock(),
+    ) {
         *a = Some(g);
+        *i = id;
     }
 }
 
-/// The activity is gone (destroyed); window things wait for the next.
-pub fn detach_activity() {
-    if let Ok(mut a) = ACTIVITY.lock() {
+/// The activity whose `System.identityHashCode` is `id` is gone
+/// (destroyed); window things wait for the next. A newer one may already
+/// be held (Android often creates the next before destroying the last):
+/// then nothing changes. Clearing it anyway left the camera, the pickers
+/// and every other window call doing nothing.
+pub fn detach_activity(id: Option<i32>) {
+    if let (Ok(mut a), Ok(mut held)) = (ACTIVITY.lock(), ACTIVITY_ID.lock())
+        && (id.is_none() || *held == id)
+    {
         *a = None;
+        *held = None;
     }
 }
 

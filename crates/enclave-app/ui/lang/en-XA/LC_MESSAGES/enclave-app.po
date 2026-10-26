@@ -197,6 +197,10 @@ msgstr "[Ábóút Éñçlávé·····]"
 msgid "Accept"
 msgstr "[Áççépt··]"
 
+#: enclave-vault/src/engine.rs
+msgid "Accepting the request…"
+msgstr "[Áççéptíñg thé réqúést…········]"
+
 #: ui/app.slint
 msgid "Add"
 msgstr "[Ádd·]"
@@ -584,6 +588,10 @@ msgstr "[Çhéçkéd, bút çóúldñ't réáçh thé sérvér tó úpdáté ý�
 #: enclave-app/src/updater.rs
 msgid "Checking the download…"
 msgstr "[Çhéçkíñg thé dówñlóád…········]"
+
+#: enclave-vault/src/engine.rs
+msgid "Checking you in person…"
+msgstr "[Çhéçkíñg ýóú íñ pérsóñ…·········]"
 
 #: ui/app.slint
 msgid "Checking…"
@@ -1644,6 +1652,10 @@ msgstr "[Géttíñg thé vídéó réádý…·········]"
 #: enclave-app/src/video.rs
 msgid "Getting the video ready… {}%"
 msgstr "[Géttíñg thé vídéó réádý… ··········{}%]"
+
+#: ui/app.slint
+msgid "Getting their keys from their server over Tor, then sending. This can take a minute."
+msgstr "[Géttíñg théír kéýs fróm théír sérvér óvér Tór, théñ séñdíñg. Thís çáñ táké á míñúté.·································]"
 
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
@@ -2873,6 +2885,10 @@ msgstr "[Réstóré fróm á báçkúp········]"
 msgid "Restore from my server"
 msgstr "[Réstóré fróm mý sérvér········]"
 
+#: enclave-vault/src/engine.rs
+msgid "Restoring your account…"
+msgstr "[Réstóríñg ýóúr áççóúñt…·········]"
+
 #: ui/app.slint
 msgid "Restoring…"
 msgstr "[Réstóríñg…····]"
@@ -3104,6 +3120,10 @@ msgstr "[Séñdíñg prívátélý······]"
 #: ui/app.slint
 msgid "Sending request…"
 msgstr "[Séñdíñg réqúést…······]"
+
+#: enclave-vault/src/engine.rs
+msgid "Sending your request…"
+msgstr "[Séñdíñg ýóúr réqúést…········]"
 
 #: ui/app.slint
 msgid "Sending…"
@@ -4614,6 +4634,10 @@ msgid "{} wants to talk"
 msgstr "[{} wáñts tó tálk·····]"
 
 #: ui/app.slint
+msgid "{} {}: {} of {}"
+msgstr "[{} {}: {} óf ·{}]"
+
+#: ui/app.slint
 msgid "{} · {}"
 msgstr "[{} · ·{}]"
 
@@ -4648,6 +4672,10 @@ msgstr "[{}, háñd ráíséd·····]"
 #: ui/app.slint
 msgid "{}, run by {}"
 msgstr "[{}, rúñ bý ···{}]"
+
+#: ui/app.slint
+msgid "{}: {} of {}"
+msgstr "[{}: {} óf ·{}]"
 
 #: ui/app.slint
 msgid "Čeština"

@@ -53,8 +53,26 @@ const STATUS_TRIES: u32 = 120;
 /// Tries for each chunk of an upload in several.
 const CHUNK_TRIES: u32 = 4;
 
+/// Told how a transfer in several chunks goes ([`Rpc::set_progress`]):
+/// which part ("Their keys"), chunks done, chunks in all.
+pub type ProgressFn = Arc<dyn Fn(&'static str, u32, u32) + Send + Sync>;
+
+/// What a directory object is, as the person reads it in a progress bar:
+/// ours going up, or someone's coming down.
+fn part_of(kind: DirKind, up: bool) -> &'static str {
+    match (kind, up) {
+        (DirKind::Vault, true) => "Your keys",
+        (DirKind::Vault, false) => "Their keys",
+        (DirKind::Bundle, _) => "Device keys",
+        (DirKind::Manifest, _) => "Account",
+        (_, true) => "Sending",
+        (_, false) => "Receiving",
+    }
+}
+
 pub(crate) struct Rpc {
     transport: Arc<dyn Transport>,
+    progress: Option<ProgressFn>,
     keys: HashMap<ServerId, ServerKey>,
     /// The disappearing-timer clock's last reading, and when it was taken
     /// (`Rpc::timer_now`).
@@ -68,8 +86,24 @@ impl Rpc {
     pub fn new(transport: Arc<dyn Transport>) -> Self {
         Self {
             transport,
+            progress: None,
             keys: HashMap::new(),
             timer: Mutex::new(None),
+        }
+    }
+
+    /// Tell `f` how each transfer in several chunks goes, from now on.
+    pub fn set_progress(&mut self, f: ProgressFn) {
+        self.progress = Some(f);
+    }
+
+    /// Say how a transfer of `kind` goes, `up` or down (only one in
+    /// several chunks).
+    fn tell_progress(&self, kind: DirKind, up: bool, done: u32, total: u32) {
+        if total > 1
+            && let Some(f) = &self.progress
+        {
+            f(part_of(kind, up), done, total);
         }
     }
 
@@ -350,6 +384,7 @@ impl Rpc {
             }
             done += 1;
             progress(done, total);
+            self.tell_progress(kind, true, done, total);
         }
         Ok(())
     }
@@ -425,6 +460,8 @@ impl Rpc {
             }));
         }
         let mut parts: Vec<Option<Vec<u8>>> = vec![None; r.total as usize];
+        let mut done = 1;
+        self.tell_progress(kind, false, done, r.total);
         while !getting.is_empty() {
             let (i, got) = next_done(&mut getting).await;
             let (s, rr) = got?;
@@ -432,6 +469,8 @@ impl Rpc {
                 return Err(CoreError::Server(s));
             }
             parts[i as usize] = Some(rr.ok_or(CoreError::Server(Status::Malformed))?.data);
+            done += 1;
+            self.tell_progress(kind, false, done, r.total);
         }
         for p in parts.into_iter().skip(1) {
             out.extend_from_slice(&p.ok_or(CoreError::Server(Status::Malformed))?);

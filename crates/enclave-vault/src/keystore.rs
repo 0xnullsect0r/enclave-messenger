@@ -483,6 +483,7 @@ pub fn describe(profile: &Path) -> &'static str {
         Some("keychain") => "keychain",
         Some("dpapi") => "dpapi",
         Some("secret-service") => "secret-service",
+        Some("android-keystore") => "android-keystore",
         _ => "file",
     }
 }

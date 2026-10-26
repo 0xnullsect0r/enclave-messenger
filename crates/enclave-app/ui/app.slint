@@ -1445,6 +1445,12 @@ export component AppWindow inherits Window {
     // the welcome screen offers nothing to set up, as an account may be
     // there, not shown yet. slow-start: it is taking long (a log to copy).
     in property <bool> vault-ready;
+    // Something slow under way (Out::Activity): what, the part, done of
+    // total (0 of 0: not known). Shown as a bar over every screen.
+    in property <string> activity-doing;
+    in property <string> activity-part;
+    in property <int> activity-done;
+    in property <int> activity-total;
     in property <bool> slow-start;
     callback copy-log();
     // A step sent in parts (the vault key): parts done, how many, and about
@@ -5680,6 +5686,60 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     alignment: center;
                     PrimaryButton { text: @tr("Cancel"); clicked => { root.stop-scan(); } }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------ activity
+        // Something slow under way (over Tor most things take seconds, a key
+        // a hundred chunks): a bar over the top of whatever is on screen,
+        // with what it is and how far, until it is done.
+        if root.activity-doing != "" || (root.activity-total > 0 && root.activity-done < root.activity-total): Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: activity-bar.preferred-height;
+            background: Tokens.surface;
+            accessible-role: progress-indicator;
+            accessible-label: activity-text.text;
+            accessible-value: root.activity-done;
+            accessible-value-minimum: 0;
+            accessible-value-maximum: root.activity-total;
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Tokens.hairline;
+            }
+            activity-bar := VerticalLayout {
+                padding-left: Tokens.space-m;
+                padding-right: Tokens.space-m;
+                padding-top: Tokens.space-s;
+                padding-bottom: Tokens.space-s;
+                spacing: Tokens.space-s;
+                HorizontalLayout {
+                    spacing: Tokens.space-s;
+                    Spinner { size: 14px; }
+                    activity-text := Secondary {
+                        horizontal-stretch: 1;
+                        text: root.activity-total > 0 && root.activity-part != ""
+                            ? (root.activity-doing != ""
+                                ? @tr("{} {}: {} of {}", root.activity-doing, root.activity-part, root.activity-done, root.activity-total)
+                                : @tr("{}: {} of {}", root.activity-part, root.activity-done, root.activity-total))
+                            : root.activity-doing;
+                    }
+                }
+                if root.activity-total > 0: Rectangle {
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Tokens.hairline;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * min(root.activity-done, root.activity-total) / max(1, root.activity-total);
+                        height: 100%;
+                        border-radius: 2px;
+                        background: Tokens.pine;
+                        animate width { duration: 300ms; easing: ease-out; }
+                    }
                 }
             }
         }

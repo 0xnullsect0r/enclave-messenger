@@ -485,6 +485,9 @@ struct Engine {
     /// Waiting in a call link's lobby.
     call_waiting: Option<call_links::Waiting>,
     out: mpsc::UnboundedSender<Out>,
+    /// The slow thing under way, for the window's bar ([`Engine::doing`]),
+    /// shared with the client's progress reports.
+    doing: Arc<std::sync::Mutex<String>>,
 }
 
 /// What setting up an account is doing at each step
@@ -1348,6 +1351,7 @@ pub async fn run_with(
         group_calls: HashMap::new(),
         call_waiting: None,
         out,
+        doing: Arc::default(),
     };
     e.load_list();
     // Reopen an existing profile.
@@ -2166,11 +2170,15 @@ impl Engine {
                 }
             }
             Cmd::Restore(secrets, archive) if self.client.is_none() => {
+                self.doing("Restoring your account…");
                 self.restore_from(secrets, Some(archive)).await;
+                self.done_doing();
             }
             Cmd::RestoreFromServer(secrets) if self.client.is_none() => {
                 if self.has_server() {
+                    self.doing("Restoring your account…");
                     self.restore_from(secrets, None).await;
+                    self.done_doing();
                 }
             }
             Cmd::PickServer(id) => {
@@ -2445,6 +2453,7 @@ impl Engine {
             }
             Cmd::Forward(from, seq, to) => self.forward(&from, seq, &to).await,
             Cmd::Accept(id) => {
+                self.doing("Accepting the request…");
                 if let (Some(root), Some(c)) = (self.root_of(&id), self.client.as_mut()) {
                     // A join request: accepting lets them into the group.
                     let r = if c.join_request(&root).is_some() {
@@ -2456,6 +2465,7 @@ impl Engine {
                         self.status = "Couldn't accept yet. Check your connection.".into();
                     }
                 }
+                self.done_doing();
             }
             Cmd::Decline(id) => {
                 if let (Some(root), Some(c)) = (self.root_of(&id), self.client.as_mut()) {
@@ -2566,6 +2576,7 @@ impl Engine {
                         return;
                     }
                 };
+                self.doing("Sending your request…");
                 if let Some(c) = self.client.as_mut() {
                     match c.add_contact(&card, text.trim()).await {
                         Ok(()) => {
@@ -2575,6 +2586,7 @@ impl Engine {
                         Err(err) => self.add_error = link_error(&err),
                     }
                 }
+                self.done_doing();
                 self.busy = false;
             }
             Cmd::ClaimUsername(name) => {
@@ -3547,6 +3559,7 @@ impl Engine {
             Cmd::MeetConfirm => {
                 self.busy = true;
                 self.push();
+                self.doing("Checking you in person…");
                 if let Some(c) = self.client.as_mut() {
                     match c.meet_confirm().await {
                         Ok(root) => {
@@ -3565,6 +3578,7 @@ impl Engine {
                         }
                     }
                 }
+                self.done_doing();
                 self.busy = false;
             }
             Cmd::CancelJoin => {
@@ -4279,6 +4293,19 @@ impl Engine {
     /// Give a client what this build knows about the federation: the
     /// foundation key, a server list to offer, and extra pins.
     fn configure(&self, c: &mut Client) {
+        // A transfer in several chunks (a key of a hundred, over Tor) says
+        // how far it is, under whatever is being done.
+        let out = self.out.clone();
+        let doing = Arc::clone(&self.doing);
+        c.set_progress(Arc::new(move |part, done, total| {
+            let doing = doing.lock().map(|d| d.clone()).unwrap_or_default();
+            let _ = out.send(Out::Activity(enclave_ipc::Activity {
+                doing,
+                part: part.into(),
+                done,
+                total,
+            }));
+        }));
         // History to and from our other devices goes window to window on
         // the local network where it can (`enclave_core` history).
         c.set_history_lan(matches!(self.mode, Mode::Server { .. }));
@@ -5135,6 +5162,29 @@ impl Engine {
         self.lock_wait = None;
         self.unlock_error.clear();
         self.status.clear();
+    }
+
+    /// Say that something slow starts (`what`, in English for the window
+    /// to translate): the window shows it with a bar until
+    /// [`Engine::done_doing`].
+    fn doing(&self, what: &str) {
+        if let Ok(mut d) = self.doing.lock() {
+            *d = what.to_string();
+        }
+        let _ = self.out.send(Out::Activity(enclave_ipc::Activity {
+            doing: what.to_string(),
+            ..Default::default()
+        }));
+    }
+
+    /// The slow thing is over: the bar goes.
+    fn done_doing(&self) {
+        if let Ok(mut d) = self.doing.lock() {
+            d.clear();
+        }
+        let _ = self
+            .out
+            .send(Out::Activity(enclave_ipc::Activity::default()));
     }
 
     /// Crypto-erase the profile (its key goes, then its files) and go back
