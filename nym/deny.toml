@@ -18,8 +18,8 @@ ignore = [
     # only through elliptic-curve 0.13 (p384 for the TLS profile's ECDSA
     # checks and ECDH half, voprf's P-384 group), whose field and scalar
     # arithmetic is fiat-crypto's, not crypto-bigint's. crypto-bigint 0.7 is
-    # on 0.7.7. Drop this when p384/voprf move to elliptic-curve 0.14.
-    { id = "RUSTSEC-2026-0387", reason = "only crypto-bigint 0.5.5 (no fixed 0.5 release) through elliptic-curve 0.13, whose curve arithmetic is fiat-crypto's; 0.7 updated to 0.7.7" },
+    # on 0.7.9. Drop this when p384/voprf move to elliptic-curve 0.14.
+    { id = "RUSTSEC-2026-0387", reason = "only crypto-bigint 0.5.5 (no fixed 0.5 release) through elliptic-curve 0.13, whose curve arithmetic is fiat-crypto's; 0.7 updated to 0.7.9" },
     # Marvin attack on RSA private-key operations. `rsa` arrives only through
     # arti (the `tor` feature), which uses it for public-key checks of Tor
     # relay identities; Enclave never holds or uses an RSA private key.

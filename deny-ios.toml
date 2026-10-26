@@ -21,7 +21,7 @@ ignore = [
     { id = "RUSTSEC-2023-0071", reason = "no RSA private-key operations anywhere in Enclave; public-key use via arti only" },
     # deny.toml says why: crypto-bigint 0.5.5 (no fixed 0.5 release) only
     # through elliptic-curve 0.13, whose curve arithmetic is fiat-crypto's.
-    { id = "RUSTSEC-2026-0387", reason = "only crypto-bigint 0.5.5 (no fixed 0.5 release) through elliptic-curve 0.13, whose curve arithmetic is fiat-crypto's; 0.7 updated to 0.7.7" },
+    { id = "RUSTSEC-2026-0387", reason = "only crypto-bigint 0.5.5 (no fixed 0.5 release) through elliptic-curve 0.13, whose curve arithmetic is fiat-crypto's; 0.7 updated to 0.7.9" },
 ]
 
 [licenses]
