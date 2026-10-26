@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.1.4" date="2026-10-26">
+      <description>
+        <p>Setting up an account over Tor is much faster: the vault key goes up in parallel, with its own progress bar and time left, and a stalled part is sent again instead of failing. Errors say why Tor isn't available. The spinner turns, "I already have Enclave" shows on every launch, and linking a device says it is getting a code.</p>
+      </description>
+    </release>
     <release version="0.1.3" date="2026-10-25">
       <description>
         <p>Buttons work on the first click. Setting up an account shows each step. Linking a device keeps showing the same words, and a scanned link no longer runs off the screen. Phones don't ask for a passphrase when setting up.</p>

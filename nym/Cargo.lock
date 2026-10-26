@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-app"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "arboard",
  "ashpd",
@@ -3924,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-av1"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "libc",
  "rav1d",
@@ -3933,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-calls"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "bip39 3.0.0",
  "boringtun",
@@ -3947,7 +3947,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-core"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-crypto",
  "enclave-federation",
@@ -3970,14 +3970,14 @@ dependencies = [
 
 [[package]]
 name = "enclave-crash"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-platform",
 ]
 
 [[package]]
 name = "enclave-crypto"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "aes 0.9.3",
  "argon2",
@@ -4001,7 +4001,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-design"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "thiserror 2.0.21",
  "toml 0.8.23",
@@ -4021,7 +4021,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-federation"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-crypto",
  "enclave-rpc",
@@ -4031,7 +4031,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-ingress"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-nym",
  "enclave-wire",
@@ -4051,7 +4051,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-ipc"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-platform",
  "thiserror 2.0.21",
@@ -4060,7 +4060,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-kt"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "akd",
  "akd_core",
@@ -4081,7 +4081,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-media"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "candle-core",
  "candle-transformers",
@@ -4100,7 +4100,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-mediad"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-ipc",
  "enclave-media",
@@ -4130,7 +4130,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-net"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "enclave-crypto",
@@ -4144,7 +4144,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-netd"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "enclave-crypto",
@@ -4160,7 +4160,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-nym"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "enclave-wire",
@@ -4217,7 +4217,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-platform"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
@@ -4252,7 +4252,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-proto"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "bip39 3.0.0",
  "enclave-crypto",
@@ -4265,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-push-relay"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-crypto",
  "enclave-service",
@@ -4284,7 +4284,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-rpc"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-crypto",
  "enclave-wire",
@@ -4294,7 +4294,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-sandbox"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-platform",
  "landlock",
@@ -4305,7 +4305,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-service"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -4315,7 +4315,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-slip39"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "hmac 0.12.1",
  "pbkdf2",
@@ -4326,7 +4326,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-store"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-crypto",
  "redb",
@@ -4336,7 +4336,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-tls"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "enclave-crypto",
  "p384",
@@ -4346,7 +4346,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-tokens"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "blake2 0.10.6",
  "enclave-crypto",
@@ -4359,7 +4359,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-tord"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "arti-client",
  "async-trait",
@@ -4382,7 +4382,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-update"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "ed25519-dalek",
  "enclave-crypto",
@@ -4393,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-vault"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4419,14 +4419,14 @@ dependencies = [
 
 [[package]]
 name = "enclave-wasmbox"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "wasmi",
 ]
 
 [[package]]
 name = "enclave-wire"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "thiserror 2.0.21",
 ]
