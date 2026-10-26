@@ -49,9 +49,20 @@ pub fn start(mode: Mode, single_process: bool) -> (Channels, bool) {
     (enclave_vault::spawn(mode), false)
 }
 
-/// Start the vault binary at `bin` as a separate process.
+/// A vault process started and waiting for its connection.
 #[cfg(unix)]
-pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Channels> {
+struct Launched {
+    child: std::process::Child,
+    listener: std::os::unix::net::UnixListener,
+    token: [u8; enclave_ipc::frame::TOKEN_LEN],
+    sock: std::path::PathBuf,
+    dir: std::path::PathBuf,
+}
+
+/// Start the vault binary at `bin`, its socket in a private folder, and
+/// give it its token.
+#[cfg(unix)]
+fn launch(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Launched> {
     use enclave_ipc::frame;
     use std::io::Write;
     use std::os::unix::fs::DirBuilderExt;
@@ -66,8 +77,8 @@ pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Chan
     std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
     let sock = dir.join("vault.sock");
 
-    let std_listener = std::os::unix::net::UnixListener::bind(&sock)?;
-    std_listener.set_nonblocking(true)?;
+    let listener = std::os::unix::net::UnixListener::bind(&sock)?;
+    listener.set_nonblocking(true)?;
     let mut child = std::process::Command::new(bin)
         .arg("--connect")
         .arg(&sock)
@@ -77,8 +88,25 @@ pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Chan
     if let Some(mut stdin) = child.stdin.take() {
         writeln!(stdin, "{}", frame::token_hex(&token))?;
     }
-    let child_pid = child.id();
+    Ok(Launched {
+        child,
+        listener,
+        token,
+        sock,
+        dir,
+    })
+}
 
+/// Times a session starts the vault again after it asked to
+/// ([`enclave_vault::RESTART`]: its network helpers all stopped).
+#[cfg(unix)]
+const RESTARTS: u32 = 3;
+
+/// Start the vault binary at `bin` as a separate process.
+#[cfg(unix)]
+pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Channels> {
+    let first = launch(bin, mode)?;
+    let (bin, mode) = (bin.to_path_buf(), mode.clone());
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Cmd>();
     let (out_tx, out_rx) = mpsc::unbounded_channel::<Out>();
     std::thread::Builder::new()
@@ -91,36 +119,67 @@ pub fn spawn_process(bin: &std::path::Path, mode: &Mode) -> std::io::Result<Chan
                 return;
             };
             rt.block_on(async move {
-                let result: enclave_ipc::Result<()> = async {
-                    let listener = tokio::net::UnixListener::from_std(std_listener)?;
-                    let accepted =
-                        tokio::time::timeout(std::time::Duration::from_secs(30), listener.accept())
-                            .await
-                            .map_err(|_| std::io::Error::other("vault did not connect"))?;
-                    // One connection only: nothing else can reach us now.
-                    drop(listener);
+                let mut next = Some(first);
+                let mut restarts = 0;
+                while let Some(Launched {
+                    mut child,
+                    listener,
+                    token,
+                    sock,
+                    dir,
+                }) = next.take()
+                {
+                    let child_pid = child.id();
+                    let result: enclave_ipc::Result<()> = async {
+                        let listener = tokio::net::UnixListener::from_std(listener)?;
+                        let accepted = tokio::time::timeout(
+                            std::time::Duration::from_secs(30),
+                            listener.accept(),
+                        )
+                        .await
+                        .map_err(|_| std::io::Error::other("vault did not connect"))?;
+                        // One connection only: nothing else can reach us now.
+                        drop(listener);
+                        let _ = std::fs::remove_file(&sock);
+                        let _ = std::fs::remove_dir(&dir);
+                        let (stream, _) = accepted?;
+                        // The kernel's word on who connected: it must be our
+                        // child (where the platform reports it), as well as
+                        // know the token.
+                        if let Some(pid) = stream.peer_cred()?.pid()
+                            && u32::try_from(pid).ok() != Some(child_pid)
+                        {
+                            return Err(enclave_ipc::IpcError::Unauthenticated);
+                        }
+                        relay(stream, &token, &mut cmd_rx, &out_tx).await
+                    }
+                    .await;
                     let _ = std::fs::remove_file(&sock);
                     let _ = std::fs::remove_dir(&dir);
-                    let (stream, _) = accepted?;
-                    // The kernel's word on who connected: it must be our child
-                    // (where the platform reports it), as well as know the token.
-                    if let Some(pid) = stream.peer_cred()?.pid()
-                        && u32::try_from(pid).ok() != Some(child_pid)
-                    {
-                        return Err(enclave_ipc::IpcError::Unauthenticated);
+                    // Gone by itself asking to be started again (every netd
+                    // stopped: on a Mac a downloaded app's first start can
+                    // lose them), or ended here.
+                    let asked = matches!(child.try_wait(), Ok(Some(s)) if s.code() == Some(enclave_vault::RESTART));
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    if asked && restarts < RESTARTS {
+                        restarts += 1;
+                        eprintln!("enclave: the vault's network stopped; starting it again");
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        match launch(&bin, &mode) {
+                            Ok(l) => {
+                                next = Some(l);
+                                continue;
+                            }
+                            Err(e) => eprintln!("enclave: couldn't start the vault again: {e}"),
+                        }
                     }
-                    relay(stream, &token, &mut cmd_rx, &out_tx).await
-                }
-                .await;
-                let _ = std::fs::remove_file(&sock);
-                let _ = std::fs::remove_dir(&dir);
-                let _ = child.kill();
-                let _ = child.wait();
-                if let Err(e) = result {
-                    let _ = out_tx.send(Out::Snapshot(Box::new(Snapshot {
-                        status: format!("Enclave's vault stopped ({e}). Restart Enclave."),
-                        ..Default::default()
-                    })));
+                    if let Err(e) = result {
+                        let _ = out_tx.send(Out::Snapshot(Box::new(Snapshot {
+                            status: format!("Enclave's vault stopped ({e}). Restart Enclave."),
+                            ..Default::default()
+                        })));
+                    }
                 }
             });
         })?;

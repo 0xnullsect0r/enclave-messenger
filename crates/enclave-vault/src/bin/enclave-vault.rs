@@ -14,6 +14,7 @@ use std::io::BufRead;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    enclave_vault::set_standalone();
     let mut report = enclave_vault::harden::process();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let verbose = args.iter().any(|a| a == "--report");

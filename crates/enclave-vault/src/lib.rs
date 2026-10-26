@@ -26,6 +26,24 @@ pub mod netd;
 
 pub use engine::{Helpers, Mode, default_profile, spawn, spawn_with_web};
 
+/// The vault's exit code asking the window to start it again: its
+/// network helpers all stopped, and a confined vault can start no programs
+/// to replace them.
+pub const RESTART: i32 = 75;
+
+static STANDALONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// This process is the vault and nothing else (the `enclave-vault`
+/// program): it may end itself to be started again ([`RESTART`]).
+pub fn set_standalone() {
+    STANDALONE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Whether [`set_standalone`] was called.
+pub fn standalone() -> bool {
+    STANDALONE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 use enclave_ipc::frame::{self, TOKEN_LEN};
 use enclave_ipc::{Cmd, Out};
 use tokio::io::{AsyncRead, AsyncWrite};

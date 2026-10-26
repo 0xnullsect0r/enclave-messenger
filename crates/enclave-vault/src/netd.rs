@@ -79,6 +79,19 @@ pub fn normalize_bridges(text: &str) -> Result<String, String> {
     Ok(lines.join("\n"))
 }
 
+/// Whether netd processes were started in this process and every one of
+/// them has stopped: the network is gone until the vault starts again
+/// (it can start no programs once confined), which the window does when
+/// the vault exits with [`crate::RESTART`].
+pub fn all_stopped() -> bool {
+    STARTED
+        .lock()
+        .is_ok_and(|all| !all.is_empty() && all.iter().all(|a| !a.load(Ordering::SeqCst)))
+}
+
+/// Every netd's "still running" flag, as started.
+static STARTED: std::sync::Mutex<Vec<Arc<AtomicBool>>> = std::sync::Mutex::new(Vec::new());
+
 /// Spare netd processes started with the first. The confined vault can't
 /// start programs, so if netd dies the next request goes to a spare that is
 /// already running; when all are gone, the network is down until restart.
@@ -245,6 +258,9 @@ impl PipeTransport {
         let waits = extra.iter().any(|a| a == "--await-tickets");
         for l in &links {
             l.connected.store(!waits, Ordering::SeqCst);
+        }
+        if let Ok(mut all) = STARTED.lock() {
+            all.extend(links.iter().map(|l| Arc::clone(&l.alive)));
         }
         Ok(Self {
             links,

@@ -1444,6 +1444,13 @@ pub async fn run_with(
             }
             _ = tick.tick() => {
                 ticks += 1;
+                // Every netd gone, in a vault process of its own (not one
+                // inside the window's): the window starts it again, and
+                // with it the network.
+                if crate::netd::all_stopped() && crate::standalone() {
+                    eprintln!("enclave-vault: every netd stopped; asking to be started again");
+                    std::process::exit(crate::RESTART);
+                }
                 // Now and then: is Tor up (or blocked, so bridges may help)?
                 if ticks.is_multiple_of(20) {
                     e.check_tor().await;
