@@ -239,6 +239,33 @@ public class EnclaveActivity extends android.app.NativeActivity {
                 getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f;
     }
 
+    /**
+     * Match the system bars to the theme: dark bars with light icons for
+     * the dark default, light bars with dark icons for the light theme, so
+     * the clock and battery stay legible either way.
+     */
+    @SuppressWarnings("deprecation") // setStatusBarColor/setNavigationBarColor from API 35
+    public void setDark(boolean dark) {
+        runOnUiThread(() -> {
+            int color = dark ? 0xFF111412 : 0xFFF6F3EC;
+            getWindow().setStatusBarColor(color);
+            getWindow().setNavigationBarColor(color);
+            android.view.View decor = getWindow().getDecorView();
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.view.WindowInsetsController c = decor.getWindowInsetsController();
+                if (c != null) {
+                    int bars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                            | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                    c.setSystemBarsAppearance(dark ? 0 : bars, bars);
+                }
+            } else {
+                int flags = decor.getSystemUiVisibility();
+                int light = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                decor.setSystemUiVisibility(dark ? (flags & ~light) : (flags | light));
+            }
+        });
+    }
+
     /** Screen security on or off (Settings → Hide from screenshots). */
     public void setSecure(boolean on) {
         runOnUiThread(() -> {

@@ -4028,7 +4028,28 @@ impl Engine {
                                 std::fs::write(&file, &b)
                             };
                             match saved {
-                                Ok(()) => self.bridges = b,
+                                Ok(()) => {
+                                    let changed = b != self.bridges_at_start;
+                                    self.bridges = b;
+                                    // netd starts Tor with the bridges when
+                                    // it starts, so a change needs a fresh
+                                    // start. A separate vault asks to be
+                                    // started again (the window does it,
+                                    // bringing Tor up with the new bridges);
+                                    // in-process (phones) the person reopens
+                                    // Enclave, which the window says.
+                                    // Only where the window starts the vault
+                                    // again (unix desktop); Windows and phones
+                                    // show the reopen note instead.
+                                    if changed && cfg!(unix) && crate::standalone() {
+                                        self.push();
+                                        let _ = self
+                                            .transport
+                                            .flush(std::time::Duration::from_secs(2))
+                                            .await;
+                                        std::process::exit(crate::RESTART);
+                                    }
+                                }
                                 Err(e) => self.bridges_error = format!("Couldn't save them: {e}"),
                             }
                         }
@@ -4057,6 +4078,11 @@ impl Engine {
                     }
                 }
                 self.apply_privacy();
+            }
+            Cmd::Theme(t) => {
+                if let Some(c) = self.client.as_mut() {
+                    let _ = c.set_setting("theme", &[t as u8]);
+                }
             }
             Cmd::WordsSaved => {
                 if let Some(c) = self.client.as_mut() {
@@ -5558,6 +5584,7 @@ impl Engine {
         }
         s.recovery_saved = matches!(c.setting("recovery-saved"), Ok(Some(v)) if v == [1]);
         s.privacy = i32::from(matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
+        s.light = matches!(c.setting("theme"), Ok(Some(v)) if v == [1]);
         // The backup route: offered after a minute without the mixnet, when
         // the home server is on the mixnet and has an onion service too, and
         // Maximum is off. A server reached only by its onion service is on

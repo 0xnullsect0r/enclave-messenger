@@ -237,6 +237,13 @@ pub fn set_screen_security(on: bool) {
     imp::set_screen_security(on);
 }
 
+/// Match the phone's status and navigation bars to the theme (`dark` for
+/// the dark default, light bars for the light theme), so their icons stay
+/// legible. Android only; iOS's status bar follows the app's style.
+pub fn set_dark_bars(dark: bool) {
+    imp::set_dark_bars(dark);
+}
+
 /// How messages reach this phone while the app is closed (its numbers are
 /// the push platforms' in [`Event::PushToken`]).
 pub mod delivery {

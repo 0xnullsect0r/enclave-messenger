@@ -335,6 +335,8 @@ pub struct Snapshot {
     pub words_language: String,
     /// Privacy: 0 Standard, 1 Maximum (the saved setting).
     pub privacy: i32,
+    /// The light theme is on (the saved setting); off is the dark default.
+    pub light: bool,
     /// Maximum privacy is holding what was written in the current
     /// conversation until all three KEMs protect it ("Extra protection:
     /// finishing…").
@@ -727,6 +729,8 @@ pub enum Cmd {
     BackupRoute(bool),
     /// Tor bridges: empty (none), `builtin`, `snowflake`, or bridge lines.
     SetBridges(String),
+    /// The theme: 1 light, 0 the dark default.
+    Theme(i32),
     /// Put the current conversation on the record (or off it).
     SetOnRecord(bool),
     /// The open group announcement-only (only admins post), or open again.
@@ -1541,6 +1545,7 @@ impl Snapshot {
                 .u8((p.tint % TINT_COUNT) as u8)
                 .bool(p.selected);
         }
+        w.bool(self.light);
         w.0
     }
 
@@ -1915,6 +1920,7 @@ impl Snapshot {
                     })
                     .collect::<Result<_>>()?
             },
+            light: r.bool()?,
         };
         r.end()?;
         Ok(s)
@@ -1998,6 +2004,7 @@ impl Cmd {
             Cmd::PlayClip(c, s) => w.u8(62).str(c).u64(*s),
             Cmd::BackupRoute(on) => w.u8(63).bool(*on),
             Cmd::SetBridges(b) => w.u8(64).str(b),
+            Cmd::Theme(i) => w.u8(153).i32(*i),
             Cmd::SetOnRecord(on) => w.u8(65).bool(*on),
             Cmd::SetAnnouncementOnly(on) => w.u8(119).bool(*on),
             Cmd::NewFolder(n) => w.u8(120).str(n),
@@ -2179,6 +2186,7 @@ impl Cmd {
             62 => Cmd::PlayClip(r.str()?, r.u64()?),
             63 => Cmd::BackupRoute(r.bool()?),
             64 => Cmd::SetBridges(r.str()?),
+            153 => Cmd::Theme(r.i32()?),
             65 => Cmd::SetOnRecord(r.bool()?),
             119 => Cmd::SetAnnouncementOnly(r.bool()?),
             120 => Cmd::NewFolder(r.str()?),

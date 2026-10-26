@@ -388,6 +388,13 @@ pub(super) fn set_screen_security(on: bool) {
     });
 }
 
+pub(super) fn set_dark_bars(dark: bool) {
+    let _ = with(|env, a| {
+        env.call_method(a, "setDark", "(Z)V", &[JValue::Bool(u8::from(dark))])
+            .map(|_| ())
+    });
+}
+
 pub(super) fn text_scale() -> f32 {
     with_any(|env, a| env.call_method(a, "fontScale", "()F", &[])?.f()).unwrap_or(1.0)
 }

@@ -895,6 +895,11 @@ pub(super) fn set_screen_security(on: bool) {
     }
 }
 
+pub(super) fn set_dark_bars(_dark: bool) {
+    // iOS draws no system bar Enclave colors; the status bar text follows
+    // the app's UIStatusBarStyle.
+}
+
 pub(super) fn delivery() -> (u8, u8) {
     (super::delivery::APPLE, 1 << super::delivery::APPLE)
 }

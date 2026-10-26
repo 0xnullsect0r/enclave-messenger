@@ -110,6 +110,7 @@ fn snapshot() -> Snapshot {
         recovery_saved: true,
         words_language: "fr".into(),
         privacy: 1,
+        light: true,
         finishing: true,
         setup_step: 3,
         setup_part: 12,

@@ -1417,6 +1417,8 @@ export component AppWindow inherits Window {
     in property <string> status-line;
     in property <bool> show-delivery-hint: true;
     in-out property <int> privacy: 0;
+    // The light theme is on; off is the dark default (Tokens.dark).
+    in-out property <bool> light;
     in property <[string]> recovery-words;
     // BIP-39 list the words are shown in (`en`, `es`, … `zh-Hant`).
     in property <string> words-language: "en";
@@ -1769,6 +1771,7 @@ export component AppWindow inherits Window {
     callback mark-checked(string);
     callback copy-text(string);
     callback set-privacy(int);
+    callback set-theme(int);
     callback open-sheet(Sheet);
     callback words-saved();
     callback toggle-pick(string);
@@ -1943,6 +1946,42 @@ export component AppWindow inherits Window {
                         init => { self.focus(); }
                     }
                     Secondary { text: @tr("Only people you talk to can see this."); }
+                    // A Tor bridge for setting up where Tor is blocked. The
+                    // switch applies at once on the desktop; on a phone,
+                    // reopen Enclave once (nothing is set up yet to lose).
+                    SwitchRow {
+                        label: @tr("Connect through a Tor bridge");
+                        detail: @tr("Turn this on if your network blocks Tor. Snowflake works on most blocked networks.");
+                        on: root.bridges != "";
+                        toggled => { root.set-bridges(root.bridges == "" ? "snowflake" : ""); }
+                    }
+                    if root.bridges != "": HorizontalLayout {
+                        spacing: Tokens.space-s;
+                        Chip {
+                            text: @tr("Snowflake");
+                            chosen: root.bridges == "snowflake";
+                            clicked => { root.set-bridges("snowflake"); }
+                        }
+                        Chip {
+                            text: @tr("Built-in");
+                            chosen: root.bridges == "builtin";
+                            clicked => { root.set-bridges("builtin"); }
+                        }
+                        Chip {
+                            text: @tr("My own");
+                            chosen: root.bridges != "" && root.bridges != "snowflake" && root.bridges != "builtin";
+                            clicked => { root.open-sheet(Sheet.settings); }
+                        }
+                    }
+                    if root.bridges-restart: Secondary {
+                        text: @tr("Reopen Enclave to connect through the bridge.");
+                    }
+                    if root.bridges-error != "": Text {
+                        text: root.bridges-error;
+                        color: Tokens.danger;
+                        font-size: Tokens.type-secondary;
+                        wrap: word-wrap;
+                    }
                     if root.home-label != "": HorizontalLayout {
                         spacing: Tokens.space-s;
                         Secondary { text: @tr("Your server: {}", root.home-label); horizontal-stretch: 1; }
@@ -4511,6 +4550,17 @@ export component AppWindow inherits Window {
                     clicked => { root.server-pick-for = 1; root.chosen-server = ""; root.sheet = Sheet.servers; }
                 }
             }
+            SwitchRow {
+                label: @tr("Light theme");
+                detail: @tr("Enclave is dark by default. Turn this on for a light background.");
+                on: root.light;
+                toggled => {
+                    root.light = !root.light;
+                    Tokens.dark = !root.light;
+                    root.set-theme(root.light ? 1 : 0);
+                }
+            }
+            Rectangle { height: 1px; background: Tokens.hairline; }
             Body { text: @tr("Tor bridges"); font-weight: 600; }
             Secondary {
                 text: root.bridges == ""

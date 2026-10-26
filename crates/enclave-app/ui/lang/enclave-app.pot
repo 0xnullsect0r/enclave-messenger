@@ -716,6 +716,10 @@ msgid "Compare these numbers with {} in person or on a call. If every group matc
 msgstr ""
 
 #: ui/app.slint
+msgid "Connect through a Tor bridge"
+msgstr ""
+
+#: ui/app.slint
 msgid "Connecting…"
 msgstr ""
 
@@ -1416,6 +1420,10 @@ msgid "Enclave is built with the work of these projects, under the licences belo
 msgstr ""
 
 #: ui/app.slint
+msgid "Enclave is dark by default. Turn this on for a light background."
+msgstr ""
+
+#: ui/app.slint
 msgid "Enclave is locked"
 msgstr ""
 
@@ -1908,6 +1916,10 @@ msgid "Let someone next to you scan this. For someone who isn't here, copy an in
 msgstr ""
 
 #: ui/app.slint
+msgid "Light theme"
+msgstr ""
+
+#: ui/app.slint
 msgid "Link preview from {}: {}. "
 msgstr ""
 
@@ -2149,6 +2161,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "My code"
+msgstr ""
+
+#: ui/app.slint
+msgid "My own"
 msgstr ""
 
 #: ui/app.slint
@@ -2857,6 +2873,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Renewed every week. Your server sees only an encrypted file; your words alone bring it back."
+msgstr ""
+
+#: ui/app.slint
+msgid "Reopen Enclave to connect through the bridge."
 msgstr ""
 
 #: ui/app.slint
@@ -3901,6 +3921,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Turn previews off"
+msgstr ""
+
+#: ui/app.slint
+msgid "Turn this on if your network blocks Tor. Snowflake works on most blocked networks."
 msgstr ""
 
 #: ui/app.slint

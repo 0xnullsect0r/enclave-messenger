@@ -1543,6 +1543,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
         let _ = t.send(Cmd::Privacy(p));
     });
     let t = tx.clone();
+    ui.on_set_theme(move |p| {
+        let _ = t.send(Cmd::Theme(p));
+    });
+    let t = tx.clone();
     ui.on_words_saved(move || {
         let _ = t.send(Cmd::WordsSaved);
     });

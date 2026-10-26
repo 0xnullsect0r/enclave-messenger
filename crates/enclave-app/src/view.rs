@@ -4,7 +4,8 @@
 use crate::{AppWindow, ContactRow, DeviceRow, FolderRow, MessageRow, PickRow, Screen, Sheet};
 pub use enclave_ipc::{ClipFrames, Device, Effect, Msg, Pick, Preview, Row, Snapshot};
 use slint::{
-    Color, Image, Model, ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
+    Color, ComponentHandle, Image, Model, ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer,
+    SharedString, VecModel,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -509,6 +510,13 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_recovery_saved(s.recovery_saved);
     ui.set_words_language(s.words_language.clone().into());
     ui.set_privacy(s.privacy);
+    // The theme (dark by default); the saved setting once a profile opens.
+    ui.set_light(s.light);
+    ui.global::<crate::Tokens>().set_dark(!s.light);
+    // A phone's status and navigation bars follow the theme, so their
+    // icons stay legible.
+    #[cfg(not(desktop))]
+    enclave_platform::phone::set_dark_bars(!s.light);
     ui.set_finishing(s.finishing);
     ui.set_gap(s.gap);
     ui.set_on_record(s.on_record);

@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Paper behind the first frame (design/tokens.toml `background`). -->
-    <style name="Enclave" parent="@android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@color/paper</item>
-        <item name="android:statusBarColor">@color/paper</item>
-        <item name="android:navigationBarColor">@color/paper</item>
-        <item name="android:windowLightStatusBar">true</item>
+    <!-- Night behind the first frame: Enclave is dark by default
+         (design/tokens.toml `background`, dark). setDark flips the system
+         bars to light icons when the light theme is chosen. -->
+    <style name="Enclave" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/night</item>
+        <item name="android:statusBarColor">@color/night</item>
+        <item name="android:navigationBarColor">@color/night</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
+    <color name="night">#111412</color>
     <color name="paper">#F6F3EC</color>
 </resources>

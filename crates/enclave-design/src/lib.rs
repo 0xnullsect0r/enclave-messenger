@@ -194,7 +194,7 @@ impl Tokens {
     pub fn to_slint(&self) -> Result<String, TokenError> {
         let mut s = String::from(
             "// Generated from design/tokens.toml by enclave-design. Do not edit.\n\
-             export global Tokens {\n    in-out property <bool> dark: false;\n    in-out property <float> text-scale: 1.0;\n    in-out property <bool> reduce-motion: false;\n",
+             export global Tokens {\n    in-out property <bool> dark: true;\n    in-out property <float> text-scale: 1.0;\n    in-out property <bool> reduce-motion: false;\n",
         );
         for (name, light) in &self.light {
             let dark = self
@@ -262,5 +262,7 @@ mod tests {
         let s = Tokens::parse(TOKENS).unwrap().to_slint().unwrap();
         assert!(s.contains("out property <color> pine: dark ? #7cc4a8 : #1d5646;"));
         assert!(s.contains("out property <length> type-body: 17px * text-scale;"));
+        // Dark by default; the app turns it off for the light theme.
+        assert!(s.contains("in-out property <bool> dark: true;"));
     }
 }
