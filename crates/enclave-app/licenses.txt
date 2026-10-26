@@ -30074,7 +30074,7 @@ freely, subject to the following restrictions:
 
 3. This notice may not be removed or altered from any source distribution.
 
-=== zstd 0.14.0 (BSD-3-Clause), zstd-safe 8.0.0 (BSD-3-Clause), zstd-sys 2.1.0+zstd.1.5.7 (BSD-3-Clause)
+=== zstd 0.14.3 (BSD-3-Clause), zstd-safe 8.2.0 (BSD-3-Clause), zstd-sys 2.1.2+zstd.1.5.7 (BSD-3-Clause)
 BSD 3-Clause License
 
 Copyright (c) 2026, Alexandre Bury
@@ -30104,7 +30104,7 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-=== zstd-sys 2.1.0+zstd.1.5.7 (BSD-3-Clause)
+=== zstd-sys 2.1.2+zstd.1.5.7 (BSD-3-Clause)
 The auto-generated bindings are under the 3-clause BSD license:
 
 BSD License
