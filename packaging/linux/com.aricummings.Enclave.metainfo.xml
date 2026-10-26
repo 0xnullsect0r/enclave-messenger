@@ -85,7 +85,7 @@
   <releases>
     <release version="0.1.5" date="2026-10-26">
       <description>
-        <p>On phones, nothing is drawn under the status bar, camera cut-out or navigation bar any more.</p>
+        <p>On phones, nothing is drawn under the status bar, camera cut-out or navigation bar any more. Reopening the app no longer asks to set it up again while the vault is still starting, and a profile that doesn't open is never replaced. On Android the camera, the keystore and the pickers keep working after the app is reopened, and phones can lock with a fingerprint or face, no PIN needed. On the desktop the vault is started again when its network stops. Adding someone fetches their keys in parallel, the meeting code shows while it is made, and every slow step shows a bar with what it is doing. Copy log puts the app's log on the clipboard, to send when something goes wrong. The iPhone build passes the App Store's checks again.</p>
       </description>
     </release>
     <release version="0.1.4" date="2026-10-26">
