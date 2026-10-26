@@ -11,8 +11,6 @@ use std::sync::Mutex;
 
 /// Lines kept in memory.
 const KEEP: usize = 400;
-/// A log file is started afresh once it is this long.
-const MAX_FILE: u64 = 512 * 1024;
 /// The log file in a profile.
 pub const FILE: &str = "log.txt";
 
@@ -52,6 +50,8 @@ pub fn read_file(profile: &std::path::Path) -> String {
 pub fn tee_stderr(profile: &std::path::Path) {
     use std::io::{BufRead, Write};
     use std::os::fd::FromRawFd;
+    /// A log file is started afresh once it is this long.
+    const MAX_FILE: u64 = 512 * 1024;
     let path = profile.join(FILE);
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > MAX_FILE) {
         let _ = std::fs::rename(&path, profile.join("log.1.txt"));
