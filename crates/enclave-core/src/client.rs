@@ -661,25 +661,26 @@ impl Client {
         server: ServerId,
         name: &str,
     ) -> Result<(Self, Vec<String>)> {
-        Self::create_with_progress(opts, transport, server, name, &|_| {}).await
+        Self::create_with_progress(opts, transport, server, name, &|_, _, _| {}).await
     }
 
     /// [`Client::create`], telling `progress` each step as it starts: 1
     /// the keys, 2 to 4 the request inbox and this and next week's inboxes,
     /// 5 to 7 the manifest, this device's prekeys and the vault key on the
-    /// server, 8 saving the profile on this device. Over Tor each of the
-    /// server's steps takes seconds.
+    /// server, 8 saving the profile on this device; with the parts of a
+    /// step sent in parts (7) done and how many, else 0 and 0. Over Tor
+    /// each of the server's steps takes seconds.
     pub async fn create_with_progress(
         opts: Options,
         transport: Arc<dyn Transport>,
         server: ServerId,
         name: &str,
-        progress: &(dyn Fn(u8) + Send + Sync),
+        progress: &(dyn Fn(u8, u32, u32) + Send + Sync),
     ) -> Result<(Self, Vec<String>)> {
         if name.len() > MAX_NAME {
             return Err(CoreError::TooLong);
         }
-        progress(1);
+        progress(1, 0, 0);
         let mut rng = enclave_store::device_rng(opts.keystore.as_ref())?;
         let now = transport.now();
         let recovery = RecoverySecret::generate(&mut rng)?;
@@ -704,7 +705,7 @@ impl Client {
         let publication = prekeys.publish(&device, manifest.bundle_epoch, now, &mut rng)?;
 
         let mut rpc = Rpc::new(transport);
-        progress(2);
+        progress(2, 0, 0);
         rpc.create_inbox(
             &server,
             profile.request_inbox,
@@ -718,7 +719,7 @@ impl Client {
         // This week's and next week's account-inbox addresses.
         let week = api::week_of(now);
         for (step, w) in [(3, week), (4, week + 1)] {
-            progress(step);
+            progress(step, 0, 0);
             let days = inbox::read_days(&profile, w, now);
             rpc.create_inbox(
                 &server,
@@ -733,7 +734,7 @@ impl Client {
             profile.add_week(w);
         }
         let mk = manifest_key(&account.root_public.0);
-        progress(5);
+        progress(5, 0, 0);
         rpc.dir_put(
             &server,
             DirKind::Manifest,
@@ -744,7 +745,7 @@ impl Client {
             &mut rng,
         )
         .await?;
-        progress(6);
+        progress(6, 0, 0);
         rpc.dir_put(
             &server,
             DirKind::Bundle,
@@ -755,14 +756,16 @@ impl Client {
             &mut rng,
         )
         .await?;
-        progress(7);
+        progress(7, 0, 0);
         let vault_owner = enclave_rpc::api::vault_owner(&profile.vault_key);
         let blob = persist::seal_large(
             &SealKey::from_bytes(profile.vault_key),
             &account.vault_public.0[..],
             &mut rng,
         )?;
-        rpc.dir_put(
+        // The vault key is large (a McEliece public key): sent in parts,
+        // each said as it is answered.
+        rpc.dir_put_with_progress(
             &server,
             DirKind::Vault,
             profile.vault_locator,
@@ -770,10 +773,11 @@ impl Client {
             &blob,
             now,
             &mut rng,
+            &|done, total| progress(7, done, total),
         )
         .await?;
 
-        progress(8);
+        progress(8, 0, 0);
         let pw = opts
             .passphrase
             .as_ref()

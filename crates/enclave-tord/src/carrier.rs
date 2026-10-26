@@ -40,8 +40,13 @@ pub const ONEWAY_BIT: u32 = 0x8000_0000;
 pub const MAX_FRAME: usize = 2 * 1024 * 1024;
 /// Longest reply read from a server.
 pub const MAX_REPLY: usize = 1024 * 1024;
-/// Streams kept to each onion service.
-pub const STREAMS: usize = 2;
+/// Streams kept to each onion service. Several: a burst (an upload's
+/// chunks, a backlog) would otherwise queue behind one slow round trip on
+/// each, past [`TIMEOUT`]. Within the service's limit per circuit
+/// (`enclave-onion`'s 16), and unseen on the wire: they share the circuit.
+pub const STREAMS: usize = 6;
+/// How long opening a stream to an onion service may take.
+pub const DIAL_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long one exchange may take, from asking tord to its answer.
 pub const TIMEOUT: Duration = Duration::from_secs(90);
 /// How long a server may take to answer on a stream (less than
@@ -372,7 +377,7 @@ impl Pool {
         };
         let reused = stream.is_some();
         if stream.is_none() {
-            *stream = Some(self.dialer.dial(host, port).await?);
+            *stream = Some(dial(&*self.dialer, host, port).await?);
         }
         let first = match stream.as_mut() {
             Some(s) => one(s.as_mut(), request, oneway).await,
@@ -387,13 +392,31 @@ impl Pool {
                 if !reused || !stale(&e) {
                     return Err(e);
                 }
-                let mut s = self.dialer.dial(host, port).await?;
+                let mut s = dial(&*self.dialer, host, port).await?;
                 let v = one(s.as_mut(), request, oneway).await?;
                 *stream = Some(s);
                 Ok(v)
             }
         }
     }
+}
+
+/// A stream to `host:port`, or an error once [`DIAL_TIMEOUT`] has passed (a
+/// hung connect would otherwise hold its slot past every request's time).
+#[cfg(feature = "carrier-serve")]
+async fn dial(
+    dialer: &dyn crate::Dialer,
+    host: &str,
+    port: u16,
+) -> std::io::Result<Box<dyn crate::socks::Stream>> {
+    tokio::time::timeout(DIAL_TIMEOUT, dialer.dial(host, port))
+        .await
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "couldn't reach the server's onion service in time",
+            )
+        })?
 }
 
 /// Whether an error is a stream the other end had already closed (before

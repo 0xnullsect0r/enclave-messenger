@@ -1617,6 +1617,10 @@ msgstr "‫GIF search couldn't reach Wikimedia Commons. Try again in a moment.�
 msgid "Get started"
 msgstr "‫Get started‬"
 
+#: enclave-vault/src/engine.rs
+msgid "Getting a link code from your server…"
+msgstr "‫Getting a link code from your server…‬"
+
 #: ui/app.slint
 msgid "Getting it ready…"
 msgstr "‫Getting it ready…‬"
@@ -4540,6 +4544,18 @@ msgstr "{}‫ is asking to join‬"
 #: ui/app.slint
 msgid "{} is typing"
 msgstr "{}‫ is typing‬"
+
+#: ui/app.slint
+msgid "{} of {} parts"
+msgstr "{}‫ of ‬{}‫ parts‬"
+
+#: ui/app.slint
+msgid "{} of {} parts, about {} min left"
+msgstr "{}‫ of ‬{}‫ parts, about ‬{}‫ min left‬"
+
+#: ui/app.slint
+msgid "{} of {} parts, about {} s left"
+msgstr "{}‫ of ‬{}‫ parts, about ‬{}‫ s left‬"
 
 #: ui/app.slint
 msgid "{} people, you included. Everyone in the group can see who else is in it."

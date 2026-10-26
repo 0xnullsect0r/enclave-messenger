@@ -191,6 +191,35 @@ fn parse_coordinates(s: &str) -> Option<(f64, f64)> {
 }
 
 #[cfg(desktop)]
+/// Say on the terminal which window system and scale the window got, once
+/// it is up: a blurry window on a high-DPI screen is one drawn at a smaller
+/// scale and stretched (under XWayland, say), which this shows.
+fn log_window(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    slint::Timer::single_shot(std::time::Duration::from_millis(500), move || {
+        use slint::winit_030::WinitWindowAccessor as _;
+        use slint::winit_030::winit::raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
+        let Some(ui) = weak.upgrade() else {
+            return;
+        };
+        let system = ui
+            .window()
+            .with_winit_window(|w| match w.window_handle().map(|h| h.as_raw()) {
+                Ok(RawWindowHandle::Wayland(_)) => "Wayland",
+                Ok(RawWindowHandle::Xlib(_) | RawWindowHandle::Xcb(_)) => "X11",
+                Ok(RawWindowHandle::Win32(_)) => "Windows",
+                Ok(RawWindowHandle::AppKit(_)) => "macOS",
+                _ => "unknown",
+            })
+            .unwrap_or("unknown");
+        eprintln!(
+            "enclave: window on {system}, scale {:.2}",
+            ui.window().scale_factor()
+        );
+    });
+}
+
+#[cfg(desktop)]
 /// Show a desktop notification, unless the window is in front (the person
 /// sees the message already). Shown from a thread of its own: on Linux it
 /// is a D-Bus call.
@@ -2083,6 +2112,7 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     #[cfg(desktop)]
     {
         ui.show()?;
+        log_window(&ui);
         slint::run_event_loop_until_quit()?;
         ui.hide()
     }

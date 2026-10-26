@@ -1617,6 +1617,10 @@ msgstr "[GÍF séárçh çóúldñ't réáçh Wíkímédíá Çómmóñs. Trý �
 msgid "Get started"
 msgstr "[Gét stártéd····]"
 
+#: enclave-vault/src/engine.rs
+msgid "Getting a link code from your server…"
+msgstr "[Géttíñg á líñk çódé fróm ýóúr sérvér…··············]"
+
 #: ui/app.slint
 msgid "Getting it ready…"
 msgstr "[Géttíñg ít réádý…······]"
@@ -4540,6 +4544,18 @@ msgstr "[{} ís áskíñg tó jóíñ·······]"
 #: ui/app.slint
 msgid "{} is typing"
 msgstr "[{} ís týpíñg····]"
+
+#: ui/app.slint
+msgid "{} of {} parts"
+msgstr "[{} óf ·{} párts··]"
+
+#: ui/app.slint
+msgid "{} of {} parts, about {} min left"
+msgstr "[{} óf ·{} párts, ábóút ·····{} míñ léft···]"
+
+#: ui/app.slint
+msgid "{} of {} parts, about {} s left"
+msgstr "[{} óf ·{} párts, ábóút ·····{} s léft··]"
 
 #: ui/app.slint
 msgid "{} people, you included. Everyone in the group can see who else is in it."

@@ -101,6 +101,9 @@ enum TorUp {
     Off,
     /// tord is bootstrapping.
     Starting,
+    /// Another tord has this state directory (another copy of Enclave
+    /// on this profile): this one starts once that one stops.
+    Waiting,
     /// Up; with the carrier when tord carries netd's requests.
     Up(Option<Arc<enclave_tord::carrier::Client>>),
     /// It didn't come up in time: the network may be blocking Tor.
@@ -116,7 +119,7 @@ impl Routed {
         let mut rx = self.tor.clone();
         let _ = tokio::time::timeout(
             enclave_tord::carrier::TIMEOUT,
-            rx.wait_for(|t| !matches!(t, TorUp::Starting)),
+            rx.wait_for(|t| !matches!(t, TorUp::Starting | TorUp::Waiting)),
         )
         .await;
         let up = rx.borrow();
@@ -128,6 +131,17 @@ impl Routed {
 
     fn tor_up(&self) -> bool {
         matches!(*self.tor.borrow(), TorUp::Up(_))
+    }
+
+    /// Why there is no Tor to send by, said in the error the person sees.
+    fn no_tor(&self) -> NetError {
+        NetError::Unavailable(match &*self.tor.borrow() {
+            TorUp::Starting => "Tor is still starting",
+            TorUp::Waiting => "another copy of Enclave is using Tor on this profile",
+            TorUp::Blocked => "Tor couldn't connect from this network (a bridge may help)",
+            TorUp::Failed => "Tor didn't start",
+            TorUp::Off | TorUp::Up(_) => "no Tor",
+        })
     }
 
     /// The onion service to reach `server` at: always for a server with no
@@ -175,7 +189,7 @@ impl Routed {
                 .exchange_tor(host, enclave_net::transport::ONION_PORT, &request)
                 .await
                 .map_err(|e| NetError::Unreachable(e.to_string())),
-            None => Err(NetError::Unavailable("no Tor")),
+            None => Err(self.no_tor()),
         }
     }
 
@@ -287,7 +301,7 @@ impl Transport for Routed {
                 .fetch(method, url, &body)
                 .await
                 .map_err(|e| NetError::Unreachable(e.to_string())),
-            None => Err(NetError::Unavailable("no Tor")),
+            None => Err(self.no_tor()),
         }
     }
 
@@ -700,8 +714,12 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     // Tor coming up, in the background; the running tord is kept as
     // long as netd runs.
     if let Some(starting) = tor_pending {
+        let noted = tor_tx.clone();
         rt.spawn(async move {
-            match starting.ready(TOR_BOOTSTRAP).await {
+            let waiting = move || {
+                let _ = noted.send(TorUp::Waiting);
+            };
+            match starting.ready_noting(TOR_BOOTSTRAP, waiting).await {
                 Ok(t) => {
                     let _ = tor_tx.send(TorUp::Up(t.carrier.clone()));
                     let _kept = t;

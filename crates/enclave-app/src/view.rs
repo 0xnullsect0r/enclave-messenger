@@ -500,6 +500,9 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_setup_failed(s.status.starts_with("Couldn't set up your address"));
     ui.set_setup_step(i32::from(s.setup_step));
     ui.set_setup_steps(i32::from(enclave_ipc::SETUP_STEPS));
+    ui.set_setup_part(i32::try_from(s.setup_part).unwrap_or(i32::MAX));
+    ui.set_setup_parts(i32::try_from(s.setup_parts).unwrap_or(i32::MAX));
+    ui.set_setup_left(i32::try_from(s.setup_left).unwrap_or(i32::MAX));
     ui.set_recovery_words(strings(&s.recovery_words));
     ui.set_recovery_saved(s.recovery_saved);
     ui.set_words_language(s.words_language.clone().into());

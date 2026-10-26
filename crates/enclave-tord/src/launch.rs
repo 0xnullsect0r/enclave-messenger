@@ -164,6 +164,16 @@ impl Starting {
     /// [`BLOCKED`], or why it didn't start. While another tord has the
     /// state directory this waits for it to go first, however long.
     pub async fn ready(self, within: std::time::Duration) -> Result<Running, String> {
+        self.ready_noting(within, || {}).await
+    }
+
+    /// [`Self::ready`], calling `waiting` if another tord has the state
+    /// directory first (this one then waits for it as long as it lasts).
+    pub async fn ready_noting(
+        self,
+        within: std::time::Duration,
+        waiting: impl FnOnce(),
+    ) -> Result<Running, String> {
         let Starting {
             secret,
             carrier,
@@ -185,6 +195,7 @@ impl Starting {
         // Another tord has the state directory (one at a time): as long as
         // that lasts, then the bootstrap's time from when this one has it.
         if line.trim() == "waiting" {
+            waiting();
             line.clear();
             read(reader.read_line(&mut line).await)?;
             if line.trim() != "claimed" {

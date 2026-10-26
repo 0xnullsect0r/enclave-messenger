@@ -37,10 +37,16 @@ pub(crate) const EFFORT_LADDER: [u32; 7] = [8, 16, 64, 256, 1024, 4096, 16_384];
 /// or dropped.
 pub type Sending = std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>;
 
+/// A chunk of an upload on its way, to the server's status for it.
+type Sent = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Status>> + Send>>;
+
 /// Status polls for one answer before giving up (`Rpc::fetch_answer`).
 /// Each is a round trip through the mixnet (and, shaped, waits for its
 /// poll slot), so they pace themselves: a minute or more in all.
 const STATUS_TRIES: u32 = 120;
+
+/// Tries for each chunk of an upload in several.
+const CHUNK_TRIES: u32 = 4;
 
 pub(crate) struct Rpc {
     transport: Arc<dyn Transport>,
@@ -170,25 +176,8 @@ impl Rpc {
         now: u64,
         rng: &mut HedgedRng,
     ) -> Result<(RequestHeader, Vec<u8>)> {
-        for _ in 0..STATUS_TRIES {
-            let key = self.key(server, now).await?;
-            let h = RequestHeader {
-                op: Op::Status,
-                flags: 0,
-                mailbox: id,
-                token: rng.array("rpc/status-token")?,
-            };
-            let (bytes, ex) = enclave_rpc::seal_poll(&key, &h, rng)?;
-            let reply = self.transport.exchange(server, bytes).await?;
-            let (rh, env) = ex.open_reply(&reply)?;
-            let waiting = rh.op == Op::Status && Status::from_u8(rh.flags) == Status::NotFound;
-            if !waiting {
-                return Ok((rh, env));
-            }
-        }
-        Err(CoreError::Net(enclave_net::NetError::Unreachable(
-            "no answer from the server".into(),
-        )))
+        let key = self.key(server, now).await?;
+        answer(&*self.transport, &key, server, id, rng).await
     }
 
     /// A call that must succeed.
@@ -284,6 +273,7 @@ impl Rpc {
     }
 
     /// Upload an object in chunks.
+    #[allow(clippy::too_many_arguments)]
     pub async fn dir_put(
         &mut self,
         server: &ServerId,
@@ -294,8 +284,35 @@ impl Rpc {
         now: u64,
         rng: &mut HedgedRng,
     ) -> Result<()> {
+        self.dir_put_with_progress(server, kind, key, proof, data, now, rng, &|_, _| {})
+            .await
+    }
+
+    /// [`Rpc::dir_put`], saying `progress(chunks answered, chunks)` as they
+    /// are. The chunks go together, so the shaper's bulk bursts carry
+    /// them and their answers come back in the same ticks: one at a time,
+    /// each waiting for its slot and then its answer's, a vault key (about
+    /// a hundred chunks) took ten minutes over Tor.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn dir_put_with_progress(
+        &mut self,
+        server: &ServerId,
+        kind: DirKind,
+        key: [u8; 32],
+        proof: [u8; 32],
+        data: &[u8],
+        now: u64,
+        rng: &mut HedgedRng,
+        progress: &(dyn Fn(u32, u32) + Send + Sync),
+    ) -> Result<()> {
         let chunks = api::chunks(data);
         let total = chunks.len() as u32;
+        let server_key = self.key(server, now).await?;
+        let mut sending: Vec<Sent> = Vec::with_capacity(chunks.len());
+        // A chunk whose answer didn't come (a Tor stream that stalled) is
+        // sent again: the server keeps chunks by index, so one that did
+        // arrive is only replaced.
+        let tries = if chunks.len() > 1 { CHUNK_TRIES } else { 1 };
         for (i, c) in chunks.iter().enumerate() {
             let req = DirRequest {
                 kind,
@@ -306,10 +323,43 @@ impl Rpc {
                 proof,
                 data: c.to_vec(),
             };
-            let (s, _) = self.dir(server, req, now, rng).await?;
-            if s != Status::Ok {
-                return Err(CoreError::Server(s));
+            let env = api::frame(&req.encode(), rng)?;
+            // Each chunk seals its tries and polls from its own generator.
+            let mut own = HedgedRng::with_hedge(rng.array("rpc/chunk-hedge")?);
+            let transport = Arc::clone(&self.transport);
+            let server_key = server_key.clone();
+            let server = *server;
+            sending.push(Box::pin(async move {
+                let mut tried = 0;
+                loop {
+                    tried += 1;
+                    match put_chunk(&*transport, &server_key, &server, &env, &mut own).await {
+                        Err(CoreError::Net(_)) if tried < tries => continue,
+                        r => return r,
+                    }
+                }
+            }));
+        }
+        let mut done = 0;
+        while !sending.is_empty() {
+            // Whichever chunk is answered first (no runtime here to spawn
+            // on: they are polled together).
+            let status = std::future::poll_fn(|cx| {
+                for i in 0..sending.len() {
+                    if let std::task::Poll::Ready(r) = sending[i].as_mut().poll(cx) {
+                        drop(sending.swap_remove(i));
+                        return std::task::Poll::Ready(r);
+                    }
+                }
+                std::task::Poll::Pending
+            })
+            .await?;
+            // The last chunk the server takes answers for the whole object.
+            if status != Status::Ok {
+                return Err(CoreError::Server(status));
             }
+            done += 1;
+            progress(done, total);
         }
         Ok(())
     }
@@ -624,4 +674,56 @@ impl Rpc {
         }
         Ok(())
     }
+}
+
+/// One chunk of an upload, as `Rpc::call` sends it (one way, the answer
+/// polled for), to the server's status for it.
+async fn put_chunk(
+    transport: &dyn Transport,
+    key: &ServerKey,
+    server: &ServerId,
+    env: &[u8],
+    rng: &mut HedgedRng,
+) -> Result<Status> {
+    let h = RequestHeader {
+        op: Op::Directory,
+        flags: FLAG_DEFER,
+        mailbox: [0; 32],
+        token: [0; 32],
+    };
+    let (bytes, ex) = enclave_rpc::seal_request(key, &h, env, rng)?;
+    let (rh, _) = match transport.exchange_deferred(server, bytes).await? {
+        Some(reply) => ex.open_reply(&reply)?,
+        None => answer(transport, key, server, ex.status_id(), rng).await?,
+    };
+    Ok(Status::from_u8(rh.flags))
+}
+
+/// The answer to a request sent one way: status polls until the server
+/// has it (the request may still be on its way).
+async fn answer(
+    transport: &dyn Transport,
+    key: &ServerKey,
+    server: &ServerId,
+    id: [u8; 32],
+    rng: &mut HedgedRng,
+) -> Result<(RequestHeader, Vec<u8>)> {
+    for _ in 0..STATUS_TRIES {
+        let h = RequestHeader {
+            op: Op::Status,
+            flags: 0,
+            mailbox: id,
+            token: rng.array("rpc/status-token")?,
+        };
+        let (bytes, ex) = enclave_rpc::seal_poll(key, &h, rng)?;
+        let reply = transport.exchange(server, bytes).await?;
+        let (rh, env) = ex.open_reply(&reply)?;
+        let waiting = rh.op == Op::Status && Status::from_u8(rh.flags) == Status::NotFound;
+        if !waiting {
+            return Ok((rh, env));
+        }
+    }
+    Err(CoreError::Net(enclave_net::NetError::Unreachable(
+        "no answer from the server".into(),
+    )))
 }

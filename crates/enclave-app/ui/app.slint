@@ -1441,6 +1441,11 @@ export component AppWindow inherits Window {
     // The step setting up the account is on, 1 to setup-steps (0: none yet).
     in property <int> setup-step;
     in property <int> setup-steps: 8;
+    // A step sent in parts (the vault key): parts done, how many, and about
+    // how many seconds the rest take (0: not known yet).
+    in property <int> setup-part;
+    in property <int> setup-parts;
+    in property <int> setup-left;
     in property <bool> gap;
     // The current conversation is on the record; its contact closed their
     // account.
@@ -2045,6 +2050,38 @@ export component AppWindow inherits Window {
             if !root.setup-failed: Spinner { }
             Secondary { text: root.status-line; horizontal-alignment: center; }
         }
+        // The step's own bar while its parts go (the vault key is about a
+        // hundred of them, minutes on a slow Tor circuit).
+        if root.setup-parts > 0 && !root.setup-failed: VerticalLayout {
+            spacing: Tokens.space-s;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: min(240px, root.width - 2 * Tokens.space-l);
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Tokens.hairline;
+                    accessible-role: progress-indicator;
+                    accessible-value: root.setup-part;
+                    accessible-value-minimum: 0;
+                    accessible-value-maximum: root.setup-parts;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * root.setup-part / max(1, root.setup-parts);
+                        height: 100%;
+                        border-radius: 2px;
+                        background: Tokens.pine;
+                        animate width { duration: 300ms; easing: ease-out; }
+                    }
+                }
+            }
+            Secondary {
+                horizontal-alignment: center;
+                text: root.setup-left <= 0 ? @tr("{} of {} parts", root.setup-part, root.setup-parts)
+                    : root.setup-left < 90 ? @tr("{} of {} parts, about {} s left", root.setup-part, root.setup-parts, root.setup-left)
+                    : @tr("{} of {} parts, about {} min left", root.setup-part, root.setup-parts, Math.round(root.setup-left / 60));
+            }
+        }
         if root.setup-failed: HorizontalLayout {
             alignment: center;
             QuietButton { text: @tr("Back"); outlined: true; clicked => { root.screen = Screen.name; } }
@@ -2095,7 +2132,12 @@ export component AppWindow inherits Window {
                     wrap: word-wrap;
                     accessible-label: @tr("Words: {}", root.join-words);
                 }
-                if root.status-line != "": Secondary { text: root.status-line; }
+                if root.status-line != "": HorizontalLayout {
+                    spacing: Tokens.space-s;
+                    // Still getting the code from the server, over Tor.
+                    if root.join-words == "" && root.join-code == "": Spinner { }
+                    Secondary { text: root.status-line; horizontal-stretch: 1; }
+                }
                 HorizontalLayout {
                     alignment: start;
                     spacing: Tokens.space-s;

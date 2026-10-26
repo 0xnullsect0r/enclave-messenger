@@ -1617,6 +1617,10 @@ msgstr ""
 msgid "Get started"
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Getting a link code from your server…"
+msgstr ""
+
 #: ui/app.slint
 msgid "Getting it ready…"
 msgstr ""
@@ -4539,6 +4543,18 @@ msgstr ""
 
 #: ui/app.slint
 msgid "{} is typing"
+msgstr ""
+
+#: ui/app.slint
+msgid "{} of {} parts"
+msgstr ""
+
+#: ui/app.slint
+msgid "{} of {} parts, about {} min left"
+msgstr ""
+
+#: ui/app.slint
+msgid "{} of {} parts, about {} s left"
 msgstr ""
 
 #: ui/app.slint

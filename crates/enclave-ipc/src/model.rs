@@ -342,6 +342,14 @@ pub struct Snapshot {
     /// Setting up the account: the step under way, 1 to
     /// [`SETUP_STEPS`] (0 when not setting up).
     pub setup_step: u8,
+    /// Of a setup step sent in parts (the vault key: about a hundred),
+    /// the parts done (0 for other steps).
+    pub setup_part: u32,
+    /// How many parts that step has (0 for other steps).
+    pub setup_parts: u32,
+    /// About how many seconds the parts still take, at the pace so far
+    /// (0 when not known yet).
+    pub setup_left: u32,
     /// A message in the current conversation may not have arrived: later
     /// ones did, over a minute ago (RT-24).
     pub gap: bool,
@@ -1334,6 +1342,9 @@ impl Snapshot {
             .u8(u8::from(self.privacy == 1))
             .bool(self.finishing)
             .u8(self.setup_step)
+            .u32(self.setup_part)
+            .u32(self.setup_parts)
+            .u32(self.setup_left)
             .bool(self.gap)
             .bool(self.on_record)
             .bool(self.closed)
@@ -1600,6 +1611,9 @@ impl Snapshot {
         };
         let finishing = r.bool()?;
         let setup_step = r.u8()?;
+        let setup_part = r.u32()?;
+        let setup_parts = r.u32()?;
+        let setup_left = r.u32()?;
         let gap = r.bool()?;
         let on_record = r.bool()?;
         let closed = r.bool()?;
@@ -1648,6 +1662,9 @@ impl Snapshot {
             privacy,
             finishing,
             setup_step,
+            setup_part,
+            setup_parts,
+            setup_left,
             gap,
             on_record,
             closed,

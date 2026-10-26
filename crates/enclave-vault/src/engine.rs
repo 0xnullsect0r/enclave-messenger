@@ -1368,6 +1368,12 @@ pub async fn run_with(
         e.apply_privacy();
         e.push();
     }
+    // What the window shows before anything happens (that this device can
+    // be linked, the server picked from the list): a profile or not. Only
+    // one that opened used to say so, and without one "I already have
+    // Enclave" showed only when something else happened to update the
+    // window.
+    e.push();
     if let Mode::Server { profile, .. } = &e.mode {
         let b = std::fs::read_to_string(profile.join(crate::netd::BRIDGES_FILE))
             .unwrap_or_default()
@@ -1988,10 +1994,26 @@ impl Engine {
                 // Each step as it starts, so the minute it can take over
                 // Tor doesn't look frozen: the window as it is, with the
                 // step and what it is doing.
-                let shown = std::sync::Mutex::new(self.snapshot());
+                let shown = std::sync::Mutex::new((self.snapshot(), None));
                 let out = self.out.clone();
-                let progress = move |step: u8| {
-                    if let Ok(mut s) = shown.lock() {
+                let progress = move |step: u8, part: u32, parts: u32| {
+                    if let Ok(mut g) = shown.lock() {
+                        let (s, began) = &mut *g;
+                        // The time left, at the pace of the parts so far
+                        // (from when the step began).
+                        let now = std::time::Instant::now();
+                        if part == 0 {
+                            *began = Some(now);
+                        }
+                        s.setup_part = part;
+                        s.setup_parts = parts;
+                        s.setup_left = match (*began, part) {
+                            (Some(t), 1..) => {
+                                let per = now.duration_since(t).as_secs_f64() / f64::from(part);
+                                (per * f64::from(parts.saturating_sub(part))).ceil() as u32
+                            }
+                            _ => 0,
+                        };
                         s.setup_step = step;
                         s.status = SETUP_STEP_TEXT
                             .get(usize::from(step.saturating_sub(1)))
@@ -3238,6 +3260,9 @@ impl Engine {
                 if !self.has_server() {
                     return;
                 }
+                // The code comes from the server, over Tor: seconds, said so.
+                self.status = "Getting a link code from your server…".into();
+                self.push();
                 match enclave_core::LinkingDevice::start(
                     self.options(None),
                     Arc::clone(&self.transport),
