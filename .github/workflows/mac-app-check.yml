@@ -1,0 +1,45 @@
+name: macOS app check
+# The published macOS app (a release's .dmg, as a person installs it) on a
+# Mac: its helpers start as the vault starts them, netd with Tor in front
+# (`--tor`, and a spare with `--tor-standby`), and stay up while Tor comes
+# up over the real network. 0.1.4 said "transport unavailable: netd
+# stopped" on a Mac; this shows why, and that a fix holds.
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - .github/workflows/mac-app-check.yml
+      - ci/macos/**
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (default the newest)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  helpers:
+    name: netd and Tor in the released app
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The release's .dmg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag=${TAG:-$(gh release view --json tagName -q .tagName)}
+          gh release download "$tag" --pattern '*-macos.dmg' --dir dmg
+          hdiutil attach -nobrowse -readonly -mountpoint /tmp/enclave-dmg dmg/*.dmg
+          cp -R /tmp/enclave-dmg/Enclave.app "$RUNNER_TEMP/"
+          hdiutil detach /tmp/enclave-dmg
+          echo "APP=$RUNNER_TEMP/Enclave.app" >> "$GITHUB_ENV"
+          ls -la "$RUNNER_TEMP/Enclave.app/Contents/MacOS"
+          codesign -dv --entitlements - "$RUNNER_TEMP/Enclave.app/Contents/MacOS/enclave-netd" 2>&1 || true
+      - name: netd with Tor, as the vault starts it
+        run: ci/macos/netd-check.sh "$APP"
