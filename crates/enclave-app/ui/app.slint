@@ -834,7 +834,7 @@ component Chip inherits Rectangle {
     border-radius: self.height / 2;
     border-width: 1px;
     border-color: root.chosen ? Tokens.pine : Tokens.hairline;
-    background: root.chosen ? Tokens.pine : touch.has-hover ? Tokens.bubble-in : transparent;
+    background: root.chosen ? (touch.pressed ? Tokens.pine.darker(15%) : Tokens.pine) : (touch.pressed || touch.has-hover) ? Tokens.bubble-in : transparent;
     accessible-role: button;
     accessible-checkable: true;
     accessible-checked: root.chosen;
@@ -906,7 +906,10 @@ component SwitchRow inherits Rectangle {
     accessible-label: root.label;
     accessible-description: root.detail;
     accessible-action-default => { root.toggled(); }
-    TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
+    // Shows the touch at once, before what it changes comes back.
+    background: switch-touch.pressed ? Tokens.bubble-in : transparent;
+    border-radius: Tokens.radius-control;
+    switch-touch := TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
     row := HorizontalLayout {
         spacing: Tokens.space-m;
         VerticalLayout {
@@ -1523,7 +1526,9 @@ export component AppWindow inherits Window {
     // "builtin" or lines), why some weren't taken, and whether they wait
     // for a restart.
     in property <bool> tor-blocked;
-    in property <string> bridges;
+    in-out property <string> bridges;
+    // Setting up: the box for your own bridge lines is open.
+    in-out property <bool> own-bridges;
     in property <string> bridges-error;
     in property <bool> bridges-restart;
     in-out property <string> bridges-input;
@@ -1949,31 +1954,62 @@ export component AppWindow inherits Window {
                     // A Tor bridge for setting up where Tor is blocked. The
                     // switch applies at once on the desktop; on a phone,
                     // reopen Enclave once (nothing is set up yet to lose).
+                    // Each tap shows at once (root.bridges is set here); the
+                    // vault confirms it in its next state.
                     SwitchRow {
                         label: @tr("Connect through a Tor bridge");
                         detail: @tr("Turn this on if your network blocks Tor. Snowflake works on most blocked networks.");
-                        on: root.bridges != "";
-                        toggled => { root.set-bridges(root.bridges == "" ? "snowflake" : ""); }
+                        on: root.bridges != "" || root.own-bridges;
+                        toggled => {
+                            if root.bridges != "" || root.own-bridges {
+                                root.own-bridges = false;
+                                root.bridges = "";
+                                root.set-bridges("");
+                            } else {
+                                root.bridges = "snowflake";
+                                root.set-bridges("snowflake");
+                            }
+                        }
                     }
-                    if root.bridges != "": HorizontalLayout {
+                    if root.bridges != "" || root.own-bridges: HorizontalLayout {
                         spacing: Tokens.space-s;
                         Chip {
                             text: @tr("Snowflake");
-                            chosen: root.bridges == "snowflake";
-                            clicked => { root.set-bridges("snowflake"); }
+                            chosen: !root.own-bridges && root.bridges == "snowflake";
+                            clicked => { root.own-bridges = false; root.bridges = "snowflake"; root.set-bridges("snowflake"); }
                         }
                         Chip {
                             text: @tr("Built-in");
-                            chosen: root.bridges == "builtin";
-                            clicked => { root.set-bridges("builtin"); }
+                            chosen: !root.own-bridges && root.bridges == "builtin";
+                            clicked => { root.own-bridges = false; root.bridges = "builtin"; root.set-bridges("builtin"); }
                         }
                         Chip {
                             text: @tr("My own");
-                            chosen: root.bridges != "" && root.bridges != "snowflake" && root.bridges != "builtin";
-                            clicked => { root.open-sheet(Sheet.settings); }
+                            chosen: root.own-bridges || (root.bridges != "" && root.bridges != "snowflake" && root.bridges != "builtin");
+                            clicked => { root.own-bridges = true; }
                         }
                     }
-                    if root.bridges-restart: Secondary {
+                    // Your own bridge lines, here rather than in Settings
+                    // (there is no account yet).
+                    if root.own-bridges: Field {
+                        placeholder: @tr("obfs4 … cert=… iat-mode=0");
+                        mono: true;
+                        multiline: true;
+                        text <=> root.bridges-input;
+                    }
+                    if root.own-bridges: HorizontalLayout {
+                        alignment: start;
+                        PrimaryButton {
+                            text: @tr("Use these bridges");
+                            enabled: root.bridges-input != "";
+                            clicked => {
+                                root.bridges = root.bridges-input;
+                                root.own-bridges = false;
+                                root.set-bridges(root.bridges-input);
+                            }
+                        }
+                    }
+                    if root.bridges-restart && root.phone: Secondary {
                         text: @tr("Reopen Enclave to connect through the bridge.");
                     }
                     if root.bridges-error != "": Text {

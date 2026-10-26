@@ -4054,6 +4054,10 @@ msgid "Use the private route"
 msgstr ""
 
 #: ui/app.slint
+msgid "Use these bridges"
+msgstr ""
+
+#: ui/app.slint
 msgid "Use this server"
 msgstr ""
 

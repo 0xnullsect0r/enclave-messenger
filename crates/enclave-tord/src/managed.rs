@@ -3,8 +3,8 @@
 //! (Go; a declared exception, shipped next to `enclave-tord` and started
 //! only when bridges of these kinds are set).
 //!
-//! obfs4 runs in this process ([`crate::obfs4pt`]); these two have no Rust
-//! implementation. `enclave-tord` starts lyrebird itself, before it
+//! obfs4 goes through lyrebird too where it is, and otherwise runs in this
+//! process ([`crate::obfs4pt`]); these two have no Rust implementation. `enclave-tord` starts lyrebird itself, before it
 //! confines itself (it can't start programs afterwards), speaking the
 //! pluggable-transport protocol (pt-spec §3.2–3.3): the transports asked
 //! for go in the environment, lyrebird answers with a SOCKS5 port on
@@ -19,7 +19,13 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 /// The transports lyrebird runs for us.
-pub const PROTOCOLS: &[&str] = &["snowflake", "webtunnel"];
+pub const PROTOCOLS: &[&str] = &["snowflake", "webtunnel", "obfs4"];
+
+/// Of [`PROTOCOLS`], those this process also has (obfs4,
+/// [`crate::obfs4pt`]): lyrebird, the reference implementation, runs them
+/// where it is (some bridges refused the in-process obfs4 that Tor
+/// Browser's lyrebird reaches), and without it they run here.
+pub const ALSO_HERE: &[&str] = &["obfs4"];
 
 /// The program's name, next to `enclave-tord`.
 pub const BINARY: &str = "lyrebird";
@@ -257,8 +263,10 @@ mod tests {
         ]
         .map(String::from)
         .to_vec();
-        assert_eq!(needed(&lines), ["snowflake", "webtunnel"]);
-        assert!(needed(&lines[..1]).is_empty());
+        assert_eq!(needed(&lines), ["obfs4", "snowflake", "webtunnel"]);
+        // obfs4 alone still asks lyrebird first; it runs here without it.
+        assert_eq!(needed(&lines[..1]), ["obfs4"]);
+        assert!(ALSO_HERE.iter().all(|p| PROTOCOLS.contains(p)));
         assert!(!builtin_snowflake().is_empty());
         assert!(
             builtin_snowflake()

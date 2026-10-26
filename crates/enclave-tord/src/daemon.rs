@@ -86,8 +86,8 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         eprintln!("enclave-tord: can't create {}", state.display());
         return ExitCode::FAILURE;
     }
-    // Snowflake and WebTunnel run in lyrebird, started now: once confined,
-    // this process can't start programs.
+    // Snowflake, WebTunnel and obfs4 run in lyrebird, started now: once
+    // confined, this process can't start programs.
     let needed = crate::managed::needed(&bridges);
     let managed = if needed.is_empty() || direct {
         None
@@ -101,6 +101,15 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         });
         match started {
             Ok(m) => Some(m),
+            // Only transports this process has too (obfs4): they run here.
+            Err(e)
+                if needed
+                    .iter()
+                    .all(|n| crate::managed::ALSO_HERE.contains(&n.as_str())) =>
+            {
+                eprintln!("enclave-tord: lyrebird: {e}; obfs4 runs in this process");
+                None
+            }
             Err(e) => {
                 eprintln!("enclave-tord: {e}");
                 return ExitCode::FAILURE;

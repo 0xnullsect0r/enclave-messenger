@@ -4054,6 +4054,10 @@ msgid "Use the private route"
 msgstr "[Úsé thé príváté róúté········]"
 
 #: ui/app.slint
+msgid "Use these bridges"
+msgstr "[Úsé thésé brídgés······]"
+
+#: ui/app.slint
 msgid "Use this server"
 msgstr "[Úsé thís sérvér······]"
 

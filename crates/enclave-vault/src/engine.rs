@@ -31,6 +31,8 @@ const SCREEN_SECURITY: &str = "screen-security";
 
 /// Foreground tick (docs/09-transport.md §9.4).
 const TICK: Duration = Duration::from_secs(3);
+/// How long after the last bridge change a separate vault starts again.
+const BRIDGES_SETTLE: Duration = Duration::from_secs(2);
 /// Sync rounds between looks at the mixnet tickets (about 5 minutes).
 const TICKET_UPKEEP_ROUNDS: u64 = 100;
 /// After a failed start of the mixnet client, wait this long to try again.
@@ -468,6 +470,9 @@ struct Engine {
     bridges_at_start: String,
     bridges: String,
     bridges_error: String,
+    /// When a separate vault starts again for changed bridges: a moment
+    /// after the last change, so a few taps in a row restart it once.
+    bridges_restart_at: Option<std::time::Instant>,
     /// The call in progress, and how the last one ended (shown briefly).
     call: Option<calling::Call>,
     call_ended: Option<(enclave_ipc::CallView, std::time::Instant)>,
@@ -1345,6 +1350,7 @@ pub async fn run_with(
         bridges_at_start: String::new(),
         bridges: String::new(),
         bridges_error: String::new(),
+        bridges_restart_at: None,
         call: None,
         call_ended: None,
         call_tx,
@@ -1453,6 +1459,13 @@ pub async fn run_with(
                 // with it the network.
                 if crate::netd::all_stopped() && crate::standalone() {
                     eprintln!("enclave-vault: every netd stopped; asking to be started again");
+                    std::process::exit(crate::RESTART);
+                }
+                // Bridges changed a moment ago and none since: start again
+                // with them (the window does it).
+                if e.bridges_restart_at.is_some_and(|t| std::time::Instant::now() >= t) {
+                    eprintln!("enclave-vault: Tor bridges changed; asking to be started again");
+                    let _ = e.transport.flush(Duration::from_secs(2)).await;
                     std::process::exit(crate::RESTART);
                 }
                 // Now and then: is Tor up (or blocked, so bridges may help)?
@@ -4041,14 +4054,9 @@ impl Engine {
                                     // Only where the window starts the vault
                                     // again (unix desktop); Windows and phones
                                     // show the reopen note instead.
-                                    if changed && cfg!(unix) && crate::standalone() {
-                                        self.push();
-                                        let _ = self
-                                            .transport
-                                            .flush(std::time::Duration::from_secs(2))
-                                            .await;
-                                        std::process::exit(crate::RESTART);
-                                    }
+                                    self.bridges_restart_at =
+                                        (changed && cfg!(unix) && crate::standalone())
+                                            .then(|| std::time::Instant::now() + BRIDGES_SETTLE);
                                 }
                                 Err(e) => self.bridges_error = format!("Couldn't save them: {e}"),
                             }

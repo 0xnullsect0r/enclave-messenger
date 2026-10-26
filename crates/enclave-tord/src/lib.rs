@@ -53,9 +53,10 @@ mod arti {
 
     impl ArtiDialer {
         /// Bootstrap a Tor client keeping its state and cache under `dir`,
-        /// through `bridges` (bridge lines) if any are given: obfs4 runs in
-        /// this process ([`crate::obfs4pt`]), Snowflake and WebTunnel
-        /// through the SOCKS5 ports in `managed` ([`crate::managed`]).
+        /// through `bridges` (bridge lines) if any are given: through the
+        /// SOCKS5 ports in `managed` ([`crate::managed`], lyrebird), and
+        /// obfs4 in this process ([`crate::obfs4pt`]) when lyrebird
+        /// doesn't run it.
         pub async fn bootstrap(
             dir: &std::path::Path,
             bridges: &[String],
@@ -70,8 +71,9 @@ mod arti {
             for line in bridges {
                 let kind = line.split_whitespace().next().unwrap_or_default();
                 match kind {
-                    "obfs4" => obfs4 = true,
+                    // lyrebird's obfs4 where it runs, else this process's.
                     k if managed.iter().any(|(n, _)| n == k) => {}
+                    "obfs4" => obfs4 = true,
                     _ => {
                         return Err(std::io::Error::other(format!(
                             "no transport for this bridge: {line}"
