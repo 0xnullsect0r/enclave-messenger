@@ -422,14 +422,15 @@ pub mod phone {
     /// The process's vault (started with `mode` the first time), with a
     /// fresh output channel for this window.
     pub fn attach(mode: Mode) -> Channels {
-        let (shared, fresh) = engine(mode);
+        let (shared, _) = engine(mode);
         let (out_tx, out_rx) = mpsc::unbounded_channel();
         if let Ok(mut w) = shared.window.lock() {
             *w = Some(out_tx);
         }
-        if !fresh {
-            let _ = shared.tx.send(Cmd::Reattach);
-        }
+        // The whole state, from now on this window's: a vault started just
+        // now may have said it (the profile opened) before the window was
+        // there to hear, and the window then stayed on the welcome screen.
+        let _ = shared.tx.send(Cmd::Reattach);
         (shared.tx.clone(), out_rx)
     }
 

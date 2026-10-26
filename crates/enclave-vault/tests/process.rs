@@ -370,6 +370,43 @@ async fn sandboxed_vault_keeps_its_profile() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A profile without a passphrase (a phone's, or a desktop's when none was
+/// set) opens again in the next vault, with no step: the window shows the
+/// account, not the welcome screen. Quitting and starting again forgot it
+/// on Android and on KDE.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_profile_without_a_passphrase_opens_again() {
+    let addr = dev_server().await;
+    let dir = std::env::temp_dir().join(format!("enclave-vault-np-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let profile = dir.join("profile");
+    let (child, mut rd, mut wr) = start_vault(&dir, addr, &profile, "n1.sock").await;
+    frame::write_frame(
+        &mut wr,
+        &Cmd::Create("Robin".into(), String::new()).encode(),
+    )
+    .await
+    .unwrap();
+    next_snapshot(&mut rd, |s| s.my_name == "Robin").await;
+    drop(rd);
+    drop(wr);
+    let out = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(out.status.success(), "{:?}", out.status);
+    // Nothing sent: the state the vault starts with is the account.
+    let (child, mut rd, wr) = start_vault(&dir, addr, &profile, "n2.sock").await;
+    let s = next_snapshot(&mut rd, |s| !s.my_name.is_empty() || !s.status.is_empty()).await;
+    assert_eq!(s.my_name, "Robin", "status: {}", s.status);
+    assert!(!s.locked);
+    drop(rd);
+    drop(wr);
+    let _ = tokio::task::spawn_blocking(move || child.wait_with_output()).await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
