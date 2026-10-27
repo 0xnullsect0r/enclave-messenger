@@ -4311,6 +4311,13 @@ export component AppWindow inherits Window {
             if root.meet-done == "" && root.meet-words == "": Secondary {
                 text: @tr("Show this code to the other person and scan theirs. It only works face to face: codes sent over a message or a call don't count.");
             }
+            // The code is made in the vault: until it comes, say so.
+            if root.meet-done == "" && root.meet-words == "" && root.meet-code == "": HorizontalLayout {
+                alignment: center;
+                spacing: Tokens.space-s;
+                Spinner { }
+                Secondary { text: @tr("Making your code…"); }
+            }
             if root.meet-done == "" && root.meet-words == "" && root.meet-code != "": HorizontalLayout {
                 alignment: center;
                 Rectangle {
@@ -5496,7 +5503,12 @@ export component AppWindow inherits Window {
                     clicked => { root.link-pick(i); }
                 }
             }
-            if root.link-status != "": Secondary { text: root.link-status; }
+            // Linking in progress: a spinner beside what it is doing.
+            if root.link-status != "": HorizontalLayout {
+                spacing: Tokens.space-s;
+                if root.busy: VerticalLayout { alignment: start; Spinner { } }
+                Secondary { text: root.link-status; horizontal-stretch: 1; }
+            }
             if !root.can-link: Secondary { text: @tr("Only your first device can link new ones."); }
         }
 

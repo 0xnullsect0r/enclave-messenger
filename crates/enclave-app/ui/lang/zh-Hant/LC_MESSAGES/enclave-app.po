@@ -598,6 +598,10 @@ msgid "Checking the download…"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "Checking the new device's code…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "Checking you in person…"
 msgstr ""
 
@@ -1981,6 +1985,14 @@ msgstr ""
 msgid "Linking didn't finish. Try again from the new device."
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "Linking your new device…"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Linking your new device… This can take a minute."
+msgstr ""
+
 #: ui/app.slint
 msgid "Loading the picture…"
 msgstr ""
@@ -2075,6 +2087,10 @@ msgstr ""
 
 #: enclave-vault/src/engine/web.rs
 msgid "Making a link preview…"
+msgstr ""
+
+#: ui/app.slint
+msgid "Making your code…"
 msgstr ""
 
 #: enclave-vault/src/engine.rs

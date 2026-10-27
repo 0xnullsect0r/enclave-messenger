@@ -4172,6 +4172,7 @@ impl Engine {
                 }
                 self.link_status.clear();
                 self.busy = true;
+                self.doing("Checking the new device's code…");
                 self.push();
                 if let Some(c) = self.client.as_mut() {
                     match c.link_prepare(code.trim()).await {
@@ -4186,10 +4187,22 @@ impl Engine {
                     }
                 }
                 self.busy = false;
+                self.done_doing();
             }
             Cmd::LinkPick(i) => {
-                if let (Some(offer), Some(c)) = (self.link_offer.take(), self.client.as_mut()) {
+                if let Some(offer) = self.link_offer.take() {
+                    // The words go and the linking shows at once: it takes
+                    // a few trips over Tor, and taps meanwhile did nothing
+                    // to be seen.
                     self.busy = true;
+                    self.link_status = "Linking your new device… This can take a minute.".into();
+                    self.doing("Linking your new device…");
+                    self.push();
+                    let Some(c) = self.client.as_mut() else {
+                        self.busy = false;
+                        self.done_doing();
+                        return;
+                    };
                     self.link_status = match c.link_confirm(offer, i.max(0) as usize).await {
                         Ok(()) => "Linked. Your new device will finish setting up in a moment.".into(),
                         Err(CoreError::Crypto) => {
@@ -4198,6 +4211,7 @@ impl Engine {
                         Err(_) => "Linking didn't finish. Try again from the new device.".into(),
                     };
                     self.busy = false;
+                    self.done_doing();
                 }
             }
             // Turned into other commands before they get here (`handle`).
@@ -4225,7 +4239,11 @@ impl Engine {
                     return;
                 };
                 self.status = "Bringing over your contacts…".into();
-                match l.finish().await {
+                self.doing("Bringing over your contacts…");
+                self.push();
+                let finished = l.finish().await;
+                self.done_doing();
+                match finished {
                     Ok(mut c) => {
                         self.configure(&mut c);
                         self.client = Some(c);
