@@ -1463,7 +1463,17 @@ pub async fn run_with(
     e.ensure_mixnet().await;
     let mut tick = tokio::time::interval(TICK);
     let mut ticks: u64 = 0;
+    // Commands that arrived while another was under way, in order.
+    let mut queued: std::collections::VecDeque<Cmd> = std::collections::VecDeque::new();
+    let mut closed = false;
     loop {
+        if let Some(cmd) = queued.pop_front() {
+            e.run_cmd(cmd, &mut rx, &mut queued, &mut closed).await;
+            continue;
+        }
+        if closed {
+            return;
+        }
         tokio::select! {
             ev = call_rx.recv() => {
                 if let Some(ev) = ev {
@@ -1473,14 +1483,7 @@ pub async fn run_with(
             }
             cmd = rx.recv() => {
                 let Some(cmd) = cmd else { return };
-                // Keystrokes and the microphone change nothing the window
-                // shows.
-                let quiet = matches!(cmd, Cmd::Typing(..) | Cmd::CallMic(_) | Cmd::CallFrame(..));
-                e.handle(cmd).await;
-                if !quiet {
-                    e.push();
-                    e.load_media().await;
-                }
+                e.run_cmd(cmd, &mut rx, &mut queued, &mut closed).await;
             }
             _ = tick.tick() => {
                 ticks += 1;
@@ -1944,6 +1947,88 @@ impl Engine {
             send_preview(&self.media, &mut self.clips, &self.out, &id, seq, bytes).await;
         }
         self.send_link_pictures(&id, links).await;
+    }
+
+    /// Carry out `cmd`. Taking longer than a moment, the bar says what it
+    /// is doing (its own words, [`crate::labels`], unless the command
+    /// already shows its own), and what arrives meanwhile is kept in
+    /// `queued`, listed under the bar ([`Out::Queued`]) until its turn:
+    /// one slow command never leaves another tap looking ignored.
+    async fn run_cmd(
+        &mut self,
+        cmd: Cmd,
+        rx: &mut mpsc::UnboundedReceiver<Cmd>,
+        queued: &mut std::collections::VecDeque<Cmd>,
+        closed: &mut bool,
+    ) {
+        // Keystrokes and the microphone change nothing the window shows.
+        let quiet = matches!(cmd, Cmd::Typing(..) | Cmd::CallMic(_) | Cmd::CallFrame(..));
+        let label = crate::labels::label(&cmd);
+        let out = self.out.clone();
+        let doing = Arc::clone(&self.doing);
+        let was_listed = !queued.is_empty();
+        let list = |queued: &std::collections::VecDeque<Cmd>| {
+            let what: Vec<String> = queued
+                .iter()
+                .filter_map(crate::labels::label)
+                .take(enclave_ipc::MAX_QUEUED)
+                .map(str::to_string)
+                .collect();
+            let _ = out.send(Out::Queued(what));
+        };
+        // Its turn came: no longer waiting.
+        if was_listed {
+            list(queued);
+        }
+        let mut shown = false;
+        {
+            let work = self.handle(cmd);
+            tokio::pin!(work);
+            let show = tokio::time::sleep(crate::labels::SHOW_AFTER);
+            tokio::pin!(show);
+            loop {
+                tokio::select! {
+                    () = &mut work => break,
+                    () = &mut show, if !shown => {
+                        shown = true;
+                        // A command with a bar of its own keeps it.
+                        let busy = doing.lock().map(|d| !d.is_empty()).unwrap_or(true);
+                        if let (Some(l), false) = (label, busy) {
+                            if let Ok(mut d) = doing.lock() {
+                                *d = l.to_string();
+                            }
+                            let _ = out.send(Out::Activity(enclave_ipc::Activity {
+                                doing: l.to_string(),
+                                ..Default::default()
+                            }));
+                        }
+                        if !queued.is_empty() {
+                            list(queued);
+                        }
+                    }
+                    next = rx.recv(), if !*closed => match next {
+                        Some(c) => {
+                            queued.push_back(c);
+                            if shown {
+                                list(queued);
+                            }
+                        }
+                        None => *closed = true,
+                    },
+                }
+            }
+        }
+        // Done: the bar it put up goes (not one the command left up).
+        if shown && let Some(l) = label {
+            let ours = self.doing.lock().map(|d| *d == l).unwrap_or(false);
+            if ours {
+                self.done_doing();
+            }
+        }
+        if !quiet {
+            self.push();
+            self.load_media().await;
+        }
     }
 
     async fn handle(&mut self, cmd: Cmd) {

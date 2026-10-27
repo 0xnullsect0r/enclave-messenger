@@ -474,6 +474,7 @@ fn round_trips() {
         Out::PackPreview("Cats".into(), 12),
         Out::Gifs(vec!["A cat".into(), "Two cats".into()]),
         Out::RecordProgress(42),
+        Out::Queued(vec!["Sending your request…".into()]),
         Out::Activity(enclave_ipc::Activity {
             doing: "Sending your request…".into(),
             part: "Their keys".into(),

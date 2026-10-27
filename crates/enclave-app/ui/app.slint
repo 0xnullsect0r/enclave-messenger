@@ -1453,6 +1453,9 @@ export component AppWindow inherits Window {
     // Something slow under way (Out::Activity): what, the part, done of
     // total (0 of 0: not known). Shown as a bar over every screen.
     in property <string> activity-doing;
+    // What waits its turn behind it, in order ("Sending your request… ·
+    // Accepting the request…"); empty when nothing does.
+    in property <string> activity-queued;
     in property <string> activity-part;
     in property <int> activity-done;
     in property <int> activity-total;
@@ -5846,7 +5849,7 @@ export component AppWindow inherits Window {
         // Something slow under way (over Tor most things take seconds, a key
         // a hundred chunks): a bar over the top of whatever is on screen,
         // with what it is and how far, until it is done.
-        if root.activity-doing != "" || (root.activity-total > 0 && root.activity-done < root.activity-total): Rectangle {
+        if root.activity-doing != "" || root.activity-queued != "" || (root.activity-total > 0 && root.activity-done < root.activity-total): Rectangle {
             x: 0;
             y: 0;
             width: parent.width;
@@ -5879,6 +5882,9 @@ export component AppWindow inherits Window {
                                 : @tr("{}: {} of {}", root.activity-part, root.activity-done, root.activity-total))
                             : root.activity-doing;
                     }
+                }
+                if root.activity-queued != "": Secondary {
+                    text: @tr("Next: {}", root.activity-queued);
                 }
                 if root.activity-total > 0: Rectangle {
                     height: 4px;

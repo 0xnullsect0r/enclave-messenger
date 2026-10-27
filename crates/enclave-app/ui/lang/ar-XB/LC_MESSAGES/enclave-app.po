@@ -197,7 +197,7 @@ msgstr "‫About Enclave‬"
 msgid "Accept"
 msgstr "‫Accept‬"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Accepting the request…"
 msgstr "‫Accepting the request…‬"
 
@@ -248,6 +248,18 @@ msgstr "‫Added ‬{}{}"
 #: enclave-vault/src/engine.rs
 msgid "Added {}{} · Message history follows 24 hours after linking, sooner if both devices confirm"
 msgstr "‫Added ‬{}{}‫ · Message history follows 24 hours after linking, sooner if both devices confirm‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Adding the shared contact…"
+msgstr "‫Adding the shared contact…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Adding the sticker pack…"
+msgstr "‫Adding the sticker pack…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Adding them to the group…"
+msgstr "‫Adding them to the group…‬"
 
 #: ui/app.slint
 msgid "Adding…"
@@ -317,6 +329,10 @@ msgstr "‫Answer directly‬"
 msgid "Answer privately"
 msgstr "‫Answer privately‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Answering the call…"
+msgstr "‫Answering the call…‬"
+
 #: ui/app.slint
 msgid "Answering {}"
 msgstr "‫Answering ‬{}"
@@ -357,6 +373,10 @@ msgstr "‫Approve each join‬"
 msgid "Approved. Your contacts will accept your new device now."
 msgstr "‫Approved. Your contacts will accept your new device now.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Approving the change to your account…"
+msgstr "‫Approving the change to your account…‬"
+
 #: ui/app.slint
 msgid "Archive"
 msgstr "‫Archive‬"
@@ -388,6 +408,10 @@ msgstr "‫Ask me first‬"
 #: enclave-vault/src/engine.rs
 msgid "Asked for your message history. Confirm on the device you linked from to send it now."
 msgstr "‫Asked for your message history. Confirm on the device you linked from to send it now.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Asking your friends for your recovery…"
+msgstr "‫Asking your friends for your recovery…‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Asks to join {}"
@@ -444,6 +468,10 @@ msgstr "‫Blocked on this device, but couldn't reach your server to stop their 
 #: enclave-vault/src/engine.rs
 msgid "Blocked, but the report didn't go through. Check your connection."
 msgstr "‫Blocked, but the report didn't go through. Check your connection.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Blocking them…"
+msgstr "‫Blocking them…‬"
 
 #: ui/app.slint
 msgid "Both of you see when this changes, and who changed it."
@@ -525,6 +553,10 @@ msgstr "‫Cancel them‬"
 msgid "Cancelled call"
 msgstr "‫Cancelled call‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Cancelling your invite links…"
+msgstr "‫Cancelling your invite links…‬"
+
 #: ui/app.slint
 msgid "Change"
 msgstr "‫Change‬"
@@ -544,6 +576,58 @@ msgstr "‫Change photo‬"
 #: ui/app.slint
 msgid "Change your recovery words"
 msgstr "‫Change your recovery words‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing fingerprint or face unlock…"
+msgstr "‫Changing fingerprint or face unlock…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing the backup route…"
+msgstr "‫Changing the backup route…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing the disappearing timer…"
+msgstr "‫Changing the disappearing timer…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing the words' language…"
+msgstr "‫Changing the words' language…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing what you share…"
+msgstr "‫Changing what you share…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing who can post…"
+msgstr "‫Changing who can post…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing who is an admin…"
+msgstr "‫Changing who is an admin…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing who keeps a record…"
+msgstr "‫Changing who keeps a record…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your Enclave PIN…"
+msgstr "‫Changing your Enclave PIN…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your camera…"
+msgstr "‫Changing your camera…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your microphone…"
+msgstr "‫Changing your microphone…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your privacy setting…"
+msgstr "‫Changing your privacy setting…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your server backup…"
+msgstr "‫Changing your server backup…‬"
 
 #: ui/app.slint
 msgid "Chat folders"
@@ -593,17 +677,37 @@ msgstr "‫Checked in person‬"
 msgid "Checked, but couldn't reach the server to update your conversation. It will finish when you're back online."
 msgstr "‫Checked, but couldn't reach the server to update your conversation. It will finish when you're back online.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Checking for new messages…"
+msgstr "‫Checking for new messages…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Checking for updates…"
+msgstr "‫Checking for updates…‬"
+
 #: enclave-app/src/updater.rs
 msgid "Checking the download…"
 msgstr "‫Checking the download…‬"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Checking the new device's code…"
 msgstr "‫Checking the new device's code…‬"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/labels.rs
+msgid "Checking their in-person code…"
+msgstr "‫Checking their in-person code…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Checking this build…"
+msgstr "‫Checking this build…‬"
+
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Checking you in person…"
 msgstr "‫Checking you in person…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Checking your backup…"
+msgstr "‫Checking your backup…‬"
 
 #: ui/app.slint
 msgid "Checking…"
@@ -697,9 +801,17 @@ msgstr "‫Choose your photo‬"
 msgid "Choose…"
 msgstr "‫Choose…‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Choosing your server…"
+msgstr "‫Choosing your server…‬"
+
 #: ui/app.slint
 msgid "Chosen"
 msgstr "‫Chosen‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Claiming your username…"
+msgstr "‫Claiming your username…‬"
 
 #: ui/app.slint
 msgid "Close"
@@ -716,6 +828,14 @@ msgstr "‫Closed.‬"
 #: ui/app.slint
 msgid "Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone."
 msgstr "‫Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Closing the in-person check…"
+msgstr "‫Closing the in-person check…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Closing the poll…"
+msgstr "‫Closing the poll…‬"
 
 #: ui/app.slint
 msgid "Code"
@@ -1201,6 +1321,10 @@ msgstr "‫Crash reports‬"
 msgid "Create group"
 msgstr "‫Create group‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Creating the group…"
+msgstr "‫Creating the group…‬"
+
 #: ui/app.slint
 msgid "Creating…"
 msgstr "‫Creating…‬"
@@ -1216,6 +1340,10 @@ msgstr "‫Decline‬"
 #: enclave-vault/src/engine/calling.rs
 msgid "Declined call"
 msgstr "‫Declined call‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Declining the call…"
+msgstr "‫Declining the call…‬"
 
 #: ui/app.slint
 msgid "Delete"
@@ -1252,6 +1380,26 @@ msgstr "‫Delete your account‬"
 #: ui/app.slint
 msgid "Delete your account for everyone, or only erase this device."
 msgstr "‫Delete your account for everyone, or only erase this device.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting the folder…"
+msgstr "‫Deleting the folder…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting the message for everyone…"
+msgstr "‫Deleting the message for everyone…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting the transcription model…"
+msgstr "‫Deleting the transcription model…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting your account…"
+msgstr "‫Deleting your account…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting your story…"
+msgstr "‫Deleting your story…‬"
 
 #: ui/app.slint
 msgid "Deleting…"
@@ -1316,6 +1464,10 @@ msgstr "‫Download the model‬"
 #: ui/app.slint
 msgid "Downloading the speech model through Tor… {}%"
 msgstr "‫Downloading the speech model through Tor… ‬{}‫%‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Downloading the transcription model…"
+msgstr "‫Downloading the transcription model…‬"
 
 #: enclave-app/src/updater.rs
 msgid "Downloading {}…"
@@ -1501,6 +1653,10 @@ msgstr "‫Enclave ‬{}‫ is available‬"
 msgid "Enclave's vault stopped ({}). Restart Enclave."
 msgstr "‫Enclave's vault stopped (‬{}‫). Restart Enclave.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Ending the call…"
+msgstr "‫Ending the call…‬"
+
 #: ui/app.slint
 msgid "English"
 msgstr "‫English‬"
@@ -1552,6 +1708,10 @@ msgstr "‫Erase this device and start over‬"
 #: ui/app.slint
 msgid "Erase this device. Deleting the account is done on the device that holds your recovery words."
 msgstr "‫Erase this device. Deleting the account is done on the device that holds your recovery words.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Erasing this device…"
+msgstr "‫Erasing this device…‬"
 
 #: ui/app.slint
 msgid "Español"
@@ -1661,6 +1821,10 @@ msgstr "‫Forwarded‬"
 msgid "Forwarded. "
 msgstr "‫Forwarded. ‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Forwarding the message…"
+msgstr "‫Forwarding the message…‬"
+
 #: ui/app.slint
 msgid "Français"
 msgstr "‫Français‬"
@@ -1680,6 +1844,10 @@ msgstr "‫GIF search couldn't reach Wikimedia Commons. Try again in a moment.�
 #: ui/app.slint
 msgid "Get started"
 msgstr "‫Get started‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Getting a code for this device…"
+msgstr "‫Getting a code for this device…‬"
 
 #: enclave-vault/src/engine.rs
 msgid "Getting a link code from your server…"
@@ -1708,6 +1876,10 @@ msgstr "‫Getting their keys from their server over Tor, then sending. This can
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
 msgstr "‫Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Giving out your recovery shares…"
+msgstr "‫Giving out your recovery shares…‬"
 
 #: ui/app.slint
 msgid "Go to pinned message: {}"
@@ -1893,6 +2065,10 @@ msgstr "‫Join‬"
 msgid "Join call"
 msgstr "‫Join call‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Joining the call…"
+msgstr "‫Joining the call…‬"
+
 #: ui/app.slint
 msgid "Keep a backup on my server"
 msgstr "‫Keep a backup on my server‬"
@@ -1937,6 +2113,10 @@ msgstr "‫Leave ‬{}‫?‬"
 msgid "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."
 msgstr "‫Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Leaving the group…"
+msgstr "‫Leaving the group…‬"
+
 #: ui/app.slint
 msgid "Let anyone in"
 msgstr "‫Let anyone in‬"
@@ -1952,6 +2132,10 @@ msgstr "‫Let people know when you've read their messages, and see when they've
 #: ui/app.slint
 msgid "Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."
 msgstr "‫Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Letting them in…"
+msgstr "‫Letting them in…‬"
 
 #: ui/app.slint
 msgid "Light theme"
@@ -1985,7 +2169,7 @@ msgstr "‫Linking didn't finish. Start again on both devices.‬"
 msgid "Linking didn't finish. Try again from the new device."
 msgstr "‫Linking didn't finish. Try again from the new device.‬"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Linking your new device…"
 msgstr "‫Linking your new device…‬"
 
@@ -1993,9 +2177,17 @@ msgstr "‫Linking your new device…‬"
 msgid "Linking your new device… This can take a minute."
 msgstr "‫Linking your new device… This can take a minute.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Loading every photo and file…"
+msgstr "‫Loading every photo and file…‬"
+
 #: ui/app.slint
 msgid "Loading the picture…"
 msgstr "‫Loading the picture…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Loading your stickers…"
+msgstr "‫Loading your stickers…‬"
 
 #: ui/app.slint
 msgid "Loading…"
@@ -2032,6 +2224,10 @@ msgstr "‫Lock settings saved.‬"
 #: ui/app.slint
 msgid "Lock with {}"
 msgstr "‫Lock with ‬{}"
+
+#: enclave-vault/src/labels.rs
+msgid "Locking Enclave…"
+msgstr "‫Locking Enclave…‬"
 
 #: ui/app.slint
 msgid "Longitude, like 13.4050"
@@ -2085,17 +2281,49 @@ msgstr "‫Make sure the words you wrote down open your backup, without restorin
 msgid "Make {} an admin"
 msgstr "‫Make ‬{}‫ an admin‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Making a call link…"
+msgstr "‫Making a call link…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Making a group invite link…"
+msgstr "‫Making a group invite link…‬"
+
 #: enclave-vault/src/engine/web.rs
 msgid "Making a link preview…"
 msgstr "‫Making a link preview…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Making an invite link…"
+msgstr "‫Making an invite link…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Making the folder…"
+msgstr "‫Making the folder…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Making the sticker pack…"
+msgstr "‫Making the sticker pack…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Making your backup…"
+msgstr "‫Making your backup…‬"
 
 #: ui/app.slint
 msgid "Making your code…"
 msgstr "‫Making your code…‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Making your in-person code…"
+msgstr "‫Making your in-person code…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Making your keys on this device…"
 msgstr "‫Making your keys on this device…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Making your new recovery words…"
+msgstr "‫Making your new recovery words…‬"
 
 #: ui/app.slint
 msgid "Making your new words…"
@@ -2193,6 +2421,14 @@ msgstr "‫Move the group‬"
 msgid "Move to another server"
 msgstr "‫Move to another server‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Moving the conversation…"
+msgstr "‫Moving the conversation…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Moving to the new server…"
+msgstr "‫Moving to the new server…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Moving your account. Contacts and groups are told as they come online, so keep Enclave running for a while."
 msgstr "‫Moving your account. Contacts and groups are told as they come online, so keep Enclave running for a while.‬"
@@ -2260,6 +2496,10 @@ msgstr "‫New messages are counted quietly and don't bring it back from the arc
 #: ui/app.slint
 msgid "New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."
 msgstr "‫New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot.‬"
+
+#: ui/app.slint
+msgid "Next: {}"
+msgstr "‫Next: ‬{}"
 
 #: enclave-vault/src/engine/web.rs ui/app.slint
 msgid "No GIFs found. Try other words."
@@ -2525,6 +2765,46 @@ msgstr "‫Opening Enclave…‬"
 msgid "Opening next week's inbox…"
 msgstr "‫Opening next week's inbox…‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Opening the clip…"
+msgstr "‫Opening the clip…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the conversation…"
+msgstr "‫Opening the conversation…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the file…"
+msgstr "‫Opening the file…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the folder…"
+msgstr "‫Opening the folder…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the link…"
+msgstr "‫Opening the link…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the recovery share…"
+msgstr "‫Opening the recovery share…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the sticker pack…"
+msgstr "‫Opening the sticker pack…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the story…"
+msgstr "‫Opening the story…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the view-once file…"
+msgstr "‫Opening the view-once file…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the voice note…"
+msgstr "‫Opening the voice note…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Opening this week's inbox…"
 msgstr "‫Opening this week's inbox…‬"
@@ -2721,6 +3001,10 @@ msgstr "‫Pinned message: ‬"
 msgid "Pinned · {}"
 msgstr "‫Pinned · ‬{}"
 
+#: enclave-vault/src/labels.rs
+msgid "Pinning the message…"
+msgstr "‫Pinning the message…‬"
+
 #: ui/app.slint
 msgid "Play animated picture, {}"
 msgstr "‫Play animated picture, ‬{}"
@@ -2760,6 +3044,10 @@ msgstr "‫Posted. It reaches your contacts over the next minutes, for 24 hours.
 #: enclave-vault/src/engine/stories.rs
 msgid "Posted. Nobody sees it: your stories are hidden from everyone."
 msgstr "‫Posted. Nobody sees it: your stories are hidden from everyone.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Posting your story…"
+msgstr "‫Posting your story…‬"
 
 #: ui/app.slint
 msgid "Posting…"
@@ -2804,6 +3092,10 @@ msgstr "‫Quit Enclave‬"
 #: ui/app.slint
 msgid "Raise hand"
 msgstr "‫Raise hand‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Raising your hand…"
+msgstr "‫Raising your hand…‬"
 
 #: ui/app.slint
 msgid "React"
@@ -2889,6 +3181,22 @@ msgstr "‫Removed. Your contacts will stop sending to it. If it may be in someo
 msgid "Removing a device, new recovery words and deleting your account still ask for your recovery words or PIN."
 msgstr "‫Removing a device, new recovery words and deleting your account still ask for your recovery words or PIN.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Removing the device…"
+msgstr "‫Removing the device…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Removing the request…"
+msgstr "‫Removing the request…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Removing the sticker pack…"
+msgstr "‫Removing the sticker pack…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Removing them from the group…"
+msgstr "‫Removing them from the group…‬"
+
 #: ui/app.slint
 msgid "Removing…"
 msgstr "‫Removing…‬"
@@ -2949,7 +3257,11 @@ msgstr "‫Restore from a backup‬"
 msgid "Restore from my server"
 msgstr "‫Restore from my server‬"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/labels.rs
+msgid "Restoring your account from the server…"
+msgstr "‫Restoring your account from the server…‬"
+
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Restoring your account…"
 msgstr "‫Restoring your account…‬"
 
@@ -3001,9 +3313,53 @@ msgstr "‫Saved to ‬{}"
 msgid "Saved. Your contacts see it soon."
 msgstr "‫Saved. Your contacts see it soon.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Saving that the codes match…"
+msgstr "‫Saving that the codes match…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving that the words are written down…"
+msgstr "‫Saving that the words are written down…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving the conversation's settings…"
+msgstr "‫Saving the conversation's settings…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving the file…"
+msgstr "‫Saving the file…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving when Enclave locks…"
+msgstr "‫Saving when Enclave locks…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving who sees your stories…"
+msgstr "‫Saving who sees your stories…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your Tor bridges…"
+msgstr "‫Saving your Tor bridges…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your about…"
+msgstr "‫Saving your about…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your name…"
+msgstr "‫Saving your name…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your photo…"
+msgstr "‫Saving your photo…‬"
+
 #: enclave-vault/src/engine.rs
 msgid "Saving your profile on this device…"
 msgstr "‫Saving your profile on this device…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your setting…"
+msgstr "‫Saving your setting…‬"
 
 #: ui/app.slint
 msgid "Saving…"
@@ -3093,9 +3449,17 @@ msgstr "‫Search messages‬"
 msgid "Searches Wikimedia Commons through Tor: Commons sees a Tor connection, not you, and nobody else sees what you searched for."
 msgstr "‫Searches Wikimedia Commons through Tor: Commons sees a Tor connection, not you, and nobody else sees what you searched for.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Searching for GIFs…"
+msgstr "‫Searching for GIFs…‬"
+
 #: enclave-vault/src/engine/web.rs
 msgid "Searching through Tor…"
 msgstr "‫Searching through Tor…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Searching your messages…"
+msgstr "‫Searching your messages…‬"
 
 #: ui/app.slint
 msgid "Searching…"
@@ -3112,6 +3476,10 @@ msgstr "‫Securing your account. This finishes on its own.‬"
 #: enclave-vault/src/engine.rs
 msgid "Securing your account: new keys and inboxes are on their way to your contacts, groups and other devices. This finishes on its own."
 msgstr "‫Securing your account: new keys and inboxes are on their way to your contacts, groups and other devices. This finishes on its own.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Securing your account…"
+msgstr "‫Securing your account…‬"
 
 #: ui/app.slint
 msgid "Securing…"
@@ -3185,9 +3553,65 @@ msgstr "‫Sending privately‬"
 msgid "Sending request…"
 msgstr "‫Sending request…‬"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/labels.rs
+msgid "Sending the GIF…"
+msgstr "‫Sending the GIF…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending the recovery share…"
+msgstr "‫Sending the recovery share…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending the sticker…"
+msgstr "‫Sending the sticker…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your edit…"
+msgstr "‫Sending your edit…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your file…"
+msgstr "‫Sending your file…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your history to the new device…"
+msgstr "‫Sending your history to the new device…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your message…"
+msgstr "‫Sending your message…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your poll…"
+msgstr "‫Sending your poll…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your reaction…"
+msgstr "‫Sending your reaction…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your recording…"
+msgstr "‫Sending your recording…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your report…"
+msgstr "‫Sending your report…‬"
+
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Sending your request…"
 msgstr "‫Sending your request…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your view-once file…"
+msgstr "‫Sending your view-once file…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your vote for the group's server…"
+msgstr "‫Sending your vote for the group's server…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your vote…"
+msgstr "‫Sending your vote…‬"
 
 #: ui/app.slint
 msgid "Sending…"
@@ -3225,9 +3649,25 @@ msgstr "‫Set a PIN, and Enclave locks itself when you haven't used it for a wh
 msgid "Set a screen lock (and a fingerprint or face) in your phone's settings first."
 msgstr "‫Set a screen lock (and a fingerprint or face) in your phone's settings first.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Setting up your account…"
+msgstr "‫Setting up your account…‬"
+
 #: ui/app.slint
 msgid "Setting up your private address…"
 msgstr "‫Setting up your private address…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Setting your app PIN…"
+msgstr "‫Setting your app PIN…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Setting your emergency PIN…"
+msgstr "‫Setting your emergency PIN…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Setting your recovery PIN…"
+msgstr "‫Setting your recovery PIN…‬"
 
 #: ui/app.slint
 msgid "Settings"
@@ -3288,6 +3728,14 @@ msgstr "‫Share ‬{}"
 #: enclave-vault/src/engine.rs
 msgid "Shared a contact"
 msgstr "‫Shared a contact‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sharing the contact…"
+msgstr "‫Sharing the contact…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Sharing your location…"
+msgstr "‫Sharing your location…‬"
 
 #: ui/app.slint
 msgid "Sharing…"
@@ -3377,6 +3825,14 @@ msgstr "‫Standard‬"
 msgid "Start your first conversation"
 msgstr "‫Start your first conversation‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Starting the call…"
+msgstr "‫Starting the call…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Starting the recording…"
+msgstr "‫Starting the recording…‬"
+
 #: ui/app.slint
 msgid "Stay"
 msgstr "‫Stay‬"
@@ -3432,6 +3888,18 @@ msgstr "‫Stop ‬{}‫ being an admin‬"
 #: enclave-vault/src/engine.rs
 msgid "Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them."
 msgstr "‫Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Stopping the change to your account…"
+msgstr "‫Stopping the change to your account…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Stopping the linking…"
+msgstr "‫Stopping the linking…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Stopping the video…"
+msgstr "‫Stopping the video…‬"
 
 #: ui/app.slint
 msgid "Stories last 24 hours. {} doesn't learn that you looked."
@@ -3885,6 +4353,10 @@ msgstr "‫Those shares don't fit together, or there aren't enough of them. Chec
 msgid "Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account."
 msgstr "‫Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account.‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Throwing the recording away…"
+msgstr "‫Throwing the recording away…‬"
+
 #: ui/app.slint
 msgid "To check the call, both of you read these out:"
 msgstr "‫To check the call, both of you read these out:‬"
@@ -3929,6 +4401,10 @@ msgstr "‫Transcribe‬"
 msgid "Transcribe the voice note"
 msgstr "‫Transcribe the voice note‬"
 
+#: enclave-vault/src/labels.rs
+msgid "Transcribing the voice note…"
+msgstr "‫Transcribing the voice note…‬"
+
 #: enclave-vault/src/engine/transcribing.rs
 msgid "Transcription isn't available here."
 msgstr "‫Transcription isn't available here.‬"
@@ -3964,6 +4440,10 @@ msgstr "‫Turn this on if your network blocks Tor. Snowflake works on most bloc
 #: ui/app.slint
 msgid "Turn voice notes into text on this device. This downloads a 40 MB speech model through Tor once; what's said never leaves the device."
 msgstr "‫Turn voice notes into text on this device. This downloads a 40 MB speech model through Tor once; what's said never leaves the device.‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Turning them away…"
+msgstr "‫Turning them away…‬"
 
 #: ui/app.slint
 msgid "Type delete to confirm"
@@ -4008,6 +4488,14 @@ msgstr "‫Unlock Enclave‬"
 #: ui/app.slint
 msgid "Unlock with {}"
 msgstr "‫Unlock with ‬{}"
+
+#: enclave-vault/src/labels.rs
+msgid "Unlocking your profile…"
+msgstr "‫Unlocking your profile…‬"
+
+#: enclave-vault/src/labels.rs
+msgid "Unlocking your recovery…"
+msgstr "‫Unlocking your recovery…‬"
 
 #: ui/app.slint
 msgid "Unmute"

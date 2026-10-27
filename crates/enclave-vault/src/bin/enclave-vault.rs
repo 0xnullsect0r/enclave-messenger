@@ -52,6 +52,13 @@ fn main() -> ExitCode {
         if !verbose {
             let _ = std::fs::create_dir_all(profile);
             enclave_platform::log::tee_stderr(profile);
+            // Where each run starts, and which version it is: the log
+            // keeps earlier runs' lines too.
+            eprintln!(
+                "enclave-vault: started (Enclave {}, pid {})",
+                env!("CARGO_PKG_VERSION"),
+                std::process::id()
+            );
         }
     }
     // McEliece key generation needs a deep stack.

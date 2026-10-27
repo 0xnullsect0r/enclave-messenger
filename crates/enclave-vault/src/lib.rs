@@ -20,6 +20,7 @@ pub mod engine;
 pub mod harden;
 pub mod helpers;
 pub mod keystore;
+pub mod labels;
 pub mod lock;
 pub mod media;
 pub mod netd;

@@ -796,6 +796,18 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
     // The person's language, for the window and for what the vault writes.
     let lang = crate::i18n::set_language(&crate::i18n::system_language());
     let _ = slint::select_bundled_translation(lang.unwrap_or(""));
+    // No window is running on the profile (it would have taken over
+    // above), so an Enclave program still holding it is left over: a
+    // vault from an older version that didn't exit with its window kept
+    // the database locked, and no new one could open it.
+    #[cfg(target_os = "linux")]
+    if let Some(p) = &profile {
+        for gone in enclave_platform::process::end_leftovers(p) {
+            eprintln!(
+                "enclave: ended {gone}, left over from an earlier Enclave and holding the profile"
+            );
+        }
+    }
     let ((tx, mut out), _separate) = vault::start(mode, single_process);
     // Links opened later: from another copy of the app, or (macOS) from
     // the system. They wait in the vault until the profile is unlocked.
@@ -1126,6 +1138,10 @@ pub fn run(args: Vec<String>) -> Result<(), slint::PlatformError> {
                         ui.set_activity_part(crate::i18n::tr(&a.part).into());
                         ui.set_activity_done(i32::try_from(a.done).unwrap_or(i32::MAX));
                         ui.set_activity_total(i32::try_from(a.total).unwrap_or(i32::MAX));
+                    }
+                    Out::Queued(what) => {
+                        let what: Vec<String> = what.iter().map(|w| crate::i18n::tr(w)).collect();
+                        ui.set_activity_queued(what.join(" · ").into());
                     }
                     Out::Gifs(names) => view::apply_gifs(&ui, &names),
                     Out::Gallery(rows) => {

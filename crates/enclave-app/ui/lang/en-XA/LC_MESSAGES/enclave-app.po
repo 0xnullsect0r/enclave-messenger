@@ -197,7 +197,7 @@ msgstr "[Ábóút Éñçlávé·····]"
 msgid "Accept"
 msgstr "[Áççépt··]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Accepting the request…"
 msgstr "[Áççéptíñg thé réqúést…········]"
 
@@ -248,6 +248,18 @@ msgstr "[Áddéd ··{}{}]"
 #: enclave-vault/src/engine.rs
 msgid "Added {}{} · Message history follows 24 hours after linking, sooner if both devices confirm"
 msgstr "[Áddéd ··{}{} · Mésságé hístórý fóllóws 24 hóúrs áftér líñkíñg, sóóñér íf bóth dévíçés çóñfírm································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Adding the shared contact…"
+msgstr "[Áddíñg thé sháréd çóñtáçt…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Adding the sticker pack…"
+msgstr "[Áddíñg thé stíçkér páçk…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Adding them to the group…"
+msgstr "[Áddíñg thém tó thé gróúp…··········]"
 
 #: ui/app.slint
 msgid "Adding…"
@@ -317,6 +329,10 @@ msgstr "[Áñswér díréçtlý······]"
 msgid "Answer privately"
 msgstr "[Áñswér prívátélý······]"
 
+#: enclave-vault/src/labels.rs
+msgid "Answering the call…"
+msgstr "[Áñswéríñg thé çáll…·······]"
+
 #: ui/app.slint
 msgid "Answering {}"
 msgstr "[Áñswéríñg ····{}]"
@@ -357,6 +373,10 @@ msgstr "[Áppróvé éáçh jóíñ······]"
 msgid "Approved. Your contacts will accept your new device now."
 msgstr "[Áppróvéd. Ýóúr çóñtáçts wíll áççépt ýóúr ñéw dévíçé ñów.······················]"
 
+#: enclave-vault/src/labels.rs
+msgid "Approving the change to your account…"
+msgstr "[Áppróvíñg thé çháñgé tó ýóúr áççóúñt…··············]"
+
 #: ui/app.slint
 msgid "Archive"
 msgstr "[Árçhívé··]"
@@ -388,6 +408,10 @@ msgstr "[Ásk mé fírst····]"
 #: enclave-vault/src/engine.rs
 msgid "Asked for your message history. Confirm on the device you linked from to send it now."
 msgstr "[Áskéd fór ýóúr mésságé hístórý. Çóñfírm óñ thé dévíçé ýóú líñkéd fróm tó séñd ít ñów.··································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Asking your friends for your recovery…"
+msgstr "[Áskíñg ýóúr fríéñds fór ýóúr réçóvérý…···············]"
 
 #: enclave-vault/src/engine.rs
 msgid "Asks to join {}"
@@ -444,6 +468,10 @@ msgstr "[Blóçkéd óñ thís dévíçé, bút çóúldñ't réáçh ýóúr s�
 #: enclave-vault/src/engine.rs
 msgid "Blocked, but the report didn't go through. Check your connection."
 msgstr "[Blóçkéd, bút thé répórt dídñ't gó thróúgh. Çhéçk ýóúr çóññéçtíóñ.··························]"
+
+#: enclave-vault/src/labels.rs
+msgid "Blocking them…"
+msgstr "[Blóçkíñg thém…·····]"
 
 #: ui/app.slint
 msgid "Both of you see when this changes, and who changed it."
@@ -525,6 +553,10 @@ msgstr "[Çáñçél thém····]"
 msgid "Cancelled call"
 msgstr "[Çáñçélléd çáll·····]"
 
+#: enclave-vault/src/labels.rs
+msgid "Cancelling your invite links…"
+msgstr "[Çáñçéllíñg ýóúr íñvíté líñks…···········]"
+
 #: ui/app.slint
 msgid "Change"
 msgstr "[Çháñgé··]"
@@ -544,6 +576,58 @@ msgstr "[Çháñgé phótó····]"
 #: ui/app.slint
 msgid "Change your recovery words"
 msgstr "[Çháñgé ýóúr réçóvérý wórds··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing fingerprint or face unlock…"
+msgstr "[Çháñgíñg fíñgérpríñt ór fáçé úñlóçk…··············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing the backup route…"
+msgstr "[Çháñgíñg thé báçkúp róúté…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing the disappearing timer…"
+msgstr "[Çháñgíñg thé dísáppéáríñg tímér…············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing the words' language…"
+msgstr "[Çháñgíñg thé wórds' láñgúágé…···········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing what you share…"
+msgstr "[Çháñgíñg whát ýóú sháré…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing who can post…"
+msgstr "[Çháñgíñg whó çáñ póst…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing who is an admin…"
+msgstr "[Çháñgíñg whó ís áñ ádmíñ…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing who keeps a record…"
+msgstr "[Çháñgíñg whó kééps á réçórd…···········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your Enclave PIN…"
+msgstr "[Çháñgíñg ýóúr Éñçlávé PÍÑ…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your camera…"
+msgstr "[Çháñgíñg ýóúr çámérá…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your microphone…"
+msgstr "[Çháñgíñg ýóúr míçróphóñé…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your privacy setting…"
+msgstr "[Çháñgíñg ýóúr príváçý séttíñg…············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Changing your server backup…"
+msgstr "[Çháñgíñg ýóúr sérvér báçkúp…···········]"
 
 #: ui/app.slint
 msgid "Chat folders"
@@ -593,17 +677,37 @@ msgstr "[Çhéçkéd íñ pérsóñ······]"
 msgid "Checked, but couldn't reach the server to update your conversation. It will finish when you're back online."
 msgstr "[Çhéçkéd, bút çóúldñ't réáçh thé sérvér tó úpdáté ýóúr çóñvérsátíóñ. Ít wíll fíñísh whéñ ýóú'ré báçk óñlíñé.··········································]"
 
+#: enclave-vault/src/labels.rs
+msgid "Checking for new messages…"
+msgstr "[Çhéçkíñg fór ñéw mésságés…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Checking for updates…"
+msgstr "[Çhéçkíñg fór úpdátés…········]"
+
 #: enclave-app/src/updater.rs
 msgid "Checking the download…"
 msgstr "[Çhéçkíñg thé dówñlóád…········]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Checking the new device's code…"
 msgstr "[Çhéçkíñg thé ñéw dévíçé's çódé…············]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/labels.rs
+msgid "Checking their in-person code…"
+msgstr "[Çhéçkíñg théír íñ-pérsóñ çódé…············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Checking this build…"
+msgstr "[Çhéçkíñg thís búíld…········]"
+
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Checking you in person…"
 msgstr "[Çhéçkíñg ýóú íñ pérsóñ…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Checking your backup…"
+msgstr "[Çhéçkíñg ýóúr báçkúp…········]"
 
 #: ui/app.slint
 msgid "Checking…"
@@ -697,9 +801,17 @@ msgstr "[Çhóósé ýóúr phótó······]"
 msgid "Choose…"
 msgstr "[Çhóósé…··]"
 
+#: enclave-vault/src/labels.rs
+msgid "Choosing your server…"
+msgstr "[Çhóósíñg ýóúr sérvér…········]"
+
 #: ui/app.slint
 msgid "Chosen"
 msgstr "[Çhóséñ··]"
+
+#: enclave-vault/src/labels.rs
+msgid "Claiming your username…"
+msgstr "[Çláímíñg ýóúr úsérñámé…·········]"
 
 #: ui/app.slint
 msgid "Close"
@@ -716,6 +828,14 @@ msgstr "[Çlóséd.··]"
 #: ui/app.slint
 msgid "Closed. The count the person who asked sees differs from yours, so some votes may not have reached everyone."
 msgstr "[Çlóséd. Thé çóúñt thé pérsóñ whó áskéd séés dífférs fróm ýóúrs, só sómé vótés máý ñót hávé réáçhéd évérýóñé.···········································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Closing the in-person check…"
+msgstr "[Çlósíñg thé íñ-pérsóñ çhéçk…···········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Closing the poll…"
+msgstr "[Çlósíñg thé póll…······]"
 
 #: ui/app.slint
 msgid "Code"
@@ -1201,6 +1321,10 @@ msgstr "[Çrásh répórts·····]"
 msgid "Create group"
 msgstr "[Çréáté gróúp····]"
 
+#: enclave-vault/src/labels.rs
+msgid "Creating the group…"
+msgstr "[Çréátíñg thé gróúp…·······]"
+
 #: ui/app.slint
 msgid "Creating…"
 msgstr "[Çréátíñg…···]"
@@ -1216,6 +1340,10 @@ msgstr "[Déçlíñé··]"
 #: enclave-vault/src/engine/calling.rs
 msgid "Declined call"
 msgstr "[Déçlíñéd çáll·····]"
+
+#: enclave-vault/src/labels.rs
+msgid "Declining the call…"
+msgstr "[Déçlíñíñg thé çáll…·······]"
 
 #: ui/app.slint
 msgid "Delete"
@@ -1252,6 +1380,26 @@ msgstr "[Délété ýóúr áççóúñt·······]"
 #: ui/app.slint
 msgid "Delete your account for everyone, or only erase this device."
 msgstr "[Délété ýóúr áççóúñt fór évérýóñé, ór óñlý érásé thís dévíçé.························]"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting the folder…"
+msgstr "[Délétíñg thé fóldér…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting the message for everyone…"
+msgstr "[Délétíñg thé mésságé fór évérýóñé…·············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting the transcription model…"
+msgstr "[Délétíñg thé tráñsçríptíóñ módél…·············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting your account…"
+msgstr "[Délétíñg ýóúr áççóúñt…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Deleting your story…"
+msgstr "[Délétíñg ýóúr stórý…········]"
 
 #: ui/app.slint
 msgid "Deleting…"
@@ -1316,6 +1464,10 @@ msgstr "[Dówñlóád thé módél·······]"
 #: ui/app.slint
 msgid "Downloading the speech model through Tor… {}%"
 msgstr "[Dówñlóádíñg thé spééçh módél thróúgh Tór… ················{}%]"
+
+#: enclave-vault/src/labels.rs
+msgid "Downloading the transcription model…"
+msgstr "[Dówñlóádíñg thé tráñsçríptíóñ módél…··············]"
 
 #: enclave-app/src/updater.rs
 msgid "Downloading {}…"
@@ -1501,6 +1653,10 @@ msgstr "[Éñçlávé ···{} ís áváíláblé·····]"
 msgid "Enclave's vault stopped ({}). Restart Enclave."
 msgstr "[Éñçlávé's váúlt stóppéd (··········{}). Réstárt Éñçlávé.·······]"
 
+#: enclave-vault/src/labels.rs
+msgid "Ending the call…"
+msgstr "[Éñdíñg thé çáll…······]"
+
 #: ui/app.slint
 msgid "English"
 msgstr "[Éñglísh··]"
@@ -1552,6 +1708,10 @@ msgstr "[Érásé thís dévíçé áñd stárt óvér············]"
 #: ui/app.slint
 msgid "Erase this device. Deleting the account is done on the device that holds your recovery words."
 msgstr "[Érásé thís dévíçé. Délétíñg thé áççóúñt ís dóñé óñ thé dévíçé thát hólds ýóúr réçóvérý wórds.·····································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Erasing this device…"
+msgstr "[Érásíñg thís dévíçé…········]"
 
 #: ui/app.slint
 msgid "Español"
@@ -1661,6 +1821,10 @@ msgstr "[Fórwárdéd···]"
 msgid "Forwarded. "
 msgstr "[Fórwárdéd. ····]"
 
+#: enclave-vault/src/labels.rs
+msgid "Forwarding the message…"
+msgstr "[Fórwárdíñg thé mésságé…·········]"
+
 #: ui/app.slint
 msgid "Français"
 msgstr "[Fráñçáís···]"
@@ -1680,6 +1844,10 @@ msgstr "[GÍF séárçh çóúldñ't réáçh Wíkímédíá Çómmóñs. Trý �
 #: ui/app.slint
 msgid "Get started"
 msgstr "[Gét stártéd····]"
+
+#: enclave-vault/src/labels.rs
+msgid "Getting a code for this device…"
+msgstr "[Géttíñg á çódé fór thís dévíçé…············]"
 
 #: enclave-vault/src/engine.rs
 msgid "Getting a link code from your server…"
@@ -1708,6 +1876,10 @@ msgstr "[Géttíñg théír kéýs fróm théír sérvér óvér Tór, théñ s�
 #: ui/app.slint
 msgid "Give a few people you trust each a share of your recovery. If you lose your words and every device, meeting enough of them gets your account back. None of them can do it alone."
 msgstr "[Gívé á féw péóplé ýóú trúst éáçh á sháré óf ýóúr réçóvérý. Íf ýóú lósé ýóúr wórds áñd évérý dévíçé, méétíñg éñóúgh óf thém géts ýóúr áççóúñt báçk. Ñóñé óf thém çáñ dó ít álóñé.······································································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Giving out your recovery shares…"
+msgstr "[Gívíñg óút ýóúr réçóvérý shárés…············]"
 
 #: ui/app.slint
 msgid "Go to pinned message: {}"
@@ -1893,6 +2065,10 @@ msgstr "[Jóíñ·]"
 msgid "Join call"
 msgstr "[Jóíñ çáll···]"
 
+#: enclave-vault/src/labels.rs
+msgid "Joining the call…"
+msgstr "[Jóíñíñg thé çáll…······]"
+
 #: ui/app.slint
 msgid "Keep a backup on my server"
 msgstr "[Kéép á báçkúp óñ mý sérvér··········]"
@@ -1937,6 +2113,10 @@ msgstr "[Léávé ··{}?]"
 msgid "Leaving out someone who holds a share now changes your recovery words, so their share stops working. You'll be shown the new words."
 msgstr "[Léávíñg óút sóméóñé whó hólds á sháré ñów çháñgés ýóúr réçóvérý wórds, só théír sháré stóps wórkíñg. Ýóú'll bé shówñ thé ñéw wórds.····················································]"
 
+#: enclave-vault/src/labels.rs
+msgid "Leaving the group…"
+msgstr "[Léávíñg thé gróúp…·······]"
+
 #: ui/app.slint
 msgid "Let anyone in"
 msgstr "[Lét áñýóñé íñ·····]"
@@ -1952,6 +2132,10 @@ msgstr "[Lét péóplé kñów whéñ ýóú'vé réád théír mésságés, á�
 #: ui/app.slint
 msgid "Let someone next to you scan this. For someone who isn't here, copy an invite link: each one works for one person, for 7 days. Either way, they can then send you a message request."
 msgstr "[Lét sóméóñé ñéxt tó ýóú sçáñ thís. Fór sóméóñé whó ísñ't héré, çópý áñ íñvíté líñk: éáçh óñé wórks fór óñé pérsóñ, fór 7 dáýs. Éíthér wáý, théý çáñ théñ séñd ýóú á mésságé réqúést.········································································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Letting them in…"
+msgstr "[Léttíñg thém íñ…······]"
 
 #: ui/app.slint
 msgid "Light theme"
@@ -1985,7 +2169,7 @@ msgstr "[Líñkíñg dídñ't fíñísh. Stárt ágáíñ óñ bóth dévíçés
 msgid "Linking didn't finish. Try again from the new device."
 msgstr "[Líñkíñg dídñ't fíñísh. Trý ágáíñ fróm thé ñéw dévíçé.·····················]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Linking your new device…"
 msgstr "[Líñkíñg ýóúr ñéw dévíçé…·········]"
 
@@ -1993,9 +2177,17 @@ msgstr "[Líñkíñg ýóúr ñéw dévíçé…·········]"
 msgid "Linking your new device… This can take a minute."
 msgstr "[Líñkíñg ýóúr ñéw dévíçé… Thís çáñ táké á míñúté.···················]"
 
+#: enclave-vault/src/labels.rs
+msgid "Loading every photo and file…"
+msgstr "[Lóádíñg évérý phótó áñd fílé…···········]"
+
 #: ui/app.slint
 msgid "Loading the picture…"
 msgstr "[Lóádíñg thé píçtúré…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Loading your stickers…"
+msgstr "[Lóádíñg ýóúr stíçkérs…········]"
 
 #: ui/app.slint
 msgid "Loading…"
@@ -2032,6 +2224,10 @@ msgstr "[Lóçk séttíñgs sávéd.········]"
 #: ui/app.slint
 msgid "Lock with {}"
 msgstr "[Lóçk wíth ····{}]"
+
+#: enclave-vault/src/labels.rs
+msgid "Locking Enclave…"
+msgstr "[Lóçkíñg Éñçlávé…······]"
 
 #: ui/app.slint
 msgid "Longitude, like 13.4050"
@@ -2085,17 +2281,49 @@ msgstr "[Máké súré thé wórds ýóú wróté dówñ ópéñ ýóúr báçk�
 msgid "Make {} an admin"
 msgstr "[Máké ··{} áñ ádmíñ···]"
 
+#: enclave-vault/src/labels.rs
+msgid "Making a call link…"
+msgstr "[Mákíñg á çáll líñk…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Making a group invite link…"
+msgstr "[Mákíñg á gróúp íñvíté líñk…··········]"
+
 #: enclave-vault/src/engine/web.rs
 msgid "Making a link preview…"
 msgstr "[Mákíñg á líñk prévíéw…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Making an invite link…"
+msgstr "[Mákíñg áñ íñvíté líñk…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Making the folder…"
+msgstr "[Mákíñg thé fóldér…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Making the sticker pack…"
+msgstr "[Mákíñg thé stíçkér páçk…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Making your backup…"
+msgstr "[Mákíñg ýóúr báçkúp…·······]"
 
 #: ui/app.slint
 msgid "Making your code…"
 msgstr "[Mákíñg ýóúr çódé…······]"
 
+#: enclave-vault/src/labels.rs
+msgid "Making your in-person code…"
+msgstr "[Mákíñg ýóúr íñ-pérsóñ çódé…··········]"
+
 #: enclave-vault/src/engine.rs
 msgid "Making your keys on this device…"
 msgstr "[Mákíñg ýóúr kéýs óñ thís dévíçé…············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Making your new recovery words…"
+msgstr "[Mákíñg ýóúr ñéw réçóvérý wórds…············]"
 
 #: ui/app.slint
 msgid "Making your new words…"
@@ -2193,6 +2421,14 @@ msgstr "[Móvé thé gróúp·····]"
 msgid "Move to another server"
 msgstr "[Móvé tó áñóthér sérvér········]"
 
+#: enclave-vault/src/labels.rs
+msgid "Moving the conversation…"
+msgstr "[Móvíñg thé çóñvérsátíóñ…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Moving to the new server…"
+msgstr "[Móvíñg tó thé ñéw sérvér…··········]"
+
 #: enclave-vault/src/engine.rs
 msgid "Moving your account. Contacts and groups are told as they come online, so keep Enclave running for a while."
 msgstr "[Móvíñg ýóúr áççóúñt. Çóñtáçts áñd gróúps áré tóld ás théý çómé óñlíñé, só kéép Éñçlávé rúññíñg fór á whílé.··········································]"
@@ -2260,6 +2496,10 @@ msgstr "[Ñéw mésságés áré çóúñtéd qúíétlý áñd dóñ't bríñg 
 #: ui/app.slint
 msgid "New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."
 msgstr "[Ñéw mésságés íñ thís çóñvérsátíóñ dísáppéár fróm bóth phóñés thís lóñg áftér théý'ré réád. Áñýóñé çáñ stíll táké á sçrééñshót.··················································]"
+
+#: ui/app.slint
+msgid "Next: {}"
+msgstr "[Ñéxt: ··{}]"
 
 #: enclave-vault/src/engine/web.rs ui/app.slint
 msgid "No GIFs found. Try other words."
@@ -2525,6 +2765,46 @@ msgstr "[Ópéñíñg Éñçlávé…······]"
 msgid "Opening next week's inbox…"
 msgstr "[Ópéñíñg ñéxt wéék's íñbóx…··········]"
 
+#: enclave-vault/src/labels.rs
+msgid "Opening the clip…"
+msgstr "[Ópéñíñg thé çlíp…······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the conversation…"
+msgstr "[Ópéñíñg thé çóñvérsátíóñ…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the file…"
+msgstr "[Ópéñíñg thé fílé…······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the folder…"
+msgstr "[Ópéñíñg thé fóldér…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the link…"
+msgstr "[Ópéñíñg thé líñk…······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the recovery share…"
+msgstr "[Ópéñíñg thé réçóvérý sháré…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the sticker pack…"
+msgstr "[Ópéñíñg thé stíçkér páçk…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the story…"
+msgstr "[Ópéñíñg thé stórý…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the view-once file…"
+msgstr "[Ópéñíñg thé víéw-óñçé fílé…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Opening the voice note…"
+msgstr "[Ópéñíñg thé vóíçé ñóté…·········]"
+
 #: enclave-vault/src/engine.rs
 msgid "Opening this week's inbox…"
 msgstr "[Ópéñíñg thís wéék's íñbóx…··········]"
@@ -2721,6 +3001,10 @@ msgstr "[Píññéd mésságé: ······]"
 msgid "Pinned · {}"
 msgstr "[Píññéd · ···{}]"
 
+#: enclave-vault/src/labels.rs
+msgid "Pinning the message…"
+msgstr "[Píññíñg thé mésságé…········]"
+
 #: ui/app.slint
 msgid "Play animated picture, {}"
 msgstr "[Pláý áñímátéd píçtúré, ·········{}]"
@@ -2760,6 +3044,10 @@ msgstr "[Póstéd. Ít réáçhés ýóúr çóñtáçts óvér thé ñéxt mí�
 #: enclave-vault/src/engine/stories.rs
 msgid "Posted. Nobody sees it: your stories are hidden from everyone."
 msgstr "[Póstéd. Ñóbódý séés ít: ýóúr stóríés áré híddéñ fróm évérýóñé.························]"
+
+#: enclave-vault/src/labels.rs
+msgid "Posting your story…"
+msgstr "[Póstíñg ýóúr stórý…·······]"
 
 #: ui/app.slint
 msgid "Posting…"
@@ -2804,6 +3092,10 @@ msgstr "[Qúít Éñçlávé····]"
 #: ui/app.slint
 msgid "Raise hand"
 msgstr "[Ráísé háñd····]"
+
+#: enclave-vault/src/labels.rs
+msgid "Raising your hand…"
+msgstr "[Ráísíñg ýóúr háñd…·······]"
 
 #: ui/app.slint
 msgid "React"
@@ -2889,6 +3181,22 @@ msgstr "[Rémóvéd. Ýóúr çóñtáçts wíll stóp séñdíñg tó ít. Íf 
 msgid "Removing a device, new recovery words and deleting your account still ask for your recovery words or PIN."
 msgstr "[Rémóvíñg á dévíçé, ñéw réçóvérý wórds áñd délétíñg ýóúr áççóúñt stíll ásk fór ýóúr réçóvérý wórds ór PÍÑ.··········································]"
 
+#: enclave-vault/src/labels.rs
+msgid "Removing the device…"
+msgstr "[Rémóvíñg thé dévíçé…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Removing the request…"
+msgstr "[Rémóvíñg thé réqúést…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Removing the sticker pack…"
+msgstr "[Rémóvíñg thé stíçkér páçk…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Removing them from the group…"
+msgstr "[Rémóvíñg thém fróm thé gróúp…···········]"
+
 #: ui/app.slint
 msgid "Removing…"
 msgstr "[Rémóvíñg…···]"
@@ -2949,7 +3257,11 @@ msgstr "[Réstóré fróm á báçkúp········]"
 msgid "Restore from my server"
 msgstr "[Réstóré fróm mý sérvér········]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/labels.rs
+msgid "Restoring your account from the server…"
+msgstr "[Réstóríñg ýóúr áççóúñt fróm thé sérvér…···············]"
+
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Restoring your account…"
 msgstr "[Réstóríñg ýóúr áççóúñt…·········]"
 
@@ -3001,9 +3313,53 @@ msgstr "[Sávéd tó ···{}]"
 msgid "Saved. Your contacts see it soon."
 msgstr "[Sávéd. Ýóúr çóñtáçts séé ít sóóñ.·············]"
 
+#: enclave-vault/src/labels.rs
+msgid "Saving that the codes match…"
+msgstr "[Sávíñg thát thé çódés mátçh…···········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving that the words are written down…"
+msgstr "[Sávíñg thát thé wórds áré wríttéñ dówñ…···············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving the conversation's settings…"
+msgstr "[Sávíñg thé çóñvérsátíóñ's séttíñgs…··············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving the file…"
+msgstr "[Sávíñg thé fílé…······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving when Enclave locks…"
+msgstr "[Sávíñg whéñ Éñçlávé lóçks…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving who sees your stories…"
+msgstr "[Sávíñg whó séés ýóúr stóríés…···········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your Tor bridges…"
+msgstr "[Sávíñg ýóúr Tór brídgés…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your about…"
+msgstr "[Sávíñg ýóúr ábóút…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your name…"
+msgstr "[Sávíñg ýóúr ñámé…······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your photo…"
+msgstr "[Sávíñg ýóúr phótó…·······]"
+
 #: enclave-vault/src/engine.rs
 msgid "Saving your profile on this device…"
 msgstr "[Sávíñg ýóúr prófílé óñ thís dévíçé…··············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Saving your setting…"
+msgstr "[Sávíñg ýóúr séttíñg…········]"
 
 #: ui/app.slint
 msgid "Saving…"
@@ -3093,9 +3449,17 @@ msgstr "[Séárçh mésságés······]"
 msgid "Searches Wikimedia Commons through Tor: Commons sees a Tor connection, not you, and nobody else sees what you searched for."
 msgstr "[Séárçhés Wíkímédíá Çómmóñs thróúgh Tór: Çómmóñs séés á Tór çóññéçtíóñ, ñót ýóú, áñd ñóbódý élsé séés whát ýóú séárçhéd fór.·················································]"
 
+#: enclave-vault/src/labels.rs
+msgid "Searching for GIFs…"
+msgstr "[Séárçhíñg fór GÍFs…·······]"
+
 #: enclave-vault/src/engine/web.rs
 msgid "Searching through Tor…"
 msgstr "[Séárçhíñg thróúgh Tór…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Searching your messages…"
+msgstr "[Séárçhíñg ýóúr mésságés…·········]"
 
 #: ui/app.slint
 msgid "Searching…"
@@ -3112,6 +3476,10 @@ msgstr "[Séçúríñg ýóúr áççóúñt. Thís fíñíshés óñ íts ówñ
 #: enclave-vault/src/engine.rs
 msgid "Securing your account: new keys and inboxes are on their way to your contacts, groups and other devices. This finishes on its own."
 msgstr "[Séçúríñg ýóúr áççóúñt: ñéw kéýs áñd íñbóxés áré óñ théír wáý tó ýóúr çóñtáçts, gróúps áñd óthér dévíçés. Thís fíñíshés óñ íts ówñ.····················································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Securing your account…"
+msgstr "[Séçúríñg ýóúr áççóúñt…········]"
 
 #: ui/app.slint
 msgid "Securing…"
@@ -3185,9 +3553,65 @@ msgstr "[Séñdíñg prívátélý······]"
 msgid "Sending request…"
 msgstr "[Séñdíñg réqúést…······]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/labels.rs
+msgid "Sending the GIF…"
+msgstr "[Séñdíñg thé GÍF…······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending the recovery share…"
+msgstr "[Séñdíñg thé réçóvérý sháré…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending the sticker…"
+msgstr "[Séñdíñg thé stíçkér…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your edit…"
+msgstr "[Séñdíñg ýóúr édít…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your file…"
+msgstr "[Séñdíñg ýóúr fílé…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your history to the new device…"
+msgstr "[Séñdíñg ýóúr hístórý tó thé ñéw dévíçé…···············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your message…"
+msgstr "[Séñdíñg ýóúr mésságé…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your poll…"
+msgstr "[Séñdíñg ýóúr póll…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your reaction…"
+msgstr "[Séñdíñg ýóúr réáçtíóñ…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your recording…"
+msgstr "[Séñdíñg ýóúr réçórdíñg…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your report…"
+msgstr "[Séñdíñg ýóúr répórt…········]"
+
+#: enclave-vault/src/engine.rs enclave-vault/src/labels.rs
 msgid "Sending your request…"
 msgstr "[Séñdíñg ýóúr réqúést…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your view-once file…"
+msgstr "[Séñdíñg ýóúr víéw-óñçé fílé…···········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your vote for the group's server…"
+msgstr "[Séñdíñg ýóúr vóté fór thé gróúp's sérvér…················]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sending your vote…"
+msgstr "[Séñdíñg ýóúr vóté…·······]"
 
 #: ui/app.slint
 msgid "Sending…"
@@ -3225,9 +3649,25 @@ msgstr "[Sét á PÍÑ, áñd Éñçlávé lóçks ítsélf whéñ ýóú hávé
 msgid "Set a screen lock (and a fingerprint or face) in your phone's settings first."
 msgstr "[Sét á sçrééñ lóçk (áñd á fíñgérpríñt ór fáçé) íñ ýóúr phóñé's séttíñgs fírst.······························]"
 
+#: enclave-vault/src/labels.rs
+msgid "Setting up your account…"
+msgstr "[Séttíñg úp ýóúr áççóúñt…·········]"
+
 #: ui/app.slint
 msgid "Setting up your private address…"
 msgstr "[Séttíñg úp ýóúr príváté áddréss…············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Setting your app PIN…"
+msgstr "[Séttíñg ýóúr ápp PÍÑ…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Setting your emergency PIN…"
+msgstr "[Séttíñg ýóúr émérgéñçý PÍÑ…··········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Setting your recovery PIN…"
+msgstr "[Séttíñg ýóúr réçóvérý PÍÑ…··········]"
 
 #: ui/app.slint
 msgid "Settings"
@@ -3288,6 +3728,14 @@ msgstr "[Sháré ··{}]"
 #: enclave-vault/src/engine.rs
 msgid "Shared a contact"
 msgstr "[Sháréd á çóñtáçt······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sharing the contact…"
+msgstr "[Sháríñg thé çóñtáçt…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Sharing your location…"
+msgstr "[Sháríñg ýóúr lóçátíóñ…········]"
 
 #: ui/app.slint
 msgid "Sharing…"
@@ -3377,6 +3825,14 @@ msgstr "[Stáñdárd···]"
 msgid "Start your first conversation"
 msgstr "[Stárt ýóúr fírst çóñvérsátíóñ···········]"
 
+#: enclave-vault/src/labels.rs
+msgid "Starting the call…"
+msgstr "[Stártíñg thé çáll…·······]"
+
+#: enclave-vault/src/labels.rs
+msgid "Starting the recording…"
+msgstr "[Stártíñg thé réçórdíñg…·········]"
+
 #: ui/app.slint
 msgid "Stay"
 msgstr "[Stáý·]"
@@ -3432,6 +3888,18 @@ msgstr "[Stóp ··{} béíñg áñ ádmíñ······]"
 #: enclave-vault/src/engine.rs
 msgid "Stopped. Your contacts won't accept that device. Choose new recovery words soon: whoever used them still has them."
 msgstr "[Stóppéd. Ýóúr çóñtáçts wóñ't áççépt thát dévíçé. Çhóósé ñéw réçóvérý wórds sóóñ: whóévér úséd thém stíll hás thém.·············································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Stopping the change to your account…"
+msgstr "[Stóppíñg thé çháñgé tó ýóúr áççóúñt…··············]"
+
+#: enclave-vault/src/labels.rs
+msgid "Stopping the linking…"
+msgstr "[Stóppíñg thé líñkíñg…········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Stopping the video…"
+msgstr "[Stóppíñg thé vídéó…·······]"
 
 #: ui/app.slint
 msgid "Stories last 24 hours. {} doesn't learn that you looked."
@@ -3885,6 +4353,10 @@ msgstr "[Thósé shárés dóñ't fít tógéthér, ór théré áréñ't éñó
 msgid "Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account."
 msgstr "[Thósé wórds dóñ't mátçh, só ñóthíñg wás líñkéd. Íf ýóú dídñ't stárt thís, sóméóñé máý bé trýíñg tó gét íñtó ýóúr áççóúñt.················································]"
 
+#: enclave-vault/src/labels.rs
+msgid "Throwing the recording away…"
+msgstr "[Thrówíñg thé réçórdíñg áwáý…···········]"
+
 #: ui/app.slint
 msgid "To check the call, both of you read these out:"
 msgstr "[Tó çhéçk thé çáll, bóth óf ýóú réád thésé óút:··················]"
@@ -3929,6 +4401,10 @@ msgstr "[Tráñsçríbé····]"
 msgid "Transcribe the voice note"
 msgstr "[Tráñsçríbé thé vóíçé ñóté··········]"
 
+#: enclave-vault/src/labels.rs
+msgid "Transcribing the voice note…"
+msgstr "[Tráñsçríbíñg thé vóíçé ñóté…···········]"
+
 #: enclave-vault/src/engine/transcribing.rs
 msgid "Transcription isn't available here."
 msgstr "[Tráñsçríptíóñ ísñ't áváíláblé héré.··············]"
@@ -3964,6 +4440,10 @@ msgstr "[Túrñ thís óñ íf ýóúr ñétwórk blóçks Tór. Sñówfláké w
 #: ui/app.slint
 msgid "Turn voice notes into text on this device. This downloads a 40 MB speech model through Tor once; what's said never leaves the device."
 msgstr "[Túrñ vóíçé ñótés íñtó téxt óñ thís dévíçé. Thís dówñlóáds á 40 MB spééçh módél thróúgh Tór óñçé; whát's sáíd ñévér léávés thé dévíçé.·····················································]"
+
+#: enclave-vault/src/labels.rs
+msgid "Turning them away…"
+msgstr "[Túrñíñg thém áwáý…·······]"
 
 #: ui/app.slint
 msgid "Type delete to confirm"
@@ -4008,6 +4488,14 @@ msgstr "[Úñlóçk Éñçlávé·····]"
 #: ui/app.slint
 msgid "Unlock with {}"
 msgstr "[Úñlóçk wíth ····{}]"
+
+#: enclave-vault/src/labels.rs
+msgid "Unlocking your profile…"
+msgstr "[Úñlóçkíñg ýóúr prófílé…·········]"
+
+#: enclave-vault/src/labels.rs
+msgid "Unlocking your recovery…"
+msgstr "[Úñlóçkíñg ýóúr réçóvérý…·········]"
 
 #: ui/app.slint
 msgid "Unmute"

@@ -205,9 +205,151 @@ fn file_from_writer(p: std::io::PipeWriter) -> std::fs::File {
     std::os::windows::io::OwnedHandle::from(p).into()
 }
 
+/// Enclave's programs, by file name: the ones a profile's files are ever
+/// open in.
+#[cfg(target_os = "linux")]
+const OURS: [&str; 6] = [
+    "enclave-vault",
+    "enclave-netd",
+    "enclave-tord",
+    "enclave-nymd",
+    "enclave-mediad",
+    "lyrebird",
+];
+
+/// End what is left of an earlier Enclave on `profile`: one of our
+/// programs (not this process) that still has a file in `profile` open.
+/// Call it only where no window is running on `profile` (the window that
+/// is starting found none to hand over to), so whatever holds it is left
+/// over: a vault from an older version that didn't exit when its window
+/// went, keeping the profile's database locked so no new one could open
+/// it. Each gets SIGTERM, then SIGKILL after three seconds. Returns what
+/// was ended (`"enclave-vault (pid 4242)"`), for the log.
+#[cfg(target_os = "linux")]
+pub fn end_leftovers(profile: &std::path::Path) -> Vec<String> {
+    let Ok(profile) = std::fs::canonicalize(profile) else {
+        return Vec::new();
+    };
+    let me = std::process::id();
+    let mut found: Vec<(u32, String)> = Vec::new();
+    let Ok(procs) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    for p in procs.flatten() {
+        let Some(pid) = p.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == me {
+            continue;
+        }
+        let Some(name) = program(pid) else { continue };
+        if !OURS.contains(&name.as_str()) {
+            continue;
+        }
+        let holds = std::fs::read_dir(format!("/proc/{pid}/fd"))
+            .map(|fds| {
+                fds.flatten()
+                    .any(|fd| std::fs::read_link(fd.path()).is_ok_and(|t| t.starts_with(&profile)))
+            })
+            .unwrap_or(false);
+        if holds {
+            found.push((pid, name));
+        }
+    }
+    for (pid, _) in &found {
+        signal(*pid, libc::SIGTERM);
+    }
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while found.iter().any(|(pid, _)| alive(*pid)) && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    for (pid, _) in &found {
+        if alive(*pid) {
+            signal(*pid, libc::SIGKILL);
+        }
+    }
+    found
+        .into_iter()
+        .map(|(pid, name)| format!("{name} (pid {pid})"))
+        .collect()
+}
+
+/// The file name of the program process `pid` runs (an updated program's
+/// old file reads "… (deleted)", which is dropped).
+#[cfg(target_os = "linux")]
+fn program(pid: u32) -> Option<String> {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    let name = exe.file_name()?.to_str()?;
+    Some(name.trim_end_matches(" (deleted)").to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn alive(pid: u32) -> bool {
+    // A zombie (ended, not yet reaped) holds nothing.
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| {
+        s.rsplit(')')
+            .next()
+            .is_some_and(|r| !r.trim_start().starts_with('Z'))
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn signal(pid: u32, sig: libc::c_int) {
+    if let Ok(pid) = libc::pid_t::try_from(pid) {
+        // SAFETY: kill(2) on a process id; it touches no memory of ours.
+        unsafe { libc::kill(pid, sig) };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, Write};
+
+    /// A program of ours left holding a file in the profile (here `tail`
+    /// under the vault's name) is ended; one holding nothing there isn't.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_leftover_holding_the_profile_is_ended() {
+        let dir = std::env::temp_dir().join(format!("enclave-leftover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let profile = dir.join("profile");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(profile.join("profile.redb"), b"db").unwrap();
+        let vault = dir.join("enclave-vault");
+        std::fs::copy("/usr/bin/tail", &vault).unwrap();
+        let other = dir.join("enclave-netd");
+        std::fs::copy("/usr/bin/sleep", &other).unwrap();
+        let mut holder = std::process::Command::new(&vault)
+            .arg("-f")
+            .arg(profile.join("profile.redb"))
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut idle = std::process::Command::new(&other)
+            .arg("30")
+            .spawn()
+            .unwrap();
+        // Until it has the file open.
+        let fd_open = || {
+            std::fs::read_dir(format!("/proc/{}/fd", holder.id()))
+                .unwrap()
+                .flatten()
+                .any(|f| std::fs::read_link(f.path()).is_ok_and(|t| t.ends_with("profile.redb")))
+        };
+        for _ in 0..50 {
+            if fd_open() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let ended = super::end_leftovers(&profile);
+        assert_eq!(ended, vec![format!("enclave-vault (pid {})", holder.id())]);
+        assert!(holder.wait().is_ok());
+        assert!(idle.try_wait().unwrap().is_none(), "holds nothing there");
+        let _ = idle.kill();
+        let _ = idle.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn echo(args: Vec<String>) -> std::process::ExitCode {
         let Ok(io) = super::stdio() else {

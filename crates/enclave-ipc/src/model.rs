@@ -1089,7 +1089,14 @@ pub enum Out {
     /// (done of total; 0 of 0 when not known). The window shows it as a
     /// bar until an empty one comes.
     Activity(Activity),
+    /// What waits behind the slow thing under way, in the order it was
+    /// asked for ("Sending your request…"); empty when nothing does. The
+    /// window lists it under the bar.
+    Queued(Vec<String>),
 }
+
+/// Most entries [`Out::Queued`] carries.
+pub const MAX_QUEUED: usize = 16;
 
 /// What [`Out::Activity`] says.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -2438,6 +2445,11 @@ impl Out {
                 w.u8(23).u32(*n);
                 w.0
             }
+            Out::Queued(what) => {
+                let mut w = Writer::default();
+                w.u8(25).strs(&what[..what.len().min(MAX_QUEUED)]);
+                w.0
+            }
             Out::Activity(a) => {
                 let mut w = Writer::default();
                 w.u8(24).str(&a.doing).str(&a.part).u32(a.done).u32(a.total);
@@ -2649,6 +2661,15 @@ impl Out {
                 });
                 r.end()?;
                 Ok(o)
+            }
+            [25, ..] => {
+                let mut r = Reader(&b[1..]);
+                let what = r.strs()?;
+                r.end()?;
+                if what.len() > MAX_QUEUED {
+                    return Err(IpcError::Malformed);
+                }
+                Ok(Out::Queued(what))
             }
             [21, ..] => {
                 let mut r = Reader(&b[1..]);
