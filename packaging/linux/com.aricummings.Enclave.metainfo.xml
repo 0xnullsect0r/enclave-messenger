@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.1.8" date="2026-10-27">
+      <description>
+        <p>Every action that takes more than a moment shows a bar that says what it is doing, such as sending a request, linking a device or making the in-person code, and what you tap meanwhile is listed under it as next instead of seeming ignored. On Linux, an Enclave left running by an earlier version no longer keeps your profile locked after an update: starting Enclave ends it. The log notes the version each time Enclave starts.</p>
+      </description>
+    </release>
     <release version="0.1.7" date="2026-10-26">
       <description>
         <p>Quitting and starting Enclave again no longer shows setup over your account: a copy still closing is waited for (it now closes within seconds of its window), and while your profile opens, or if it doesn't, setup isn't offered. obfs4 bridges, Tor's built-in ones and your own, now go through lyrebird, the same implementation Tor Browser uses. Setting up takes your own bridge lines right on the page, and the bridge switch answers at once. The passphrase for keys kept in files is now an Enclave PIN of 6 or more digits, typed on the number keypad, like every PIN in Enclave. Requests sent just after midnight UTC no longer fail.</p>
