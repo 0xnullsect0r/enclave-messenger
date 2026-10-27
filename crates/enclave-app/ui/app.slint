@@ -1457,6 +1457,11 @@ export component AppWindow inherits Window {
     in property <int> activity-done;
     in property <int> activity-total;
     in property <bool> slow-start;
+    // A profile is on this device (open or not): no setup offered over it.
+    in property <bool> has-profile;
+    in property <bool> open-failed;
+    // "Erase this device and start over" was tapped once.
+    in-out property <bool> confirm-erase;
     callback copy-log();
     // A step sent in parts (the vault key): parts done, how many, and about
     // how many seconds the rest take (0: not known yet).
@@ -1822,27 +1827,45 @@ export component AppWindow inherits Window {
                     // Why an existing profile didn't open, rather than a fresh
                     // start that says nothing.
                     if root.status-line != "": Secondary { text: root.status-line; }
-                    if !root.vault-ready: HorizontalLayout {
+                    if !root.vault-ready || (root.has-profile && !root.open-failed): HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
                         Spinner { }
-                        Secondary { text: @tr("Opening Enclave…"); horizontal-stretch: 1; }
+                        Secondary { text: root.has-profile ? @tr("Opening your profile…") : @tr("Opening Enclave…"); horizontal-stretch: 1; }
                     }
                     if !root.vault-ready && root.slow-start: Secondary {
                         text: @tr("This is taking longer than it should. If it stays like this, copy Enclave's log and send it to whoever helps you with Enclave.");
                     }
-                    if root.vault-ready: HorizontalLayout {
+                    // An account is here: only it opens. Setting up again
+                    // would start another over it.
+                    if root.vault-ready && !root.has-profile: HorizontalLayout {
                         alignment: start;
                         spacing: Tokens.space-s;
                         PrimaryButton { text: @tr("Get started"); clicked => { root.get-started(); } }
                         if root.can-join: QuietButton { text: @tr("I already have Enclave"); clicked => { root.start-join(); } }
                     }
                     // Something went wrong, or it is slow: what Enclave said.
+                    if root.has-profile && root.open-failed: Secondary {
+                        text: @tr("Your account is still on this device. Quit Enclave completely and start it again; if it still doesn't open, copy the log and send it to whoever helps you with Enclave.");
+                    }
                     if (!root.vault-ready && root.slow-start) || root.status-line != "": HorizontalLayout {
                         alignment: start;
                         QuietButton { text: @tr("Copy log"); outlined: true; clicked => { root.copy-log(); } }
                     }
-                    if root.vault-ready && root.can-join: HorizontalLayout {
+                    // The way out of a profile that won't open: erase it,
+                    // after a second tap (recovery words bring the account
+                    // back on a new start).
+                    if root.has-profile && root.open-failed: HorizontalLayout {
+                        alignment: start;
+                        QuietButton {
+                            text: root.confirm-erase ? @tr("Tap again to erase everything on this device") : @tr("Erase this device and start over");
+                            danger: true;
+                            clicked => {
+                                if root.confirm-erase { root.confirm-erase = false; root.erase-device(); } else { root.confirm-erase = true; }
+                            }
+                        }
+                    }
+                    if root.vault-ready && root.can-join && !root.has-profile: HorizontalLayout {
                         alignment: start;
                         QuietButton { text: @tr("Restore from a backup"); clicked => { root.screen = Screen.restore; } }
                     }
@@ -2028,12 +2051,13 @@ export component AppWindow inherits Window {
                         }
                     }
                     if root.can-join && (!root.phone || root.file-keys): Field {
-                        placeholder: root.file-keys ? @tr("Passphrase for this computer") : @tr("Passphrase for this computer (optional)");
+                        placeholder: root.file-keys ? @tr("Enclave PIN (6 or more digits)") : @tr("Enclave PIN (optional, 6 or more digits)");
+                        digits: true;
                         secret: true;
                         text <=> root.new-passphrase;
                     }
                     if root.can-join && root.file-keys && root.new-passphrase == "": Secondary {
-                        text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. Choose a passphrase: it protects them if someone copies those files.");
+                        text: @tr("This device has no keyring for Enclave's keys, so they are kept in files. Choose an Enclave PIN: it protects them if someone copies those files. Longer is safer.");
                     }
                     if root.can-join && (!root.phone || root.file-keys) && root.new-passphrase != "": Secondary {
                         text: @tr("You'll type it each time Enclave starts. Nobody can reset it; if you forget it, your recovery words bring your account back.");
@@ -2064,9 +2088,9 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         width: min(440px, root.area-width - 2 * Tokens.space-l);
                         spacing: Tokens.space-m;
-                        ScreenTitle { text: @tr("Choose a passphrase"); }
-                        Secondary { text: @tr("This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."); }
-                        Field { placeholder: @tr("Passphrase"); secret: true; text <=> root.new-passphrase; }
+                        ScreenTitle { text: @tr("Choose an Enclave PIN"); }
+                        Secondary { text: @tr("This device has no keyring for Enclave's keys, so they are kept in files. An Enclave PIN protects them if someone copies those files; longer is safer. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."); }
+                        Field { placeholder: @tr("Enclave PIN (6 or more digits)"); secret: true; digits: true; text <=> root.new-passphrase; }
                         HorizontalLayout {
                             alignment: start;
                             PrimaryButton {
@@ -2095,7 +2119,7 @@ export component AppWindow inherits Window {
                     Secondary {
                         text: root.pin-lock && !root.app-lock
                             ? @tr("Use your {} or your phone's screen lock to open Enclave.", root.biometric)
-                            : root.pin-lock ? @tr("Type your PIN to open Enclave.") : @tr("Type your passphrase to open your messages on this computer.");
+                            : root.pin-lock ? @tr("Type your PIN to open Enclave.") : @tr("Type your Enclave PIN to open your messages on this device.");
                     }
                     // Locked by the fingerprint alone (a phone): the system's
                     // prompt comes up by itself.
@@ -2104,7 +2128,8 @@ export component AppWindow inherits Window {
                         init => { root.unlock-biometric(); }
                     }
                     if !(root.pin-lock && !root.app-lock): Field {
-                        placeholder: root.pin-lock ? @tr("PIN") : @tr("Passphrase");
+                        placeholder: root.pin-lock ? @tr("PIN") : @tr("Enclave PIN");
+                        digits: true;
                         secret: true;
                         text <=> root.passphrase-input;
                         accepted => { if root.passphrase-input != "" { root.unlock(root.passphrase-input); root.passphrase-input = ""; } }
@@ -4753,17 +4778,17 @@ export component AppWindow inherits Window {
                 }
             }
             if root.can-join: Rectangle { height: 1px; background: Tokens.hairline; }
-            if root.can-join: Body { text: @tr("Passphrase"); font-weight: 600; }
+            if root.can-join: Body { text: @tr("Enclave PIN"); font-weight: 600; }
             if root.can-join: Secondary {
                 text: root.can-lock
-                    ? @tr("Enclave asks for it each time it starts on this computer.")
+                    ? @tr("Enclave asks for it each time it starts on this device.")
                     : root.file-keys
-                    ? @tr("Needed: this computer has no keyring, so Enclave's keys are kept in files, and the passphrase protects them.")
-                    : @tr("Optional. Enclave would ask for it each time it starts on this computer.");
+                    ? @tr("Needed: this device has no keyring, so Enclave's keys are kept in files, and the Enclave PIN protects them. 6 or more digits; longer is safer.")
+                    : @tr("Optional, 6 or more digits. Enclave would ask for it each time it starts on this device.");
             }
             if root.can-join: HorizontalLayout {
                 spacing: Tokens.space-s;
-                Field { placeholder: root.can-lock ? @tr("New passphrase") : @tr("Passphrase"); secret: true; text <=> root.new-passphrase; horizontal-stretch: 1; }
+                Field { placeholder: root.can-lock ? @tr("New Enclave PIN") : @tr("Enclave PIN (6 or more digits)"); secret: true; digits: true; text <=> root.new-passphrase; horizontal-stretch: 1; }
                 PrimaryButton {
                     text: root.busy ? @tr("Saving…") : (root.can-lock ? @tr("Change") : @tr("Set"));
                     working: root.busy;
@@ -4775,13 +4800,13 @@ export component AppWindow inherits Window {
                 alignment: start;
                 spacing: Tokens.space-s;
                 QuietButton { text: @tr("Lock now"); outlined: true; clicked => { root.sheet = Sheet.none; root.lock-now(); } }
-                if !root.file-keys: QuietButton { text: @tr("Remove passphrase"); danger: true; clicked => { root.set-passphrase(""); } }
+                if !root.file-keys: QuietButton { text: @tr("Remove Enclave PIN"); danger: true; clicked => { root.set-passphrase(""); } }
             }
             Rectangle { height: 1px; background: Tokens.hairline; }
             Body { text: @tr("Screen lock"); font-weight: 600; }
             Secondary {
                 text: root.can-lock
-                    ? @tr("Enclave locks itself when you haven't used it for a while, and your passphrase opens it again.")
+                    ? @tr("Enclave locks itself when you haven't used it for a while, and your Enclave PIN opens it again.")
                     : root.app-lock
                         ? @tr("Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked.")
                         : root.phone && root.biometric-on
@@ -4803,7 +4828,7 @@ export component AppWindow inherits Window {
             }
             if !root.can-lock: HorizontalLayout {
                 spacing: Tokens.space-s;
-                Field { placeholder: root.app-lock ? @tr("New PIN") : @tr("PIN (at least 4 digits)"); secret: true; text <=> root.app-pin-input; horizontal-stretch: 1; }
+                Field { placeholder: root.app-lock ? @tr("New PIN") : @tr("PIN (at least 4 digits)"); secret: true; digits: true; text <=> root.app-pin-input; horizontal-stretch: 1; }
                 PrimaryButton {
                     text: root.app-lock ? @tr("Change") : @tr("Set");
                     enabled: root.app-pin-input != "";
@@ -4839,11 +4864,11 @@ export component AppWindow inherits Window {
             }
             Body { text: @tr("Emergency PIN"); font-weight: 600; }
             Secondary {
-                text: @tr("If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected.");
+                text: @tr("If someone makes you open Enclave, type this instead of your PIN or Enclave PIN. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected.");
             }
             HorizontalLayout {
                 spacing: Tokens.space-s;
-                Field { placeholder: @tr("Emergency PIN (at least 4 digits)"); secret: true; text <=> root.emergency-pin-input; horizontal-stretch: 1; }
+                Field { placeholder: @tr("Emergency PIN (at least 4 digits)"); secret: true; digits: true; text <=> root.emergency-pin-input; horizontal-stretch: 1; }
                 PrimaryButton {
                     text: @tr("Set");
                     enabled: root.emergency-pin-input != "";
@@ -4890,10 +4915,10 @@ export component AppWindow inherits Window {
             if root.backup-check != "": Secondary { text: root.backup-check; }
             Body { text: @tr("PIN"); font-weight: 600; }
             Secondary { text: root.has-root-pin ? @tr("Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account.") : @tr("Set a PIN, and Enclave asks for it before removing a device, changing your recovery words or deleting your account. Someone who picks up your unlocked phone can't do those."); }
-            if root.has-root-pin: Field { placeholder: @tr("Current PIN"); secret: true; text <=> root.root-pin-input; }
+            if root.has-root-pin: Field { placeholder: @tr("Current PIN"); secret: true; digits: true; text <=> root.root-pin-input; }
             HorizontalLayout {
                 spacing: Tokens.space-s;
-                Field { placeholder: root.has-root-pin ? @tr("New PIN") : @tr("PIN (at least 6)"); secret: true; text <=> root.new-pin-input; horizontal-stretch: 1; }
+                Field { placeholder: root.has-root-pin ? @tr("New PIN") : @tr("PIN (at least 6)"); secret: true; digits: true; text <=> root.new-pin-input; horizontal-stretch: 1; }
                 QuietButton {
                     text: root.has-root-pin ? @tr("Change PIN") : @tr("Set PIN");
                     outlined: true;
@@ -4957,7 +4982,7 @@ export component AppWindow inherits Window {
             }
             Body { text: @tr("Secure my account"); font-weight: 600; }
             Secondary { text: root.securing ? @tr("Securing your account. This finishes on its own.") : @tr("Lost a device, or worried someone saw something? This gives your account new keys, new inboxes and new device keys, and starts fresh protection with every contact and group. Your security code and conversations stay the same."); }
-            if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
+            if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; digits: true; text <=> root.root-pin-input; }
             if root.can-change-words && !root.securing: HorizontalLayout {
                 alignment: start;
                 QuietButton {
@@ -5109,7 +5134,7 @@ export component AppWindow inherits Window {
                 }
             }
             if root.friends.length < 2: Secondary { text: @tr("You need at least two conversations with people you trust first."); }
-            if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
+            if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; digits: true; text <=> root.root-pin-input; }
             HorizontalLayout {
                 alignment: start;
                 PrimaryButton {
@@ -5428,7 +5453,7 @@ export component AppWindow inherits Window {
                         spacing: Tokens.space-s;
                         Body { text: @tr("Remove this device?"); font-weight: 600; }
                         Secondary { text: @tr("It stops getting new messages, and your contacts stop sending to it. Messages already on it stay there until it's erased."); }
-                        if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
+                        if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; digits: true; text <=> root.root-pin-input; }
                         HorizontalLayout {
                             alignment: start;
                             spacing: Tokens.space-s;
@@ -5509,7 +5534,7 @@ export component AppWindow inherits Window {
             }
             if root.can-change-words && root.has-root-pin && root.recovery-words.length == 0 && !root.busy: HorizontalLayout {
                 spacing: Tokens.space-s;
-                Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; horizontal-stretch: 1; }
+                Field { placeholder: @tr("Your PIN"); secret: true; digits: true; text <=> root.root-pin-input; horizontal-stretch: 1; }
                 PrimaryButton {
                     text: @tr("Show");
                     clicked => { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; }
@@ -5704,7 +5729,7 @@ export component AppWindow inherits Window {
                 wrap: word-wrap;
             }
             Field { placeholder: @tr("Type delete to confirm"); text <=> root.delete-confirm; }
-            if root.has-root-pin && root.can-change-words: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
+            if root.has-root-pin && root.can-change-words: Field { placeholder: @tr("Your PIN"); secret: true; digits: true; text <=> root.root-pin-input; }
             HorizontalLayout {
                 alignment: start;
                 spacing: Tokens.space-s;
@@ -5744,7 +5769,7 @@ export component AppWindow inherits Window {
                     ? @tr("Old invite links and codes stop working, and backups made with the old words won't restore. Save a new backup afterwards.")
                     : @tr("Share new invite links and codes: old ones still lead to the account under the old words. Save a new backup afterwards.");
             }
-            if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
+            if root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; digits: true; text <=> root.root-pin-input; }
             HorizontalLayout {
                 spacing: Tokens.space-s;
                 alignment: start;

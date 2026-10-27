@@ -31,6 +31,10 @@ pub use engine::{Helpers, Mode, default_profile, spawn, spawn_with_web};
 /// to replace them.
 pub const RESTART: i32 = 75;
 
+/// How long a vault of its own process keeps going once its window is gone
+/// (to finish what it was doing) before it exits.
+pub const EXIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
 static STANDALONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// This process is the vault and nothing else (the `enclave-vault`
@@ -75,12 +79,24 @@ where
     frame::present_token(&mut wr, token).await?;
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<Cmd>();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Out>();
+    let (gone_tx, gone_rx) = tokio::sync::oneshot::channel::<()>();
     let reader = tokio::spawn(async move {
         while let Ok(body) = frame::read_frame(&mut rd).await {
             let Ok(cmd) = Cmd::decode(&body) else { break };
             if cmd_tx.send(cmd).is_err() {
                 break;
             }
+        }
+        let _ = gone_tx.send(());
+        // The last resort, if even stopping the engine (below) hangs: a
+        // vault of its own process exits, so the profile's database is
+        // free for the next copy of Enclave.
+        if standalone() {
+            std::thread::spawn(|| {
+                std::thread::sleep(EXIT_GRACE * 3);
+                eprintln!("enclave-vault: the window is gone and the vault didn't stop; exiting");
+                std::process::exit(0);
+            });
         }
     });
     let writer = tokio::spawn(async move {
@@ -90,7 +106,22 @@ where
             }
         }
     });
-    engine::run_with(mode, helpers, cmd_rx, out_tx).await;
+    // The window gone (it quit), the engine stops at its next turn, which
+    // a step over Tor can delay: it gets EXIT_GRACE, then it is stopped
+    // where it is (dropped: the profile closes, a write in progress is
+    // rolled back). The next copy of Enclave waits for the profile meanwhile
+    // ("Opening…"); before, it gave up and offered setup over it.
+    let mut engine = Box::pin(engine::run_with(mode, helpers, cmd_rx, out_tx));
+    tokio::select! {
+        () = &mut engine => {}
+        () = async {
+            let _ = gone_rx.await;
+            tokio::time::sleep(EXIT_GRACE).await;
+        } => {
+            eprintln!("enclave-vault: the window is gone; stopping");
+        }
+    }
+    drop(engine);
     reader.abort();
     let _ = writer.await;
     Ok(())

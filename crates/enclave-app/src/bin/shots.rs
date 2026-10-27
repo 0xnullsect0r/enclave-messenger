@@ -494,6 +494,18 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.set_sheet(Sheet::None);
         shot("01-welcome", desktop);
         shot("01-welcome-phone", phone);
+        // A profile on this device: opening it, and one that didn't open
+        // (no setup offered over it).
+        ui.set_has_profile(true);
+        shot("01b-opening-profile-phone", phone);
+        ui.set_open_failed(true);
+        ui.set_status_line(
+            "Your profile is on this device but didn't open: storage: malformed data. Nothing was changed; start Enclave again to retry.".into(),
+        );
+        shot("01c-profile-didnt-open-phone", phone);
+        ui.set_has_profile(false);
+        ui.set_open_failed(false);
+        ui.set_status_line("".into());
         let mut joining = Snapshot {
             can_join: true,
             join_code:
@@ -512,7 +524,7 @@ fn main() -> Result<(), slint::PlatformError> {
         shot("18-join-words-phone", phone);
         view::apply(&ui, &Snapshot::default());
         ui.set_screen(Screen::Locked);
-        ui.set_unlock_error("That passphrase doesn't open this profile.".into());
+        ui.set_unlock_error("That Enclave PIN doesn't open this profile.".into());
         shot("25-locked-phone", phone);
         ui.set_unlock_error("".into());
         let fresh = Snapshot {
@@ -525,6 +537,12 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.set_screen(Screen::Name);
         ui.set_name_input("Robin".into());
         shot("02-name", phone);
+        // No keyring here: an Enclave PIN, its digits as dots.
+        ui.set_file_keys(true);
+        ui.set_new_passphrase("1234567".into());
+        shot("02b-name-enclave-pin-phone", phone);
+        ui.set_file_keys(false);
+        ui.set_new_passphrase("".into());
         ui.set_server_pick_for(0);
         ui.set_chosen_server("a1".into());
         ui.set_sheet(Sheet::Servers);

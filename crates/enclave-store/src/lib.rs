@@ -43,6 +43,10 @@ pub enum StoreError {
     /// Not found.
     #[error("not found")]
     NotFound,
+    /// The database is open in another process (another copy of Enclave
+    /// still running, or still closing): nothing is wrong with it.
+    #[error("the profile is open in another copy of Enclave")]
+    InUse,
     /// Malformed data.
     #[error("malformed data")]
     Malformed,
@@ -63,9 +67,16 @@ macro_rules! db_err {
         }
     )*};
 }
+impl From<redb::DatabaseError> for StoreError {
+    fn from(e: redb::DatabaseError) -> Self {
+        match e {
+            redb::DatabaseError::DatabaseAlreadyOpen => StoreError::InUse,
+            e => StoreError::Db(e.to_string()),
+        }
+    }
+}
 db_err!(
     redb::Error,
-    redb::DatabaseError,
     redb::TransactionError,
     redb::TableError,
     redb::StorageError,

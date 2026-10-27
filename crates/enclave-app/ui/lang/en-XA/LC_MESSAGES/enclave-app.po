@@ -277,6 +277,10 @@ msgstr "[Álsó hídés whéñ ýóú'ré úsíñg Éñçlávé, bút óñlý wh
 msgid "Also hides when you're using Enclave. Uses about 1.1 GB a day. Large files send slowly."
 msgstr "[Álsó hídés whéñ ýóú'ré úsíñg Éñçlávé. Úsés ábóút 1.1 GB á dáý. Lárgé fílés séñd slówlý.··································]"
 
+#: enclave-vault/src/engine.rs
+msgid "An Enclave PIN is 6 or more digits."
+msgstr "[Áñ Éñçlávé PÍÑ ís 6 ór móré dígíts.··············]"
+
 #: ui/app.slint
 msgid "An admin needs to let you in. You'll see the group here when they do."
 msgstr "[Áñ ádmíñ ñééds tó lét ýóú íñ. Ýóú'll séé thé gróúp héré whéñ théý dó.···························]"
@@ -296,6 +300,10 @@ msgstr "[Áñímátéd píçtúré······]"
 #: ui/app.slint
 msgid "Anonymous"
 msgstr "[Áñóñýmóús···]"
+
+#: enclave-vault/src/engine.rs
+msgid "Another copy of Enclave has your profile open. Waiting for it to close…"
+msgstr "[Áñóthér çópý óf Éñçlávé hás ýóúr prófílé ópéñ. Wáítíñg fór ít tó çlósé…····························]"
 
 #: ui/app.slint
 msgid "Answer"
@@ -622,10 +630,6 @@ msgid "Choose a new username"
 msgstr "[Çhóósé á ñéw úsérñámé········]"
 
 #: ui/app.slint
-msgid "Choose a passphrase"
-msgstr "[Çhóósé á pássphrásé·······]"
-
-#: ui/app.slint
 msgid "Choose a photo"
 msgstr "[Çhóósé á phótó·····]"
 
@@ -648,6 +652,10 @@ msgstr "[Çhóósé á vídéó tó séñd········]"
 #: ui/app.slint
 msgid "Choose again"
 msgstr "[Çhóósé ágáíñ····]"
+
+#: ui/app.slint
+msgid "Choose an Enclave PIN"
+msgstr "[Çhóósé áñ Éñçlávé PÍÑ········]"
 
 #: ui/app.slint
 msgid "Choose another server"
@@ -814,16 +822,16 @@ msgid "Couldn't cancel your invite links. Check your connection and try again."
 msgstr "[Çóúldñ't çáñçél ýóúr íñvíté líñks. Çhéçk ýóúr çóññéçtíóñ áñd trý ágáíñ.····························]"
 
 #: enclave-vault/src/engine.rs
+msgid "Couldn't change the Enclave PIN: {}"
+msgstr "[Çóúldñ't çháñgé thé Éñçlávé PÍÑ: ·············{}]"
+
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change the folder."
 msgstr "[Çóúldñ't çháñgé thé fóldér.··········]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't change the mode. Check your connection."
 msgstr "[Çóúldñ't çháñgé thé módé. Çhéçk ýóúr çóññéçtíóñ.···················]"
-
-#: enclave-vault/src/engine.rs
-msgid "Couldn't change the passphrase: {}"
-msgstr "[Çóúldñ't çháñgé thé pássphrásé: ············{}]"
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't change the timer. Check your connection."
@@ -1342,16 +1350,36 @@ msgid "Emergency PIN removed."
 msgstr "[Émérgéñçý PÍÑ rémóvéd.········]"
 
 #: enclave-vault/src/engine.rs
-msgid "Emergency PIN set. Entering it where Enclave asks for your PIN or passphrase erases this device."
-msgstr "[Émérgéñçý PÍÑ sét. Éñtéríñg ít whéré Éñçlávé ásks fór ýóúr PÍÑ ór pássphrásé érásés thís dévíçé.······································]"
+msgid "Emergency PIN set. Entering it where Enclave asks for your PIN or Enclave PIN erases this device."
+msgstr "[Émérgéñçý PÍÑ sét. Éñtéríñg ít whéré Éñçlávé ásks fór ýóúr PÍÑ ór Éñçlávé PÍÑ érásés thís dévíçé.······································]"
 
 #: ui/app.slint
 msgid "Enclave"
 msgstr "[Éñçlávé··]"
 
 #: ui/app.slint
-msgid "Enclave asks for it each time it starts on this computer."
-msgstr "[Éñçlávé ásks fór ít éáçh tímé ít stárts óñ thís çómpútér.······················]"
+msgid "Enclave PIN"
+msgstr "[Éñçlávé PÍÑ····]"
+
+#: ui/app.slint
+msgid "Enclave PIN (6 or more digits)"
+msgstr "[Éñçlávé PÍÑ (6 ór móré dígíts)············]"
+
+#: ui/app.slint
+msgid "Enclave PIN (optional, 6 or more digits)"
+msgstr "[Éñçlávé PÍÑ (óptíóñál, 6 ór móré dígíts)················]"
+
+#: enclave-vault/src/engine.rs
+msgid "Enclave PIN removed. Anyone using this device's account can open Enclave."
+msgstr "[Éñçlávé PÍÑ rémóvéd. Áñýóñé úsíñg thís dévíçé's áççóúñt çáñ ópéñ Éñçlávé.·····························]"
+
+#: enclave-vault/src/engine.rs
+msgid "Enclave PIN set. You'll type it each time Enclave starts."
+msgstr "[Éñçlávé PÍÑ sét. Ýóú'll týpé ít éáçh tímé Éñçlávé stárts.······················]"
+
+#: ui/app.slint
+msgid "Enclave asks for it each time it starts on this device."
+msgstr "[Éñçlávé ásks fór ít éáçh tímé ít stárts óñ thís dévíçé.······················]"
 
 #: ui/app.slint
 msgid "Enclave asks for your PIN before removing a device, changing your recovery words or deleting your account."
@@ -1430,12 +1458,12 @@ msgid "Enclave is locked"
 msgstr "[Éñçlávé ís lóçkéd······]"
 
 #: ui/app.slint
-msgid "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
-msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé, áñd ýóúr PÍÑ ópéñs ít ágáíñ. Mésságés kéép árrívíñg whílé ít's lóçkéd.···················································]"
+msgid "Enclave locks itself when you haven't used it for a while, and your Enclave PIN opens it again."
+msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé, áñd ýóúr Éñçlávé PÍÑ ópéñs ít ágáíñ.······································]"
 
 #: ui/app.slint
-msgid "Enclave locks itself when you haven't used it for a while, and your passphrase opens it again."
-msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé, áñd ýóúr pássphrásé ópéñs ít ágáíñ.·····································]"
+msgid "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
+msgstr "[Éñçlávé lóçks ítsélf whéñ ýóú hávéñ't úséd ít fór á whílé, áñd ýóúr PÍÑ ópéñs ít ágáíñ. Mésságés kéép árrívíñg whílé ít's lóçkéd.···················································]"
 
 #: ui/app.slint
 msgid "Enclave locks itself when you haven't used it for a while, and your {} or your phone's screen lock opens it again. Messages keep arriving while it's locked."
@@ -1512,6 +1540,10 @@ msgstr "[Érásé óñlý thís dévíçé········]"
 #: ui/app.slint
 msgid "Erase this device"
 msgstr "[Érásé thís dévíçé······]"
+
+#: ui/app.slint
+msgid "Erase this device and start over"
+msgstr "[Érásé thís dévíçé áñd stárt óvér············]"
 
 #: ui/app.slint
 msgid "Erase this device. Deleting the account is done on the device that holds your recovery words."
@@ -1774,8 +1806,8 @@ msgid "If anything changes, we'll tell you before you send anything. Your conver
 msgstr "[Íf áñýthíñg çháñgés, wé'll téll ýóú béfóré ýóú séñd áñýthíñg. Ýóúr çóñvérsátíóñ ñów álsó résts óñ á séçrét thát óñlý çrósséd thé róóm bétwééñ ýóúr twó sçrééñs.·······························································]"
 
 #: ui/app.slint
-msgid "If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected."
-msgstr "[Íf sóméóñé mákés ýóú ópéñ Éñçlávé, týpé thís íñstéád óf ýóúr PÍÑ ór pássphrásé. Ít érásés Éñçlávé fróm thís çómpútér áñd ópéñs ít ás íf ít wéré ñéw. Á çópý óf thís çómpútér mádé béfóré ýóú úséd ít ísñ't áfféçtéd.····················································································]"
+msgid "If someone makes you open Enclave, type this instead of your PIN or Enclave PIN. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected."
+msgstr "[Íf sóméóñé mákés ýóú ópéñ Éñçlávé, týpé thís íñstéád óf ýóúr PÍÑ ór Éñçlávé PÍÑ. Ít érásés Éñçlávé fróm thís çómpútér áñd ópéñs ít ás íf ít wéré ñéw. Á çópý óf thís çómpútér mádé béfóré ýóú úséd ít ísñ't áfféçtéd.·····················································································]"
 
 #: ui/app.slint
 msgid "If the words differ, close this: you scanned the wrong screen. If they match, let {} scan this code."
@@ -2174,12 +2206,16 @@ msgid "Name it (optional)"
 msgstr "[Ñámé ít (óptíóñál)·······]"
 
 #: ui/app.slint
-msgid "Needed: this computer has no keyring, so Enclave's keys are kept in files, and the passphrase protects them."
-msgstr "[Ñéédéd: thís çómpútér hás ñó kéýríñg, só Éñçlávé's kéýs áré képt íñ fílés, áñd thé pássphrásé prótéçts thém.···········································]"
+msgid "Needed: this device has no keyring, so Enclave's keys are kept in files, and the Enclave PIN protects them. 6 or more digits; longer is safer."
+msgstr "[Ñéédéd: thís dévíçé hás ñó kéýríñg, só Éñçlávé's kéýs áré képt íñ fílés, áñd thé Éñçlávé PÍÑ prótéçts thém. 6 ór móré dígíts; lóñgér ís sáfér.························································]"
 
 #: ui/app.slint
 msgid "Never"
 msgstr "[Ñévér··]"
+
+#: ui/app.slint
+msgid "New Enclave PIN"
+msgstr "[Ñéw Éñçlávé PÍÑ······]"
 
 #: ui/app.slint
 msgid "New PIN"
@@ -2208,10 +2244,6 @@ msgstr "[Ñéw mésságés áré çóúñtéd qúíétlý áñd dóñ't bríñg 
 #: ui/app.slint
 msgid "New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."
 msgstr "[Ñéw mésságés íñ thís çóñvérsátíóñ dísáppéár fróm bóth phóñés thís lóñg áftér théý'ré réád. Áñýóñé çáñ stíll táké á sçrééñshót.··················································]"
-
-#: ui/app.slint
-msgid "New passphrase"
-msgstr "[Ñéw pássphrásé·····]"
 
 #: enclave-vault/src/engine/web.rs ui/app.slint
 msgid "No GIFs found. Try other words."
@@ -2485,7 +2517,7 @@ msgstr "[Ópéñíñg thís wéék's íñbóx…··········]"
 msgid "Opening your inbox for message requests…"
 msgstr "[Ópéñíñg ýóúr íñbóx fór mésságé réqúésts…················]"
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs ui/app.slint
 msgid "Opening your profile…"
 msgstr "[Ópéñíñg ýóúr prófílé…········]"
 
@@ -2514,12 +2546,12 @@ msgid "Option 4 (optional)"
 msgstr "[Óptíóñ 4 (óptíóñál)·······]"
 
 #: ui/app.slint
-msgid "Optional. A username is public, like an email address: anyone who knows it can send you a message request."
-msgstr "[Óptíóñál. Á úsérñámé ís públíç, líké áñ émáíl áddréss: áñýóñé whó kñóws ít çáñ séñd ýóú á mésságé réqúést.··········································]"
+msgid "Optional, 6 or more digits. Enclave would ask for it each time it starts on this device."
+msgstr "[Óptíóñál, 6 ór móré dígíts. Éñçlávé wóúld ásk fór ít éáçh tímé ít stárts óñ thís dévíçé.···································]"
 
 #: ui/app.slint
-msgid "Optional. Enclave would ask for it each time it starts on this computer."
-msgstr "[Óptíóñál. Éñçlávé wóúld ásk fór ít éáçh tímé ít stárts óñ thís çómpútér.····························]"
+msgid "Optional. A username is public, like an email address: anyone who knows it can send you a message request."
+msgstr "[Óptíóñál. Á úsérñámé ís públíç, líké áñ émáíl áddréss: áñýóñé whó kñóws ít çáñ séñd ýóú á mésságé réqúést.··········································]"
 
 #: ui/app.slint
 msgid "Or get your friends' shares: meet each of them, let them scan the code below, and scan the code they show you back, one in each box."
@@ -2552,26 +2584,6 @@ msgstr "[Páçk ñámé···]"
 #: ui/app.slint
 msgid "Part of {}'s recovery"
 msgstr "[Párt óf ···{}'s réçóvérý····]"
-
-#: ui/app.slint
-msgid "Passphrase"
-msgstr "[Pássphrásé····]"
-
-#: ui/app.slint
-msgid "Passphrase for this computer"
-msgstr "[Pássphrásé fór thís çómpútér···········]"
-
-#: ui/app.slint
-msgid "Passphrase for this computer (optional)"
-msgstr "[Pássphrásé fór thís çómpútér (óptíóñál)···············]"
-
-#: enclave-vault/src/engine.rs
-msgid "Passphrase removed. Anyone using this computer account can open Enclave."
-msgstr "[Pássphrásé rémóvéd. Áñýóñé úsíñg thís çómpútér áççóúñt çáñ ópéñ Éñçlávé.····························]"
-
-#: enclave-vault/src/engine.rs
-msgid "Passphrase set. You'll type it each time Enclave starts."
-msgstr "[Pássphrásé sét. Ýóú'll týpé ít éáçh tímé Éñçlávé stárts.······················]"
 
 #: ui/app.slint
 msgid "Paste the invite link they sent you, or type their username."
@@ -2826,12 +2838,12 @@ msgid "Remove"
 msgstr "[Rémóvé··]"
 
 #: ui/app.slint
-msgid "Remove device"
-msgstr "[Rémóvé dévíçé·····]"
+msgid "Remove Enclave PIN"
+msgstr "[Rémóvé Éñçlávé PÍÑ·······]"
 
 #: ui/app.slint
-msgid "Remove passphrase"
-msgstr "[Rémóvé pássphrásé······]"
+msgid "Remove device"
+msgstr "[Rémóvé dévíçé·····]"
 
 #: ui/app.slint
 msgid "Remove photo"
@@ -3430,8 +3442,16 @@ msgid "Talk privately."
 msgstr "[Tálk prívátélý.······]"
 
 #: ui/app.slint
+msgid "Tap again to erase everything on this device"
+msgstr "[Táp ágáíñ tó érásé évérýthíñg óñ thís dévíçé·················]"
+
+#: ui/app.slint
 msgid "Telling your contacts and groups about your new words. This finishes on its own."
 msgstr "[Téllíñg ýóúr çóñtáçts áñd gróúps ábóút ýóúr ñéw wórds. Thís fíñíshés óñ íts ówñ.································]"
+
+#: enclave-vault/src/engine.rs
+msgid "That Enclave PIN doesn't open this profile."
+msgstr "[Thát Éñçlávé PÍÑ dóésñ't ópéñ thís prófílé.·················]"
 
 #: enclave-vault/src/engine.rs
 msgid "That GIF didn't load. Search again."
@@ -3505,10 +3525,6 @@ msgstr "[Thát mésságé çáñ't bé fórwárdéd.············]"
 msgid "That name is taken, or looks too much like one that is. Try another."
 msgstr "[Thát ñámé ís tákéñ, ór lóóks tóó múçh líké óñé thát ís. Trý áñóthér.···························]"
 
-#: enclave-vault/src/engine.rs
-msgid "That passphrase doesn't open this profile."
-msgstr "[Thát pássphrásé dóésñ't ópéñ thís prófílé.················]"
-
 #: enclave-vault/src/engine/videos.rs
 msgid "That video is too large to send."
 msgstr "[Thát vídéó ís tóó lárgé tó séñd.············]"
@@ -3538,6 +3554,10 @@ msgid "That's too long: at most 280 bytes."
 msgstr "[Thát's tóó lóñg: át móst 280 býtés.··············]"
 
 #: enclave-vault/src/engine.rs
+msgid "That's your Enclave PIN. Choose another emergency PIN."
+msgstr "[Thát's ýóúr Éñçlávé PÍÑ. Çhóósé áñóthér émérgéñçý PÍÑ.·····················]"
+
+#: enclave-vault/src/engine.rs
 msgid "That's your app PIN. Choose another emergency PIN."
 msgstr "[Thát's ýóúr ápp PÍÑ. Çhóósé áñóthér émérgéñçý PÍÑ.····················]"
 
@@ -3552,10 +3572,6 @@ msgstr "[Thát's ýóúr ówñ çódé. Sçáñ thé óthér pérsóñ's.···�
 #: enclave-vault/src/engine.rs
 msgid "That's your own invite link."
 msgstr "[Thát's ýóúr ówñ íñvíté líñk.···········]"
-
-#: enclave-vault/src/engine.rs
-msgid "That's your passphrase. Choose another emergency PIN."
-msgstr "[Thát's ýóúr pássphrásé. Çhóósé áñóthér émérgéñçý PÍÑ.·····················]"
 
 #: enclave-vault/src/engine.rs
 msgid "The backup on your server is deleted."
@@ -3750,18 +3766,6 @@ msgid "This computer has no Touch ID or Windows Hello set up."
 msgstr "[Thís çómpútér hás ñó Tóúçh ÍD ór Wíñdóws Hélló sét úp.·····················]"
 
 #: ui/app.slint
-msgid "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."
-msgstr "[Thís çómpútér hás ñó kéýríñg fór Éñçlávé's kéýs, só théý áré képt íñ fílés. Á pássphrásé prótéçts thém íf sóméóñé çópíés thósé fílés. Ýóú'll týpé ít éáçh tímé Éñçlávé stárts; íf ýóú fórgét ít, ýóúr réçóvérý wórds bríñg ýóúr áççóúñt báçk.······························································································]"
-
-#: ui/app.slint
-msgid "This computer has no keyring for Enclave's keys, so they are kept in files. Choose a passphrase: it protects them if someone copies those files."
-msgstr "[Thís çómpútér hás ñó kéýríñg fór Éñçlávé's kéýs, só théý áré képt íñ fílés. Çhóósé á pássphrásé: ít prótéçts thém íf sóméóñé çópíés thósé fílés.·························································]"
-
-#: enclave-vault/src/engine.rs
-msgid "This computer keeps Enclave's keys in files, so the passphrase can't be removed."
-msgstr "[Thís çómpútér kééps Éñçlávé's kéýs íñ fílés, só thé pássphrásé çáñ't bé rémóvéd.································]"
-
-#: ui/app.slint
 msgid "This conversation"
 msgstr "[Thís çóñvérsátíóñ······]"
 
@@ -3776,6 +3780,18 @@ msgstr "[Thís délétés ýóúr áççóúñt fór évérýóñé. Ýóúr ç�
 #: enclave-vault/src/engine.rs
 msgid "This device"
 msgstr "[Thís dévíçé····]"
+
+#: ui/app.slint
+msgid "This device has no keyring for Enclave's keys, so they are kept in files. An Enclave PIN protects them if someone copies those files; longer is safer. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."
+msgstr "[Thís dévíçé hás ñó kéýríñg fór Éñçlávé's kéýs, só théý áré képt íñ fílés. Áñ Éñçlávé PÍÑ prótéçts thém íf sóméóñé çópíés thósé fílés; lóñgér ís sáfér. Ýóú'll týpé ít éáçh tímé Éñçlávé stárts; íf ýóú fórgét ít, ýóúr réçóvérý wórds bríñg ýóúr áççóúñt báçk.·····································································································]"
+
+#: ui/app.slint
+msgid "This device has no keyring for Enclave's keys, so they are kept in files. Choose an Enclave PIN: it protects them if someone copies those files. Longer is safer."
+msgstr "[Thís dévíçé hás ñó kéýríñg fór Éñçlávé's kéýs, só théý áré képt íñ fílés. Çhóósé áñ Éñçlávé PÍÑ: ít prótéçts thém íf sóméóñé çópíés thósé fílés. Lóñgér ís sáfér.································································]"
+
+#: enclave-vault/src/engine.rs
+msgid "This device keeps Enclave's keys in files, so the Enclave PIN can't be removed."
+msgstr "[Thís dévíçé kééps Éñçlávé's kéýs íñ fílés, só thé Éñçlávé PÍÑ çáñ't bé rémóvéd.·······························]"
 
 #: ui/app.slint
 msgid "This device was removed from your account"
@@ -3942,12 +3958,12 @@ msgid "Type or paste the coordinates. Enclave doesn't look anything up and shows
 msgstr "[Týpé ór pásté thé çóórdíñátés. Éñçlávé dóésñ't lóók áñýthíñg úp áñd shóws ñó máp, só ñóbódý élsé léárñs thé pláçé.·············································]"
 
 #: ui/app.slint
-msgid "Type your PIN to open Enclave."
-msgstr "[Týpé ýóúr PÍÑ tó ópéñ Éñçlávé.············]"
+msgid "Type your Enclave PIN to open your messages on this device."
+msgstr "[Týpé ýóúr Éñçlávé PÍÑ tó ópéñ ýóúr mésságés óñ thís dévíçé.·······················]"
 
 #: ui/app.slint
-msgid "Type your passphrase to open your messages on this computer."
-msgstr "[Týpé ýóúr pássphrásé tó ópéñ ýóúr mésságés óñ thís çómpútér.························]"
+msgid "Type your PIN to open Enclave."
+msgstr "[Týpé ýóúr PÍÑ tó ópéñ Éñçlávé.············]"
 
 #: ui/app.slint
 msgid "Typing indicators"
@@ -4392,6 +4408,10 @@ msgstr "[Ýóúr áççóúñt ís báçk óñ thís dévíçé. Çóñtáçts w
 #: enclave-vault/src/engine.rs
 msgid "Your account is deleted, and everything on this device was erased."
 msgstr "[Ýóúr áççóúñt ís délétéd, áñd évérýthíñg óñ thís dévíçé wás éráséd.··························]"
+
+#: ui/app.slint
+msgid "Your account is still on this device. Quit Enclave completely and start it again; if it still doesn't open, copy the log and send it to whoever helps you with Enclave."
+msgstr "[Ýóúr áççóúñt ís stíll óñ thís dévíçé. Qúít Éñçlávé çómplétélý áñd stárt ít ágáíñ; íf ít stíll dóésñ't ópéñ, çópý thé lóg áñd séñd ít tó whóévér hélps ýóú wíth Éñçlávé.··································································]"
 
 #: enclave-vault/src/engine.rs
 msgid "Your account was deleted from another of your devices, so everything on this device was erased too."

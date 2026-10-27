@@ -512,6 +512,8 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_privacy(s.privacy);
     // The theme (dark by default); the saved setting once a profile opens.
     ui.set_light(s.light);
+    ui.set_has_profile(s.has_profile);
+    ui.set_open_failed(s.open_failed);
     ui.global::<crate::Tokens>().set_dark(!s.light);
     // A phone's status and navigation bars follow the theme, so their
     // icons stay legible.

@@ -335,6 +335,12 @@ export component Field inherits Rectangle {
     in property <bool> multiline: false;
     // Hide what is typed (passphrases).
     in property <bool> secret: false;
+    // Digits only (PINs): the number keypad on a phone. With `secret`, a
+    // dot stands for each digit, since the keypad and a password field
+    // can't be had at once.
+    in property <bool> digits: false;
+    // The digits typed, for their dots.
+    private property <int> typed: input.text.character-count;
     callback accepted();
     callback edited();
     min-height: Tokens.space-touch-target-min;
@@ -362,15 +368,28 @@ export component Field inherits Rectangle {
             preferred-width: 160px;
             font-size: root.mono ? Tokens.type-secondary : Tokens.type-body;
             font-family: root.mono ? "Atkinson Hyperlegible Mono" : "Atkinson Hyperlegible Next";
-            color: Tokens.text;
+            color: root.digits && root.secret ? transparent : Tokens.text;
             selection-background-color: Tokens.bubble-out;
             selection-foreground-color: Tokens.on-bubble-out;
             single-line: !root.multiline;
             wrap: root.multiline ? word-wrap : no-wrap;
             vertical-alignment: center;
-            input-type: root.secret ? InputType.password : InputType.text;
+            input-type: root.digits ? InputType.number : root.secret ? InputType.password : InputType.text;
             accepted => { root.accepted(); }
             edited => { root.edited(); }
+        }
+    }
+    // A dot for each digit typed, up to 32. (A fixed set of slots: Slint's
+    // code for a `for` over the count itself doesn't compile.)
+    if root.digits && root.secret: HorizontalLayout {
+        x: Tokens.space-sm;
+        height: parent.height;
+        alignment: start;
+        for slot in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]: HorizontalLayout {
+            if slot < root.typed: Rectangle {
+                width: 16px;
+                Rectangle { width: 10px; height: 10px; border-radius: 5px; background: Tokens.text; }
+            }
         }
     }
     if input.text == "": Text {

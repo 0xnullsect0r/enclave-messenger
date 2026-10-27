@@ -31,6 +31,17 @@ const SCREEN_SECURITY: &str = "screen-security";
 
 /// Foreground tick (docs/09-transport.md §9.4).
 const TICK: Duration = Duration::from_secs(3);
+/// Fewest digits in an Enclave PIN (the secret that protects keys kept in
+/// files): a million guesses, each one a calibrated Argon2id run.
+pub const PIN_DIGITS: usize = 6;
+
+/// Why `pin` can't be a new Enclave PIN (digits only, at least
+/// [`PIN_DIGITS`]), or `None` (empty is none set: no PIN).
+fn pin_problem(pin: &str) -> Option<&'static str> {
+    (!pin.is_empty() && (pin.len() < PIN_DIGITS || !pin.bytes().all(|b| b.is_ascii_digit())))
+        .then_some("An Enclave PIN is 6 or more digits.")
+}
+
 /// How long after the last bridge change a separate vault starts again.
 const BRIDGES_SETTLE: Duration = Duration::from_secs(2);
 /// Sync rounds between looks at the mixnet tickets (about 5 minutes).
@@ -515,6 +526,8 @@ const PHONE: bool = cfg!(any(target_os = "android", target_os = "ios"));
 /// Tries to open the profile at start, a second apart, before saying it
 /// didn't open.
 const OPEN_TRIES: u32 = 20;
+/// What the window says while another copy of Enclave has the profile open.
+const IN_USE: &str = "Another copy of Enclave has your profile open. Waiting for it to close…";
 const OPEN_RETRY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Run the engine on a thread of this process (where a separate vault
@@ -1372,6 +1385,7 @@ pub async fn run_with(
         // its keystore session) or a keyring the desktop unlocks a moment
         // after login: tried again for a while before it counts.
         let mut tries = 0;
+        let mut waiting = false;
         loop {
             match Client::open(e.options(None), Arc::clone(&e.transport)) {
                 Ok(mut c) => {
@@ -1383,6 +1397,22 @@ pub async fn run_with(
                 Err(CoreError::Store(enclave_store::StoreError::Crypto)) => {
                     e.locked = true;
                     e.passphrase_set = true;
+                }
+                // Another copy of Enclave has it open (one still closing,
+                // which gives itself `EXIT_GRACE` once its window is gone,
+                // or one still running): wait for it as long as it takes.
+                // The profile is fine, and is never counted as broken.
+                Err(CoreError::Store(enclave_store::StoreError::InUse)) => {
+                    if !waiting {
+                        waiting = true;
+                        eprintln!(
+                            "enclave-vault: the profile is open in another copy of Enclave; waiting for it"
+                        );
+                        e.status = IN_USE.into();
+                        e.push();
+                    }
+                    tokio::time::sleep(OPEN_RETRY).await;
+                    continue;
                 }
                 Err(err) if tries < OPEN_TRIES => {
                     tries += 1;
@@ -1404,7 +1434,7 @@ pub async fn run_with(
             }
             break;
         }
-        if e.open_error.is_none() && e.status == "Opening your profile…" {
+        if e.open_error.is_none() && (e.status == "Opening your profile…" || e.status == IN_USE) {
             e.status.clear();
         }
         e.load_lock();
@@ -2065,6 +2095,10 @@ impl Engine {
                 }
                 // A failure from an earlier try no longer applies.
                 self.status.clear();
+                if let Some(why) = pin_problem(&passphrase) {
+                    self.status = why.into();
+                    return;
+                }
                 let name = name.trim().to_string();
                 let protect = !passphrase.is_empty() && matches!(self.mode, Mode::Server { .. });
                 // Each step as it starts, so the minute it can take over
@@ -2427,8 +2461,11 @@ impl Engine {
                 }
                 self.busy = false;
             }
+            // Also when the profile on this device didn't open (it is
+            // broken, not merely in use: that is waited for), so a person
+            // isn't stuck in front of it.
             Cmd::EraseDevice => {
-                if self.client.is_some() {
+                if self.client.is_some() || self.open_error.is_some() {
                     self.erase_local();
                     self.status = "Everything on this device was erased.".into();
                 }
@@ -3426,7 +3463,7 @@ impl Engine {
                         self.lock_wait = None;
                     }
                     Err(CoreError::Store(enclave_store::StoreError::Crypto)) => {
-                        self.wrong_unlock("That passphrase doesn't open this profile.");
+                        self.wrong_unlock("That Enclave PIN doesn't open this profile.");
                     }
                     Err(err) => self.unlock_error = format!("Couldn't open your profile: {err}"),
                 }
@@ -3448,7 +3485,10 @@ impl Engine {
             // With the keys in files (no keyring here), the passphrase is
             // what protects them: it can be changed, not removed (PC-45).
             Cmd::SetPassphrase(p) if p.is_empty() && self.file_keys => {
-                self.status = "This computer keeps Enclave's keys in files, so the passphrase can't be removed.".into();
+                self.status = "This device keeps Enclave's keys in files, so the Enclave PIN can't be removed.".into();
+            }
+            Cmd::SetPassphrase(p) if pin_problem(&p).is_some() => {
+                self.status = pin_problem(&p).unwrap_or_default().into();
             }
             Cmd::SetPassphrase(p) if matches!(self.mode, Mode::Server { .. }) => {
                 self.busy = true;
@@ -3459,13 +3499,13 @@ impl Engine {
                         Ok(()) => {
                             self.passphrase_set = new.is_some();
                             self.status = if new.is_some() {
-                                "Passphrase set. You'll type it each time Enclave starts.".into()
+                                "Enclave PIN set. You'll type it each time Enclave starts.".into()
                             } else {
-                                "Passphrase removed. Anyone using this computer account can open Enclave.".into()
+                                "Enclave PIN removed. Anyone using this device's account can open Enclave.".into()
                             };
                             self.effect(Effect::PassphraseChanged);
                         }
-                        Err(err) => self.status = format!("Couldn't change the passphrase: {err}"),
+                        Err(err) => self.status = format!("Couldn't change the Enclave PIN: {err}"),
                     }
                 }
                 self.busy = false;
@@ -5191,7 +5231,7 @@ impl Engine {
         }
         // Entering it must never be taken for unlocking.
         if !pin.is_empty() && c.is_passphrase(pin) {
-            self.status = "That's your passphrase. Choose another emergency PIN.".into();
+            self.status = "That's your Enclave PIN. Choose another emergency PIN.".into();
             return;
         }
         let Some(lf) = self.lock_mut() else {
@@ -5215,7 +5255,7 @@ impl Engine {
         } else if pin.is_empty() {
             "Emergency PIN removed.".into()
         } else {
-            "Emergency PIN set. Entering it where Enclave asks for your PIN or passphrase erases this device.".into()
+            "Emergency PIN set. Entering it where Enclave asks for your PIN or Enclave PIN erases this device.".into()
         };
     }
 
@@ -5333,6 +5373,9 @@ impl Engine {
             username_problem: self.username_problem.clone(),
             usernames: self.kt.is_some() || self.foundation.is_some(),
             can_join: matches!(self.mode, Mode::Server { .. }),
+            has_profile: self.client.is_some()
+                || matches!(&self.mode, Mode::Server { profile, .. } if profile.join("profile.redb").exists()),
+            open_failed: self.open_error.is_some(),
             join_code: self.join_code.clone(),
             join_words: self.join_words.clone(),
             meet_code: self.meet_code.clone(),
@@ -6212,6 +6255,18 @@ fn describe_skew(skew: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An Enclave PIN is digits only, at least six; empty sets none.
+    #[test]
+    fn an_enclave_pin_is_six_or_more_digits() {
+        assert_eq!(pin_problem(""), None);
+        assert_eq!(pin_problem("123456"), None);
+        assert_eq!(pin_problem("0123456789"), None);
+        assert!(pin_problem("12345").is_some(), "too short");
+        assert!(pin_problem("12345a").is_some(), "a letter");
+        assert!(pin_problem("１２３４５６").is_some(), "only ASCII digits");
+        assert!(pin_problem("123 456").is_some());
+    }
 
     /// RT-12: the profile changes only at a foreground/background transition
     /// (or a Maximum privacy toggle). Activity in between (messages, syncs,

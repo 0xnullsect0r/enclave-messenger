@@ -337,6 +337,12 @@ pub struct Snapshot {
     pub privacy: i32,
     /// The light theme is on (the saved setting); off is the dark default.
     pub light: bool,
+    /// A profile is on this device, open or not: the window never offers
+    /// to set Enclave up again over it (while it opens, or if it didn't).
+    pub has_profile: bool,
+    /// That profile didn't open (after waiting and trying again): the
+    /// status says why.
+    pub open_failed: bool,
     /// Maximum privacy is holding what was written in the current
     /// conversation until all three KEMs protect it ("Extra protection:
     /// finishing…").
@@ -1545,7 +1551,9 @@ impl Snapshot {
                 .u8((p.tint % TINT_COUNT) as u8)
                 .bool(p.selected);
         }
-        w.bool(self.light);
+        w.bool(self.light)
+            .bool(self.has_profile)
+            .bool(self.open_failed);
         w.0
     }
 
@@ -1921,6 +1929,8 @@ impl Snapshot {
                     .collect::<Result<_>>()?
             },
             light: r.bool()?,
+            has_profile: r.bool()?,
+            open_failed: r.bool()?,
         };
         r.end()?;
         Ok(s)

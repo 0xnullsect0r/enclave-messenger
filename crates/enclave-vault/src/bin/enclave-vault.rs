@@ -83,7 +83,7 @@ fn run(
     else {
         return false;
     };
-    rt.block_on(async {
+    let ok = rt.block_on(async {
         match connect(socket).await {
             Ok(s) => connected(s, mode, token, report).await,
             Err(e) => {
@@ -91,7 +91,11 @@ fn run(
                 false
             }
         }
-    })
+    });
+    // Background work still going (a helper's pipe) doesn't keep the
+    // vault, and so the profile, from closing.
+    rt.shutdown_timeout(std::time::Duration::from_secs(2));
+    ok
 }
 
 /// The UI's Unix socket (in its private 0700 directory).

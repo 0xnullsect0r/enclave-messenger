@@ -275,6 +275,10 @@ msgstr ""
 msgid "Also hides when you're using Enclave. Uses about 1.1 GB a day. Large files send slowly."
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "An Enclave PIN is 6 or more digits."
+msgstr ""
+
 #: ui/app.slint
 msgid "An admin needs to let you in. You'll see the group here when they do."
 msgstr ""
@@ -293,6 +297,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Anonymous"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Another copy of Enclave has your profile open. Waiting for it to close…"
 msgstr ""
 
 #: ui/app.slint
@@ -620,10 +628,6 @@ msgid "Choose a new username"
 msgstr ""
 
 #: ui/app.slint
-msgid "Choose a passphrase"
-msgstr ""
-
-#: ui/app.slint
 msgid "Choose a photo"
 msgstr ""
 
@@ -645,6 +649,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Choose again"
+msgstr ""
+
+#: ui/app.slint
+msgid "Choose an Enclave PIN"
 msgstr ""
 
 #: ui/app.slint
@@ -812,15 +820,15 @@ msgid "Couldn't cancel your invite links. Check your connection and try again."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "Couldn't change the Enclave PIN: {}"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "Couldn't change the folder."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't change the mode. Check your connection."
-msgstr ""
-
-#: enclave-vault/src/engine.rs
-msgid "Couldn't change the passphrase: {}"
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -1340,7 +1348,7 @@ msgid "Emergency PIN removed."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
-msgid "Emergency PIN set. Entering it where Enclave asks for your PIN or passphrase erases this device."
+msgid "Emergency PIN set. Entering it where Enclave asks for your PIN or Enclave PIN erases this device."
 msgstr ""
 
 #: ui/app.slint
@@ -1348,7 +1356,27 @@ msgid "Enclave"
 msgstr ""
 
 #: ui/app.slint
-msgid "Enclave asks for it each time it starts on this computer."
+msgid "Enclave PIN"
+msgstr ""
+
+#: ui/app.slint
+msgid "Enclave PIN (6 or more digits)"
+msgstr ""
+
+#: ui/app.slint
+msgid "Enclave PIN (optional, 6 or more digits)"
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Enclave PIN removed. Anyone using this device's account can open Enclave."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "Enclave PIN set. You'll type it each time Enclave starts."
+msgstr ""
+
+#: ui/app.slint
+msgid "Enclave asks for it each time it starts on this device."
 msgstr ""
 
 #: ui/app.slint
@@ -1428,11 +1456,11 @@ msgid "Enclave is locked"
 msgstr ""
 
 #: ui/app.slint
-msgid "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
+msgid "Enclave locks itself when you haven't used it for a while, and your Enclave PIN opens it again."
 msgstr ""
 
 #: ui/app.slint
-msgid "Enclave locks itself when you haven't used it for a while, and your passphrase opens it again."
+msgid "Enclave locks itself when you haven't used it for a while, and your PIN opens it again. Messages keep arriving while it's locked."
 msgstr ""
 
 #: ui/app.slint
@@ -1509,6 +1537,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Erase this device"
+msgstr ""
+
+#: ui/app.slint
+msgid "Erase this device and start over"
 msgstr ""
 
 #: ui/app.slint
@@ -1772,7 +1804,7 @@ msgid "If anything changes, we'll tell you before you send anything. Your conver
 msgstr ""
 
 #: ui/app.slint
-msgid "If someone makes you open Enclave, type this instead of your PIN or passphrase. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected."
+msgid "If someone makes you open Enclave, type this instead of your PIN or Enclave PIN. It erases Enclave from this computer and opens it as if it were new. A copy of this computer made before you used it isn't affected."
 msgstr ""
 
 #: ui/app.slint
@@ -2172,11 +2204,15 @@ msgid "Name it (optional)"
 msgstr ""
 
 #: ui/app.slint
-msgid "Needed: this computer has no keyring, so Enclave's keys are kept in files, and the passphrase protects them."
+msgid "Needed: this device has no keyring, so Enclave's keys are kept in files, and the Enclave PIN protects them. 6 or more digits; longer is safer."
 msgstr ""
 
 #: ui/app.slint
 msgid "Never"
+msgstr ""
+
+#: ui/app.slint
+msgid "New Enclave PIN"
 msgstr ""
 
 #: ui/app.slint
@@ -2205,10 +2241,6 @@ msgstr ""
 
 #: ui/app.slint
 msgid "New messages in this conversation disappear from both phones this long after they're read. Anyone can still take a screenshot."
-msgstr ""
-
-#: ui/app.slint
-msgid "New passphrase"
 msgstr ""
 
 #: enclave-vault/src/engine/web.rs ui/app.slint
@@ -2483,7 +2515,7 @@ msgstr ""
 msgid "Opening your inbox for message requests…"
 msgstr ""
 
-#: enclave-vault/src/engine.rs
+#: enclave-vault/src/engine.rs ui/app.slint
 msgid "Opening your profile…"
 msgstr ""
 
@@ -2512,11 +2544,11 @@ msgid "Option 4 (optional)"
 msgstr ""
 
 #: ui/app.slint
-msgid "Optional. A username is public, like an email address: anyone who knows it can send you a message request."
+msgid "Optional, 6 or more digits. Enclave would ask for it each time it starts on this device."
 msgstr ""
 
 #: ui/app.slint
-msgid "Optional. Enclave would ask for it each time it starts on this computer."
+msgid "Optional. A username is public, like an email address: anyone who knows it can send you a message request."
 msgstr ""
 
 #: ui/app.slint
@@ -2549,26 +2581,6 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Part of {}'s recovery"
-msgstr ""
-
-#: ui/app.slint
-msgid "Passphrase"
-msgstr ""
-
-#: ui/app.slint
-msgid "Passphrase for this computer"
-msgstr ""
-
-#: ui/app.slint
-msgid "Passphrase for this computer (optional)"
-msgstr ""
-
-#: enclave-vault/src/engine.rs
-msgid "Passphrase removed. Anyone using this computer account can open Enclave."
-msgstr ""
-
-#: enclave-vault/src/engine.rs
-msgid "Passphrase set. You'll type it each time Enclave starts."
 msgstr ""
 
 #: ui/app.slint
@@ -2824,11 +2836,11 @@ msgid "Remove"
 msgstr ""
 
 #: ui/app.slint
-msgid "Remove device"
+msgid "Remove Enclave PIN"
 msgstr ""
 
 #: ui/app.slint
-msgid "Remove passphrase"
+msgid "Remove device"
 msgstr ""
 
 #: ui/app.slint
@@ -3428,7 +3440,15 @@ msgid "Talk privately."
 msgstr ""
 
 #: ui/app.slint
+msgid "Tap again to erase everything on this device"
+msgstr ""
+
+#: ui/app.slint
 msgid "Telling your contacts and groups about your new words. This finishes on its own."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "That Enclave PIN doesn't open this profile."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3503,10 +3523,6 @@ msgstr ""
 msgid "That name is taken, or looks too much like one that is. Try another."
 msgstr ""
 
-#: enclave-vault/src/engine.rs
-msgid "That passphrase doesn't open this profile."
-msgstr ""
-
 #: enclave-vault/src/engine/videos.rs
 msgid "That video is too large to send."
 msgstr ""
@@ -3536,6 +3552,10 @@ msgid "That's too long: at most 280 bytes."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
+msgid "That's your Enclave PIN. Choose another emergency PIN."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
 msgid "That's your app PIN. Choose another emergency PIN."
 msgstr ""
 
@@ -3549,10 +3569,6 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "That's your own invite link."
-msgstr ""
-
-#: enclave-vault/src/engine.rs
-msgid "That's your passphrase. Choose another emergency PIN."
 msgstr ""
 
 #: enclave-vault/src/engine.rs
@@ -3748,18 +3764,6 @@ msgid "This computer has no Touch ID or Windows Hello set up."
 msgstr ""
 
 #: ui/app.slint
-msgid "This computer has no keyring for Enclave's keys, so they are kept in files. A passphrase protects them if someone copies those files. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."
-msgstr ""
-
-#: ui/app.slint
-msgid "This computer has no keyring for Enclave's keys, so they are kept in files. Choose a passphrase: it protects them if someone copies those files."
-msgstr ""
-
-#: enclave-vault/src/engine.rs
-msgid "This computer keeps Enclave's keys in files, so the passphrase can't be removed."
-msgstr ""
-
-#: ui/app.slint
 msgid "This conversation"
 msgstr ""
 
@@ -3773,6 +3777,18 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "This device"
+msgstr ""
+
+#: ui/app.slint
+msgid "This device has no keyring for Enclave's keys, so they are kept in files. An Enclave PIN protects them if someone copies those files; longer is safer. You'll type it each time Enclave starts; if you forget it, your recovery words bring your account back."
+msgstr ""
+
+#: ui/app.slint
+msgid "This device has no keyring for Enclave's keys, so they are kept in files. Choose an Enclave PIN: it protects them if someone copies those files. Longer is safer."
+msgstr ""
+
+#: enclave-vault/src/engine.rs
+msgid "This device keeps Enclave's keys in files, so the Enclave PIN can't be removed."
 msgstr ""
 
 #: ui/app.slint
@@ -3940,11 +3956,11 @@ msgid "Type or paste the coordinates. Enclave doesn't look anything up and shows
 msgstr ""
 
 #: ui/app.slint
-msgid "Type your PIN to open Enclave."
+msgid "Type your Enclave PIN to open your messages on this device."
 msgstr ""
 
 #: ui/app.slint
-msgid "Type your passphrase to open your messages on this computer."
+msgid "Type your PIN to open Enclave."
 msgstr ""
 
 #: ui/app.slint
@@ -4389,6 +4405,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Your account is deleted, and everything on this device was erased."
+msgstr ""
+
+#: ui/app.slint
+msgid "Your account is still on this device. Quit Enclave completely and start it again; if it still doesn't open, copy the log and send it to whoever helps you with Enclave."
 msgstr ""
 
 #: enclave-vault/src/engine.rs

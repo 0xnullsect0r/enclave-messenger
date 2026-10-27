@@ -216,3 +216,21 @@ fn hedge_secret_is_kept_refreshed_and_erased() {
     store.crypto_erase().unwrap();
     assert!(ks.load(HEDGE_SECRET).is_err(), "erased");
 }
+
+/// A profile open in one place reports `InUse` when opened again, not a
+/// database error: another copy of Enclave still has it (or is still
+/// closing), and nothing is wrong with it. Once that one closes, it opens.
+#[test]
+fn a_profile_open_elsewhere_is_in_use() {
+    let mut rng = HedgedRng::new().unwrap();
+    let dir = tmpdir("in-use");
+    let db = dir.join("profile.redb");
+    let ks: Arc<dyn Keystore> = Arc::new(FileKeystore::new(dir.join("keys")).unwrap());
+    let first = Store::create(Some(&db), Arc::clone(&ks), None, &mut rng).unwrap();
+    assert!(matches!(
+        Store::open(&db, Arc::clone(&ks), None),
+        Err(StoreError::InUse)
+    ));
+    drop(first);
+    assert!(Store::open(&db, ks, None).is_ok());
+}

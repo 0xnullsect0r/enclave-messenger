@@ -111,6 +111,8 @@ fn snapshot() -> Snapshot {
         words_language: "fr".into(),
         privacy: 1,
         light: true,
+        has_profile: true,
+        open_failed: true,
         finishing: true,
         setup_step: 3,
         setup_part: 12,

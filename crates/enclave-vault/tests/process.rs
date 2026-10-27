@@ -294,7 +294,7 @@ async fn sandboxed_vault_keeps_its_profile() {
     let send = |c: Cmd| c.encode();
     frame::write_frame(
         &mut wr,
-        &send(Cmd::Create("Robin".into(), "correct horse".into())),
+        &send(Cmd::Create("Robin".into(), "48151623".into())),
     )
     .await
     .unwrap();
@@ -309,7 +309,7 @@ async fn sandboxed_vault_keeps_its_profile() {
         .await
         .unwrap();
     next_snapshot(&mut rd, |s| s.locked && !s.unlock_error.is_empty()).await;
-    frame::write_frame(&mut wr, &send(Cmd::Unlock("correct horse".into())))
+    frame::write_frame(&mut wr, &send(Cmd::Unlock("48151623".into())))
         .await
         .unwrap();
     next_snapshot(&mut rd, |s| !s.locked && s.my_name == "Robin").await;
@@ -343,24 +343,24 @@ async fn sandboxed_vault_keeps_its_profile() {
         .await
         .unwrap();
     next_snapshot(&mut rd, |s| s.locked).await;
-    frame::write_frame(&mut wr, &send(Cmd::Unlock("correct horse".into())))
+    frame::write_frame(&mut wr, &send(Cmd::Unlock("48151623".into())))
         .await
         .unwrap();
     next_snapshot(&mut rd, |s| !s.locked && s.my_name == "Robin").await;
     // Change it: the old one stops working after a restart, the new one opens.
-    frame::write_frame(&mut wr, &send(Cmd::SetPassphrase("battery staple".into())))
+    frame::write_frame(&mut wr, &send(Cmd::SetPassphrase("90210427".into())))
         .await
         .unwrap();
-    next_snapshot(&mut rd, |s| s.status.starts_with("Passphrase set")).await;
+    next_snapshot(&mut rd, |s| s.status.starts_with("Enclave PIN set")).await;
     drop(rd);
     drop(wr);
     let _ = tokio::task::spawn_blocking(move || child.wait_with_output()).await;
     let (child, mut rd, mut wr) = start_vault(&dir, addr, &profile, "v3.sock").await;
-    frame::write_frame(&mut wr, &send(Cmd::Unlock("correct horse".into())))
+    frame::write_frame(&mut wr, &send(Cmd::Unlock("48151623".into())))
         .await
         .unwrap();
     next_snapshot(&mut rd, |s| s.locked && !s.unlock_error.is_empty()).await;
-    frame::write_frame(&mut wr, &send(Cmd::Unlock("battery staple".into())))
+    frame::write_frame(&mut wr, &send(Cmd::Unlock("90210427".into())))
         .await
         .unwrap();
     next_snapshot(&mut rd, |s| !s.locked && s.my_name == "Robin").await;
@@ -422,6 +422,7 @@ async fn a_profile_that_doesnt_open_is_never_replaced() {
     let (child, mut rd, mut wr) = start_vault(&dir, addr, &profile, "b1.sock").await;
     let s = next_snapshot(&mut rd, |s| s.status.contains("didn't open")).await;
     assert!(s.my_name.is_empty());
+    assert!(s.has_profile && s.open_failed, "the window offers no setup");
     frame::write_frame(
         &mut wr,
         &Cmd::Create("Robin".into(), String::new()).encode(),
@@ -434,6 +435,47 @@ async fn a_profile_that_doesnt_open_is_never_replaced() {
     drop(wr);
     let _ = tokio::task::spawn_blocking(move || child.wait_with_output()).await;
     assert_eq!(std::fs::read(profile.join("profile.redb")).unwrap(), junk);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The profile open in one vault (a copy of Enclave still running or
+/// still closing) and a second vault started on it: the second says it is
+/// waiting, never offers to set up, and opens the account once the first
+/// one's window is gone (it exits). Before, it gave up after 20 tries and
+/// the window showed setup over the account.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_profile_open_in_another_copy_is_waited_for() {
+    let addr = dev_server().await;
+    let dir = std::env::temp_dir().join(format!("enclave-vault-two-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let profile = dir.join("profile");
+    let (first, mut rd1, mut wr1) = start_vault(&dir, addr, &profile, "t1.sock").await;
+    frame::write_frame(
+        &mut wr1,
+        &Cmd::Create("Robin".into(), String::new()).encode(),
+    )
+    .await
+    .unwrap();
+    next_snapshot(&mut rd1, |s| s.my_name == "Robin").await;
+    let (second, mut rd2, wr2) = start_vault(&dir, addr, &profile, "t2.sock").await;
+    let s = next_snapshot(&mut rd2, |s| s.status.contains("Waiting for it to close")).await;
+    assert!(s.has_profile, "no setup over it");
+    assert!(!s.open_failed);
+    assert!(s.my_name.is_empty());
+    // The first copy's window goes: it exits, and the second opens.
+    drop(rd1);
+    drop(wr1);
+    let out = tokio::task::spawn_blocking(move || first.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(out.status.success(), "{:?}", out.status);
+    let s = next_snapshot(&mut rd2, |s| s.my_name == "Robin").await;
+    assert!(s.status.is_empty(), "status: {}", s.status);
+    drop(rd2);
+    drop(wr2);
+    let _ = tokio::task::spawn_blocking(move || second.wait_with_output()).await;
     let _ = std::fs::remove_dir_all(&dir);
 }
 

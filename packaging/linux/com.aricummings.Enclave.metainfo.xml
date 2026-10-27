@@ -85,7 +85,7 @@
   <releases>
     <release version="0.1.7" date="2026-10-26">
       <description>
-        <p>obfs4 bridges, Tor's built-in ones and your own, now go through lyrebird, the same implementation Tor Browser uses, so bridges that work there work here. Setting up takes your own bridge lines right on the page, and the bridge switch answers at once.</p>
+        <p>Quitting and starting Enclave again no longer shows setup over your account: a copy still closing is waited for (it now closes within seconds of its window), and while your profile opens, or if it doesn't, setup isn't offered. obfs4 bridges, Tor's built-in ones and your own, now go through lyrebird, the same implementation Tor Browser uses. Setting up takes your own bridge lines right on the page, and the bridge switch answers at once. The passphrase for keys kept in files is now an Enclave PIN of 6 or more digits, typed on the number keypad, like every PIN in Enclave. Requests sent just after midnight UTC no longer fail.</p>
       </description>
     </release>
     <release version="0.1.6" date="2026-10-26">
