@@ -317,6 +317,7 @@ async fn run(args: &[String]) -> Result<(), String> {
     let mut server =
         Server::open(cfg.policy(id), db, keys.chain.keys()).map_err(|e| e.to_string())?;
     server.set_key_bundle(chain_bundle(&keys)?);
+    server.install_ahead(keys.chain.next_key());
     server.set_blob_seed(keys.blob_seed());
     // The username log: its own file, the same head key and VRF secret
     // every run, so what clients pin stays valid. Witnesses are other
@@ -411,6 +412,7 @@ async fn run(args: &[String]) -> Result<(), String> {
                         for key in k.chain.keys().into_iter().rev() {
                             s.install_key(key);
                         }
+                        s.install_ahead(k.chain.next_key());
                         match bundle {
                             Ok(b) => s.set_key_bundle(b),
                             Err(e) => eprintln!("key bundle failed: {e}"),

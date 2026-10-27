@@ -149,3 +149,38 @@ fn rt27_server_request_key_deleted_after_rotation() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Just after midnight UTC a client may seal to the key the bundle
+/// published for the new day while the server's chain hasn't stepped yet
+/// (it does once a minute): the server holds that key ahead and opens the
+/// request, and once the key is current it is held only once.
+#[test]
+fn tomorrows_published_key_opens_before_the_chain_steps() {
+    let mut rng = HedgedRng::new().unwrap();
+    let env = api::frame(&[], &mut rng).unwrap();
+    let seed = [7u8; 32];
+    let tomorrow = || enclave_rpc::ServerSecret::from_seed(DAY + 1, &seed);
+    let key = tomorrow().public().clone();
+    let cover = |rng: &mut HedgedRng| sealed(&key, Op::Cover, 0, [0; 32], [0; 32], &env, rng);
+    let mut s = server();
+    assert_eq!(
+        answer(&mut s, &cover(&mut rng), at(DAY + 1)),
+        None,
+        "not held yet"
+    );
+    let early = cover(&mut rng);
+    s.install_ahead(tomorrow());
+    assert!(answer(&mut s, &early, at(DAY + 1)).is_some(), "held ahead");
+    assert_eq!(
+        s.public_key().unwrap().key_id,
+        DAY,
+        "today's key stays current"
+    );
+    s.install_key(tomorrow());
+    assert_eq!(s.public_key().unwrap().key_id, DAY + 1);
+    assert!(
+        answer(&mut s, &cover(&mut rng), at(DAY + 1)).is_some(),
+        "current now"
+    );
+    assert_eq!(answer(&mut s, &early, at(DAY + 1)), None, "a replay still");
+}

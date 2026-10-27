@@ -312,6 +312,10 @@ pub const MAX_DEFERRED_BYTES: usize = 64 << 20;
 pub struct Server {
     cfg: Config,
     keys: VecDeque<ServerSecret>,
+    /// Tomorrow's request key, published ahead in the key bundle: it opens
+    /// requests too, so a client whose clock has passed midnight before
+    /// the chain steps (once a minute) isn't refused.
+    ahead: Option<ServerSecret>,
     /// Everything that must survive a restart (`db.rs`): inboxes, tokens,
     /// envelopes, the directory, blobs, push tokens, usernames, reports.
     db: Db,
@@ -455,6 +459,7 @@ impl Server {
         Ok(Self {
             cfg,
             keys: keys.into_iter().collect(),
+            ahead: None,
             db,
             claims: HashMap::new(),
             uploads: HashMap::new(),
@@ -593,6 +598,14 @@ impl Server {
         self.keys.front().map(|k| k.public().clone())
     }
 
+    /// Open requests sealed to `key` too (tomorrow's, from the persisted
+    /// chain) until it becomes current.
+    pub fn install_ahead(&mut self, key: ServerSecret) {
+        if !self.keys.iter().any(|k| k.key_id == key.key_id) {
+            self.ahead = Some(key);
+        }
+    }
+
     /// Rotate to a new random daily key (in-memory servers); keep
     /// yesterday's for late requests and delete anything older (forward
     /// secrecy for request metadata).
@@ -607,6 +620,9 @@ impl Server {
     pub fn install_key(&mut self, key: ServerSecret) {
         if self.keys.front().is_some_and(|k| k.key_id == key.key_id) {
             return;
+        }
+        if self.ahead.as_ref().is_some_and(|k| k.key_id == key.key_id) {
+            self.ahead = None;
         }
         self.keys.push_front(key);
         while self.keys.len() > 2 {
@@ -1014,7 +1030,7 @@ impl Server {
     /// network cannot tell rejected requests from accepted ones.
     pub fn handle(&mut self, request: &[u8], now: u64) -> Vec<u8> {
         self.stats.requests += 1;
-        let keys: Vec<&ServerSecret> = self.keys.iter().collect();
+        let keys: Vec<&ServerSecret> = self.keys.iter().chain(self.ahead.as_ref()).collect();
         let opened = match enclave_rpc::open_request(&keys, request) {
             Ok(o) => o,
             Err(_) => return self.garbage(),
