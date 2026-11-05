@@ -14,12 +14,12 @@ workspace = true
 
 [dependencies]
 enclave-platform = { path = "../enclave-platform" }
-libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem1024"] }
-libcrux-ml-dsa = { version = "0.0.10" }
+libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem1024"] }
+libcrux-ml-dsa = { version = "0.0.11" }
 slh-dsa = "0.2.0-rc.5"
 ed448-goldilocks = "0.14.0-pre.15"
 # X448 on formally verified p448 field arithmetic (`x448_ladder.rs`).
-fiat-crypto = { version = "0.2.9", default-features = false }
+fiat-crypto = { version = "0.3.0", default-features = false }
 classic-mceliece-rust = { version = "3.1.0", features = ["mceliece8192128", "zeroize"] }
 chacha20 = { version = "0.10.2", features = ["xchacha"] }
 aes = "0.9.3"
@@ -49,10 +49,10 @@ hex-literal = "1.1.0"
 proptest = "1.11.0"
 ml-kem = "0.3.2"
 ml-dsa = "0.1.1"
-fips205 = "0.4.1"
-libcrux-kmac = "0.0.1"
+fips205 = "0.5.0"
+libcrux-kmac = "0.0.2"
 ed448-goldilocks = "0.14.0-pre.15"
-libcrux-ml-dsa = "0.0.10"
+libcrux-ml-dsa = "0.0.11"
 
 # Test oracle for X448 and Ed448 (`tests/differential.rs`); needs a system
 # OpenSSL, which Windows runners don't have.
