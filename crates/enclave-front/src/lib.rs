@@ -7,9 +7,10 @@
 //! https://<domain>/.well-known/enclave   the server's signed descriptor (public_dir/descriptor.bin)
 //! https://<domain>/i, /call            the page behind invite and call links (`INVITE_PAGE`)
 //! https://<domain>/witness/v1/…          the stack's witness, proxied to it on the internal network
+//! https://<domain>/net                   one sealed request a POST carries to the server (RFC 0011)
 //! https://<domain>/healthz               "ok"
 //! http://<domain>/.well-known/acme-challenge/<token>   ACME HTTP-01 answers
-//! http://<domain>/…                      redirected to https
+//! http://<domain>…                      redirected to https
 //! ```
 //!
 //! HTTPS uses the Enclave TLS profile (`enclave-tls`: TLS 1.3, hybrid
@@ -96,6 +97,11 @@ pub struct Site {
     /// The foundation's credential gate on the internal network
     /// (`http://credgate:7448`), on the stack that runs one.
     pub credgate: Option<String>,
+    /// The server on the internal network (`server:7443`) for the fast
+    /// route (RFC 0011): `POST /net` carries one sealed request to it and
+    /// its reply back. `None` (the default): the route answers 404, and the
+    /// stack is reached only through its onion service.
+    pub net: Option<Arc<Net>>,
     http: hyper_util::client::legacy::Client<
         hyper_util::client::legacy::connect::HttpConnector,
         http_body_util::Full<bytes::Bytes>,
@@ -112,6 +118,7 @@ impl Site {
             public_dir,
             witness: witness.map(|w| w.trim_end_matches('/').to_string()),
             credgate: None,
+            net: None,
             http,
         }
     }
@@ -119,6 +126,18 @@ impl Site {
     /// Also proxy the credential gate's API (`/credgate/v1/*`) to `url`.
     pub fn with_credgate(mut self, url: Option<String>) -> Self {
         self.credgate = url.map(|u| u.trim_end_matches('/').to_string());
+        self
+    }
+
+    /// Also carry sealed requests (`POST /net`) to the server at `addr`
+    /// (RFC 0011). `None` keeps the route closed.
+    pub fn with_net(mut self, addr: Option<String>) -> Self {
+        self.net = addr.map(|a| {
+            Arc::new(Net {
+                addr: a.trim_end_matches('/').to_string(),
+                idle: Default::default(),
+            })
+        });
         self
     }
 
@@ -131,6 +150,7 @@ impl Site {
             .route("/call", get(invite_page))
             .route("/witness/v1/{*rest}", any(witness))
             .route("/credgate/v1/{*rest}", any(credgate))
+            .route("/net", axum::routing::post(net))
             .with_state(Arc::new(self))
     }
 }
@@ -270,6 +290,114 @@ async fn proxy(site: &Site, uri: &str, req: Request<Body>) -> Response {
                 Err(_) => StatusCode::BAD_GATEWAY.into_response(),
             }
         }
+        Err(_) => StatusCode::BAD_GATEWAY.into_response(),
+    }
+}
+
+/// The server the fast route reaches, and the connections kept warm to it
+/// (RFC 0011): the same framing the onion route's streams carry
+/// (`u32 len ‖ body`, `docs/09-transport.md` §1).
+pub struct Net {
+    /// `host:port` on the internal network.
+    addr: String,
+    /// Connections not in use. One is taken out for an exchange and put
+    /// back when it answers; a stale one is dropped and the exchange tried
+    /// once more on a new one.
+    idle: std::sync::Mutex<Vec<tokio::net::TcpStream>>,
+}
+
+/// Longest a request POSTed to `/net` may be (a unit is 16,384 B).
+const MAX_NET_BODY: usize = 64 << 10;
+/// Longest a reply read back may be (as the carrier's own answer).
+const MAX_NET_REPLY: usize = 1 << 20;
+/// How long the server may take to answer one (as a stream on the onion
+/// route has: 60 s).
+const NET_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn poisoned<T>(_: T) -> std::io::Error {
+    std::io::Error::other("net pool poisoned")
+}
+
+impl Net {
+    /// One exchange on a warm connection, or a new one.
+    async fn exchange(&self, request: &[u8], oneway: bool) -> std::io::Result<Vec<u8>> {
+        for attempt in 0..2 {
+            let conn = self.idle.lock().map_err(poisoned)?.pop();
+            let mut conn = match conn {
+                Some(c) => c,
+                None => {
+                    let c = tokio::net::TcpStream::connect(&self.addr).await?;
+                    c.set_nodelay(true)?;
+                    c
+                }
+            };
+            match tokio::time::timeout(NET_TIMEOUT, one(&mut conn, request, oneway)).await {
+                Ok(Ok(reply)) => {
+                    self.idle.lock().map_err(poisoned)?.push(conn);
+                    return Ok(reply);
+                }
+                // A warm connection gone stale: once more, on a new one.
+                Ok(Err(_)) | Err(_) if attempt == 0 => continue,
+                Ok(Err(e)) => return Err(e),
+                Err(_) => return Err(std::io::Error::other("the server didn't answer in time")),
+            }
+        }
+        unreachable!("the second attempt returns")
+    }
+}
+
+/// One framed exchange on `conn`: `u32 len ‖ request` out, `u32 len ‖
+/// reply` back. With `oneway`, the length's top bit is set, as the onion
+/// route's streams do (`enclave_wire::STREAM_ONEWAY`), and the server
+/// answers an empty frame.
+async fn one(conn: &mut tokio::net::TcpStream, request: &[u8], oneway: bool) -> std::io::Result<Vec<u8>> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut len = request.len() as u32;
+    if oneway {
+        len |= 0x8000_0000;
+    }
+    conn.write_all(&len.to_be_bytes()).await?;
+    conn.write_all(request).await?;
+    conn.flush().await?;
+    let mut len = [0u8; 4];
+    conn.read_exact(&mut len).await?;
+    let n = (u32::from_be_bytes(len) & !0x8000_0000) as usize;
+    if n > MAX_NET_REPLY {
+        return Err(std::io::Error::other("reply too long"));
+    }
+    let mut reply = vec![0u8; n];
+    conn.read_exact(&mut reply).await?;
+    Ok(reply)
+}
+
+/// `POST /net` (RFC 0011): the body is one sealed request to this stack's
+/// server; the reply body is its sealed answer. An `Enclave-One-Way: 1`
+/// header asks the server for no reply (an empty answer). Nothing about
+/// the client reaches the server but the bytes.
+async fn net(State(site): State<Arc<Site>>, req: Request<Body>) -> Response {
+    let Some(backend) = &site.net else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let oneway = req.headers().contains_key("enclave-one-way");
+    let Ok(body) = http_body_util::Limited::new(req.into_body(), MAX_NET_BODY)
+        .collect()
+        .await
+        .map(|b| b.to_bytes())
+    else {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    };
+    match backend.exchange(&body, oneway).await {
+        Ok(reply) => (
+            [
+                (
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/octet-stream"),
+                ),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
+            reply,
+        )
+            .into_response(),
         Err(_) => StatusCode::BAD_GATEWAY.into_response(),
     }
 }

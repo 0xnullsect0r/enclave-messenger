@@ -32,6 +32,9 @@ use tokio::sync::{Mutex, oneshot};
 
 /// Flag: no reply wanted.
 pub const ONEWAY: u8 = 1;
+/// Flag on a front exchange: dial the front directly, not through Tor (the
+/// consented direct fast route, RFC 0011).
+pub const DIRECT: u8 = 2;
 /// In the server's framing, a length with this bit set asks for no reply:
 /// the server answers an empty frame (lengths are at most a unit's; the
 /// same bit as `enclave_wire::STREAM_ONEWAY`).
@@ -55,6 +58,8 @@ pub const STREAM_TIMEOUT: Duration = Duration::from_secs(60);
 
 const EXCHANGE: u8 = 1;
 const FETCH: u8 = 2;
+/// A front exchange (`POST /net`, RFC 0011): `u16 len ‖ domain ‖ request`.
+const FRONT: u8 = 3;
 
 fn lp16(out: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> {
     let n = u16::try_from(b.len()).map_err(|_| invalid("field too long"))?;
@@ -232,6 +237,37 @@ impl Client {
         }
         Ok((u16::from_be_bytes([v[0], v[1]]), v[2..].to_vec()))
     }
+
+    /// One sealed exchange with the front at `domain:port` and its sealed
+    /// reply (`POST /net`, RFC 0011). With `direct`, tord dials the front
+    /// itself with no Tor in between: the consented direct fast route,
+    /// which asks for speed over the server not learning this device's
+    /// address. With `oneway`, the server is asked for no reply (an empty
+    /// answer).
+    pub async fn front(
+        &self,
+        domain: &str,
+        port: u16,
+        request: &[u8],
+        direct: bool,
+        oneway: bool,
+    ) -> std::io::Result<Vec<u8>> {
+        self.call(FRONT, |f| {
+            let mut flags = 0;
+            if direct {
+                flags |= DIRECT;
+            }
+            if oneway {
+                flags |= ONEWAY;
+            }
+            f.push(flags);
+            lp16(f, domain.as_bytes())?;
+            f.extend_from_slice(&port.to_be_bytes());
+            f.extend_from_slice(request);
+            Ok(())
+        })
+        .await
+    }
 }
 
 impl Drop for Client {
@@ -250,7 +286,11 @@ where
 {
     let writer = Arc::new(Mutex::new(writer));
     let pool = Arc::new(Pool::new(Arc::clone(&dialer)));
-    let fetcher = Arc::new(crate::fetch::Fetcher::new(dialer));
+    let fetcher = Arc::new(crate::fetch::Fetcher::new(Arc::clone(&dialer)));
+    // For the direct fast route (RFC 0011): the same exchanges, dialed by
+    // this process with no Tor in between, which already holds TCP sockets
+    // for Tor's own connections. netd opens none either way.
+    let direct = Arc::new(crate::fetch::Fetcher::new(Arc::new(crate::TcpDialer)));
     while let Some(b) = read_frame(&mut reader).await {
         let mut rest = &b[..];
         let Some((&kind, r)) = rest.split_first() else {
@@ -258,13 +298,19 @@ where
         };
         rest = r;
         let Some(id) = take32(&mut rest) else { return };
-        let (pool, fetcher, writer) =
-            (Arc::clone(&pool), Arc::clone(&fetcher), Arc::clone(&writer));
+        let (pool, fetcher, direct, writer) = (
+            Arc::clone(&pool),
+            Arc::clone(&fetcher),
+            Arc::clone(&direct),
+            Arc::clone(&writer),
+        );
         let rest = rest.to_vec();
         tokio::spawn(async move {
             let answer = match kind {
                 EXCHANGE => exchange_request(&pool, &rest).await,
                 FETCH => fetch_request(&fetcher, &rest).await,
+                #[cfg(feature = "carrier-serve")]
+                FRONT => front_request(&fetcher, &direct, &rest).await,
                 _ => Err("unknown request".to_string()),
             };
             let mut frame = vec![kind];
@@ -310,6 +356,33 @@ async fn fetch_request(
     let url = std::str::from_utf8(url).map_err(|_| "malformed")?;
     let (status, body) = fetcher.fetch(method, url, rest.to_vec()).await?;
     Ok([&status.to_be_bytes()[..], &body].concat())
+}
+
+/// A front exchange (RFC 0011): `u8 flags ‖ u16 len ‖ domain ‖ u16 port ‖
+/// request` to `POST /net` at `https://domain:port/` — through Tor's exit,
+/// or with [`DIRECT`] set, dialed by tord with no Tor in between;
+/// [`ONEWAY`] asks the server for no reply.
+#[cfg(feature = "carrier-serve")]
+async fn front_request(
+    fetcher: &crate::fetch::Fetcher,
+    direct: &crate::fetch::Fetcher,
+    mut rest: &[u8],
+) -> Result<Vec<u8>, String> {
+    let (&flags, r) = rest.split_first().ok_or("malformed")?;
+    rest = r;
+    let domain = take16(&mut rest).ok_or("malformed")?;
+    let domain = std::str::from_utf8(domain).map_err(|_| "malformed")?;
+    let port = rest
+        .get(..2)
+        .map(|p| u16::from_be_bytes([p[0], p[1]]))
+        .ok_or("malformed")?;
+    let request = rest.get(2..).ok_or("malformed")?;
+    let oneway = flags & ONEWAY != 0;
+    if flags & DIRECT != 0 {
+        direct.exchange(domain, port, request.to_vec(), oneway).await
+    } else {
+        fetcher.exchange(domain, port, request.to_vec(), oneway).await
+    }
 }
 
 /// One service's streams: each slot open or not.

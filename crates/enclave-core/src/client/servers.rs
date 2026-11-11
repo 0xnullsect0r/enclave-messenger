@@ -120,6 +120,10 @@ impl Client {
         if let Some(r) = Route::parse(&format!("onion:{}", d.onion)) {
             self.rpc.set_route(*id, r);
         }
+        // The consented fast lane in front of it (RFC 0011).
+        if let Some(r) = self.fast_route_route(&d.domain) {
+            self.rpc.set_route(*id, r);
+        }
         let key = [KEY_DESCRIPTOR, id.as_slice()].concat();
         self.store
             .put(NS_SERVERS, &key, &d.encode(), &mut self.rng)?;
@@ -231,7 +235,8 @@ impl Client {
     /// Reach every listed server at its onion service through Tor (RFC
     /// 0010) and at its ingress's Nym address (a transport without the
     /// mixnet ignores that), the descriptor's onion service when one is
-    /// held (it may be newer than the list's).
+    /// held (it may be newer than the list's), and each at its front when
+    /// the fast lane was consented to (RFC 0011).
     fn apply_routes(&self) {
         for s in self.servers.iter().flat_map(|l| &l.servers) {
             let id = enclave_federation::server_id(&s.identity);
@@ -241,12 +246,56 @@ impl Client {
             if let Some(r) = Route::parse(&format!("onion:{}", s.onion)) {
                 self.rpc.set_route(id, r);
             }
+            if let Some(r) = self.fast_route_route(&s.domain) {
+                self.rpc.set_route(id, r);
+            }
             if let Ok(Some(d)) = self.server_descriptor(&id)
                 && let Some(r) = Route::parse(&format!("onion:{}", d.onion))
             {
                 self.rpc.set_route(id, r);
             }
         }
+    }
+
+    /// The fast route to a stack's front (RFC 0011) for the saved consent:
+    /// `None` when off (the default) — an off fast lane is taken back
+    /// server by server ([`Self::set_fast_route`]), not by every route
+    /// application.
+    fn fast_route_route(&self, domain: &str) -> Option<Route> {
+        let v = self
+            .setting("fastroute")
+            .ok()
+            .flatten()
+            .and_then(|b| b.first().copied())
+            .unwrap_or(0);
+        match v {
+            1 => Some(Route::Exit(domain.to_string(), 443)),
+            2 => Some(Route::Direct(domain.to_string(), 443)),
+            _ => None,
+        }
+    }
+
+    /// Save the fast-lane consent (RFC 0011): 0 off, 1 through Tor's exit
+    /// to each stack's front, 2 straight to it (a stack that didn't open
+    /// its front answers 404 and the onion route carries on, as it does
+    /// for every server without one). Maximum privacy keeps the setting
+    /// from having any effect: the transport refuses every route but the
+    /// private ones. Turning it off takes the fast route back from every
+    /// server it was given to; turning it on gives it to every server
+    /// known already.
+    pub fn set_fast_route(&mut self, on: u8) -> Result<()> {
+        let on = on.min(2);
+        self.set_setting("fastroute", &[on])?;
+        if on == 0 {
+            for s in self.servers.iter().flat_map(|l| &l.servers) {
+                self.rpc
+                    .set_route(enclave_federation::server_id(&s.identity), Route::Off);
+            }
+            self.rpc.set_route(self.profile.server, Route::Off);
+        } else {
+            self.apply_routes();
+        }
+        Ok(())
     }
 
     /// Pins from the list, merged with the ones the app added.

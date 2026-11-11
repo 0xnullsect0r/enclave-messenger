@@ -1,6 +1,6 @@
 //! The `enclave-netd` program ([`main_with`]; `src/main.rs` runs it).
 //!
-//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-direct] [--tor-standby] [--bridge LINE]… [--builtin-bridges] [--snowflake]] [--report]`
+//! `enclave-netd --server HEXID=nym:ADDRESS … --server HEXID=HOST:PORT … [--nymd PATH] [--mixnet] [--nym-env] [--await-tickets] [--tor DIR [--tord PATH] [--tor-socks HOST:PORT] [--tor-direct] [--tor-standby] [--bridge LINE]… [--builtin-bridges] [--snowflake]] [--report]`
 //!
 //! Started by the vault, never by hand. Holds no keys: it carries sealed
 //! requests from the vault (stdin) to servers and their sealed replies back
@@ -8,10 +8,16 @@
 //! onion service is reached through Tor: `enclave-tord`, started next to
 //! netd with `--tor`, carries each request over its own Tor client
 //! (`enclave_tord::carrier`, RFC 0010), so netd itself opens no TCP
-//! connection. A server named by a Nym address is reached over the mixnet
-//! (`NymTransport`) through `enclave-nymd` (nym-sdk can't be linked here:
-//! `docs/09-transport.md` §1), when the mixnet is enabled; others over the
-//! development TCP transport. The vault adds or changes routes as it
+//! connection. `--tor-socks` has tord ride a system Tor's SocksPort
+//! instead of the embedded arti. A server named by a Nym address is reached
+//! over the mixnet (`NymTransport`) through `enclave-nymd` (nym-sdk can't
+//! be linked here: `docs/09-transport.md` §1), when the mixnet is enabled;
+//! others over the development TCP transport. A server named by
+//! `exit:DOMAIN` or `direct:DOMAIN` (the consented fast lane, RFC 0011) is
+//! asked first at its stack's front (`POST /net`), through Tor's exit or —
+//! `direct:` — dialed by tord with no Tor in between; the onion route
+//! answers whenever the front doesn't, and Maximum privacy refuses the
+//! fast lane entirely. The vault adds or changes routes as it
 //! learns them (`NetRequest::SetRoute`: the server list, descriptors); a
 //! Nym route needs the mixnet client, which netd starts only when a Nym
 //! route is given at start. It confines itself first: no core dumps, not
@@ -41,10 +47,12 @@ fn parse_servers(
     HashMap<ServerId, std::net::SocketAddr>,
     HashMap<ServerId, String>,
     HashMap<ServerId, String>,
+    HashMap<ServerId, FrontRoute>,
 ) {
     let mut tcp = HashMap::new();
     let mut nym = HashMap::new();
     let mut onion = HashMap::new();
+    let mut fronts = HashMap::new();
     for p in args.windows(2).filter(|p| p[0] == "--server") {
         match enclave_net::transport::parse_route(&p[1]) {
             Some((id, Route::Tcp(a))) => {
@@ -56,10 +64,18 @@ fn parse_servers(
             Some((id, Route::Onion(h))) => {
                 onion.insert(id, h);
             }
+            Some((id, Route::Exit(d, p))) => {
+                fronts.insert(id, FrontRoute::new(d, p, false));
+            }
+            Some((id, Route::Direct(d, p))) => {
+                fronts.insert(id, FrontRoute::new(d, p, true));
+            }
+            // `off` clears a fast route at start: nothing to clear yet.
+            Some((_, Route::Off)) => {}
             None => eprintln!("enclave-netd: --server {}: not a route", p[1]),
         }
     }
-    (tcp, nym, onion)
+    (tcp, nym, onion, fronts)
 }
 
 /// Each server over the transport its route names.
@@ -90,8 +106,48 @@ struct Routed {
     /// route to a server with no Nym route, and the fallback route to one
     /// with a Nym route.
     onion: std::sync::RwLock<HashMap<ServerId, String>>,
+    /// The fast lane (`exit:`/`direct:`, RFC 0011): a front route per
+    /// server, tried before the onion one, consented to by the user (the
+    /// vault sends it) and never in Maximum privacy. A front that failed
+    /// cools down and the onion route answers for it.
+    fronts: std::sync::RwLock<HashMap<ServerId, FrontRoute>>,
     /// The user chose the fallback route (`Transport::use_fallback`).
     fallback: std::sync::atomic::AtomicBool,
+}
+
+/// A server's fast route (RFC 0011): the front's domain and port, and
+/// whether tord dials it with no Tor in between.
+struct FrontRoute {
+    domain: String,
+    port: u16,
+    direct: bool,
+    /// When a failed attempt's cooldown ends; in the past while the route
+    /// is to be used.
+    down_until: std::time::Instant,
+}
+
+impl FrontRoute {
+    fn new(domain: String, port: u16, direct: bool) -> Self {
+        Self {
+            domain,
+            port,
+            direct,
+            down_until: std::time::Instant::now(),
+        }
+    }
+}
+
+/// How long a front that failed is left alone, with the onion route
+/// answering for it.
+const FRONT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// What a fast route asks for (a copy out of the map, so no lock is held
+/// over the exchange).
+#[derive(Clone)]
+struct FrontAsk {
+    domain: String,
+    port: u16,
+    direct: bool,
 }
 
 /// How Tor is doing, as netd's requests see it.
@@ -161,6 +217,60 @@ impl Routed {
         Some(host)
     }
 
+    /// The server's fast route (RFC 0011), when one was consented to and
+    /// it isn't cooling down after a failure. Maximum privacy takes no
+    /// route but the private ones.
+    fn front_for(&self, server: &ServerId) -> Option<FrontAsk> {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.private.load(SeqCst) {
+            return None;
+        }
+        let mut fronts = self.fronts.write().ok()?;
+        let f = fronts.get_mut(server)?;
+        (std::time::Instant::now() >= f.down_until).then(|| FrontAsk {
+            domain: f.domain.clone(),
+            port: f.port,
+            direct: f.direct,
+        })
+    }
+
+    /// A failed front cools down: the onion route answers for it until the
+    /// cooldown ends.
+    fn front_failed(&self, server: &ServerId) {
+        if let Ok(mut fronts) = self.fronts.write() {
+            if let Some(f) = fronts.get_mut(server) {
+                f.down_until = std::time::Instant::now() + FRONT_COOLDOWN;
+            }
+        }
+    }
+
+    /// A front that answered is back in use.
+    fn front_ok(&self, server: &ServerId) {
+        if let Ok(mut fronts) = self.fronts.write() {
+            if let Some(f) = fronts.get_mut(server) {
+                f.down_until = std::time::Instant::now();
+            }
+        }
+    }
+
+    /// One exchange over the fast lane (RFC 0011): tord's carrier `POST`s
+    /// the request to the stack's front — through Tor's exit, or with
+    /// `direct` dialed by tord with no Tor in between. `oneway` asks the
+    /// server for no reply; the answer is then `None`.
+    async fn via_front(
+        &self,
+        front: &FrontAsk,
+        request: Vec<u8>,
+        oneway: bool,
+    ) -> enclave_net::Result<Option<Vec<u8>>> {
+        let c = self.carrier().await.ok_or_else(|| self.no_tor())?;
+        let r = c
+            .front(&front.domain, front.port, &request, front.direct, oneway)
+            .await
+            .map_err(|e| NetError::Unreachable(e.to_string()))?;
+        Ok((!oneway).then_some(r))
+    }
+
     /// One request to an onion service through Tor: tord's own Tor client,
     /// or (without it) nymd's, connected or not. `oneway` asks for no
     /// reply; the answer is then `None`.
@@ -225,6 +335,15 @@ type Waiting = enclave_nym::pipe::Starting<
 #[async_trait::async_trait]
 impl Transport for Routed {
     async fn exchange(&self, server: &ServerId, request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+        if let Some(f) = self.front_for(server) {
+            match self.via_front(&f, request.clone(), false).await {
+                Ok(r) => {
+                    self.front_ok(server);
+                    return r.ok_or(NetError::BadReply);
+                }
+                Err(_) => self.front_failed(server), // the onion route answers
+            }
+        }
         if let Some(h) = self.onion_for(server) {
             return self
                 .via_tor(&h, request, false)
@@ -235,6 +354,21 @@ impl Transport for Routed {
     }
 
     async fn server_key(&self, server: &ServerId) -> enclave_net::Result<enclave_rpc::ServerKey> {
+        if let Some(f) = self.front_for(server) {
+            match self.via_front(&f, Vec::new(), false).await {
+                Ok(r) => {
+                    self.front_ok(server);
+                    if let Some(bundle) = r {
+                        return enclave_net::transport::verify_key_bundle(
+                            server,
+                            &bundle,
+                            self.now(),
+                        );
+                    }
+                }
+                Err(_) => self.front_failed(server), // the onion route answers
+            }
+        }
         if let Some(h) = self.onion_for(server) {
             let bundle = self
                 .via_tor(&h, Vec::new(), false)
@@ -250,6 +384,15 @@ impl Transport for Routed {
         server: &ServerId,
         request: Vec<u8>,
     ) -> enclave_net::Result<Option<Vec<u8>>> {
+        if let Some(f) = self.front_for(server) {
+            match self.via_front(&f, request.clone(), true).await {
+                Ok(r) => {
+                    self.front_ok(server);
+                    return Ok(r);
+                }
+                Err(_) => self.front_failed(server), // the onion route answers
+            }
+        }
         if let Some(h) = self.onion_for(server) {
             return self.via_tor(&h, request, true).await;
         }
@@ -351,6 +494,13 @@ impl Transport for Routed {
     }
 
     fn set_route(&self, server: ServerId, route: Route) {
+        // The fast lane taken back (RFC 0011): the ordinary route alone.
+        if matches!(route, Route::Off) {
+            if let Ok(mut f) = self.fronts.write() {
+                f.remove(&server);
+            }
+            return;
+        }
         // An onion service: the route for a server with no Nym route, kept
         // aside as the fallback for one with. It needs Tor to carry it.
         if let Route::Onion(h) = &route {
@@ -358,6 +508,31 @@ impl Transport for Routed {
                 && let Ok(mut o) = self.onion.write()
             {
                 o.insert(server, h.clone());
+            }
+            return;
+        }
+        // A fast route (RFC 0011): the vault sends it with the user's
+        // consent. It rides tord's carrier, so it needs Tor, and Maximum
+        // privacy refuses it like every route but the private ones.
+        if let Route::Exit(d, p) | Route::Direct(d, p) = &route {
+            if !self.private.load(std::sync::atomic::Ordering::SeqCst)
+                && self.tor_wanted
+                && let Ok(mut f) = self.fronts.write()
+            {
+                let direct = matches!(route, Route::Direct(..));
+                let down_until = f
+                    .get(&server)
+                    .map(|old| old.down_until)
+                    .unwrap_or_else(std::time::Instant::now);
+                f.insert(
+                    server,
+                    FrontRoute {
+                        domain: d.clone(),
+                        port: *p,
+                        direct,
+                        down_until,
+                    },
+                );
             }
             return;
         }
@@ -395,17 +570,23 @@ const TOR_BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Start `enclave-tord` keeping its state in `state` (`docs/09-transport.md`
 /// §1), as the carrier of netd's requests; [`enclave_tord::launch::Starting::ready`]
-/// says when Tor is up. `direct` (development) dials without Tor.
+/// says when Tor is up. `direct` (development) dials without Tor. `socks`
+/// (`--tor-socks HOST:PORT`) rides a system Tor's SocksPort instead of the
+/// embedded arti.
 async fn spawn_tord(
     bin: &std::path::Path,
     state: &str,
     direct: bool,
+    socks: Option<&str>,
     bridges: &[String],
 ) -> Result<enclave_tord::launch::Starting, String> {
     // Where the helpers share the app's process (Android, iOS), the app
     // chose Tor's port and secret at start and named them in the proxy
     // variables the mixnet client reads; elsewhere they are this run's.
     let mut extra = bridges.to_vec();
+    if let Some(p) = socks {
+        extra.extend(["--tor-socks".to_string(), p.to_string()]);
+    }
     let shared = enclave_platform::process::registered("enclave-tord")
         .then(|| {
             let socks = std::env::var("ENCLAVE_TOR_SOCKS").ok()?;
@@ -524,7 +705,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
     if standalone {
         let _ = enclave_sandbox::process();
     }
-    let (tcp, over_nym, onion) = parse_servers(&args);
+    let (tcp, over_nym, onion, fronts) = parse_servers(&args);
     let Ok(rt) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -584,6 +765,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                 &bin,
                 &state,
                 args.iter().any(|a| a == "--tor-direct"),
+                flag("--tor-socks").as_deref(),
                 &bridges,
             )),
             None => Err("no enclave-tord".into()),
@@ -700,6 +882,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         } else {
             HashMap::new()
         }),
+        fronts: std::sync::RwLock::new(if tor_spawned { fronts } else { HashMap::new() }),
         fallback: std::sync::atomic::AtomicBool::new(false),
         over_nym: std::sync::RwLock::new(if has_nym {
             over_nym.keys().copied().collect()
@@ -1096,6 +1279,7 @@ mod tests {
             tor_wanted: tor,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
+            fronts: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
         };
         (r, over_nym, over_tcp)
@@ -1154,6 +1338,7 @@ mod tests {
             tor_wanted: true,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
+            fronts: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
         };
         r.set_route(id, Route::Nym("ingress".into()));
@@ -1254,6 +1439,7 @@ mod tests {
             tor_wanted: true,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
+            fronts: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
         }
     }
@@ -1272,6 +1458,156 @@ mod tests {
         assert_eq!(r.exchange(&id, b"max".to_vec()).await.unwrap(), b"echo:max");
         // A server with no route at all isn't reached.
         assert!(r.exchange(&[8; 16], b"x".to_vec()).await.is_err());
+    }
+
+    /// RFC 0011: the consented fast route asks the stack's front first; the
+    /// onion route answers when the front doesn't, Maximum privacy refuses
+    /// the fast route, a failed front cools down, and one-way sends get no
+    /// reply back.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_fast_route_rides_the_front_and_falls_back() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let front_up = Arc::new(AtomicBool::new(true));
+        let r = over_tor(fronted_carried(Arc::clone(&front_up)).await);
+        let id: ServerId = [13; 16];
+        r.set_route(id, Route::Onion("stack.onion".into()));
+        r.set_route(id, Route::Exit("a.example".into(), 443));
+        // The front answers first.
+        assert_eq!(r.exchange(&id, b"hi".to_vec()).await.unwrap(), b"front:hi");
+        // One way over the front: no reply back.
+        assert_eq!(r.exchange_oneway(&id, b"w".to_vec()).await.unwrap(), None);
+        // Maximum privacy takes no fast route.
+        r.require_private(true);
+        assert_eq!(r.exchange(&id, b"max".to_vec()).await.unwrap(), b"echo:max");
+        r.require_private(false);
+        // The front failing: the onion route answers, and the front cools
+        // down rather than costing every request a failed attempt.
+        front_up.store(false, Ordering::SeqCst);
+        assert_eq!(r.exchange(&id, b"down".to_vec()).await.unwrap(), b"echo:down");
+        assert!(r.front_for(&id).is_none(), "cooling down");
+        front_up.store(true, Ordering::SeqCst);
+        assert!(
+            r.front_for(&id).is_none(),
+            "still cooling down after it came back"
+        );
+        // The cooldown over, the front carries again.
+        if let Ok(mut f) = r.fronts.write() {
+            f.get_mut(&id).unwrap().down_until = std::time::Instant::now()
+                - FRONT_COOLDOWN
+                - std::time::Duration::from_secs(1);
+        }
+        assert_eq!(r.exchange(&id, b"back".to_vec()).await.unwrap(), b"front:back");
+    }
+
+    /// A tord that answers front exchanges (`front:` + the request) while
+    /// `front_up` says so, and carries onion exchanges to the echo server.
+    async fn fronted_carried(
+        front_up: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Arc<enclave_tord::carrier::Client> {
+        use std::sync::atomic::Ordering;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // The echo server `carried()` uses.
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = l.accept().await else { continue };
+                tokio::spawn(async move {
+                    loop {
+                        let mut n = [0u8; 4];
+                        if s.read_exact(&mut n).await.is_err() {
+                            return;
+                        }
+                        let n = u32::from_be_bytes(n);
+                        let mut b = vec![0u8; (n & !enclave_tord::carrier::ONEWAY_BIT) as usize];
+                        s.read_exact(&mut b).await.unwrap();
+                        let reply = [&b"echo:"[..], &b].concat();
+                        s.write_all(&(reply.len() as u32).to_be_bytes())
+                            .await
+                            .unwrap();
+                        s.write_all(&reply).await.unwrap();
+                    }
+                });
+            }
+        });
+        let (to_tord, mut tord_in) = tokio::io::duplex(1 << 20);
+        let (mut tord_out, from_tord) = tokio::io::duplex(1 << 20);
+        tokio::spawn(async move {
+            loop {
+                let mut n = [0u8; 4];
+                if tord_in.read_exact(&mut n).await.is_err() {
+                    return;
+                }
+                let mut frame = vec![0u8; u32::from_be_bytes(n) as usize];
+                tord_in.read_exact(&mut frame).await.unwrap();
+                let kind = frame[0];
+                let id = u32::from_be_bytes(frame[1..5].try_into().unwrap());
+                let answer: Result<Vec<u8>, String> = match kind {
+                    // A front exchange: `u8 flags ‖ u16 len ‖ domain ‖ request`.
+                    3 => {
+                        let mut rest = &frame[5..];
+                        let flags = rest[0];
+                        rest = &rest[1..];
+                        let dl = u16::from_be_bytes([rest[0], rest[1]]) as usize;
+                        rest = &rest[2 + dl..];
+                        if front_up.load(Ordering::SeqCst) {
+                            if flags & enclave_tord::carrier::ONEWAY != 0 {
+                                Ok(Vec::new())
+                            } else {
+                                Ok([&b"front:"[..], rest].concat())
+                            }
+                        } else {
+                            Err("the front is down".into())
+                        }
+                    }
+                    // An onion exchange: `u8 flags ‖ u16 len ‖ host ‖ u16 port ‖
+                    // request`, carried to the echo server.
+                    1 => {
+                        let mut rest = &frame[5..];
+                        let flags = rest[0];
+                        rest = &rest[1..];
+                        let hl = u16::from_be_bytes([rest[0], rest[1]]) as usize;
+                        let request = &rest[2 + hl + 2..];
+                        let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+                        let mut len = (request.len() as u32)
+                            | if flags & enclave_tord::carrier::ONEWAY != 0 {
+                                enclave_tord::carrier::ONEWAY_BIT
+                            } else {
+                                0
+                            };
+                        if flags & enclave_tord::carrier::DIRECT != 0 {
+                            len |= 0; // unreachable in this fake
+                        }
+                        s.write_all(&len.to_be_bytes()).await.unwrap();
+                        s.write_all(request).await.unwrap();
+                        let mut n = [0u8; 4];
+                        s.read_exact(&mut n).await.unwrap();
+                        let mut reply = vec![0u8; u32::from_be_bytes(n) as usize];
+                        s.read_exact(&mut reply).await.unwrap();
+                        Ok(reply)
+                    }
+                    _ => Err("unknown kind".into()),
+                };
+                let mut out = vec![kind];
+                out.extend_from_slice(&id.to_be_bytes());
+                match answer {
+                    Ok(v) => {
+                        out.push(0);
+                        out.extend_from_slice(&v);
+                    }
+                    Err(why) => {
+                        out.push(1);
+                        out.extend_from_slice(why.as_bytes());
+                    }
+                }
+                tord_out
+                    .write_all(&(out.len() as u32).to_be_bytes())
+                    .await
+                    .unwrap();
+                tord_out.write_all(&out).await.unwrap();
+            }
+        });
+        Arc::new(enclave_tord::carrier::Client::new(from_tord, to_tord))
     }
 
     /// Tor comes up in the background: netd answers at once, a request to
@@ -1365,6 +1701,7 @@ mod tests {
             tor_wanted: true,
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
+            fronts: std::sync::RwLock::new(HashMap::new()),
             fallback: std::sync::atomic::AtomicBool::new(false),
         };
         r.set_route(id, Route::Nym("ingress".into()));

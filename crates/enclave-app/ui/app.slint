@@ -1417,6 +1417,9 @@ export component AppWindow inherits Window {
     in property <string> status-line;
     in property <bool> show-delivery-hint: true;
     in-out property <int> privacy: 0;
+    // The fast-lane consent (RFC 0011): 0 off, 1 through Tor's exit to each
+    // stack's front, 2 straight to it.
+    in-out property <int> fast-route: 0;
     in property <[string]> recovery-words;
     // BIP-39 list the words are shown in (`en`, `es`, … `zh-Hant`).
     in property <string> words-language: "en";
@@ -1769,6 +1772,7 @@ export component AppWindow inherits Window {
     callback mark-checked(string);
     callback copy-text(string);
     callback set-privacy(int);
+    callback set-fast-route(int);
     callback open-sheet(Sheet);
     callback words-saved();
     callback toggle-pick(string);
@@ -4489,6 +4493,46 @@ export component AppWindow inherits Window {
                             border-width: 2px;
                             border-color: root.privacy == i ? Tokens.pine : Tokens.text-muted;
                             if root.privacy == i: Rectangle { width: 10px; height: 10px; border-radius: 5px; background: Tokens.pine; }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: Tokens.space-xs;
+                        Body { text: option.title; font-weight: 600; }
+                        Secondary { text: option.text; }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Tokens.hairline; }
+            Body { text: @tr("Message speed"); font-weight: 600; }
+            Secondary {
+                text: @tr("Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor.");
+            }
+            for option[i] in [
+                { title: @tr("Tor only"), text: @tr("The default. The server never learns your address, and your network only sees Tor.") },
+                { title: @tr("Faster"), text: @tr("Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address.") },
+                { title: @tr("Fastest"), text: @tr("Straight to each server's own address, no Tor. The server learns the address you're sending from, and so does your network. Messages stay sealed and unreadable either way.") },
+            ]: Rectangle {
+                min-height: row2.preferred-height;
+                border-radius: Tokens.radius-control;
+                border-width: root.fast-route == i ? 2px : 1px;
+                border-color: root.fast-route == i ? Tokens.pine : Tokens.hairline;
+                accessible-role: radio-button;
+                accessible-checked: root.fast-route == i;
+                accessible-label: option.title;
+                accessible-action-default => { root.set-fast-route(i); }
+                TouchArea { clicked => { root.set-fast-route(i); } }
+                row2 := HorizontalLayout {
+                    padding: Tokens.space-m;
+                    spacing: Tokens.space-sm;
+                    VerticalLayout {
+                        alignment: start;
+                        Rectangle {
+                            width: 20px;
+                            height: 20px;
+                            border-radius: 10px;
+                            border-width: 2px;
+                            border-color: root.fast-route == i ? Tokens.pine : Tokens.text-muted;
+                            if root.fast-route == i: Rectangle { width: 10px; height: 10px; border-radius: 5px; background: Tokens.pine; }
                         }
                     }
                     VerticalLayout {

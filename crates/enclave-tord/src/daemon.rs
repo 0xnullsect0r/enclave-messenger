@@ -1,7 +1,7 @@
 //! The `enclave-tord` program ([`main_with`]; `src/bin/enclave-tord.rs`
 //! runs it).
 //!
-//! `enclave-tord --state DIR [--port N] [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--carrier] [--standby] [--direct] [--report]`
+//! `enclave-tord --state DIR [--port N] [--tor-socks HOST:PORT] [--bridge LINE]… [--builtin-bridges] [--snowflake] [--pt PATH] [--carrier] [--standby] [--direct] [--report]`
 //!
 //! Reads the SOCKS5 secret from its stdin (one line), confines itself
 //! (IP sockets only; the filesystem limited to `DIR` and what TLS needs),
@@ -14,7 +14,11 @@
 //! Snowflake bridges) reach Tor through bridges (`docs/09-transport.md`
 //! §7): obfs4 in this process, Snowflake and WebTunnel through lyrebird
 //! (`--pt`, or next to this program), started before confinement.
-//! `--direct` dials without Tor, in a `dev-direct` build only (tests and
+//! `--tor-socks HOST:PORT` dials through a system Tor's `SocksPort` instead
+//! of the embedded arti (`socks::SocksDialer`): no bootstrap of our own,
+//! and C-tor is often the faster ride to an onion service. The system Tor
+//! owns its own bridges; `--bridge` and its friends are ignored. `--direct`
+//! dials without Tor, in a `dev-direct` build only (tests and
 //! the local mixnet). With `--carrier`, after `ready` its stdin and stdout
 //! carry netd's requests to servers' onion services and its HTTPS fetches
 //! ([`crate::carrier`], RFC 0010) instead of only telling it to exit.
@@ -62,6 +66,17 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
             .and_then(|i| args.get(i + 1).cloned())
     };
     let direct = args.iter().any(|a| a == "--direct");
+    // A system Tor's SocksPort to dial through instead of embedded arti.
+    let socks = match flag("--tor-socks") {
+        Some(a) => match a.parse() {
+            Ok(p) => Some(p),
+            Err(_) => {
+                eprintln!("enclave-tord: --tor-socks wants HOST:PORT");
+                return ExitCode::FAILURE;
+            }
+        },
+        None => None,
+    };
     #[cfg_attr(not(feature = "tor"), allow(unused_mut))]
     let mut bridges: Vec<String> = args
         .windows(2)
@@ -87,9 +102,9 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         return ExitCode::FAILURE;
     }
     // Snowflake and WebTunnel run in lyrebird, started now: once confined,
-    // this process can't start programs.
+    // this process can't start programs. A system Tor brings its own.
     let needed = crate::managed::needed(&bridges);
-    let managed = if needed.is_empty() || direct {
+    let managed = if needed.is_empty() || direct || socks.is_some() {
         None
     } else {
         let started = crate::managed::in_process(&state, &needed).unwrap_or_else(|| {
@@ -154,7 +169,10 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
-        let boot = tokio::time::timeout(BOOTSTRAP, dialer(direct, &state, &bridges, &methods));
+        let boot = tokio::time::timeout(
+            BOOTSTRAP,
+            dialer(direct, socks, &state, &bridges, &methods),
+        );
         let dialer: Arc<dyn crate::Dialer> = tokio::select! {
             r = boot => match r {
                 Ok(Ok(d)) => d,
@@ -341,6 +359,7 @@ const BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(150);
 
 async fn dialer(
     direct: bool,
+    socks: Option<std::net::SocketAddr>,
     state: &std::path::Path,
     bridges: &[String],
     managed: &[(String, std::net::SocketAddr)],
@@ -351,6 +370,13 @@ async fn dialer(
         #[cfg(not(feature = "dev-direct"))]
         return Err(std::io::Error::other("--direct needs a dev-direct build"));
     }
+    // A system Tor: ready once its SocksPort takes a connection. It may
+    // still be bootstrapping behind that; C-tor holds the requests until
+    // it isn't, as arti's bootstrap wait did for ours.
+    if let Some(proxy) = socks {
+        socks_up(proxy).await?;
+        return Ok(Arc::new(crate::socks::SocksDialer { proxy }));
+    }
     #[cfg(feature = "tor")]
     {
         let d = crate::ArtiDialer::bootstrap(state, bridges, managed).await?;
@@ -360,5 +386,25 @@ async fn dialer(
     {
         let _ = (state, bridges, managed);
         Err(std::io::Error::other("built without Tor"))
+    }
+}
+
+/// How long the SocksPort may take to answer a connection.
+const SOCKS_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Check that the SocksPort at `proxy` takes a connection. It may still be
+/// bootstrapping behind that; C-tor holds requests until it isn't, as our
+/// bootstrap wait held them for arti.
+async fn socks_up(proxy: std::net::SocketAddr) -> std::io::Result<()> {
+    match tokio::time::timeout(SOCKS_WAIT, tokio::net::TcpStream::connect(proxy)).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(std::io::Error::new(
+            e.kind(),
+            format!("no SOCKS port at {proxy}: is the system Tor running?"),
+        )),
+        Err(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("no answer from the SOCKS port at {proxy}"),
+        )),
     }
 }

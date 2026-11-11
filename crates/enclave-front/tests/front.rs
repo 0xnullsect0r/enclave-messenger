@@ -486,3 +486,113 @@ fn base64_std(b: &[u8]) -> String {
     }
     out
 }
+
+/// The fast route (RFC 0011): `POST /net` carries one sealed request to
+/// the server in Enclave's framing and its reply back, over a connection
+/// kept warm; `Enclave-One-Way: 1` asks the server for no reply; without
+/// `[front] net` the route answers 404.
+#[tokio::test(flavor = "multi_thread")]
+async fn net_carries_a_request_to_the_server() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // The server: one framed exchange per connection, answering
+    // "reply:" + the request (nothing for a one-way request).
+    let srv = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let backend = srv.local_addr().unwrap().to_string();
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::new(AtomicUsize::new(0));
+    {
+        let accepted = Arc::clone(&accepted);
+        let seen = Arc::clone(&seen);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = srv.accept().await else { continue };
+                accepted.fetch_add(1, Ordering::SeqCst);
+                let seen = Arc::clone(&seen);
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    loop {
+                        let mut len = [0u8; 4];
+                        if s.read_exact(&mut len).await.is_err() {
+                            return;
+                        }
+                        let n = u32::from_be_bytes(len);
+                        let mut body = vec![0u8; (n & !0x8000_0000) as usize];
+                        if s.read_exact(&mut body).await.is_err() {
+                            return;
+                        }
+                        if n & 0x8000_0000 != 0 {
+                            seen.fetch_add(1, Ordering::SeqCst);
+                            s.write_all(&0u32.to_be_bytes()).await.unwrap();
+                            continue;
+                        }
+                        let reply = [b"reply:", &body[..]].concat();
+                        s.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+                        s.write_all(&reply).await.unwrap();
+                    }
+                });
+            }
+        });
+    }
+
+    // The front, over plain HTTP (the route is the same behind TLS).
+    let dir = temp("net");
+    let site = Site::new(dir.clone(), None)
+        .with_net(Some(backend))
+        .router();
+    let front = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let front_addr = front.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(front, site).await });
+    let http = client(enclave_tls::client_config(rustls::RootCertStore::empty()).unwrap());
+
+    async fn post(
+        http: &Http,
+        port: std::net::SocketAddr,
+        oneway: bool,
+        body: Vec<u8>,
+    ) -> (hyper::StatusCode, Option<String>, Vec<u8>) {
+        let mut b = hyper::Request::post(format!("http://{port}/net"));
+        if oneway {
+            b = b.header("enclave-one-way", "1");
+        }
+        let req = b.body(Full::new(Bytes::from(body))).unwrap();
+        let res = http.request(req).await.unwrap();
+        let status = res.status();
+        let ct = res
+            .headers()
+            .get(hyper::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        (status, ct, body.to_vec())
+    }
+
+    let (status, ct, body) = post(&http, front_addr, false, b"a sealed unit".to_vec()).await;
+    assert_eq!(status, 200);
+    assert_eq!(ct.as_deref(), Some("application/octet-stream"));
+    assert_eq!(body, b"reply:a sealed unit");
+
+    // A second exchange rides the same connection to the server.
+    let (status, _, body) = post(&http, front_addr, false, b"again".to_vec()).await;
+    assert_eq!(status, 200);
+    assert_eq!(body, b"reply:again");
+    assert_eq!(accepted.load(Ordering::SeqCst), 1, "one connection kept warm");
+
+    // One-way: the server is asked for no reply.
+    let (status, _, body) = post(&http, front_addr, true, b"a write".to_vec()).await;
+    assert_eq!(status, 200);
+    assert!(body.is_empty());
+    assert_eq!(seen.load(Ordering::SeqCst), 1, "the one-way bit reached the server");
+
+    // Without `[front] net` the route is closed.
+    let site = Site::new(dir.clone(), None).router();
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let closed_addr = closed.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(closed, site).await });
+    let req = hyper::Request::post(format!("http://{closed_addr}/net"))
+        .body(Full::new(Bytes::from_static(b"x")))
+        .unwrap();
+    let res = http.request(req).await.unwrap();
+    assert_eq!(res.status(), 404);
+    let _ = std::fs::remove_dir_all(&dir);
+}

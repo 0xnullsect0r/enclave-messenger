@@ -8,6 +8,11 @@
 //! `third_party/PATCHES.md`). The port answers only a client that knows the
 //! secret netd gave both of them (RFC 1929 user/password), and only
 //! `CONNECT`: no `BIND`, no UDP.
+//!
+//! With `--tor-socks HOST:PORT` (a system Tor's SocksPort, named by the
+//! profile's `tor-socks.txt`), the daemon dials through that instead of the
+//! embedded arti ([`socks::SocksDialer`]): C-tor is often the faster ride
+//! to an onion service, and it needs no bootstrap of our own.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
@@ -96,6 +101,13 @@ mod arti {
                 t.protocols(vec![name(n)?]).proxy_addr(*addr);
                 b.bridges().transports().push(t);
             }
+            // More exit circuits kept warm than arti's default (2 below a
+            // threshold of 12): the carrier's fetches leave through exits,
+            // and one ready is one round trip saved. Nothing here speeds the
+            // onion paths themselves — their six hops are what they are.
+            b.preemptive_circuits()
+                .min_exit_circs_for_port(3)
+                .disable_at_threshold(16);
             let cfg = b.build().map_err(std::io::Error::other)?;
             let client = arti_client::TorClient::create_bootstrapped(cfg)
                 .await
@@ -140,6 +152,23 @@ pub fn dev_onion(map: &str, host: &str) -> Option<String> {
         .filter_map(|e| e.trim().split_once('='))
         .find(|(name, _)| *name == host)
         .map(|(_, to)| to.to_string())
+}
+
+/// Dials the front of a stack directly, with no Tor in between: the
+/// consented direct fast route (RFC 0011), which asks for speed over the
+/// server not learning this device's address. Only ever used for a front
+/// (`https://domain/net` under the Enclave TLS profile), never for an
+/// onion service.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TcpDialer;
+
+#[async_trait::async_trait]
+impl Dialer for TcpDialer {
+    async fn dial(&self, host: &str, port: u16) -> std::io::Result<Box<dyn socks::Stream>> {
+        let s = tokio::net::TcpStream::connect((host, port)).await?;
+        s.set_nodelay(true)?;
+        Ok(Box::new(s))
+    }
 }
 
 #[cfg(any(test, feature = "dev-direct"))]

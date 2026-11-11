@@ -50,6 +50,10 @@ struct FrontSection {
     /// `http://credgate:7448` on the stack that runs the foundation's
     /// credential gate; empty for none.
     credgate: Option<String>,
+    /// The server on the internal network (`server:7443`) for the fast
+    /// route's `POST /net` (RFC 0011); empty keeps the route closed and the
+    /// stack reachable only through its onion service.
+    net: Option<String>,
     tls: TlsMode,
     acme_email: Option<String>,
     acme_directory: Option<String>,
@@ -86,6 +90,7 @@ impl Default for FrontSection {
             public_dir: PathBuf::from("/var/lib/enclave/public"),
             witness: None,
             credgate: None,
+            net: None,
             tls: TlsMode::Acme,
             acme_email: None,
             acme_directory: None,
@@ -167,6 +172,7 @@ async fn run(args: &[String]) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", cfg.listen_https))?;
     let site = Site::new(cfg.public_dir.clone(), cfg.witness.clone())
         .with_credgate(cfg.credgate.clone())
+        .with_net(cfg.net.clone())
         .router();
     let mut tasks = tokio::task::JoinSet::new();
     tasks.spawn(enclave_front::serve_https(https, site, Arc::clone(&certs)));

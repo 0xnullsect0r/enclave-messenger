@@ -529,6 +529,10 @@ pub struct Snapshot {
     /// mixnet, 1 the mixnet is unreachable and the backup route (Tor to the
     /// server's onion service) can be offered, 2 on the backup route.
     pub route: u8,
+    /// The fast route consent (RFC 0011): 0 off, 1 through Tor's exit to
+    /// each stack's front, 2 straight to it. The saved setting; Maximum
+    /// privacy keeps it from having any effect.
+    pub fast_route: u8,
     /// Tor didn't come up: the network may be blocking it.
     pub tor_blocked: bool,
     /// Tor bridges set here: empty, `builtin`, `snowflake`, or bridge lines.
@@ -725,6 +729,9 @@ pub enum Cmd {
     /// Use the backup route (true), or the mixnet again (false: "Keep
     /// waiting", "Back to the private route").
     BackupRoute(bool),
+    /// The fast-lane consent (RFC 0011): 0 off, 1 through Tor's exit to
+    /// each stack's front, 2 straight to it.
+    FastRoute(u8),
     /// Tor bridges: empty (none), `builtin`, `snowflake`, or bridge lines.
     SetBridges(String),
     /// Put the current conversation on the record (or off it).
@@ -1464,6 +1471,7 @@ impl Snapshot {
             .u8(self.moved)
             .strs(&self.held_moves)
             .u8(self.route)
+            .u8(self.fast_route)
             .bool(self.tor_blocked)
             .str(&self.bridges)
             .str(&self.bridges_error)
@@ -1791,6 +1799,7 @@ impl Snapshot {
             moved: r.u8()?,
             held_moves: r.strs()?,
             route: r.u8()?,
+            fast_route: r.u8()?,
             tor_blocked: r.bool()?,
             bridges: r.str()?,
             bridges_error: r.str()?,
@@ -1997,6 +2006,7 @@ impl Cmd {
             Cmd::ChangeWords => w.u8(61),
             Cmd::PlayClip(c, s) => w.u8(62).str(c).u64(*s),
             Cmd::BackupRoute(on) => w.u8(63).bool(*on),
+            Cmd::FastRoute(v) => w.u8(153).u8(*v),
             Cmd::SetBridges(b) => w.u8(64).str(b),
             Cmd::SetOnRecord(on) => w.u8(65).bool(*on),
             Cmd::SetAnnouncementOnly(on) => w.u8(119).bool(*on),
@@ -2178,6 +2188,7 @@ impl Cmd {
             61 => Cmd::ChangeWords,
             62 => Cmd::PlayClip(r.str()?, r.u64()?),
             63 => Cmd::BackupRoute(r.bool()?),
+            153 => Cmd::FastRoute(r.u8()?),
             64 => Cmd::SetBridges(r.str()?),
             65 => Cmd::SetOnRecord(r.bool()?),
             119 => Cmd::SetAnnouncementOnly(r.bool()?),

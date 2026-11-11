@@ -310,6 +310,26 @@ pub enum Route {
     /// has a Nym route, the fallback, used only with the user's consent and
     /// never in Maximum privacy (`docs/09-transport.md` §7).
     Onion(String),
+    /// Through Tor's exit to the stack's front (`exit:DOMAIN[:PORT]`,
+    /// `POST /net`, RFC 0011; port 443 unless named, as a test stack's
+    /// is): the server sees a Tor exit, not this device, and the path is
+    /// three hops rather than an onion service's six. The front's domain
+    /// is public (it is the descriptor's and the list's); what the route
+    /// gives up is that the stack is seen taking clearnet traffic. Only
+    /// with the user's consent, never in Maximum privacy, and only as the
+    /// fast lane in front of the onion route, which answers whenever the
+    /// front doesn't.
+    Exit(String, u16),
+    /// Straight to the stack's front with no Tor (`direct:DOMAIN[:PORT]`,
+    /// `POST /net`, RFC 0011): the fastest route, and the one that gives
+    /// the most up — the stack learns this device's address, and so does
+    /// whoever watches its link. Only with the user's consent, never in
+    /// Maximum privacy, and only as the fast lane in front of the onion
+    /// route.
+    Direct(String, u16),
+    /// Clears a chosen fast route (`off`, RFC 0011): the server goes back
+    /// to its ordinary route alone (the onion route, or the mixnet).
+    Off,
 }
 
 /// The port of a stack's onion service (`enclave-onion`).
@@ -322,11 +342,34 @@ pub const DEV_TRANSPORT_MARKER: &str = "ENCLAVE-DEV-TRANSPORT-ENABLED";
 
 impl Route {
     /// Parse `HOST:PORT` (a build with the `dev-transport` feature only),
-    /// `nym:ADDRESS` or `onion:HOST.onion`.
+    /// `nym:ADDRESS`, `onion:HOST.onion`, `exit:DOMAIN` or
+    /// `direct:DOMAIN` (the fast routes, RFC 0011: a domain as the
+    /// descriptor's and the list's, no port, no path).
     pub fn parse(s: &str) -> Option<Self> {
+        if s == "off" {
+            return Some(Route::Off);
+        }
         if let Some(h) = s.strip_prefix("onion:") {
             return (h.len() > ".onion".len() && h.ends_with(".onion") && !h.contains(':'))
                 .then(|| Route::Onion(h.into()));
+        }
+        if let Some(d) = s.strip_prefix("exit:").or_else(|| s.strip_prefix("direct:")) {
+            // A domain, and (a test stack's front) a port.
+            let (domain, port) = match d.rsplit_once(':') {
+                Some((d, p)) => match p.parse() {
+                    Ok(p) => (d, p),
+                    Err(_) => return None,
+                },
+                None => (d, 443),
+            };
+            let front = domain.contains('.') && !domain.contains(':') && !domain.contains('/');
+            return front.then(|| {
+                if s.starts_with("exit:") {
+                    Route::Exit(domain.into(), port)
+                } else {
+                    Route::Direct(domain.into(), port)
+                }
+            });
         }
         match s.strip_prefix("nym:") {
             Some(a) if !a.is_empty() => Some(Route::Nym(a.into())),
@@ -345,6 +388,9 @@ impl std::fmt::Display for Route {
             Route::Tcp(a) => write!(f, "{a}"),
             Route::Nym(a) => write!(f, "nym:{a}"),
             Route::Onion(h) => write!(f, "onion:{h}"),
+            Route::Exit(d, p) => write!(f, "exit:{d}:{p}"),
+            Route::Direct(d, p) => write!(f, "direct:{d}:{p}"),
+            Route::Off => write!(f, "off"),
         }
     }
 }

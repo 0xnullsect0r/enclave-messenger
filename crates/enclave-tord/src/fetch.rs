@@ -30,12 +30,21 @@ const WEB_AGENT: &str = "Enclave (+https://github.com/0xnullsect0r/enclave-messe
 /// How long an Enclave service and a web site may take.
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(120);
 const WEB_TIMEOUT: Duration = Duration::from_secs(45);
+/// How long a front exchange may take (`POST /net`, RFC 0011): as long as
+/// a stream on the onion route has to answer.
+const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// A request sender on a warm HTTPS connection to a front.
+type FrontSender = hyper::client::conn::http1::SendRequest<http_body_util::Full<Bytes>>;
 
 /// Makes the requests, through `dialer`.
 pub struct Fetcher {
     dialer: Arc<dyn crate::Dialer>,
     service: Option<Arc<rustls::ClientConfig>>,
     web: Option<Arc<rustls::ClientConfig>>,
+    /// Warm connections to fronts, by domain (RFC 0011): one exchange's
+    /// TLS handshake shouldn't be the next one's too.
+    fronts: std::sync::Mutex<std::collections::HashMap<String, Vec<FrontSender>>>,
 }
 
 fn roots() -> rustls::RootCertStore {
@@ -74,6 +83,7 @@ impl Fetcher {
             dialer,
             service,
             web,
+            fronts: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -111,6 +121,112 @@ impl Fetcher {
         .await
         .map_err(|_| "timed out".to_string())??;
         Ok((status, b))
+    }
+
+    /// One sealed exchange with the front at `domain:port` (`POST /net`,
+    /// RFC 0011): the request as the body, the reply as the answer's. A
+    /// warm connection is kept per domain, so an exchange costs one
+    /// round trip and not a TLS handshake too; one that has gone stale is
+    /// dropped and the exchange tried once more on a new one. `oneway`
+    /// asks the server for no reply (an empty answer).
+    pub async fn exchange(
+        &self,
+        domain: &str,
+        port: u16,
+        request: Vec<u8>,
+        oneway: bool,
+    ) -> Result<Vec<u8>, String> {
+        for attempt in 0..2 {
+            let sender = self.take_front(domain, port).await?;
+            let posted = tokio::time::timeout(
+                EXCHANGE_TIMEOUT,
+                self.post_front(sender, domain, request.clone(), oneway),
+            )
+            .await;
+            match posted {
+                Ok(Ok((sender, reply))) => {
+                    self.give_front(domain, sender);
+                    return Ok(reply);
+                }
+                Ok(Err(_)) | Err(_) if attempt == 0 => continue,
+                Ok(Err(e)) => return Err(e),
+                Err(_) => return Err(format!("{domain}: the front didn't answer in time")),
+            }
+        }
+        unreachable!("the second attempt returns")
+    }
+
+    /// A connection to the front at `domain:port`: a warm one, else a new
+    /// TLS connection under the Enclave TLS profile through the dialer.
+    async fn take_front(&self, domain: &str, port: u16) -> Result<FrontSender, String> {
+        if let Ok(mut fronts) = self.fronts.lock() {
+            if let Some(s) = fronts.get_mut(domain).and_then(|v| v.pop()) {
+                return Ok(s);
+            }
+        }
+        let cfg = self.service.clone().ok_or("no TLS")?;
+        let stream = self
+            .dialer
+            .dial(domain, port)
+            .await
+            .map_err(|e| format!("{domain}: {e}"))?;
+        let name = rustls::pki_types::ServerName::try_from(domain.to_string())
+            .map_err(|_| format!("{domain}: not a name"))?;
+        let tls = tokio_rustls::TlsConnector::from(cfg)
+            .connect(name, stream)
+            .await
+            .map_err(|e| format!("{domain}: {e}"))?;
+        let (sender, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(tls))
+            .await
+            .map_err(|e| format!("{domain}: {e}"))?;
+        tokio::spawn(conn);
+        Ok(sender)
+    }
+
+    /// Put a still-warm connection back.
+    fn give_front(&self, domain: &str, sender: FrontSender) {
+        if let Ok(mut fronts) = self.fronts.lock() {
+            fronts.entry(domain.to_string()).or_default().push(sender);
+        }
+    }
+
+    /// `POST /net` on `sender`: the sender back (for the pool) and the
+    /// reply body (empty for a one-way request).
+    async fn post_front(
+        &self,
+        mut sender: FrontSender,
+        domain: &str,
+        request: Vec<u8>,
+        oneway: bool,
+    ) -> Result<(FrontSender, Vec<u8>), String> {
+        let mut req = hyper::Request::builder()
+            .method(hyper::Method::POST)
+            .uri("/net")
+            .header(hyper::header::HOST, domain)
+            .header(hyper::header::CONTENT_TYPE, "application/octet-stream");
+        if oneway {
+            req = req.header("enclave-one-way", "1");
+        }
+        let req = req
+            .body(http_body_util::Full::new(Bytes::from(request)))
+            .map_err(|e| e.to_string())?;
+        let resp = sender
+            .send_request(req)
+            .await
+            .map_err(|e| format!("{domain}: {e}"))?;
+        match resp.status() {
+            hyper::StatusCode::OK => {}
+            hyper::StatusCode::NOT_FOUND => {
+                return Err(format!("{domain}: the front's fast route is closed"))
+            }
+            s => return Err(format!("{domain}: the front answered {s}")),
+        }
+        let body = http_body_util::Limited::new(resp.into_body(), MAX_BODY)
+            .collect()
+            .await
+            .map_err(|e| format!("{domain}: {e}"))?
+            .to_bytes();
+        Ok((sender, body.to_vec()))
     }
 
     async fn web_get(

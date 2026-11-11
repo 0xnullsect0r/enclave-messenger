@@ -549,6 +549,7 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_username_problem(crate::i18n::tr(&s.username_problem).into());
     ui.set_kt_split(crate::i18n::tr(&s.kt_split).into());
     ui.set_route(i32::from(s.route));
+    ui.set_fast_route(i32::from(s.fast_route));
     ui.set_tor_blocked(s.tor_blocked);
     ui.set_bridges(s.bridges.clone().into());
     ui.set_bridges_error(s.bridges_error.clone().into());

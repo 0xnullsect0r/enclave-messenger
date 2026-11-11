@@ -50,8 +50,16 @@ pub fn start_netd(
     if tord.exists() || enclave_platform::process::registered("enclave-tord") {
         extra.push("--tor".into());
         extra.push(profile.join("tor").to_string_lossy().into_owned());
-        // Bridges the user set (censorship mode).
-        extra.extend(crate::netd::bridge_args(profile));
+        // A system Tor to ride instead of the embedded one, when the user
+        // set one up (`tor-socks.txt`).
+        if let Some(p) = crate::netd::tor_socks_arg(profile) {
+            extra.push("--tor-socks".into());
+            extra.push(p);
+        } else {
+            // Bridges the user set (censorship mode): the system Tor owns
+            // its own.
+            extra.extend(crate::netd::bridge_args(profile));
+        }
     }
     // With servers on the mixnet in the list, their routes are given once
     // the list is read: the mixnet client starts anyway, and waits for its

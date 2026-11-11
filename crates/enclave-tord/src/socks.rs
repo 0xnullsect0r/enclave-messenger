@@ -164,24 +164,47 @@ pub async fn connect(
     host: &str,
     port: u16,
 ) -> std::io::Result<TcpStream> {
+    connect_opt(proxy, Some(secret), host, port).await
+}
+
+/// [`connect`], for a proxy that may want no authentication at all: a
+/// system Tor's `SocksPort` (`--tor-socks`) takes `None`.
+pub async fn connect_opt(
+    proxy: std::net::SocketAddr,
+    secret: Option<&str>,
+    host: &str,
+    port: u16,
+) -> std::io::Result<TcpStream> {
     let mut s = TcpStream::connect(proxy).await?;
-    s.write_all(&[VERSION, 1, USER_PASSWORD]).await?;
+    // What we can offer: no authentication, and user/password when a
+    // secret was given. A proxy that wants neither of those is refused.
+    let mut greeting = vec![VERSION, 1, 0];
+    if secret.is_some() {
+        greeting[1] = 2;
+        greeting.push(USER_PASSWORD);
+    }
+    s.write_all(&greeting).await?;
     let mut m = [0u8; 2];
     s.read_exact(&mut m).await?;
-    if m != [VERSION, USER_PASSWORD] {
-        return Err(refused());
+    match (m, secret) {
+        ([VERSION, 0], _) => {}
+        ([VERSION, USER_PASSWORD], Some(secret)) => {
+            let short =
+                |b: &[u8]| -> std::io::Result<u8> { u8::try_from(b.len()).map_err(|_| refused()) };
+            let mut auth = vec![1, short(crate::USER.as_bytes())?];
+            auth.extend_from_slice(crate::USER.as_bytes());
+            auth.push(short(secret.as_bytes())?);
+            auth.extend_from_slice(secret.as_bytes());
+            s.write_all(&auth).await?;
+            let mut a = [0u8; 2];
+            s.read_exact(&mut a).await?;
+            if a != [1, 0] {
+                return Err(refused());
+            }
+        }
+        _ => return Err(refused()),
     }
     let short = |b: &[u8]| -> std::io::Result<u8> { u8::try_from(b.len()).map_err(|_| refused()) };
-    let mut auth = vec![1, short(crate::USER.as_bytes())?];
-    auth.extend_from_slice(crate::USER.as_bytes());
-    auth.push(short(secret.as_bytes())?);
-    auth.extend_from_slice(secret.as_bytes());
-    s.write_all(&auth).await?;
-    let mut a = [0u8; 2];
-    s.read_exact(&mut a).await?;
-    if a != [1, 0] {
-        return Err(refused());
-    }
     let mut req = vec![VERSION, CONNECT, 0, 3, short(host.as_bytes())?];
     req.extend_from_slice(host.as_bytes());
     req.extend_from_slice(&port.to_be_bytes());
@@ -207,7 +230,27 @@ pub async fn connect(
     } + 2;
     let mut skip = vec![0u8; rest];
     s.read_exact(&mut skip).await?;
+    s.set_nodelay(true)?;
     Ok(s)
+}
+
+/// Dials through another SOCKS5 proxy ([`connect_opt`]): a system Tor's
+/// `SocksPort`, named by `--tor-socks`, so the carrier rides C-tor instead
+/// of the embedded arti (often much faster to an onion service). The proxy
+/// is given no secret: it is one this device's user set up, not one netd
+/// handed out.
+#[derive(Clone, Debug)]
+pub struct SocksDialer {
+    /// The proxy's address (`127.0.0.1:9050` for a system Tor).
+    pub proxy: std::net::SocketAddr,
+}
+
+#[async_trait::async_trait]
+impl Dialer for SocksDialer {
+    async fn dial(&self, host: &str, port: u16) -> std::io::Result<Box<dyn Stream>> {
+        let s = connect_opt(self.proxy, None, host, port).await?;
+        Ok(Box::new(s))
+    }
 }
 
 #[cfg(test)]
@@ -249,6 +292,83 @@ mod tests {
         assert_eq!(&b, b"through the proxy");
 
         assert!(connect(p, "wrong", "localhost", port).await.is_err());
+    }
+
+    /// A SOCKS5 proxy that wants no authentication, as a system Tor's
+    /// SocksPort does: what `SocksDialer` dials through.
+    async fn no_auth_proxy() -> std::net::SocketAddr {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = l.accept().await else {
+                    continue;
+                };
+                tokio::spawn(async move {
+                    let mut b = [0u8; 3];
+                    if s.read_exact(&mut b).await.is_err() || b[1] != 1 || b[2] != 0 {
+                        return;
+                    }
+                    if s.write_all(&[5, 0]).await.is_err() {
+                        return;
+                    }
+                    // Request: ver, cmd, rsv, atyp, address, port.
+                    let mut head = [0u8; 4];
+                    if s.read_exact(&mut head).await.is_err() || head[1] != 1 {
+                        return;
+                    }
+                    let host: String = match head[3] {
+                        1 => {
+                            let mut a = [0u8; 4];
+                            if s.read_exact(&mut a).await.is_err() {
+                                return;
+                            }
+                            std::net::Ipv4Addr::from(a).to_string()
+                        }
+                        3 => {
+                            let mut n = [0u8; 1];
+                            if s.read_exact(&mut n).await.is_err() {
+                                return;
+                            }
+                            let mut d = vec![0u8; usize::from(n[0])];
+                            if s.read_exact(&mut d).await.is_err() {
+                                return;
+                            }
+                            String::from_utf8_lossy(&d).into_owned()
+                        }
+                        _ => return,
+                    };
+                    let mut p = [0u8; 2];
+                    if s.read_exact(&mut p).await.is_err() {
+                        return;
+                    }
+                    let port = u16::from_be_bytes(p);
+                    let Ok(mut far) = TcpStream::connect((host.as_str(), port)).await else {
+                        return;
+                    };
+                    if s.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0])
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let _ = tokio::io::copy_bidirectional(&mut s, &mut far).await;
+                });
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn dials_through_a_no_auth_proxy() {
+        let p = no_auth_proxy().await;
+        let port = echo().await;
+        let d = SocksDialer { proxy: p };
+        let mut s = d.dial("localhost", port).await.unwrap();
+        s.write_all(b"through the system tor").await.unwrap();
+        let mut b = [0u8; 21];
+        s.read_exact(&mut b).await.unwrap();
+        assert_eq!(&b, b"through the system tor");
     }
 
     #[tokio::test]

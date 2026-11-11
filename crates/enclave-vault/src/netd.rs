@@ -28,6 +28,27 @@ type Sockets = Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>
 /// unlocked (Tor Browser keeps its bridges unencrypted too).
 pub const BRIDGES_FILE: &str = "tor-bridges.txt";
 
+/// A system Tor's SocksPort for this profile, in the profile directory:
+/// one line, `HOST:PORT` (for example `127.0.0.1:9050`). With it, netd's
+/// tord rides the system Tor instead of the embedded arti
+/// (`docs/09-transport.md` §1): no bootstrap of its own, and C-tor is often
+/// the faster ride to an onion service. The system Tor owns its bridges
+/// (`tor-bridges.txt` is ignored); give it its own `SocksPort` line with
+/// `IsolateDestAddr`, so the carrier's streams don't share circuits. Kept
+/// outside the sealed profile for the same reason as the bridges.
+pub const TOR_SOCKS_FILE: &str = "tor-socks.txt";
+
+/// netd's `--tor-socks` argument for the SocksPort in `profile` (none
+/// without the file, or with one that isn't `HOST:PORT`: a typo falls back
+/// to the embedded Tor rather than a port that isn't Tor).
+pub fn tor_socks_arg(profile: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(profile.join(TOR_SOCKS_FILE)).ok()?;
+    let t = text.trim();
+    t.parse::<std::net::SocketAddr>()
+        .is_ok()
+        .then(|| t.to_string())
+}
+
 /// netd's arguments for the bridges in `profile` (none without the file).
 pub fn bridge_args(profile: &std::path::Path) -> Vec<String> {
     let Ok(text) = std::fs::read_to_string(profile.join(BRIDGES_FILE)) else {

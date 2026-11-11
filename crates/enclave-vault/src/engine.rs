@@ -4048,6 +4048,15 @@ impl Engine {
                 self.net_failures = 0;
                 self.transport.use_fallback(self.backup_route);
             }
+            Cmd::FastRoute(v) => {
+                // Saved as the client's own setting. Maximum privacy keeps
+                // it from having any effect — netd refuses every route but
+                // the private ones — and the choice made there takes effect
+                // when Maximum is left.
+                if let Some(c) = self.client.as_mut() {
+                    let _ = c.set_fast_route(v.min(2));
+                }
+            }
             Cmd::Privacy(p) => {
                 if let Some(c) = self.client.as_mut() {
                     let _ = c.set_setting("privacy", &[p as u8]);
@@ -5558,6 +5567,13 @@ impl Engine {
         }
         s.recovery_saved = matches!(c.setting("recovery-saved"), Ok(Some(v)) if v == [1]);
         s.privacy = i32::from(matches!(c.setting("privacy"), Ok(Some(v)) if v == [1]));
+        s.fast_route = c
+            .setting("fastroute")
+            .ok()
+            .flatten()
+            .and_then(|b| b.first().copied())
+            .unwrap_or(0)
+            .min(2);
         // The backup route: offered after a minute without the mixnet, when
         // the home server is on the mixnet and has an onion service too, and
         // Maximum is off. A server reached only by its onion service is on
