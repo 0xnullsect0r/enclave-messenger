@@ -350,7 +350,11 @@ impl Net {
 /// reply` back. With `oneway`, the length's top bit is set, as the onion
 /// route's streams do (`enclave_wire::STREAM_ONEWAY`), and the server
 /// answers an empty frame.
-async fn one(conn: &mut tokio::net::TcpStream, request: &[u8], oneway: bool) -> std::io::Result<Vec<u8>> {
+async fn one(
+    conn: &mut tokio::net::TcpStream,
+    request: &[u8],
+    oneway: bool,
+) -> std::io::Result<Vec<u8>> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut len = request.len() as u32;
     if oneway {

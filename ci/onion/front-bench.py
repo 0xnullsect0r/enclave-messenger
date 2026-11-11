@@ -49,9 +49,9 @@ def read_exact(f, n):
 
 
 class Carrier:
-    def __init__(self, tord, state, direct, socks=None):
+    def __init__(self, tord, state, dev=False, socks=None):
         args = [tord, "--state", state, "--carrier"]
-        if direct:
+        if dev:
             args.append("--direct")
         if socks:
             args += ["--tor-socks", socks]
@@ -102,11 +102,12 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--patience", type=float, default=600, help="seconds to wait for a first answer")
     ap.add_argument("--direct", action="store_true", help="tord dials the front itself, no Tor")
+    ap.add_argument("--dev", action="store_true", help="a dev-direct enclave-tord (a local bench)")
     ap.add_argument("--socks", help="a system Tor's SocksPort to ride (HOST:PORT)")
     ap.add_argument("--front-port", type=int, default=443)
     a = ap.parse_args()
 
-    c = Carrier(a.tord, a.state, a.direct, a.socks)
+    c = Carrier(a.tord, a.state, a.dev, a.socks)
     print(f"tord ready in {c.bootstrap:.1f} s")
     # The front may be behind a Tor still coming up: ask until it answers.
     t0 = time.monotonic()

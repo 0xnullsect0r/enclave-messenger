@@ -130,11 +130,7 @@ fn start(args: &[&str]) -> Tord {
     let mut stdin = child.stdin.take().unwrap();
     writeln!(stdin, "{}", "s".repeat(64)).unwrap();
     let out = BufReader::new(child.stdout.take().unwrap());
-    Tord {
-        child,
-        stdin,
-        out,
-    }
+    Tord { child, stdin, out }
 }
 
 fn state() -> std::path::PathBuf {

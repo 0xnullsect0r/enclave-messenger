@@ -36,8 +36,17 @@
 # (live.yml's `onion-live` runs the real thing). Stack b's push relay takes
 # wakes straight from its own server, as on a stack that runs its own.
 #
-# TRANSPORT=nym runs it over a local Nym mixnet instead
-# (ops/compose/compose.localnet.yml, image $LOCALNET_IMAGE from
+# TRANSPORT=front runs it over the fast routes (RFC 0011): every stack's
+# front opens POST /net to its server (NET_UPSTREAM in each .env), and
+# enclave-e2e reaches the stacks only through their fronts via $TORD as
+# its carrier — stacks a and c out of its "exit" (the dev-direct dialer
+# standing in for Tor's exit) and stack b with tord dialing the front
+# itself, the "direct" route. The fronts' certificates are the test CA's
+# (ENCLAVE_NYM_TEST_CA). On a device the onion route answers whenever a
+# front doesn't; here every request goes through a front, which is the
+# point of the variant.
+#
+# TRANSPORT=nym runs it over a local Nym mixnet instead# (ops/compose/compose.localnet.yml, image $LOCALNET_IMAGE from
 # ci/nym-localnet): every stack's ingress joins it, clients reach servers
 # only at their ingresses' Nym addresses through $NYMD (enclave-nymd from
 # the nym/ workspace), and stack b's push wakes cross the mixnet from its
@@ -225,6 +234,9 @@ SERVER_PORT=744$n
 ENCLAVE_NYM_IMAGE=${NYM_IMAGE%:*}
 LOCALNET_DIR=$LOCALNET
 EOF
+    # The fast routes (RFC 0011): each front carries sealed requests to
+    # its server at POST /net.
+    [ "$TRANSPORT" = front ] && echo "NET_UPSTREAM=server:7443" >> "$d/.env"
     cp "$WORK/foundation/foundation.pub" "$d/foundation/"
     if [ "$s" = a ] && [ "$TRANSPORT" = nym ]; then
       # The foundation's credential gate, served by a's front; little work
@@ -339,14 +351,24 @@ EOF
 }
 
 servers_arg() {
-  local s out=()
+  local s out=() n
   for s in "${STACKS[@]}"; do
+    n=$(n_of "$s")
     if [ "$TRANSPORT" = nym ]; then
       out+=("$(cat "$WORK/$s/server.id")=nym:$(tr -d '\n' < "$WORK/$s/ingress.addr")")
     elif [ "$TRANSPORT" = onion ]; then
       out+=("$(cat "$WORK/$s/server.id")=onion:$(onion_of "$s")")
+    elif [ "$TRANSPORT" = front ]; then
+      # The fast routes (RFC 0011), both kinds: out of Tor's exit (stacks a
+      # and c, through the dev-direct tord's dialer) and dialed by tord
+      # itself (stack b), each at its front's HTTPS port.
+      if [ "$s" = b ]; then
+        out+=("$(cat "$WORK/$s/server.id")=direct:127.0.0.1:844$n")
+      else
+        out+=("$(cat "$WORK/$s/server.id")=exit:127.0.0.1:844$n")
+      fi
     else
-      out+=("$(cat "$WORK/$s/server.id")=127.0.0.1:744$(n_of "$s")")
+      out+=("$(cat "$WORK/$s/server.id")=127.0.0.1:744$n")
     fi
   done
   IFS=,; echo "${out[*]}"
@@ -363,6 +385,12 @@ common_args() {
     for s in "${STACKS[@]}"; do map+=("$(onion_of "$s")=127.0.0.1:744$(n_of "$s")"); done
     ENCLAVE_DEV_ONION_MAP=$(IFS=,; echo "${map[*]}")
     export ENCLAVE_DEV_ONION_MAP
+  fi
+  if [ "$TRANSPORT" = front ]; then
+    if [ -z "$TORD" ]; then echo "TRANSPORT=front needs TORD (a dev-direct enclave-tord)" >&2; exit 2; fi
+    COMMON+=(--tord "$TORD")
+    # The fronts' certificates are the test CA's.
+    export ENCLAVE_NYM_TEST_CA=$WORK/tls/ca.pem
   fi
   if [ "$TRANSPORT" = nym ]; then
     COMMON+=(--nymd "$NYMD")

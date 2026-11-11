@@ -379,9 +379,13 @@ async fn front_request(
     let request = rest.get(2..).ok_or("malformed")?;
     let oneway = flags & ONEWAY != 0;
     if flags & DIRECT != 0 {
-        direct.exchange(domain, port, request.to_vec(), oneway).await
+        direct
+            .exchange(domain, port, request.to_vec(), oneway)
+            .await
     } else {
-        fetcher.exchange(domain, port, request.to_vec(), oneway).await
+        fetcher
+            .exchange(domain, port, request.to_vec(), oneway)
+            .await
     }
 }
 

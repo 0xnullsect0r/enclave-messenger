@@ -47,7 +47,7 @@ The kit's guide MUST list, per data type, what an operator **can** and **cannot*
 |---|---|---|
 | Account identity | No | The server has no accounts |
 | Phone number, email | No | Never collected |
-| IP addresses | No | Requests arrive through Tor, at the stack's onion service (or through the Nym mixnet when enabled); not logged |
+| IP addresses | No, unless the stack opened the fast routes (RFC 0011) | Requests arrive through Tor, at the stack's onion service (or through the Nym mixnet when enabled); not logged. A stack that sets `[front] net` and a user who consents to the "Fastest" route: that user's requests reach the front directly, so an order from that date could compel logging of them (the front logs none by design, and every request stays sealed end to end either way). "Faster" users arrive through a Tor exit, like the descriptor's visitors |
 | Message content | No | End-to-end encrypted; keys are only on devices |
 | Contacts, group membership | No | Not visible to the server |
 | Inbox activity (for a known inbox address) | Counts and 60 s timing buckets of writes and polls, from the moment logging is ordered | RT-28 residual: pseudonymous activity from that point on |

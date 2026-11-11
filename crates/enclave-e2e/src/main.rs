@@ -297,6 +297,7 @@ async fn world(args: &[String]) -> R<World> {
     let mut tcp = HashMap::new();
     let mut nym = HashMap::new();
     let mut onion = HashMap::new();
+    let mut fronts = HashMap::new();
     let mut servers = Vec::new();
     for s in need("--servers")?.split(',') {
         match parse_route(s).ok_or_else(|| format!("--servers: {s}"))? {
@@ -312,15 +313,29 @@ async fn world(args: &[String]) -> R<World> {
                 onion.insert(id, h);
                 servers.push(id);
             }
+            (id, Route::Exit(d, p)) => {
+                fronts.insert(id, (d, p, false));
+                servers.push(id);
+            }
+            (id, Route::Direct(d, p)) => {
+                fronts.insert(id, (d, p, true));
+                servers.push(id);
+            }
+            (id, Route::Off) => {}
         }
     }
-    if [!tcp.is_empty(), !nym.is_empty(), !onion.is_empty()]
-        .iter()
-        .filter(|x| **x)
-        .count()
+    if [
+        !tcp.is_empty(),
+        !nym.is_empty(),
+        !onion.is_empty(),
+        !fronts.is_empty(),
+    ]
+    .iter()
+    .filter(|x| **x)
+    .count()
         > 1
     {
-        return Err("--servers: all TCP, all Nym or all onion".into());
+        return Err("--servers: all TCP, all Nym, all onion or all front".into());
     }
     if servers.len() != 3 {
         return Err("--servers: three stacks expected".into());
@@ -346,12 +361,15 @@ async fn world(args: &[String]) -> R<World> {
     // nym-api through enclave-tord's SOCKS5 port, as on a device (Tor),
     // dialling directly behind it. With onion routes tord carries the
     // requests itself, as netd's carrier (RFC 0010), its onion names
-    // mapped to the stacks by `ENCLAVE_DEV_ONION_MAP`.
-    if !onion.is_empty() && flag(args, "--tord").is_none() {
-        return Err("--servers: onion routes need --tord".into());
+    // mapped to the stacks by `ENCLAVE_DEV_ONION_MAP`. With front routes
+    // (RFC 0011) it carries them to the stacks' fronts over the same
+    // carrier (the dev-direct build dials the fronts itself; a device
+    // sends them out of Tor's exit, or asks tord to dial directly).
+    if (!onion.is_empty() || !fronts.is_empty()) && flag(args, "--tord").is_none() {
+        return Err("--servers: onion or front routes need --tord".into());
     }
     let tord = match flag(args, "--tord") {
-        Some(bin) if !nym.is_empty() || !onion.is_empty() => {
+        Some(bin) if !nym.is_empty() || !onion.is_empty() || !fronts.is_empty() => {
             let secret: String = enclave_crypto::rng::HedgedRng::new()
                 .and_then(|mut r| r.array::<32>("e2e/tor-secret"))
                 .map_err(e)?
@@ -364,7 +382,7 @@ async fn world(args: &[String]) -> R<World> {
                 secret,
                 true,
                 true,
-                !onion.is_empty(),
+                !onion.is_empty() || !fronts.is_empty(),
                 &[],
                 Duration::from_secs(30),
             )
@@ -374,7 +392,13 @@ async fn world(args: &[String]) -> R<World> {
         }
         _ => None,
     };
-    let (transport, nymd): (Arc<dyn Transport>, _) = if !onion.is_empty() {
+    let (transport, nymd): (Arc<dyn Transport>, _) = if !fronts.is_empty() {
+        let carrier = tord
+            .as_ref()
+            .and_then(|t| t.carrier.clone())
+            .ok_or("enclave-tord didn't start as a carrier")?;
+        (Arc::new(FrontTransport { carrier, fronts }), None)
+    } else if !onion.is_empty() {
         let carrier = tord
             .as_ref()
             .and_then(|t| t.carrier.clone())
@@ -478,6 +502,63 @@ fn options(dir: &Path) -> R<Options> {
         passphrase: None,
         pw_params: PwParams::FLOOR,
     })
+}
+
+/// Servers reached through tord's carrier, at their fronts (what netd does
+/// on a device whose user consented to a fast route, RFC 0011): `POST
+/// /net` — out of Tor's exit, or dialed by tord itself with the direct
+/// flag. In CI a dev-direct tord dials the fronts behind the test CA
+/// (`ENCLAVE_NYM_TEST_CA`).
+struct FrontTransport {
+    carrier: Arc<enclave_tord::carrier::Client>,
+    fronts: HashMap<[u8; 16], (String, u16, bool)>,
+}
+
+impl FrontTransport {
+    async fn carry(
+        &self,
+        server: &[u8; 16],
+        request: &[u8],
+        oneway: bool,
+    ) -> enclave_net::Result<Vec<u8>> {
+        let (domain, port, direct) = self
+            .fronts
+            .get(server)
+            .ok_or_else(|| enclave_net::NetError::Unreachable("unknown server".into()))?;
+        Ok(self
+            .carrier
+            .front(domain, *port, request, *direct, oneway)
+            .await?)
+    }
+}
+
+#[async_trait::async_trait]
+impl Transport for FrontTransport {
+    async fn exchange(&self, server: &[u8; 16], request: Vec<u8>) -> enclave_net::Result<Vec<u8>> {
+        self.carry(server, &request, false).await
+    }
+
+    async fn exchange_oneway(
+        &self,
+        server: &[u8; 16],
+        request: Vec<u8>,
+    ) -> enclave_net::Result<Option<Vec<u8>>> {
+        self.carry(server, &request, true).await.map(|_| None)
+    }
+
+    async fn server_key(&self, server: &[u8; 16]) -> enclave_net::Result<enclave_rpc::ServerKey> {
+        let bundle = self.carry(server, &[], false).await?;
+        enclave_net::transport::verify_key_bundle(server, &bundle, self.now())
+    }
+
+    async fn fetch(
+        &self,
+        method: &str,
+        url: &str,
+        body: Vec<u8>,
+    ) -> enclave_net::Result<(u16, Vec<u8>)> {
+        Ok(self.carrier.fetch(method, url, &body).await?)
+    }
 }
 
 impl World {

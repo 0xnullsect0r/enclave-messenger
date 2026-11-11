@@ -346,10 +346,7 @@ mod tests {
                     let Ok(mut far) = TcpStream::connect((host.as_str(), port)).await else {
                         return;
                     };
-                    if s.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0])
-                        .await
-                        .is_err()
-                    {
+                    if s.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).await.is_err() {
                         return;
                     }
                     let _ = tokio::io::copy_bidirectional(&mut s, &mut far).await;

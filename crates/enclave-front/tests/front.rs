@@ -506,7 +506,9 @@ async fn net_carries_a_request_to_the_server() {
         let seen = Arc::clone(&seen);
         tokio::spawn(async move {
             loop {
-                let Ok((mut s, _)) = srv.accept().await else { continue };
+                let Ok((mut s, _)) = srv.accept().await else {
+                    continue;
+                };
                 accepted.fetch_add(1, Ordering::SeqCst);
                 let seen = Arc::clone(&seen);
                 tokio::spawn(async move {
@@ -527,7 +529,9 @@ async fn net_carries_a_request_to_the_server() {
                             continue;
                         }
                         let reply = [b"reply:", &body[..]].concat();
-                        s.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+                        s.write_all(&(reply.len() as u32).to_be_bytes())
+                            .await
+                            .unwrap();
                         s.write_all(&reply).await.unwrap();
                     }
                 });
@@ -576,13 +580,21 @@ async fn net_carries_a_request_to_the_server() {
     let (status, _, body) = post(&http, front_addr, false, b"again".to_vec()).await;
     assert_eq!(status, 200);
     assert_eq!(body, b"reply:again");
-    assert_eq!(accepted.load(Ordering::SeqCst), 1, "one connection kept warm");
+    assert_eq!(
+        accepted.load(Ordering::SeqCst),
+        1,
+        "one connection kept warm"
+    );
 
     // One-way: the server is asked for no reply.
     let (status, _, body) = post(&http, front_addr, true, b"a write".to_vec()).await;
     assert_eq!(status, 200);
     assert!(body.is_empty());
-    assert_eq!(seen.load(Ordering::SeqCst), 1, "the one-way bit reached the server");
+    assert_eq!(
+        seen.load(Ordering::SeqCst),
+        1,
+        "the one-way bit reached the server"
+    );
 
     // Without `[front] net` the route is closed.
     let site = Site::new(dir.clone(), None).router();

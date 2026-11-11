@@ -242,6 +242,7 @@ fn snapshot() -> Snapshot {
         moved: 2,
         held_moves: vec!["Cy".into()],
         route: 1,
+        fast_route: 1,
         tor_blocked: true,
         bridges: "builtin".into(),
         bridges_error: String::new(),

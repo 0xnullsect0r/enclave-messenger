@@ -1483,7 +1483,10 @@ mod tests {
         // The front failing: the onion route answers, and the front cools
         // down rather than costing every request a failed attempt.
         front_up.store(false, Ordering::SeqCst);
-        assert_eq!(r.exchange(&id, b"down".to_vec()).await.unwrap(), b"echo:down");
+        assert_eq!(
+            r.exchange(&id, b"down".to_vec()).await.unwrap(),
+            b"echo:down"
+        );
         assert!(r.front_for(&id).is_none(), "cooling down");
         front_up.store(true, Ordering::SeqCst);
         assert!(
@@ -1492,11 +1495,13 @@ mod tests {
         );
         // The cooldown over, the front carries again.
         if let Ok(mut f) = r.fronts.write() {
-            f.get_mut(&id).unwrap().down_until = std::time::Instant::now()
-                - FRONT_COOLDOWN
-                - std::time::Duration::from_secs(1);
+            f.get_mut(&id).unwrap().down_until =
+                std::time::Instant::now() - FRONT_COOLDOWN - std::time::Duration::from_secs(1);
         }
-        assert_eq!(r.exchange(&id, b"back".to_vec()).await.unwrap(), b"front:back");
+        assert_eq!(
+            r.exchange(&id, b"back".to_vec()).await.unwrap(),
+            b"front:back"
+        );
     }
 
     /// A tord that answers front exchanges (`front:` + the request) while
@@ -1511,7 +1516,9 @@ mod tests {
         let addr = l.local_addr().unwrap();
         tokio::spawn(async move {
             loop {
-                let Ok((mut s, _)) = l.accept().await else { continue };
+                let Ok((mut s, _)) = l.accept().await else {
+                    continue;
+                };
                 tokio::spawn(async move {
                     loop {
                         let mut n = [0u8; 4];

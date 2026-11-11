@@ -397,6 +397,7 @@ The key-holding server has no HTTP surface. `enclave-front` is the one process o
 |---|---|
 | `https://<domain>/.well-known/enclave` | `public_dir/descriptor.bin`, as the server wrote it (`application/octet-stream`, cached 5 min); 404 before the first one |
 | `https://<domain>/witness/v1/…` | The stack's witness (§3.3), proxied to it on the internal network (`front.witness`, such as `http://witness:7446`); 404 when none is set |
+| `https://<domain>/net` | The fast routes (RFC 0011, `09-transport.md` §1.1): one sealed request a `POST` carries to the server, on a pooled connection kept warm; an `Enclave-One-Way: 1` header asks the server for no reply; 404 without `[front] net` |
 | `https://<domain>/healthz` | `ok` |
 | `http://<domain>/.well-known/acme-challenge/<token>` | ACME HTTP-01 answers in flight |
 | `http://<domain>/…` | 308 to the same path on `https://<domain>` |
@@ -409,7 +410,7 @@ Certificates (`front.tls`):
 - `files`: `front.cert` and `front.key` (PEM), re-read every hour.
 - `self-signed`: made at start, for development.
 
-Configuration is `[front]` in the TOML file given by `--config`, or `ENCLAVE_FRONT__<KEY>`: `listen_https` (default `0.0.0.0:443`), `listen_http`, `domain` (required), `public_dir`, `witness`, `tls`, `acme_email`, `acme_directory`, `acme_ca_root`, `cert`, `key`, `data_dir`. `enclave-front run` serves; `enclave-front healthcheck` checks that both ports accept connections. Tests (`crates/enclave-front/tests/front.rs`): the descriptor and a real witness reached through the front by `HttpWitness` over the Enclave profile, a classical-only client refused, a certificate replaced while serving, the proxy dropping client headers, the HTTP side's challenge answers and redirect, and the whole ACME flow against pebble (CI job `tls-interop`): an account, the HTTP-01 answer, a certificate trusted under pebble's root and served over the Enclave profile, and a second check that keeps it.
+Configuration is `[front]` in the TOML file given by `--config`, or `ENCLAVE_FRONT__<KEY>`: `listen_https` (default `0.0.0.0:443`), `listen_http`, `domain` (required), `public_dir`, `witness`, `tls`, `acme_email`, `acme_directory`, `acme_ca_root`, `cert`, `key`, `data_dir`, `net` (the server for `POST /net`, such as `server:7443`; empty, the default, keeps the fast routes closed and the stack reachable only through its onion service). `enclave-front run` serves; `enclave-front healthcheck` checks that both ports accept connections. Tests (`crates/enclave-front/tests/front.rs`): the descriptor and a real witness reached through the front by `HttpWitness` over the Enclave profile, a classical-only client refused, a certificate replaced while serving, the proxy dropping client headers, the HTTP side's challenge answers and redirect, a request carried to the server by `POST /net` over one connection kept warm with the one-way bit honoured (`net_carries_a_request_to_the_server`), and the whole ACME flow against pebble (CI job `tls-interop`): an account, the HTTP-01 answer, a certificate trusted under pebble's root and served over the Enclave profile, and a second check that keeps it.
 
 `/credgate/v1/*` is the foundation's credential gate (`enclave-credgate`, `09-transport.md` §7), proxied by the front of the stack that runs it (`[front] credgate`, compose profile `foundation`); other stacks answer 404.
 

@@ -176,9 +176,10 @@ impl Fetcher {
             .connect(name, stream)
             .await
             .map_err(|e| format!("{domain}: {e}"))?;
-        let (sender, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(tls))
-            .await
-            .map_err(|e| format!("{domain}: {e}"))?;
+        let (sender, conn) =
+            hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(tls))
+                .await
+                .map_err(|e| format!("{domain}: {e}"))?;
         tokio::spawn(conn);
         Ok(sender)
     }
@@ -217,7 +218,7 @@ impl Fetcher {
         match resp.status() {
             hyper::StatusCode::OK => {}
             hyper::StatusCode::NOT_FOUND => {
-                return Err(format!("{domain}: the front's fast route is closed"))
+                return Err(format!("{domain}: the front's fast route is closed"));
             }
             s => return Err(format!("{domain}: the front answered {s}")),
         }

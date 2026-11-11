@@ -8,6 +8,10 @@ public_dir = "/var/lib/enclave/public"
 # The stack's witness, proxied at /witness/v1/.
 witness = "http://witness:7446"
 data_dir = "/var/lib/enclave/front"
+# The fast routes (RFC 0011): the server POST /net carries sealed requests
+# to for users who consented to a faster route. Empty (the default) keeps
+# them closed. compose sets it from NET_UPSTREAM.
+# net = "server:7443"
 # tls = "acme"          # or "files" (with cert and key) or "self-signed"
 # acme_directory = "https://acme-v02.api.letsencrypt.org/directory"
 # cert = "/etc/enclave/tls/fullchain.pem"

@@ -450,6 +450,48 @@ jobs:
       - if: always()
         run: TRANSPORT=onion ci/federation/gen.sh down
 
+  federation-e2e-front:
+    name: federation e2e (3 stacks over the fast routes, RFC 0011)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          # Docker Hub rate-limits anonymous pulls from shared runners (a
+          # 429 on a base image failed this job once); its mirror at
+          # mirror.gcr.io serves the same digests, Docker Hub stays the
+          # fallback.
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Server image (ops/docker/Dockerfile)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ops/docker/Dockerfile
+          target: server
+          tags: enclave-server:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Host tools
+        run: |
+          cargo build --release --locked -p enclave-admin -p enclave-e2e
+          # The carrier netd runs on a device; here its dev-direct build
+          # dials the fronts under the test CA instead of through Tor (the
+          # "exit" kind) and itself for the "direct" one.
+          cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
+      - name: Three stacks, one foundation, each front open at POST /net
+        run: TRANSPORT=front ci/federation/gen.sh up
+      - name: End to end over the fronts, with a restart of one stack
+        run: TRANSPORT=front TORD=$PWD/target/release/enclave-tord ci/federation/gen.sh e2e
+      - if: failure()
+        run: TRANSPORT=front ci/federation/gen.sh logs
+      - if: always()
+        run: TRANSPORT=front ci/federation/gen.sh down
+
   federation-e2e-localnet:
     name: federation e2e (3 stacks over a local Nym mixnet)
     runs-on: ubuntu-24.04

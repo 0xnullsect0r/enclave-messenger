@@ -260,6 +260,15 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 - **Tests:** `rt28_server_state_contains_no_ip_or_account` (Sim, M3); `rt28_server_build_reproducible` (CI, M10).
 - **Milestone:** M3, M10.
 
+### RT-29 The consented fast routes seen from the network
+- **Adversary:** A-NET, A-INF.
+- **Attack:** Watch a consenting device's link (`direct`) or both ends of it (`exit`), or compel a stack whose front carries fast traffic.
+- **Fix:** The fast routes are off by default, consented per profile (Settings → Message speed, never in Maximum privacy), and only a fast lane: the onion route answers whenever a front doesn't. Nothing about the requests changes (sealed, fixed-size, cover-paced), and the front can read nothing it carries.
+- **Residual:** On `direct` the stack (and the link's observer) learns the device's IP and that it is talking to that stack; on `exit` the correlation of both ends is easier than over the onion route (three hops, no rendezvous). A stack that opens `[front] net` is visibly taking message traffic on its public domain. RFC 0011's table is the full account.
+- **Spec:** `09-transport.md` §1.1, §7; `01-threat-model.md` §4 (front, ISP, Tor-exit rows); `13-operators.md` §3.
+- **Tests:** `the_fast_route_rides_the_front_and_falls_back` (netd: consent, Maximum refusal, cooldown, one-way); `net_carries_a_request_to_the_server` (front); `routes_parse_and_are_learned` (net).
+- **Milestone:** M6.
+
 ## 2. Summary table
 
 | ID | Attack | Fix (short) | Residual (short) | Spec | Primary test |
@@ -292,6 +301,7 @@ Test naming: `rtNN_<short_description>`. When a row needs several tests they sha
 | RT-26 | Lookalikes/MITM | UTS #39, contact art, in-person | TOFU | 12 §3.3, 03 §6 | `rt26_confusable_username_rejected` |
 | RT-27 | CRQC on metadata | Sealed requests | Routing visible | 09 §2 | `rt27_request_fields_only_inside_pq_seal` |
 | RT-28 | Compelled logging | Nothing to log; repro builds | Pseudonymous activity | 12 §1 | `rt28_server_state_contains_no_ip_or_account` |
+| RT-29 | Fast routes watched | Off by default; consented, never in Maximum; onion fallback | IP↔stack on `direct`; easier timing on `exit` | 09 §1.1 | `the_fast_route_rides_the_front_and_falls_back` |
 
 ## 3. Cross-cutting tests from PLAN §21
 

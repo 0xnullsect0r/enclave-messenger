@@ -353,7 +353,10 @@ impl Route {
             return (h.len() > ".onion".len() && h.ends_with(".onion") && !h.contains(':'))
                 .then(|| Route::Onion(h.into()));
         }
-        if let Some(d) = s.strip_prefix("exit:").or_else(|| s.strip_prefix("direct:")) {
+        if let Some(d) = s
+            .strip_prefix("exit:")
+            .or_else(|| s.strip_prefix("direct:"))
+        {
             // A domain, and (a test stack's front) a port.
             let (domain, port) = match d.rsplit_once(':') {
                 Some((d, p)) => match p.parse() {

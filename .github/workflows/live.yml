@@ -11,7 +11,12 @@ name: Live networks
 # (ci/onion/carrier-bench.py: bootstrap, first answer, round trips), and a
 # wake sent through `enclave-onion forward` to a second onion service, as
 # push egress reaches a push relay. Its numbers go in
-# docs/09-transport.md §6.3.
+# docs/09-transport.md §6.3. The same server behind `enclave-front` with
+# `POST /net` open is also benched over the direct fast route (RFC 0011,
+# ci/onion/front-bench.py: the local cost of the lane — TLS, the pool, the
+# POST — beside the onion numbers; out of a live Tor exit it needs a
+# stack's public domain, so run front-bench.py against your own, without
+# --direct, beside carrier-bench.py).
 #
 # The Nym jobs run `live_bench` (nym/enclave-nym-sdk/examples) through real
 # Tor: an ingress-role client and a device client, both buying zk-nym
@@ -136,6 +141,11 @@ jobs:
         run: |
           cargo build --release --locked -p enclave-server
           cargo build --release --locked -p enclave-tord --features onion-service --bins
+          # The Tor build goes aside; a dev-direct one takes the name for
+          # the direct fast route's bench below.
+          mv target/release/enclave-tord target/release/enclave-tord-tor
+          cargo build --release --locked -p enclave-tord --no-default-features --features dev-direct
+          cargo build --release --locked -p enclave-front
       - name: A dev server behind an onion service, through the carrier
         run: |
           set -euo pipefail
@@ -148,9 +158,44 @@ jobs:
           cat "$work/onion.log"
           host=$(tr -d '\n' < "$work/public/onion.addr")
           test -n "$host"
-          python3 ci/onion/carrier-bench.py target/release/enclave-tord "$work/tor" "$host" \
+          python3 ci/onion/carrier-bench.py target/release/enclave-tord-tor "$work/tor" "$host" \
             --rounds 30 --out onion-bench.json
           { echo '### The onion route over live Tor'; echo '```json'; cat onion-bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: The same server behind its front, over the direct fast route
+        run: |
+          set -euo pipefail
+          work=$WORK
+          # A test CA and a certificate for localhost (as ci/federation
+          # does), a front with POST /net open to the dev server, and the
+          # bench over the direct lane (dev-direct tord dials it under the
+          # test CA). The exit lane needs a public domain: run
+          # front-bench.py against your own stack without --direct.
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes -days 2 \
+            -subj "/CN=bench CA" -keyout "$work/ca.key" -out "$work/ca.pem" 2>/dev/null
+          openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes \
+            -subj "/CN=localhost" -keyout "$work/front.key" -out "$work/front.csr" 2>/dev/null
+          printf 'subjectAltName=DNS:localhost\n' > "$work/front.ext"
+          openssl x509 -req -in "$work/front.csr" -CA "$work/ca.pem" -CAkey "$work/ca.key" \
+            -CAcreateserial -days 2 -extfile "$work/front.ext" -out "$work/front.cert.pem" 2>/dev/null
+          mkdir -p "$work/front-public" "$work/front-data"
+          cat > "$work/front.toml" <<EOF
+          [front]
+          listen_https = "127.0.0.1:17448"
+          domain = "localhost"
+          public_dir = "$work/front-public"
+          data_dir = "$work/front-data"
+          tls = "files"
+          cert = "$work/front.cert.pem"
+          key = "$work/front.key"
+          net = "127.0.0.1:17443"
+          EOF
+          target/release/enclave-front run --config "$work/front.toml" > "$work/front.log" 2>&1 &
+          for _ in $(seq 60); do grep -q "enclave-front" "$work/front.log" && break; sleep 1; done
+          cat "$work/front.log"
+          ENCLAVE_NYM_TEST_CA="$work/ca.pem" \
+            python3 ci/onion/front-bench.py target/release/enclave-tord "$work/tor-direct" \
+            localhost --front-port 17448 --dev --direct --rounds 30 --out front-bench.json
+          { echo '### The direct fast route to a local front (RFC 0011)'; echo '```json'; cat front-bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: A wake through enclave-onion forward to a push relay's onion service
         run: |
           set -euo pipefail

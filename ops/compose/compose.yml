@@ -21,8 +21,12 @@
 # profile) and the call relay (UDP). The server holds the keys and has no
 # HTTP surface; it sits on the internal `backend` network, reached only
 # through the stack's onion service (and its Nym ingress with profile
-# `nym`; compose.dev.yml maps its port for development). Every container
-# runs as
+# `nym`; compose.dev.yml maps its port for development). Setting
+# NET_UPSTREAM in .env opens the fast routes (RFC 0011): the front carries
+# sealed requests to the server at POST /net for users who consent to a
+# faster route (out of Tor's exit, or straight to it — never in Maximum
+# privacy, and the onion route answers whenever the front doesn't). Every
+# container runs as
 # an unprivileged user with no capabilities and a read-only root
 # filesystem; state lives in the named volumes below.
 
@@ -113,6 +117,9 @@ services:
       ENCLAVE_FRONT__TLS: ${TLS_MODE:-acme}
       ENCLAVE_FRONT__ACME_EMAIL: ${ACME_EMAIL:-}
       ENCLAVE_FRONT__CREDGATE: ${CREDGATE_UPSTREAM:-}
+      # The fast routes (RFC 0011): the server for POST /net. Empty (the
+      # default) keeps them closed.
+      ENCLAVE_FRONT__NET: ${NET_UPSTREAM:-}
     ports:
       - "${FRONT_HTTP_PORT:-80}:80"
       - "${FRONT_HTTPS_PORT:-443}:443"
