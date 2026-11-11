@@ -1218,7 +1218,11 @@ pub async fn run_with(
                             Route::Tcp(a) => {
                                 routes.insert(*s, *a);
                             }
-                            Route::Nym(_) | Route::Onion(_) => {
+                            Route::Nym(_)
+                            | Route::Onion(_)
+                            | Route::Exit(..)
+                            | Route::Direct(..)
+                            | Route::Off => {
                                 eprintln!(
                                     "enclave-vault: no netd, so no mixnet or Tor route to a server"
                                 );

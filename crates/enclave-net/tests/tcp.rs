@@ -138,6 +138,25 @@ async fn routes_parse_and_are_learned() {
     ] {
         assert_eq!(Route::parse(bad), None, "{bad}");
     }
+    // The fast routes (RFC 0011): a domain, a port 443 unless named, and
+    // `off` to take one back.
+    let (_, r) = parse_route(&format!("{hex}=exit:a.example")).unwrap();
+    assert_eq!(r, Route::Exit("a.example".into(), 443));
+    assert_eq!(Route::parse(&r.to_string()), Some(r));
+    let (_, r) = parse_route(&format!("{hex}=direct:a.example:8443")).unwrap();
+    assert_eq!(r, Route::Direct("a.example".into(), 8443));
+    assert_eq!(Route::parse(&r.to_string()), Some(r));
+    assert_eq!(Route::parse("off"), Some(Route::Off));
+    assert_eq!(Route::Off.to_string(), "off");
+    for bad in [
+        "exit:",
+        "exit:a.example:",
+        "exit:a.example:notaport",
+        "exit:localhost",
+        "direct:abc",
+    ] {
+        assert_eq!(Route::parse(bad), None, "{bad}");
+    }
 
     let (addr, real) = spawn_server().await;
     let t = TcpTransport::new(HashMap::new());
