@@ -4383,7 +4383,14 @@ impl Engine {
         if matches!(self.mode, Mode::Server { .. }) {
             self.tor_state = self.transport.tor_status().await.unwrap_or(0);
             self.tor_blocked = self.tor_state == 2;
+            let was = self.fast_lane;
             self.fast_lane = self.transport.fast_status().await.unwrap_or(0);
+            // A lane that was carrying and stopped: say so once, in the
+            // status line (Settings → Message speed carries the standing
+            // word).
+            if was == 1 && self.fast_lane == 2 {
+                self.status = "A faster route didn't answer just now; Tor is carrying it.".into();
+            }
         }
     }
 

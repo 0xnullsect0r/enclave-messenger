@@ -225,9 +225,11 @@ Per route, against the tables in `01-threat-model.md` §3:
 
 ## Open questions
 
-- Should the front's pool cap concurrent connections to the server, or does
-  the server's own accept backlog suffice? (Current answer: no cap; the
-  onion route opens streams just as freely.)
-- Should a 404 from a front cool it down for longer than a failure (the
-  stack has said it takes no fast traffic)? (Current answer: the same 60 s;
-  cheap either way.)
+1. **Resolved:** the pools cap what they keep warm — the client's tord holds
+   at most 8 TLS connections per front (`FRONTS_PER`), the front at most 8
+   to its server (`NET_IDLE`), both sized after the carrier's `STREAMS = 6`
+   with spares; a burst leaves no pile of idle connections behind.
+2. **Resolved:** a 404 cools a front down for the same 60 s as a failure.
+   The stack has said it takes no fast traffic, but 60 s of onion-route
+   answers is cheap either way, and one code path is easier to reason
+   about than two.

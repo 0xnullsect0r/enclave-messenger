@@ -600,6 +600,19 @@ fn main() -> Result<(), slint::PlatformError> {
         view::apply(&ui, &offline);
         shot("27-tor-blocked-phone", phone);
         view::apply(&ui, &data);
+        // The message-speed choice, its lane carrying, and Tor still
+        // connecting under it (RFC 0011).
+        let mut speed = data.clone();
+        speed.fast_route = 1;
+        speed.fast_lane = 1;
+        speed.tor_state = 3;
+        view::apply(&ui, &speed);
+        ui.set_sheet(Sheet::Settings);
+        ui.set_settings_scroll(-700.);
+        shot("63-message-speed-phone", phone);
+        ui.set_settings_scroll(0.);
+        ui.set_sheet(Sheet::None);
+        view::apply(&ui, &data);
 
         // A picture from Sam, with its preview (as mediad would send it).
         let mut pic = data.clone();

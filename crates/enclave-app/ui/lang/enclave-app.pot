@@ -119,6 +119,10 @@ msgstr ""
 msgid "A backup is on your server now, and is renewed every week."
 msgstr ""
 
+#: enclave-vault/src/engine.rs
+msgid "A faster route didn't answer just now; Tor is carrying it."
+msgstr ""
+
 #: ui/app.slint
 msgid "A few words (optional with a picture)"
 msgstr ""
@@ -177,6 +181,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
+msgstr ""
+
+#: ui/app.slint
+msgid "A server's faster route didn't answer just now; Tor is carrying it until that comes back."
 msgstr ""
 
 #: enclave-vault/src/engine/stories.rs
@@ -293,6 +301,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Anonymous"
+msgstr ""
+
+#: ui/app.slint
+msgid "Another copy of Enclave is using Tor on this profile. This one continues when it closes."
+msgstr ""
+
+#: ui/app.slint
+msgid "Another copy of Enclave is using Tor on this profile. This one takes over when it closes."
 msgstr ""
 
 #: ui/app.slint
@@ -716,7 +732,15 @@ msgid "Compare these numbers with {} in person or on a call. If every group matc
 msgstr ""
 
 #: ui/app.slint
+msgid "Connected. Your messages travel through it; the first connection of a session can take a minute."
+msgstr ""
+
+#: ui/app.slint
 msgid "Connecting…"
+msgstr ""
+
+#: ui/app.slint
+msgid "Connecting… The first time takes up to a few minutes; things speed up after that."
 msgstr ""
 
 #: ui/app.slint
@@ -841,6 +865,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Couldn't close the poll. Check your connection."
+msgstr ""
+
+#: ui/app.slint
+msgid "Couldn't connect from this network. A bridge below may get through."
 msgstr ""
 
 #: enclave-vault/src/calls.rs
@@ -1520,6 +1548,10 @@ msgid "Every message travels as a sealed unit of exactly the same size, so a ser
 msgstr ""
 
 #: ui/app.slint
+msgid "Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor."
+msgstr ""
+
+#: ui/app.slint
 msgid "Everyone can still read, vote in polls and react."
 msgstr ""
 
@@ -1545,6 +1577,14 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Extra protection: finishing…"
+msgstr ""
+
+#: ui/app.slint
+msgid "Faster"
+msgstr ""
+
+#: ui/app.slint
+msgid "Fastest"
 msgstr ""
 
 #: ui/app.slint
@@ -1785,6 +1825,10 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "In demo mode nothing you type leaves this computer."
+msgstr ""
+
+#: ui/app.slint
+msgid "In use: servers that opened their faster route are answering on it."
 msgstr ""
 
 #: ui/app.slint
@@ -2081,6 +2125,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Message requests"
+msgstr ""
+
+#: ui/app.slint
+msgid "Message speed"
 msgstr ""
 
 #: ui/app.slint
@@ -3396,6 +3444,10 @@ msgid "Storing your encrypted vault key…"
 msgstr ""
 
 #: ui/app.slint
+msgid "Straight to each server's own address, no Tor. The server learns the address you're sending from, and so does your network. Messages stay sealed and unreadable either way."
+msgstr ""
+
+#: ui/app.slint
 msgid "Take back your reaction"
 msgstr ""
 
@@ -3565,6 +3617,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "The camera starts when you press Record."
+msgstr ""
+
+#: ui/app.slint
+msgid "The default. The server never learns your address, and your network only sees Tor."
 msgstr ""
 
 #: ui/app.slint
@@ -3832,6 +3888,10 @@ msgid "Those words don't match, so nothing was linked. If you didn't start this,
 msgstr ""
 
 #: ui/app.slint
+msgid "Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address."
+msgstr ""
+
+#: ui/app.slint
 msgid "To check the call, both of you read these out:"
 msgstr ""
 
@@ -3860,7 +3920,23 @@ msgid "Too many wrong PINs. Try again at {}."
 msgstr ""
 
 #: ui/app.slint
+msgid "Tor"
+msgstr ""
+
+#: ui/app.slint
 msgid "Tor bridges"
+msgstr ""
+
+#: ui/app.slint
+msgid "Tor didn't start. Restart Enclave, or set a bridge below."
+msgstr ""
+
+#: ui/app.slint
+msgid "Tor is connecting. The first time takes up to a few minutes; this same step is seconds once it's up."
+msgstr ""
+
+#: ui/app.slint
+msgid "Tor only"
 msgstr ""
 
 #: ui/app.slint

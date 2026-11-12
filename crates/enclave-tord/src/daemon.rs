@@ -126,11 +126,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
         .as_ref()
         .map(|m| m.methods.clone())
         .unwrap_or_default();
-    let ro: Vec<std::path::PathBuf> = READ_ONLY
-        .iter()
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.exists())
-        .collect();
+    let ro = read_only();
     if standalone {
         let fs = enclave_sandbox::filesystem(std::slice::from_ref(&state), &ro, false);
         let sc = enclave_sandbox::syscalls(enclave_sandbox::Profile::Netd, false);
@@ -235,6 +231,28 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
 
 /// The file in the state directory a running tord holds locked.
 const CLAIM: &str = "enclave-tord.lock";
+
+/// What TLS and name resolution may read (arti's own TLS to the Tor
+/// network, and the user and group databases), plus, in a development
+/// build, the test CA (`ENCLAVE_NYM_TEST_CA`, the same file the fetcher's
+/// roots read): without it the confinement would keep the CA out, and
+/// every test front's certificate would fail as an unknown issuer. Never
+/// in a release build (the `dev-direct` feature isn't in one).
+fn read_only() -> Vec<std::path::PathBuf> {
+    let mut ro: Vec<std::path::PathBuf> = READ_ONLY
+        .iter()
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.exists())
+        .collect();
+    #[cfg(feature = "dev-direct")]
+    if let Some(p) = std::env::var_os("ENCLAVE_NYM_TEST_CA") {
+        let p = std::path::PathBuf::from(p);
+        if p.exists() {
+            ro.push(p);
+        }
+    }
+    ro
+}
 
 /// How often a waiting tord looks at the state directory again.
 const CLAIM_POLL: std::time::Duration = std::time::Duration::from_millis(500);

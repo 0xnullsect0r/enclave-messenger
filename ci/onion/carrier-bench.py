@@ -44,9 +44,11 @@ def read_exact(f, n):
 
 
 class Carrier:
-    def __init__(self, tord, state, direct=False):
+    def __init__(self, tord, state, direct=False, socks=None):
         self.p = subprocess.Popen(
-            [tord, "--state", state, "--carrier"] + (["--direct"] if direct else []),
+            [tord, "--state", state, "--carrier"]
+            + (["--direct"] if direct else [])
+            + (["--tor-socks", socks] if socks else []),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
@@ -95,9 +97,10 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--patience", type=float, default=600, help="seconds to wait for a first answer")
     ap.add_argument("--direct", action="store_true", help="a dev-direct enclave-tord (no Tor)")
+    ap.add_argument("--socks", help="a system Tor's SocksPort to ride (HOST:PORT) instead of the embedded arti")
     a = ap.parse_args()
 
-    c = Carrier(a.tord, a.state, a.direct)
+    c = Carrier(a.tord, a.state, a.direct, a.socks)
     print(f"bootstrapped Tor in {c.bootstrap:.1f} s")
     # A new onion service takes a while to be reachable: ask until it is.
     t0 = time.monotonic()

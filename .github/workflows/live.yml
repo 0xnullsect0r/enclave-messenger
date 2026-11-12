@@ -8,7 +8,9 @@ name: Live networks
 # `onion-live` is the route devices take: a dev server behind
 # enclave-onion's onion service on this runner, reached through
 # enclave-tord as netd's carrier over the live Tor network
-# (ci/onion/carrier-bench.py: bootstrap, first answer, round trips), and a
+# (ci/onion/carrier-bench.py: bootstrap, first answer, round trips) — once
+# over the embedded arti and once over a system C-tor (`--tor-socks`,
+# RFC 0011 §5, the same route through a different Tor) — and a
 # wake sent through `enclave-onion forward` to a second onion service, as
 # push egress reaches a push relay. Its numbers go in
 # docs/09-transport.md §6.3. The same server behind `enclave-front` with
@@ -160,7 +162,21 @@ jobs:
           test -n "$host"
           python3 ci/onion/carrier-bench.py target/release/enclave-tord-tor "$work/tor" "$host" \
             --rounds 30 --out onion-bench.json
-          { echo '### The onion route over live Tor'; echo '```json'; cat onion-bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### The onion route over live Tor (embedded arti)'; echo '```json'; cat onion-bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "HOST=$host" >> "$GITHUB_ENV"
+      - name: The same route over a system Tor (C-tor, --tor-socks)
+        run: |
+          set -euo pipefail
+          work=$WORK
+          sudo apt-get install -y --no-install-recommends tor >/dev/null
+          mkdir -p "$work/ctor-data"
+          tor --SocksPort 127.0.0.1:9050 IsolateDestAddr --DataDirectory "$work/ctor-data" \
+            > "$work/ctor.log" 2>&1 &
+          for _ in $(seq 300); do grep -q 'Bootstrapped 100%' "$work/ctor.log" && break; sleep 1; done
+          grep -q 'Bootstrapped 100%' "$work/ctor.log" || { cat "$work/ctor.log"; exit 1; }
+          python3 ci/onion/carrier-bench.py target/release/enclave-tord-tor "$work/tor-ctor" "$HOST" \
+            --rounds 30 --socks 127.0.0.1:9050 --out onion-ctor-bench.json
+          { echo '### The onion route over live Tor (a system C-tor)'; echo '```json'; cat onion-ctor-bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: The same server behind its front, over the direct fast route
         run: |
           set -euo pipefail
@@ -170,13 +186,13 @@ jobs:
           # bench over the direct lane (dev-direct tord dials it under the
           # test CA). The exit lane needs a public domain: run
           # front-bench.py against your own stack without --direct.
-          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes -days 2 \
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes -days 2 -sha384 \
             -subj "/CN=bench CA" -keyout "$work/ca.key" -out "$work/ca.pem" 2>/dev/null
           openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes \
             -subj "/CN=localhost" -keyout "$work/front.key" -out "$work/front.csr" 2>/dev/null
           printf 'subjectAltName=DNS:localhost\n' > "$work/front.ext"
           openssl x509 -req -in "$work/front.csr" -CA "$work/ca.pem" -CAkey "$work/ca.key" \
-            -CAcreateserial -days 2 -extfile "$work/front.ext" -out "$work/front.cert.pem" 2>/dev/null
+            -CAcreateserial -days 2 -sha384 -extfile "$work/front.ext" -out "$work/front.cert.pem" 2>/dev/null
           mkdir -p "$work/front-public" "$work/front-data"
           cat > "$work/front.toml" <<EOF
           [front]

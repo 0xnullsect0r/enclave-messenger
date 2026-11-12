@@ -1157,6 +1157,9 @@ component CallGrid inherits Rectangle {
 component SheetFrame inherits Rectangle {
     in property <string> title;
     in property <length> max-card-width: 520px;
+    // Where the body is scrolled (0px: at its top). Two-way, so tests and
+    // screenshots can position a sheet's content.
+    in-out property <length> scroll-offset;
     callback close();
     background: #0000008c;
     accessible-role: groupbox;
@@ -1185,6 +1188,7 @@ component SheetFrame inherits Rectangle {
                 vertical-stretch: 1;
                 content-width: self.width;
                 content-height: inner.preferred-height;
+                viewport-y <=> root.scroll-offset;
                 inner := VerticalLayout {
                     x: 0;
                     y: 0;
@@ -1426,6 +1430,9 @@ export component AppWindow inherits Window {
     // How the consented fast lane is doing: 0 none set, 1 a front answered,
     // 2 the onion route answered for it.
     in property <int> fast-lane: 0;
+    // Where the Settings sheet is scrolled (0px: at its top), for tests
+    // and screenshots.
+    in-out property <length> settings-scroll: 0px;
     in property <[string]> recovery-words;
     // BIP-39 list the words are shown in (`en`, `es`, … `zh-Hant`).
     in property <string> words-language: "en";
@@ -4435,6 +4442,7 @@ export component AppWindow inherits Window {
 
         if root.sheet == Sheet.settings: SheetFrame {
             title: @tr("Settings");
+            scroll-offset <=> root.settings-scroll;
             close => { root.sheet = Sheet.none; }
             Body {
                 text: @tr("Your profile");
@@ -4522,12 +4530,6 @@ export component AppWindow inherits Window {
             Secondary {
                 text: @tr("Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor.");
             }
-            // What the chosen lane is actually doing right now.
-            if root.fast-route > 0 && root.fast-lane > 0: Secondary {
-                text: root.fast-lane == 1
-                    ? @tr("In use: servers that opened their faster route are answering on it.")
-                    : @tr("A server's faster route didn't answer just now; Tor is carrying it until that comes back.");
-            }
             for option[i] in [
                 { title: @tr("Tor only"), text: @tr("The default. The server never learns your address, and your network only sees Tor.") },
                 { title: @tr("Faster"), text: @tr("Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address.") },
@@ -4562,6 +4564,12 @@ export component AppWindow inherits Window {
                         Secondary { text: option.text; }
                     }
                 }
+            }
+            // What the chosen lane is actually doing right now.
+            if root.fast-route > 0 && root.fast-lane > 0: Secondary {
+                text: root.fast-lane == 1
+                    ? @tr("In use: servers that opened their faster route are answering on it.")
+                    : @tr("A server's faster route didn't answer just now; Tor is carrying it until that comes back.");
             }
             Rectangle { height: 1px; background: Tokens.hairline; }
             if root.home-label != "": Body { text: @tr("Your server"); font-weight: 600; }

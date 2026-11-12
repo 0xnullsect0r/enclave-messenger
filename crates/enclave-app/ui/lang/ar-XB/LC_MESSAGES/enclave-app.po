@@ -121,6 +121,10 @@ msgstr "‫A PIN needs at least ‬{}‫ digits.‬"
 msgid "A backup is on your server now, and is renewed every week."
 msgstr "‫A backup is on your server now, and is renewed every week.‬"
 
+#: enclave-vault/src/engine.rs
+msgid "A faster route didn't answer just now; Tor is carrying it."
+msgstr "‫A faster route didn't answer just now; Tor is carrying it.‬"
+
 #: ui/app.slint
 msgid "A few words (optional with a picture)"
 msgstr "‫A few words (optional with a picture)‬"
@@ -180,6 +184,10 @@ msgstr "‫A reaction replaces your earlier one on that message. They see it cha
 #: ui/app.slint
 msgid "A report was saved on this device. Nothing was sent. You can read it and choose whether to share it."
 msgstr "‫A report was saved on this device. Nothing was sent. You can read it and choose whether to share it.‬"
+
+#: ui/app.slint
+msgid "A server's faster route didn't answer just now; Tor is carrying it until that comes back."
+msgstr "‫A server's faster route didn't answer just now; Tor is carrying it until that comes back.‬"
 
 #: enclave-vault/src/engine/stories.rs
 msgid "A story needs a picture or a few words (at most 700 bytes)."
@@ -296,6 +304,14 @@ msgstr "‫Animated picture‬"
 #: ui/app.slint
 msgid "Anonymous"
 msgstr "‫Anonymous‬"
+
+#: ui/app.slint
+msgid "Another copy of Enclave is using Tor on this profile. This one continues when it closes."
+msgstr "‫Another copy of Enclave is using Tor on this profile. This one continues when it closes.‬"
+
+#: ui/app.slint
+msgid "Another copy of Enclave is using Tor on this profile. This one takes over when it closes."
+msgstr "‫Another copy of Enclave is using Tor on this profile. This one takes over when it closes.‬"
 
 #: ui/app.slint
 msgid "Answer"
@@ -718,8 +734,16 @@ msgid "Compare these numbers with {} in person or on a call. If every group matc
 msgstr "‫Compare these numbers with ‬{}‫ in person or on a call. If every group matches, tap They match.‬"
 
 #: ui/app.slint
+msgid "Connected. Your messages travel through it; the first connection of a session can take a minute."
+msgstr "‫Connected. Your messages travel through it; the first connection of a session can take a minute.‬"
+
+#: ui/app.slint
 msgid "Connecting…"
 msgstr "‫Connecting…‬"
+
+#: ui/app.slint
+msgid "Connecting… The first time takes up to a few minutes; things speed up after that."
+msgstr "‫Connecting… The first time takes up to a few minutes; things speed up after that.‬"
 
 #: ui/app.slint
 msgid "Contact you shared"
@@ -844,6 +868,10 @@ msgstr "‫Couldn't claim that name. Try again in a moment.‬"
 #: enclave-vault/src/engine.rs
 msgid "Couldn't close the poll. Check your connection."
 msgstr "‫Couldn't close the poll. Check your connection.‬"
+
+#: ui/app.slint
+msgid "Couldn't connect from this network. A bridge below may get through."
+msgstr "‫Couldn't connect from this network. A bridge below may get through.‬"
 
 #: enclave-vault/src/calls.rs
 msgid "Couldn't connect the call."
@@ -1522,6 +1550,10 @@ msgid "Every message travels as a sealed unit of exactly the same size, so a ser
 msgstr "‫Every message travels as a sealed unit of exactly the same size, so a server can't tell a short hello from a long letter.‬"
 
 #: ui/app.slint
+msgid "Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor."
+msgstr "‫Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor.‬"
+
+#: ui/app.slint
 msgid "Everyone can still read, vote in polls and react."
 msgstr "‫Everyone can still read, vote in polls and react.‬"
 
@@ -1548,6 +1580,14 @@ msgstr "‫Everything sent in this conversation, newest last. Files stay sealed 
 #: ui/app.slint
 msgid "Extra protection: finishing…"
 msgstr "‫Extra protection: finishing…‬"
+
+#: ui/app.slint
+msgid "Faster"
+msgstr "‫Faster‬"
+
+#: ui/app.slint
+msgid "Fastest"
+msgstr "‫Fastest‬"
 
 #: ui/app.slint
 msgid "Fewer people"
@@ -1788,6 +1828,10 @@ msgstr "‫In backups you save here. They can get large.‬"
 #: enclave-vault/src/engine.rs
 msgid "In demo mode nothing you type leaves this computer."
 msgstr "‫In demo mode nothing you type leaves this computer.‬"
+
+#: ui/app.slint
+msgid "In use: servers that opened their faster route are answering on it."
+msgstr "‫In use: servers that opened their faster route are answering on it.‬"
 
 #: ui/app.slint
 msgid "Include photos and files"
@@ -2084,6 +2128,10 @@ msgstr "‫Message request from ‬{}"
 #: ui/app.slint
 msgid "Message requests"
 msgstr "‫Message requests‬"
+
+#: ui/app.slint
+msgid "Message speed"
+msgstr "‫Message speed‬"
 
 #: ui/app.slint
 msgid "Messages"
@@ -3398,6 +3446,10 @@ msgid "Storing your encrypted vault key…"
 msgstr "‫Storing your encrypted vault key…‬"
 
 #: ui/app.slint
+msgid "Straight to each server's own address, no Tor. The server learns the address you're sending from, and so does your network. Messages stay sealed and unreadable either way."
+msgstr "‫Straight to each server's own address, no Tor. The server learns the address you're sending from, and so does your network. Messages stay sealed and unreadable either way.‬"
+
+#: ui/app.slint
 msgid "Take back your reaction"
 msgstr "‫Take back your reaction‬"
 
@@ -3568,6 +3620,10 @@ msgstr "‫The camera is busy or can't be opened.‬"
 #: ui/app.slint
 msgid "The camera starts when you press Record."
 msgstr "‫The camera starts when you press Record.‬"
+
+#: ui/app.slint
+msgid "The default. The server never learns your address, and your network only sees Tor."
+msgstr "‫The default. The server never learns your address, and your network only sees Tor.‬"
 
 #: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
@@ -3834,6 +3890,10 @@ msgid "Those words don't match, so nothing was linked. If you didn't start this,
 msgstr "‫Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account.‬"
 
 #: ui/app.slint
+msgid "Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address."
+msgstr "‫Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address.‬"
+
+#: ui/app.slint
 msgid "To check the call, both of you read these out:"
 msgstr "‫To check the call, both of you read these out:‬"
 
@@ -3862,8 +3922,24 @@ msgid "Too many wrong PINs. Try again at {}."
 msgstr "‫Too many wrong PINs. Try again at ‬{}‫.‬"
 
 #: ui/app.slint
+msgid "Tor"
+msgstr "‫Tor‬"
+
+#: ui/app.slint
 msgid "Tor bridges"
 msgstr "‫Tor bridges‬"
+
+#: ui/app.slint
+msgid "Tor didn't start. Restart Enclave, or set a bridge below."
+msgstr "‫Tor didn't start. Restart Enclave, or set a bridge below.‬"
+
+#: ui/app.slint
+msgid "Tor is connecting. The first time takes up to a few minutes; this same step is seconds once it's up."
+msgstr "‫Tor is connecting. The first time takes up to a few minutes; this same step is seconds once it's up.‬"
+
+#: ui/app.slint
+msgid "Tor only"
+msgstr "‫Tor only‬"
 
 #: ui/app.slint
 msgid "Tor picks up bridges when it starts."

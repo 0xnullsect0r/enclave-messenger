@@ -420,7 +420,12 @@ impl Transport for Routed {
     }
 
     async fn fast_status(&self) -> enclave_net::Result<u8> {
-        use std::sync::atomic::Ordering::Relaxed;
+        use std::sync::atomic::Ordering::{Relaxed, SeqCst};
+        // Maximum privacy refuses the fast lane: it isn't in use, whatever
+        // routes are kept for when it's left.
+        if self.private.load(SeqCst) {
+            return Ok(0);
+        }
         let empty = self.fronts.read().map(|f| f.is_empty()).unwrap_or(true);
         if empty {
             return Ok(0);
