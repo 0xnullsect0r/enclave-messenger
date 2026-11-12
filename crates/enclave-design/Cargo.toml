@@ -13,5 +13,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-toml = "0.8"
+toml = "1.1"
 thiserror = "2"

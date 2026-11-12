@@ -27,7 +27,7 @@ opus-pure = "0.2.2"
 gif = "0.14"
 rav1e = { version = "0.8", default-features = false }
 enclave-av1 = { path = "../enclave-av1", optional = true }
-sonora = "0.2"
+sonora = "0.3"
 
 candle = { package = "candle-core", version = "0.11", default-features = false, optional = true }
 candle-transformers = { version = "0.11", default-features = false, optional = true }

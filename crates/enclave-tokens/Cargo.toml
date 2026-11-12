@@ -14,10 +14,10 @@ workspace = true
 
 [dependencies]
 enclave-crypto = { path = "../enclave-crypto" }
-blake2 = "0.10.6"
+blake2 = "0.11.0"
 subtle = "2.6.1"
 p384 = { version = "0.13", default-features = false, features = ["hash2curve", "voprf"] }
-sha2 = "0.10"
+sha2 = "0.11"
 voprf = { version = "0.5", default-features = false }
 zeroize = "1.9.0"
 
