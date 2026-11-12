@@ -239,7 +239,7 @@ const CLAIM: &str = "enclave-tord.lock";
 /// every test front's certificate would fail as an unknown issuer. Never
 /// in a release build (the `dev-direct` feature isn't in one).
 fn read_only() -> Vec<std::path::PathBuf> {
-    let mut ro: Vec<std::path::PathBuf> = READ_ONLY
+    let ro: Vec<std::path::PathBuf> = READ_ONLY
         .iter()
         .map(std::path::PathBuf::from)
         .filter(|p| p.exists())
@@ -248,7 +248,7 @@ fn read_only() -> Vec<std::path::PathBuf> {
     if let Some(p) = std::env::var_os("ENCLAVE_NYM_TEST_CA") {
         let p = std::path::PathBuf::from(p);
         if p.exists() {
-            ro.push(p);
+            return [p].into_iter().chain(ro).collect();
         }
     }
     ro
