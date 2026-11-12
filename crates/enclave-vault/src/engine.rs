@@ -464,6 +464,12 @@ struct Engine {
     backup_declined: bool,
     /// Tor didn't come up (netd says so).
     tor_blocked: bool,
+    /// How Tor is doing (netd says so): 0 none, 1 up, 2 blocked, 3
+    /// starting, 4 waiting for another copy of Enclave, 5 failed.
+    tor_state: u8,
+    /// How the fast lane is doing (netd says so): 0 none set, 1 a front
+    /// answered, 2 the onion route answered for it.
+    fast_lane: u8,
     /// The bridges netd started with, and what is set now.
     bridges_at_start: String,
     bridges: String,
@@ -1346,6 +1352,8 @@ pub async fn run_with(
         visible: true,
         backup_declined: false,
         tor_blocked: false,
+        tor_state: 0,
+        fast_lane: 0,
         bridges_at_start: String::new(),
         bridges: String::new(),
         bridges_error: String::new(),
@@ -4366,11 +4374,16 @@ impl Engine {
         }
     }
 
-    /// Ask netd whether Tor came up (censorship mode,
-    /// `docs/09-transport.md` §7).
+    /// Ask netd how Tor is doing (censorship mode, `docs/09-transport.md`
+    /// §7): 0 none asked for, 1 up, 2 blocked (the network may be blocking
+    /// it), 3 starting, 4 waiting for another copy of Enclave, 5 failed —
+    /// and how the consented fast lane is (RFC 0011): 0 none set, 1 a
+    /// front answered, 2 the onion route answered for it.
     async fn check_tor(&mut self) {
         if matches!(self.mode, Mode::Server { .. }) {
-            self.tor_blocked = matches!(self.transport.tor_status().await, Ok(2));
+            self.tor_state = self.transport.tor_status().await.unwrap_or(0);
+            self.tor_blocked = self.tor_state == 2;
+            self.fast_lane = self.transport.fast_status().await.unwrap_or(0);
         }
     }
 
@@ -5322,6 +5335,8 @@ impl Engine {
             restore_error: self.restore_error.clone(),
             busy: self.busy,
             tor_blocked: self.tor_blocked,
+            tor_state: self.tor_state,
+            fast_lane: self.fast_lane,
             bridges: self.bridges.clone(),
             bridges_error: self.bridges_error.clone(),
             bridges_restart: self.bridges != self.bridges_at_start,

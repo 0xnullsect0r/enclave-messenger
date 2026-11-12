@@ -244,6 +244,8 @@ fn snapshot() -> Snapshot {
         route: 1,
         fast_route: 1,
         tor_blocked: true,
+        tor_state: 3,
+        fast_lane: 1,
         bridges: "builtin".into(),
         bridges_error: String::new(),
         bridges_restart: true,

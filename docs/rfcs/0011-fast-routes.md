@@ -148,6 +148,12 @@ Per route, against the tables in `01-threat-model.md` §3:
   routes (fewer hops, no rendezvous): over `direct`, the observer of the
   client's link alone is enough. Residual 6 of `01-threat-model.md` §4
   strengthens for consenting users.
+- On `direct` the domain is resolved locally (the system's resolver, as any
+  HTTPS client does) and travels in the TLS SNI, which is plaintext without
+  ECH: the domain reaches the resolver and the link's observer, both of
+  whom the TLS connection to it already names. No new party learns
+  anything the connection itself doesn't carry. On `exit` the exit's
+  resolver sees it, as for any site it visits.
 - The front sees request timing per connection, as the onion service's
   streams already do; the pooled connection to the server makes the front a
   fixed vantage for its stack, which the threat model already treats as the

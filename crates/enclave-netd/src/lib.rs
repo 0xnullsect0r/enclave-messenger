@@ -111,6 +111,9 @@ struct Routed {
     /// vault sends it) and never in Maximum privacy. A front that failed
     /// cools down and the onion route answers for it.
     fronts: std::sync::RwLock<HashMap<ServerId, FrontRoute>>,
+    /// What the last fast-lane attempt did (for `FastStatus`): 1 answered,
+    /// 2 fell back to the onion route.
+    lane: std::sync::atomic::AtomicU8,
     /// The user chose the fallback route (`Transport::use_fallback`).
     fallback: std::sync::atomic::AtomicBool,
 }
@@ -237,6 +240,7 @@ impl Routed {
     /// A failed front cools down: the onion route answers for it until the
     /// cooldown ends.
     fn front_failed(&self, server: &ServerId) {
+        let _ = self.lane.store(2, std::sync::atomic::Ordering::Relaxed);
         if let Ok(mut fronts) = self.fronts.write() {
             if let Some(f) = fronts.get_mut(server) {
                 f.down_until = std::time::Instant::now() + FRONT_COOLDOWN;
@@ -246,6 +250,7 @@ impl Routed {
 
     /// A front that answered is back in use.
     fn front_ok(&self, server: &ServerId) {
+        let _ = self.lane.store(1, std::sync::atomic::Ordering::Relaxed);
         if let Ok(mut fronts) = self.fronts.write() {
             if let Some(f) = fronts.get_mut(server) {
                 f.down_until = std::time::Instant::now();
@@ -405,10 +410,22 @@ impl Transport for Routed {
 
     async fn tor_status(&self) -> enclave_net::Result<u8> {
         Ok(match &*self.tor.borrow() {
-            TorUp::Blocked => 2,
+            TorUp::Off => 0,
             TorUp::Up(_) => 1,
-            _ => 0,
+            TorUp::Blocked => 2,
+            TorUp::Starting => 3,
+            TorUp::Waiting => 4,
+            TorUp::Failed => 5,
         })
+    }
+
+    async fn fast_status(&self) -> enclave_net::Result<u8> {
+        use std::sync::atomic::Ordering::Relaxed;
+        let empty = self.fronts.read().map(|f| f.is_empty()).unwrap_or(true);
+        if empty {
+            return Ok(0);
+        }
+        Ok(self.lane.load(Relaxed).max(1))
     }
 
     fn set_pacing(&self, pacing: enclave_net::transport::Pacing) {
@@ -883,6 +900,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
             HashMap::new()
         }),
         fronts: std::sync::RwLock::new(if tor_spawned { fronts } else { HashMap::new() }),
+        lane: std::sync::atomic::AtomicU8::new(0),
         fallback: std::sync::atomic::AtomicBool::new(false),
         over_nym: std::sync::RwLock::new(if has_nym {
             over_nym.keys().copied().collect()
@@ -1044,6 +1062,13 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                     NetRequest::TorStatus { id } => (
                         id,
                         t.tor_status()
+                            .await
+                            .map(|s| vec![s])
+                            .map_err(|e| e.to_string()),
+                    ),
+                    NetRequest::FastStatus { id } => (
+                        id,
+                        t.fast_status()
                             .await
                             .map(|s| vec![s])
                             .map_err(|e| e.to_string()),
@@ -1280,6 +1305,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fronts: std::sync::RwLock::new(HashMap::new()),
+            lane: std::sync::atomic::AtomicU8::new(0),
             fallback: std::sync::atomic::AtomicBool::new(false),
         };
         (r, over_nym, over_tcp)
@@ -1339,6 +1365,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fronts: std::sync::RwLock::new(HashMap::new()),
+            lane: std::sync::atomic::AtomicU8::new(0),
             fallback: std::sync::atomic::AtomicBool::new(false),
         };
         r.set_route(id, Route::Nym("ingress".into()));
@@ -1440,6 +1467,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fronts: std::sync::RwLock::new(HashMap::new()),
+            lane: std::sync::atomic::AtomicU8::new(0),
             fallback: std::sync::atomic::AtomicBool::new(false),
         }
     }
@@ -1550,13 +1578,15 @@ mod tests {
                 let kind = frame[0];
                 let id = u32::from_be_bytes(frame[1..5].try_into().unwrap());
                 let answer: Result<Vec<u8>, String> = match kind {
-                    // A front exchange: `u8 flags ‖ u16 len ‖ domain ‖ request`.
+                    // A front exchange: `u8 flags ‖ u16 len ‖ domain ‖
+                    // u16 port ‖ request`.
                     3 => {
                         let mut rest = &frame[5..];
                         let flags = rest[0];
                         rest = &rest[1..];
                         let dl = u16::from_be_bytes([rest[0], rest[1]]) as usize;
                         rest = &rest[2 + dl..];
+                        rest = &rest[2..]; // the port
                         if front_up.load(Ordering::SeqCst) {
                             if flags & enclave_tord::carrier::ONEWAY != 0 {
                                 Ok(Vec::new())
@@ -1628,7 +1658,7 @@ mod tests {
         let r = Arc::new(r);
         let id: ServerId = [11; 16];
         r.set_route(id, Route::Onion("stack.onion".into()));
-        assert_eq!(r.tor_status().await.unwrap(), 0);
+        assert_eq!(r.tor_status().await.unwrap(), 3, "starting");
         let waiting = {
             let r = Arc::clone(&r);
             tokio::spawn(async move { r.exchange(&id, b"early".to_vec()).await })
@@ -1709,6 +1739,7 @@ mod tests {
             private: std::sync::atomic::AtomicBool::new(false),
             onion: std::sync::RwLock::new(HashMap::new()),
             fronts: std::sync::RwLock::new(HashMap::new()),
+            lane: std::sync::atomic::AtomicU8::new(0),
             fallback: std::sync::atomic::AtomicBool::new(false),
         };
         r.set_route(id, Route::Nym("ingress".into()));

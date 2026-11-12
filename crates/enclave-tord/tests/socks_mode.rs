@@ -102,7 +102,12 @@ fn socks(to: u16) -> u16 {
                     return;
                 };
                 s.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).unwrap();
-                let _ = std::io::copy_bidirectional(&mut s, &mut far);
+                let mut a = far.try_clone().unwrap();
+                let mut b = s.try_clone().unwrap();
+                std::thread::spawn(move || {
+                    let _ = std::io::copy(&mut s, &mut a);
+                });
+                let _ = std::io::copy(&mut far, &mut b);
             });
         }
     });
@@ -115,9 +120,9 @@ struct Tord {
     out: BufReader<std::process::ChildStdout>,
 }
 
-fn start(args: &[&str]) -> Tord {
+fn start(state: &std::path::Path, args: &[&str]) -> Tord {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_enclave-tord"));
-    cmd.arg("--state").arg(state());
+    cmd.arg("--state").arg(state);
     for a in args {
         cmd.arg(a);
     }
@@ -133,8 +138,13 @@ fn start(args: &[&str]) -> Tord {
     Tord { child, stdin, out }
 }
 
-fn state() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("enclave-tord-socks-{}", std::process::id()))
+fn state(name: &str) -> std::path::PathBuf {
+    static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    std::env::temp_dir().join(format!(
+        "enclave-tord-socks-{name}-{}-{n}",
+        std::process::id()
+    ))
 }
 
 impl Tord {
@@ -159,7 +169,11 @@ impl Drop for Tord {
 fn carries_requests_through_a_system_tor() {
     let port = server();
     let proxy = socks(port);
-    let mut tord = start(&["--carrier", &format!("--tor-socks=127.0.0.1:{proxy}")]);
+    let state = state("carried");
+    let mut tord = start(
+        &state,
+        &["--carrier", "--tor-socks", &format!("127.0.0.1:{proxy}")],
+    );
     let ready = tord.line();
     assert!(ready.starts_with("ready "), "{ready}");
 
@@ -173,6 +187,7 @@ fn carries_requests_through_a_system_tor() {
     let answer = read_exact(&mut tord.out, n);
     assert_eq!(&answer[..6], &[1, 0, 0, 0, 7, 0], "kind 1, id 7, ok");
     assert_eq!(&answer[6..], b"a sealed unit");
+    let _ = std::fs::remove_dir_all(state);
 }
 
 /// No SOCKS port there: tord says why and exits, rather than waiting for an
@@ -182,7 +197,11 @@ fn a_missing_socks_port_fails_at_once() {
     let nothing = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = nothing.local_addr().unwrap().port();
     drop(nothing);
-    let tord = start(&["--carrier", &format!("--tor-socks=127.0.0.1:{port}")]);
+    let state = state("missing");
+    let mut tord = start(
+        &state,
+        &["--carrier", "--tor-socks", &format!("127.0.0.1:{port}")],
+    );
     let deadline = std::time::Instant::now() + Duration::from_secs(20);
     loop {
         if tord.child.try_wait().unwrap().is_some() {
@@ -191,4 +210,5 @@ fn a_missing_socks_port_fails_at_once() {
         assert!(std::time::Instant::now() < deadline, "tord didn't exit");
         std::thread::sleep(Duration::from_millis(100));
     }
+    let _ = std::fs::remove_dir_all(state);
 }

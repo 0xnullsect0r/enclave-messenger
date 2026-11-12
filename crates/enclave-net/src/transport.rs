@@ -96,8 +96,16 @@ pub trait Transport: Send + Sync {
     fn use_fallback(&self, _on: bool) {}
     /// How Tor in front of the mixnet is doing: 0 not used, 1 up, 2 it
     /// didn't come up (the network may be blocking it; bridges may help,
-    /// `docs/09-transport.md` §7).
+    /// `docs/09-transport.md` §7), 3 starting, 4 waiting for another copy
+    /// of Enclave, 5 failed.
     async fn tor_status(&self) -> Result<u8> {
+        Ok(0)
+    }
+    /// How the consented fast lane is doing (RFC 0011): 0 no fast route is
+    /// set, 1 a front answered (in use), 2 one was tried and the onion
+    /// route answered for it (cooling down). Transports without one
+    /// answer 0.
+    async fn fast_status(&self) -> Result<u8> {
         Ok(0)
     }
     /// Wait, for at most `within`, until everything sent so far has left

@@ -473,6 +473,11 @@ impl Transport for PipeTransport {
         b.first().copied().ok_or(NetError::BadReply)
     }
 
+    async fn fast_status(&self) -> enclave_net::Result<u8> {
+        let b = self.call(|id| NetRequest::FastStatus { id }).await?;
+        b.first().copied().ok_or(NetError::BadReply)
+    }
+
     async fn tickets_spent(&self) -> enclave_net::Result<u64> {
         let b = self.call(|id| NetRequest::TicketsSpent { id }).await?;
         Ok(u64::from_be_bytes(

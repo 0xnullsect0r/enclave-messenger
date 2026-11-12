@@ -37,6 +37,10 @@ const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(60);
 /// A request sender on a warm HTTPS connection to a front.
 type FrontSender = hyper::client::conn::http1::SendRequest<http_body_util::Full<Bytes>>;
 
+/// Warm connections kept per front: as many as the carrier keeps streams
+/// to an onion service (its `STREAMS = 6`), and a couple spare.
+const FRONTS_PER: usize = 8;
+
 /// Makes the requests, through `dialer`.
 pub struct Fetcher {
     dialer: Arc<dyn crate::Dialer>,
@@ -125,10 +129,11 @@ impl Fetcher {
 
     /// One sealed exchange with the front at `domain:port` (`POST /net`,
     /// RFC 0011): the request as the body, the reply as the answer's. A
-    /// warm connection is kept per domain, so an exchange costs one
-    /// round trip and not a TLS handshake too; one that has gone stale is
-    /// dropped and the exchange tried once more on a new one. `oneway`
-    /// asks the server for no reply (an empty answer).
+    /// warm connection is kept per front (`domain:port` — two fronts may
+    /// share a name), so an exchange costs one round trip and not a TLS
+    /// handshake too; one that has gone stale is dropped and the exchange
+    /// tried once more on a new one. `oneway` asks the server for no
+    /// reply (an empty answer).
     pub async fn exchange(
         &self,
         domain: &str,
@@ -136,8 +141,9 @@ impl Fetcher {
         request: Vec<u8>,
         oneway: bool,
     ) -> Result<Vec<u8>, String> {
+        let front = format!("{domain}:{port}");
         for attempt in 0..2 {
-            let sender = self.take_front(domain, port).await?;
+            let sender = self.take_front(&front).await?;
             let posted = tokio::time::timeout(
                 EXCHANGE_TIMEOUT,
                 self.post_front(sender, domain, request.clone(), oneway),
@@ -145,25 +151,30 @@ impl Fetcher {
             .await;
             match posted {
                 Ok(Ok((sender, reply))) => {
-                    self.give_front(domain, sender);
+                    self.give_front(&front, sender);
                     return Ok(reply);
                 }
                 Ok(Err(_)) | Err(_) if attempt == 0 => continue,
                 Ok(Err(e)) => return Err(e),
-                Err(_) => return Err(format!("{domain}: the front didn't answer in time")),
+                Err(_) => return Err(format!("{front}: the front didn't answer in time")),
             }
         }
         unreachable!("the second attempt returns")
     }
 
-    /// A connection to the front at `domain:port`: a warm one, else a new
-    /// TLS connection under the Enclave TLS profile through the dialer.
-    async fn take_front(&self, domain: &str, port: u16) -> Result<FrontSender, String> {
+    /// A connection to the front keyed `front` (`domain:port`): a warm one,
+    /// else a new TLS connection under the Enclave TLS profile through the
+    /// dialer.
+    async fn take_front(&self, front: &str) -> Result<FrontSender, String> {
         if let Ok(mut fronts) = self.fronts.lock() {
-            if let Some(s) = fronts.get_mut(domain).and_then(|v| v.pop()) {
+            if let Some(s) = fronts.get_mut(front).and_then(|v| v.pop()) {
                 return Ok(s);
             }
         }
+        let (domain, port) = front
+            .rsplit_once(':')
+            .ok_or_else(|| format!("{front}: not a front"))?;
+        let port: u16 = port.parse().map_err(|_| format!("{front}: not a front"))?;
         let cfg = self.service.clone().ok_or("no TLS")?;
         let stream = self
             .dialer
@@ -184,10 +195,15 @@ impl Fetcher {
         Ok(sender)
     }
 
-    /// Put a still-warm connection back.
-    fn give_front(&self, domain: &str, sender: FrontSender) {
+    /// Put a still-warm connection back (at most [`FRONTS_PER`]: a burst
+    /// leaves no pile of idle connections behind).
+    fn give_front(&self, front: &str, sender: FrontSender) {
         if let Ok(mut fronts) = self.fronts.lock() {
-            fronts.entry(domain.to_string()).or_default().push(sender);
+            let v = fronts.entry(front.to_string()).or_default();
+            while v.len() >= FRONTS_PER {
+                v.pop();
+            }
+            v.push(sender);
         }
     }
 

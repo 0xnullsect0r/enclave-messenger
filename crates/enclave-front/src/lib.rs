@@ -313,6 +313,9 @@ const MAX_NET_REPLY: usize = 1 << 20;
 /// How long the server may take to answer one (as a stream on the onion
 /// route has: 60 s).
 const NET_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Connections kept warm to the server: a burst leaves no pile of idle
+/// ones behind.
+const NET_IDLE: usize = 8;
 
 fn poisoned<T>(_: T) -> std::io::Error {
     std::io::Error::other("net pool poisoned")
@@ -333,7 +336,11 @@ impl Net {
             };
             match tokio::time::timeout(NET_TIMEOUT, one(&mut conn, request, oneway)).await {
                 Ok(Ok(reply)) => {
-                    self.idle.lock().map_err(poisoned)?.push(conn);
+                    let mut idle = self.idle.lock().map_err(poisoned)?;
+                    while idle.len() >= NET_IDLE {
+                        idle.pop();
+                    }
+                    idle.push(conn);
                     return Ok(reply);
                 }
                 // A warm connection gone stale: once more, on a new one.

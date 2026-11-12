@@ -181,6 +181,7 @@ jobs:
           cat > "$work/front.toml" <<EOF
           [front]
           listen_https = "127.0.0.1:17448"
+          listen_http = ""
           domain = "localhost"
           public_dir = "$work/front-public"
           data_dir = "$work/front-data"

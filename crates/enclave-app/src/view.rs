@@ -551,6 +551,8 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_route(i32::from(s.route));
     ui.set_fast_route(i32::from(s.fast_route));
     ui.set_tor_blocked(s.tor_blocked);
+    ui.set_tor_state(i32::from(s.tor_state));
+    ui.set_fast_lane(i32::from(s.fast_lane));
     ui.set_bridges(s.bridges.clone().into());
     ui.set_bridges_error(s.bridges_error.clone().into());
     ui.set_bridges_restart(s.bridges_restart);

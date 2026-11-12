@@ -363,7 +363,7 @@ mod tests {
         let d = SocksDialer { proxy: p };
         let mut s = d.dial("localhost", port).await.unwrap();
         s.write_all(b"through the system tor").await.unwrap();
-        let mut b = [0u8; 21];
+        let mut b = [0u8; 22];
         s.read_exact(&mut b).await.unwrap();
         assert_eq!(&b, b"through the system tor");
     }

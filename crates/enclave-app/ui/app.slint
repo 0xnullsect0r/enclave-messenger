@@ -1420,6 +1420,12 @@ export component AppWindow inherits Window {
     // The fast-lane consent (RFC 0011): 0 off, 1 through Tor's exit to each
     // stack's front, 2 straight to it.
     in-out property <int> fast-route: 0;
+    // How Tor is doing: 0 none, 1 up, 2 blocked, 3 starting, 4 waiting for
+    // another copy of Enclave, 5 failed.
+    in property <int> tor-state: 0;
+    // How the consented fast lane is doing: 0 none set, 1 a front answered,
+    // 2 the onion route answered for it.
+    in property <int> fast-lane: 0;
     in property <[string]> recovery-words;
     // BIP-39 list the words are shown in (`en`, `es`, … `zh-Hant`).
     in property <string> words-language: "en";
@@ -2104,6 +2110,15 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-s;
                 if !root.setup-failed: Spinner { }
                 Secondary { text: root.status-line; horizontal-alignment: center; }
+            }
+            // The steps from here on need the server, which needs Tor: say
+            // so while it is still connecting, so the wait above the bar
+            // has a reason attached to it.
+            if root.setup-step >= 2 && !root.setup-failed && (root.tor-state == 3 || root.tor-state == 4): Secondary {
+                text: root.tor-state == 3
+                    ? @tr("Tor is connecting. The first time takes up to a few minutes; this same step is seconds once it's up.")
+                    : @tr("Another copy of Enclave is using Tor on this profile. This one continues when it closes.");
+                horizontal-alignment: center;
             }
             // The step's own bar while its parts go (the vault key is about a
             // hundred of them, minutes on a slow Tor circuit).
@@ -4507,6 +4522,12 @@ export component AppWindow inherits Window {
             Secondary {
                 text: @tr("Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor.");
             }
+            // What the chosen lane is actually doing right now.
+            if root.fast-route > 0 && root.fast-lane > 0: Secondary {
+                text: root.fast-lane == 1
+                    ? @tr("In use: servers that opened their faster route are answering on it.")
+                    : @tr("A server's faster route didn't answer just now; Tor is carrying it until that comes back.");
+            }
             for option[i] in [
                 { title: @tr("Tor only"), text: @tr("The default. The server never learns your address, and your network only sees Tor.") },
                 { title: @tr("Faster"), text: @tr("Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address.") },
@@ -4554,6 +4575,19 @@ export component AppWindow inherits Window {
                     outlined: true;
                     clicked => { root.server-pick-for = 1; root.chosen-server = ""; root.sheet = Sheet.servers; }
                 }
+            }
+            // Live word on Tor, the thing every wait here hangs on.
+            if root.tor-state > 0: Body { text: @tr("Tor"); font-weight: 600; }
+            if root.tor-state > 0: Secondary {
+                text: root.tor-state == 1
+                    ? @tr("Connected. Your messages travel through it; the first connection of a session can take a minute.")
+                    : root.tor-state == 2
+                        ? @tr("Couldn't connect from this network. A bridge below may get through.")
+                        : root.tor-state == 3
+                            ? @tr("Connecting… The first time takes up to a few minutes; things speed up after that.")
+                            : root.tor-state == 4
+                                ? @tr("Another copy of Enclave is using Tor on this profile. This one takes over when it closes.")
+                                : @tr("Tor didn't start. Restart Enclave, or set a bridge below.");
             }
             Body { text: @tr("Tor bridges"); font-weight: 600; }
             Secondary {

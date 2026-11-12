@@ -136,8 +136,16 @@ pub enum NetRequest {
         on: bool,
     },
     /// How Tor is doing: the reply is one byte, 0 not used, 1 up, 2 it
-    /// didn't come up (the network may be blocking it; bridges may help).
+    /// didn't come up (the network may be blocking it; bridges may help),
+    /// 3 starting, 4 waiting for another copy of Enclave, 5 failed.
     TorStatus {
+        /// Request number.
+        id: u32,
+    },
+    /// How the fast lane is doing (RFC 0011): the reply is one byte, 0 no
+    /// fast route is set, 1 one answered (in use), 2 one was tried and
+    /// fell back to the onion route (cooling down).
+    FastStatus {
         /// Request number.
         id: u32,
     },
@@ -200,6 +208,9 @@ impl NetRequest {
             }
             NetRequest::TorStatus { id } => {
                 w.u8(12).u32(*id);
+            }
+            NetRequest::FastStatus { id } => {
+                w.u8(16).u32(*id);
             }
             NetRequest::UdpOpen { id, remote } => {
                 w.u8(13).u32(*id).str(remote);
@@ -272,6 +283,7 @@ impl NetRequest {
             }
             10 => NetRequest::TicketsSpent { id: r.u32()? },
             12 => NetRequest::TorStatus { id: r.u32()? },
+            16 => NetRequest::FastStatus { id: r.u32()? },
             13 => NetRequest::UdpOpen {
                 id: r.u32()?,
                 remote: r.str()?,

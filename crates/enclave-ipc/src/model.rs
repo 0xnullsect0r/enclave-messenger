@@ -535,6 +535,12 @@ pub struct Snapshot {
     pub fast_route: u8,
     /// Tor didn't come up: the network may be blocking it.
     pub tor_blocked: bool,
+    /// How Tor is doing (netd says so): 0 none, 1 up, 2 blocked, 3
+    /// starting, 4 waiting for another copy of Enclave, 5 failed.
+    pub tor_state: u8,
+    /// How the consented fast lane is doing (RFC 0011, netd says so): 0
+    /// none set, 1 a front answered, 2 the onion route answered for it.
+    pub fast_lane: u8,
     /// Tor bridges set here: empty, `builtin`, `snowflake`, or bridge lines.
     pub bridges: String,
     /// Why the bridges given weren't taken.
@@ -1473,6 +1479,8 @@ impl Snapshot {
             .u8(self.route)
             .u8(self.fast_route)
             .bool(self.tor_blocked)
+            .u8(self.tor_state)
+            .u8(self.fast_lane)
             .str(&self.bridges)
             .str(&self.bridges_error)
             .bool(self.bridges_restart)
@@ -1801,6 +1809,8 @@ impl Snapshot {
             route: r.u8()?,
             fast_route: r.u8()?,
             tor_blocked: r.bool()?,
+            tor_state: r.u8()?,
+            fast_lane: r.u8()?,
             bridges: r.str()?,
             bridges_error: r.str()?,
             bridges_restart: r.bool()?,
