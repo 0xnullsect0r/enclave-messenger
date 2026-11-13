@@ -49,12 +49,13 @@ def read_exact(f, n):
 
 
 class Carrier:
-    def __init__(self, tord, state, dev=False, socks=None):
+    def __init__(self, tord, state, dev=False, socks=None, bridge_args=()):
         args = [tord, "--state", state, "--carrier"]
         if dev:
             args.append("--direct")
         if socks:
             args += ["--tor-socks", socks]
+        args += bridge_args
         self.p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         self.p.stdin.write(os.urandom(32).hex().encode() + b"\n")
         self.p.stdin.flush()
@@ -105,9 +106,24 @@ def main():
     ap.add_argument("--dev", action="store_true", help="a dev-direct enclave-tord (a local bench)")
     ap.add_argument("--socks", help="a system Tor's SocksPort to ride (HOST:PORT)")
     ap.add_argument("--front-port", type=int, default=443)
+    # Censorship mode, as the app passes them from the profile's
+    # tor-bridges.txt: a network that needs bridges needs them here too.
+    ap.add_argument("--bridge", action="append", default=[], metavar="LINE", help="a bridge line (obfs4, WebTunnel, Snowflake)")
+    ap.add_argument("--builtin-bridges", action="store_true", help="the Tor Project's built-in obfs4 bridges")
+    ap.add_argument("--snowflake", action="store_true", help="the Tor Project's built-in Snowflake bridges")
+    ap.add_argument("--pt", help="the lyrebird binary for Snowflake and WebTunnel (it is looked up next to enclave-tord)")
     a = ap.parse_args()
 
-    c = Carrier(a.tord, a.state, a.dev, a.socks)
+    bridge_args = []
+    for line in a.bridge:
+        bridge_args += ["--bridge", line]
+    if a.builtin_bridges:
+        bridge_args.append("--builtin-bridges")
+    if a.snowflake:
+        bridge_args.append("--snowflake")
+    if a.pt:
+        bridge_args += ["--pt", a.pt]
+    c = Carrier(a.tord, a.state, a.dev, a.socks, bridge_args)
     print(f"tord ready in {c.bootstrap:.1f} s")
     # The front may be behind a Tor still coming up: ask until it answers.
     t0 = time.monotonic()

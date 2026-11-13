@@ -44,11 +44,12 @@ def read_exact(f, n):
 
 
 class Carrier:
-    def __init__(self, tord, state, direct=False, socks=None):
+    def __init__(self, tord, state, direct=False, socks=None, bridge_args=()):
         self.p = subprocess.Popen(
             [tord, "--state", state, "--carrier"]
             + (["--direct"] if direct else [])
-            + (["--tor-socks", socks] if socks else []),
+            + (["--tor-socks", socks] if socks else [])
+            + list(bridge_args),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
@@ -98,9 +99,25 @@ def main():
     ap.add_argument("--patience", type=float, default=600, help="seconds to wait for a first answer")
     ap.add_argument("--direct", action="store_true", help="a dev-direct enclave-tord (no Tor)")
     ap.add_argument("--socks", help="a system Tor's SocksPort to ride (HOST:PORT) instead of the embedded arti")
+    # Censorship mode, as the app passes them from the profile's
+    # tor-bridges.txt: a network that needs bridges needs them here too.
+    ap.add_argument("--bridge", action="append", default=[], metavar="LINE", help="a bridge line (obfs4, WebTunnel, Snowflake)")
+    ap.add_argument("--builtin-bridges", action="store_true", help="the Tor Project's built-in obfs4 bridges")
+    ap.add_argument("--snowflake", action="store_true", help="the Tor Project's built-in Snowflake bridges")
+    ap.add_argument("--pt", help="the lyrebird binary for Snowflake and WebTunnel (it is looked up next to enclave-tord)")
     a = ap.parse_args()
 
-    c = Carrier(a.tord, a.state, a.direct, a.socks)
+    bridge_args = []
+    for line in a.bridge:
+        bridge_args += ["--bridge", line]
+    if a.builtin_bridges:
+        bridge_args.append("--builtin-bridges")
+    if a.snowflake:
+        bridge_args.append("--snowflake")
+    if a.pt:
+        bridge_args += ["--pt", a.pt]
+
+    c = Carrier(a.tord, a.state, a.direct, a.socks, bridge_args)
     print(f"bootstrapped Tor in {c.bootstrap:.1f} s")
     # A new onion service takes a while to be reachable: ask until it is.
     t0 = time.monotonic()
