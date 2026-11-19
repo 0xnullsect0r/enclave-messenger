@@ -200,7 +200,9 @@ jobs:
           cat > "$work/front.toml" <<EOF
           [front]
           listen_https = "127.0.0.1:17448"
-          listen_http = ""
+          # An empty listen_http is not a valid address and the front exits
+          # on it (a 0.1.10 nightly learned this the slow way).
+          listen_http = "127.0.0.1:17449"
           domain = "localhost"
           public_dir = "$work/front-public"
           data_dir = "$work/front-data"
@@ -210,7 +212,12 @@ jobs:
           net = "127.0.0.1:17443"
           EOF
           target/release/enclave-front run --config "$work/front.toml" > "$work/front.log" 2>&1 &
-          for _ in $(seq 60); do grep -q "enclave-front" "$work/front.log" && break; sleep 1; done
+          front=$!
+          for _ in $(seq 30); do
+            grep -q "enclave-front" "$work/front.log" && break
+            kill -0 "$front" 2>/dev/null || { cat "$work/front.log"; exit 1; }
+            sleep 1
+          done
           cat "$work/front.log"
           ENCLAVE_NYM_TEST_CA="$work/ca.pem" \
             python3 ci/onion/front-bench.py target/release/enclave-tord "$work/tor-direct" \
