@@ -8,9 +8,10 @@ disappearing messages) and a much stronger design against surveillance:
   independent key-exchange families (X448, ML-KEM-1024 and Classic
   McEliece-8192128), and every ratchet turn takes a full post-quantum step.
 * **Metadata hidden, not just content.** Traffic goes through Tor to each
-  server's onion service (the Nym mixnet is optional), every message is the
-  same size, and constant-rate cover traffic hides when you are talking.
-  Servers never learn who writes to whom.
+  server's front (a short exit route, the default) or to its onion service
+  (the slowest, most hidden way, and the only one Maximum privacy uses),
+  every message is the same size, and constant-rate cover traffic hides
+  when you are talking. Servers never learn who writes to whom.
 * **No phone number, no email.** Your account is a key. Usernames are optional
   and checked by public key-transparency logs with independent witnesses.
 * **No trusted server.** Anyone can run one; none of them can read messages,
@@ -27,6 +28,38 @@ Nym mixnet as an option), the desktop
 app and the release pipeline are built and tested in CI; Android and iOS
 are being built (`docs/completion.md` tracks every item). Enclave has not
 been audited yet: don't rely on it to protect anyone until it has.
+
+## How it works
+
+**Which server your account lives on.** Every build carries the
+foundation's signed list of servers (a community root; anyone can fork the
+build with their own). Setting up an account, the app offers that list and
+pre-picks one at random, weighted by how many accounts each server should
+take (the foundation sets the weight; a server can be listed at weight 0,
+meaning reachable but not offered). You can change it before you finish,
+and move to another listed server later without changing your identity
+(Settings → Your server).
+
+**How messages travel.** Every request is sealed end to end to the
+destination server's daily post-quantum keys, so no server — and nothing
+in front of one — can read what it carries. The route is a setting
+(Settings → Message speed):
+
+| Route | What it gives up | Round trips (measured, live) |
+|---|---|---|
+| **Faster** (the default) | Nothing that matters: the server sees a Tor exit, never your address | ~0.6 s, steady |
+| **Tor only** | Nothing; the slowest, most hidden way | ~0.9 s median, seconds at the tail |
+| **Fastest** | The server learns the address you send from | ~0.1 s |
+
+Maximum privacy always uses the onion route, whatever the setting. On a
+network that blocks Tor, built-in Snowflake and obfs4 bridges are one tap
+away in Settings.
+
+**Servers don't talk to each other about you.** A message is sent
+one-way, sealed, to the recipient's server; there is no server-to-server
+relay. What a server holds is sealed units it can't open, pseudonymous
+inbox addresses that rotate weekly, and a public key-transparency log
+that stops it lying about anyone's keys.
 
 ## Install
 
@@ -110,32 +143,55 @@ GHCR, built and signed by the release workflow:
 | `ghcr.io/0xnullsect0r/enclave-updater` | keeps the stack on the newest signed release |
 
 You need a Linux host with Docker Engine 24 or later and the compose
-plugin, a domain whose A/AAAA records point at it, ports 80 and 443/tcp and
-51820/udp open, and the foundation's `foundation.pub` and `server-list.bin`.
+plugin, a domain whose A/AAAA records point at it, and ports 80 and
+443/tcp and 51820/udp open. The stack joins the federation by itself
+(RFC 0012): bring it up, give it **one existing server's address**, and
+the foundation's registrar checks the stack from the outside — domain,
+certificate, front, the descriptor it serves — and signs it into the next
+server list, which every stack then serves to its clients.
 
 ```sh
 # The stack: compose.yml (below), .env.example, config examples and the
 # operator guide, from the latest release.
 curl -fsSL https://github.com/0xnullsect0r/enclave-messenger/releases/latest/download/enclave-operator-kit.tar.gz | tar xz
 cd enclave-stack
-cp .env.example .env && $EDITOR .env           # DOMAIN, OPERATOR, FAMILY, ACME_EMAIL, RELAY_PUBLIC_ADDR
+
+./setup.sh     # asks: domain, operator name, family, certificate email,
+               # one existing server's address — then does everything below
+```
+
+What `setup.sh` does, if you'd rather run the steps yourself:
+
+```sh
+cp .env.example .env && $EDITOR .env           # DOMAIN, OPERATOR, FAMILY, ACME_EMAIL, RELAY_PUBLIC_ADDR,
+                                              # FEDERATION_API=0.0.0.0:7447, REGISTRAR=https://AN_EXISTING_SERVER
 for f in config/*.toml.example; do cp "$f" "${f%.example}"; done
-cp /path/to/foundation.pub /path/to/server-list.bin foundation/
+cp /path/to/foundation.pub foundation/         # the foundation's public key (signed lists verify against it)
 
 docker compose run --rm server init            # creates the keys, prints the server id
 docker compose run --rm witness init           # prints the witness id
 docker compose run --rm relay init             # prints the relay descriptor
 docker compose up -d
-docker compose ps                              # every service healthy
+docker compose run --rm witness -- enclave-witness descriptor /var/lib/enclave/public/witness-descriptor.bin
+docker compose exec server enclave-server apply AN_EXISTING_SERVER   # the application (RFC 0012)
 ```
 
-Devices reach the server through Tor. The `onion` service writes the
-stack's onion address to `public/onion.addr` once Tor says it is reachable
-(this can take a few minutes), and the server puts it in its descriptor for
-the foundation's list. Back up the `onion-data` volume with the keys:
-losing it changes the address. There is no Nym account to fund; the Nym
-mixnet is optional (`COMPOSE_PROFILES=nym` in `.env`, with a funded Nyx
-account).
+The registrar takes the application into the next list; clients see the
+new server at their next list refresh (once a day). To update the served
+list by hand instead — the ceremony of record for the first list — copy a
+signed `server-list.bin` into `foundation/` and set `server.server_list`
+to its path; with `FEDERATION_API` set, the stack also accepts pushed
+lists at `/federation/list` (verified against `foundation.pub`, only
+signed and only fresher).
+
+Devices reach the server through Tor (the default "Faster" route leaves
+through a Tor exit to the stack's front; "Tor only" uses the `onion`
+service). The `onion` service writes the stack's onion address to
+`public/onion.addr` once Tor says it is reachable (this can take a few
+minutes), and the server puts it in its descriptor for the foundation's
+list. Back up the `onion-data` volume with the keys: losing it changes
+the address. There is no Nym account to fund; the Nym mixnet is optional
+(`COMPOSE_PROFILES=nym` in `.env`, with a funded Nyx account).
 
 The same stack is published as an OCI artifact with each release
 (`docker compose -f oci://ghcr.io/0xnullsect0r/enclave-stack:VERSION up -d`).
@@ -149,9 +205,10 @@ leaves updating to you (`docker compose pull && docker compose up -d`).
 The updater holds the Docker socket (root on the host), the price of
 updating unattended. Run compose from the stack's folder.
 
-Joining the foundation's list, backups, key rotation, the onion service,
-push and the optional mixnet are in
-[`ops/operator-kit/deployment.md`](ops/operator-kit/deployment.md).
+Joining (RFC 0012), backups, key rotation, the onion service, push and
+the optional mixnet are in
+[`ops/operator-kit/deployment.md`](ops/operator-kit/deployment.md) and
+[`docs/13-operators.md`](docs/13-operators.md).
 
 <details>
 <summary><code>compose.yml</code></summary>
@@ -181,8 +238,12 @@ push and the optional mixnet are in
 # profile) and the call relay (UDP). The server holds the keys and has no
 # HTTP surface; it sits on the internal `backend` network, reached only
 # through the stack's onion service (and its Nym ingress with profile
-# `nym`; compose.dev.yml maps its port for development). Every container
-# runs as
+# `nym`; compose.dev.yml maps its port for development). Setting
+# NET_UPSTREAM in .env opens the fast routes (RFC 0011): the front carries
+# sealed requests to the server at POST /net for users who consent to a
+# faster route (out of Tor's exit, or straight to it — never in Maximum
+# privacy, and the onion route answers whenever the front doesn't). Every
+# container runs as
 # an unprivileged user with no capabilities and a read-only root
 # filesystem; state lives in the named volumes below.
 
@@ -207,6 +268,15 @@ services:
       ENCLAVE_SERVER__DOMAIN: ${DOMAIN}
       ENCLAVE_SERVER__OPERATOR: ${OPERATOR}
       ENCLAVE_SERVER__FAMILY: ${FAMILY}
+      # Auto-federation (RFC 0012): the API the front proxies
+      # /federation/* to, the foundation's public key a pushed list is
+      # verified against, and the registrar applications are handed to
+      # (any listed server's address works). FEDERATION_API empty keeps
+      # today's file-based list only.
+      ENCLAVE_SERVER__LISTEN_API: ${FEDERATION_API:-}
+      ENCLAVE_SERVER__FOUNDATION: ${FOUNDATION_PUB:-/etc/enclave/foundation/foundation.pub}
+      ENCLAVE_SERVER__SERVER_LIST: /var/lib/enclave/server/server-list.bin
+      ENCLAVE_SERVER__REGISTRAR: ${REGISTRAR:-}
     volumes:
       - ./config/server.toml:/etc/enclave/server.toml:ro
       - ./foundation:/etc/enclave/foundation:ro
@@ -219,6 +289,34 @@ services:
     healthcheck:
       test: ["CMD", "/usr/local/bin/enclave-server", "healthcheck", "--config", "/etc/enclave/server.toml"]
       interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # The foundation's federation registrar (RFC 0012): takes a new stack's
+  # application, checks the stack works from the outside, and signs and
+  # pushes the next server list to every listed stack. Holds the
+  # foundation's signing key — the one trust-relevant thing on this
+  # profile; a stack that only wants to hand applications over sets
+  # REGISTRAR to this stack's domain and needs none of it.
+  registrar:
+    <<: *service
+    entrypoint: ["/usr/local/bin/enclave-registrar"]
+    command: ["run", "--config", "/etc/enclave/registrar.toml"]
+    environment:
+      ENCLAVE_REGISTRAR__FOUNDATION_KEY: /run/secrets/foundation/foundation.key
+      ENCLAVE_REGISTRAR__STATIC_SPEC: /etc/enclave/registrar-spec.toml
+      ENCLAVE_REGISTRAR__LIST: /var/lib/enclave/registrar/list.bin
+      ENCLAVE_REGISTRAR__QUEUE: /var/lib/enclave/registrar/queue
+    volumes:
+      - ./config/registrar.toml:/etc/enclave/registrar.toml:ro
+      - ./config/registrar-spec.toml:/etc/enclave/registrar-spec.toml:ro
+      - ./foundation:/run/secrets/foundation:ro
+      - registrar-data:/var/lib/enclave/registrar
+    networks: [backend, egress]
+    profiles: [foundation]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/enclave-registrar", "list", "--config", "/etc/enclave/registrar.toml"]
+      interval: 60s
       timeout: 10s
       retries: 3
 
@@ -273,6 +371,12 @@ services:
       ENCLAVE_FRONT__TLS: ${TLS_MODE:-acme}
       ENCLAVE_FRONT__ACME_EMAIL: ${ACME_EMAIL:-}
       ENCLAVE_FRONT__CREDGATE: ${CREDGATE_UPSTREAM:-}
+      # The fast routes (RFC 0011): the server for POST /net. Empty (the
+      # default) keeps them closed.
+      ENCLAVE_FRONT__NET: ${NET_UPSTREAM:-}
+      # Auto-federation (RFC 0012): the server's internal API. Set with
+      # FEDERATION_API in .env (the same value as the server's).
+      ENCLAVE_FRONT__FEDERATION: ${FEDERATION_API:-}
     ports:
       - "${FRONT_HTTP_PORT:-80}:80"
       - "${FRONT_HTTPS_PORT:-443}:443"
@@ -518,6 +622,7 @@ volumes:
   push-egress-tor:
   credgate-keys:
   credgate-data:
+  registrar-data:
   onion-data:
 ```
 <!-- END ops/compose/compose.yml -->
@@ -610,4 +715,4 @@ To add a second device to an account, start another profile against the same
 server, choose "I already have Enclave", and paste its link code on the first
 device under Settings → Your devices.
 
-![Conversation](docs/screenshots/05-conversation-light.png)
+![Conversation](docs/screenshots/05-conversation-dark.png)
