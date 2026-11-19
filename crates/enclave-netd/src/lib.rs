@@ -587,8 +587,10 @@ impl Transport for Routed {
     }
 }
 
-/// How long Tor may take to bootstrap.
-const TOR_BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(300);
+/// How long Tor may take to bootstrap: past tord's own budget (150 s, or
+/// 300 s with bridges — RFC 0011), so its `blocked` word reaches netd
+/// first and says so, not netd's timeout.
+const TOR_BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(360);
 
 /// Start `enclave-tord` keeping its state in `state` (`docs/09-transport.md`
 /// §1), as the carrier of netd's requests; [`enclave_tord::launch::Starting::ready`]

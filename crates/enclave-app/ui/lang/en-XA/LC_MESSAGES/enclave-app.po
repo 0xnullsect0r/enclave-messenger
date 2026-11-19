@@ -1554,6 +1554,10 @@ msgid "Every server is reached through Tor by default. A faster route gives up s
 msgstr "[Évérý sérvér ís réáçhéd thróúgh Tór bý défáúlt. Á fástér róúté gívés úp sómé óf whát Tór hídés; ít dóés ñóthíñg íñ Máxímúm príváçý, áñd á sérvér thát dídñ't ópéñ íts fástér róúté kééps úsíñg Tór.··············································································]"
 
 #: ui/app.slint
+msgid "Every server through its onion service, the slowest but most hidden way. Maximum privacy always uses this, whatever is chosen here."
+msgstr "[Évérý sérvér thróúgh íts óñíóñ sérvíçé, thé slówést bút móst híddéñ wáý. Máxímúm príváçý álwáýs úsés thís, whátévér ís çhóséñ héré.····················································]"
+
+#: ui/app.slint
 msgid "Everyone can still read, vote in polls and react."
 msgstr "[Évérýóñé çáñ stíll réád, vóté íñ pólls áñd réáçt.···················]"
 
@@ -3622,8 +3626,8 @@ msgid "The camera starts when you press Record."
 msgstr "[Thé çámérá stárts whéñ ýóú préss Réçórd.················]"
 
 #: ui/app.slint
-msgid "The default. The server never learns your address, and your network only sees Tor."
-msgstr "[Thé défáúlt. Thé sérvér ñévér léárñs ýóúr áddréss, áñd ýóúr ñétwórk óñlý séés Tór.································]"
+msgid "The default. Through Tor, but out of its exit to each server's own address: about half the trip, and steadier. The server still doesn't learn your address."
+msgstr "[Thé défáúlt. Thróúgh Tór, bút óút óf íts éxít tó éáçh sérvér's ówñ áddréss: ábóút hálf thé tríp, áñd stéádíér. Thé sérvér stíll dóésñ't léárñ ýóúr áddréss.······························································]"
 
 #: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
@@ -3888,10 +3892,6 @@ msgstr "[Thósé shárés dóñ't fít tógéthér, ór théré áréñ't éñó
 #: enclave-vault/src/engine.rs
 msgid "Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account."
 msgstr "[Thósé wórds dóñ't mátçh, só ñóthíñg wás líñkéd. Íf ýóú dídñ't stárt thís, sóméóñé máý bé trýíñg tó gét íñtó ýóúr áççóúñt.················································]"
-
-#: ui/app.slint
-msgid "Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address."
-msgstr "[Thróúgh Tór, bút óút óf íts éxít tó éáçh sérvér's ówñ áddréss: ábóút hálf thé tríp. Thé sérvér stíll dóésñ't léárñ ýóúr áddréss.···················································]"
 
 #: ui/app.slint
 msgid "To check the call, both of you read these out:"

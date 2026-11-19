@@ -7,7 +7,8 @@
 //! (IP sockets only; the filesystem limited to `DIR` and what TLS needs),
 //! bootstraps Tor keeping its state in `DIR`, listens on a loopback port,
 //! and prints `ready PORT`. It exits when its stdin closes (netd went away).
-//! If Tor isn't up within [`BOOTSTRAP`], it prints `blocked` and exits: the
+//! If Tor isn't up in time ([`BOOTSTRAP`], or [`BRIDGED_BOOTSTRAP`] with
+//! bridges), it prints `blocked` and exits: the
 //! network may be blocking Tor, and bridges may get through. `--bridge`
 //! (bridge lines, from bridges.torproject.org), `--builtin-bridges` (the
 //! Tor Project's built-in obfs4 bridges) and `--snowflake` (its built-in
@@ -165,8 +166,9 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
+        let budget = bootstrap_budget(&bridges);
         let boot = tokio::time::timeout(
-            BOOTSTRAP,
+            budget,
             dialer(direct, socks, &state, &bridges, &methods),
         );
         let dialer: Arc<dyn crate::Dialer> = tokio::select! {
@@ -177,7 +179,7 @@ pub fn main_with(args: Vec<String>) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
                 Err(_) => {
-                    eprintln!("enclave-tord: Tor isn't up after {BOOTSTRAP:?}");
+                    eprintln!("enclave-tord: Tor isn't up after {budget:?}");
                     let _ = say(&mut stdout, "blocked").await;
                     return ExitCode::FAILURE;
                 }
@@ -374,6 +376,35 @@ async fn say(out: &mut tokio::fs::File, line: &str) -> std::io::Result<()> {
 /// How long Tor may take to come up before this says the network may be
 /// blocking it.
 const BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(150);
+
+/// The same, with bridges: a pluggable transport has to be found through
+/// its own machinery first (Snowflake waits for a volunteer's browser),
+/// and bootstraps measured at 147 s on a live bridged network — 150 s is
+/// a coin flip there, not a budget. (RFC 0011's benches.)
+const BRIDGED_BOOTSTRAP: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The bootstrap budget for this run: [`BRIDGED_BOOTSTRAP`] with bridges
+/// (Snowflake and friends need the room), [`BOOTSTRAP`] without.
+fn bootstrap_budget(bridges: &[String]) -> std::time::Duration {
+    if bridges.is_empty() {
+        BOOTSTRAP
+    } else {
+        BRIDGED_BOOTSTRAP
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bridges_get_the_longer_bootstrap_budget() {
+        use super::{BOOTSTRAP, BRIDGED_BOOTSTRAP, bootstrap_budget};
+        assert_eq!(bootstrap_budget(&[]), BOOTSTRAP);
+        assert_eq!(
+            bootstrap_budget(&["snowflake 192.0.2.3:80 fingerprint=x".into()]),
+            BRIDGED_BOOTSTRAP
+        );
+    }
+}
 
 async fn dialer(
     direct: bool,

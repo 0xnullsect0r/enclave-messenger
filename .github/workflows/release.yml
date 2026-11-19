@@ -120,6 +120,10 @@ jobs:
     steps:
       - name: Build tools
         run: |
+          # A flaky AlmaLinux mirror once returned an empty repomd.xml and
+          # took the whole release down with it (v0.1.9's first run): every
+          # dnf gets three tries, and its cache is cleared between them.
+          dnf() { for i in 1 2 3; do command dnf "$@" && return 0; echo "dnf: try $i failed, retrying"; command dnf clean all; sleep 10; done; return 1; }
           # PipeWire's headers (screen share on Linux) are in CRB.
           dnf -y install --setopt=install_weak_deps=False dnf-plugins-core
           dnf config-manager --set-enabled crb
@@ -732,6 +736,10 @@ jobs:
     steps:
       - name: Build tools
         run: |
+          # A flaky AlmaLinux mirror once returned an empty repomd.xml and
+          # took the whole release down with it (v0.1.9's first run): every
+          # dnf gets three tries, and its cache is cleared between them.
+          dnf() { for i in 1 2 3; do command dnf "$@" && return 0; echo "dnf: try $i failed, retrying"; command dnf clean all; sleep 10; done; return 1; }
           # PipeWire's headers (screen share on Linux) are in CRB.
           dnf -y install --setopt=install_weak_deps=False dnf-plugins-core
           dnf config-manager --set-enabled crb

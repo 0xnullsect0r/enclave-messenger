@@ -1554,6 +1554,10 @@ msgid "Every server is reached through Tor by default. A faster route gives up s
 msgstr "‫Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor.‬"
 
 #: ui/app.slint
+msgid "Every server through its onion service, the slowest but most hidden way. Maximum privacy always uses this, whatever is chosen here."
+msgstr "‫Every server through its onion service, the slowest but most hidden way. Maximum privacy always uses this, whatever is chosen here.‬"
+
+#: ui/app.slint
 msgid "Everyone can still read, vote in polls and react."
 msgstr "‫Everyone can still read, vote in polls and react.‬"
 
@@ -3622,8 +3626,8 @@ msgid "The camera starts when you press Record."
 msgstr "‫The camera starts when you press Record.‬"
 
 #: ui/app.slint
-msgid "The default. The server never learns your address, and your network only sees Tor."
-msgstr "‫The default. The server never learns your address, and your network only sees Tor.‬"
+msgid "The default. Through Tor, but out of its exit to each server's own address: about half the trip, and steadier. The server still doesn't learn your address."
+msgstr "‫The default. Through Tor, but out of its exit to each server's own address: about half the trip, and steadier. The server still doesn't learn your address.‬"
 
 #: ui/app.slint
 msgid "The group moves from the next day once more than half of its admins vote for the same server. Votes count for 7 days, and earlier messages stay where they are."
@@ -3888,10 +3892,6 @@ msgstr "‫Those shares don't fit together, or there aren't enough of them. Chec
 #: enclave-vault/src/engine.rs
 msgid "Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account."
 msgstr "‫Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account.‬"
-
-#: ui/app.slint
-msgid "Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address."
-msgstr "‫Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address.‬"
 
 #: ui/app.slint
 msgid "To check the call, both of you read these out:"

@@ -169,8 +169,11 @@ jobs:
           set -euo pipefail
           work=$WORK
           sudo apt-get install -y --no-install-recommends tor >/dev/null
+          # The package starts its own service on the default port; ours,
+          # with our flags, is the one the bench rides.
+          sudo systemctl disable --now tor >/dev/null 2>&1 || true
           mkdir -p "$work/ctor-data"
-          tor --SocksPort 127.0.0.1:9050 IsolateDestAddr --DataDirectory "$work/ctor-data" \
+          tor --SocksPort "127.0.0.1:9050 IsolateDestAddr" --DataDirectory "$work/ctor-data" \
             > "$work/ctor.log" 2>&1 &
           for _ in $(seq 300); do grep -q 'Bootstrapped 100%' "$work/ctor.log" && break; sleep 1; done
           grep -q 'Bootstrapped 100%' "$work/ctor.log" || { cat "$work/ctor.log"; exit 1; }

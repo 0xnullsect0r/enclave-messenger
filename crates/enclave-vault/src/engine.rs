@@ -5598,7 +5598,7 @@ impl Engine {
             .ok()
             .flatten()
             .and_then(|b| b.first().copied())
-            .unwrap_or(0)
+            .unwrap_or(1)
             .min(2);
         // The backup route: offered after a minute without the mixnet, when
         // the home server is on the mixnet and has an onion service too, and

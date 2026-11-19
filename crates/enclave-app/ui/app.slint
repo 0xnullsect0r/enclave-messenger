@@ -4531,8 +4531,8 @@ export component AppWindow inherits Window {
                 text: @tr("Every server is reached through Tor by default. A faster route gives up some of what Tor hides; it does nothing in Maximum privacy, and a server that didn't open its faster route keeps using Tor.");
             }
             for option[i] in [
-                { title: @tr("Tor only"), text: @tr("The default. The server never learns your address, and your network only sees Tor.") },
-                { title: @tr("Faster"), text: @tr("Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address.") },
+                { title: @tr("Tor only"), text: @tr("Every server through its onion service, the slowest but most hidden way. Maximum privacy always uses this, whatever is chosen here.") },
+                { title: @tr("Faster"), text: @tr("The default. Through Tor, but out of its exit to each server's own address: about half the trip, and steadier. The server still doesn't learn your address.") },
                 { title: @tr("Fastest"), text: @tr("Straight to each server's own address, no Tor. The server learns the address you're sending from, and so does your network. Messages stay sealed and unreadable either way.") },
             ]: Rectangle {
                 min-height: row2.preferred-height;

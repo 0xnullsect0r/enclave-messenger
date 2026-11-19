@@ -1554,6 +1554,10 @@ msgid "Every server is reached through Tor by default. A faster route gives up s
 msgstr ""
 
 #: ui/app.slint
+msgid "Every server through its onion service, the slowest but most hidden way. Maximum privacy always uses this, whatever is chosen here."
+msgstr ""
+
+#: ui/app.slint
 msgid "Everyone can still read, vote in polls and react."
 msgstr ""
 
@@ -3622,7 +3626,7 @@ msgid "The camera starts when you press Record."
 msgstr ""
 
 #: ui/app.slint
-msgid "The default. The server never learns your address, and your network only sees Tor."
+msgid "The default. Through Tor, but out of its exit to each server's own address: about half the trip, and steadier. The server still doesn't learn your address."
 msgstr ""
 
 #: ui/app.slint
@@ -3887,10 +3891,6 @@ msgstr ""
 
 #: enclave-vault/src/engine.rs
 msgid "Those words don't match, so nothing was linked. If you didn't start this, someone may be trying to get into your account."
-msgstr ""
-
-#: ui/app.slint
-msgid "Through Tor, but out of its exit to each server's own address: about half the trip. The server still doesn't learn your address."
 msgstr ""
 
 #: ui/app.slint

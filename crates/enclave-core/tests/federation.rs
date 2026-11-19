@@ -314,15 +314,25 @@ async fn nym_routes_from_the_list_and_descriptors() {
         .unwrap();
     ada.set_foundation(foundation.public()).unwrap();
     ada.offer_server_list(&signed).unwrap();
-    // B has no ingress in the list: no route for it.
+    // B has no ingress in the list: no Nym route for it. The fast lane is
+    // the default (RFC 0011's 0.1.10 amendment), so both also get their
+    // exit route from the list's domains.
     assert_eq!(
         t.seen.lock().unwrap().as_slice(),
-        &[(ida, Route::Nym("ingress-a".into()))]
+        &[
+            (ida, Route::Nym("ingress-a".into())),
+            (ida, Route::Exit("a.test".into(), 443)),
+            (idb, Route::Exit("b.test".into(), 443)),
+        ]
     );
     net.publish_descriptor(&idb, "ingress-b", true).unwrap();
     ada.fetch_descriptor(&idb).await.unwrap();
+    let seen = t.seen.lock().unwrap();
     assert_eq!(
-        t.seen.lock().unwrap().last(),
-        Some(&(idb, Route::Nym("ingress-b".into())))
+        &seen[seen.len() - 2..],
+        &[
+            (idb, Route::Nym("ingress-b".into())),
+            (idb, Route::Exit("b.test".into(), 443)),
+        ]
     );
 }

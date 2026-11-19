@@ -258,20 +258,23 @@ impl Client {
     }
 
     /// The fast route to a stack's front (RFC 0011) for the saved consent:
-    /// `None` when off (the default) — an off fast lane is taken back
-    /// server by server ([`Self::set_fast_route`]), not by every route
-    /// application.
+    /// `None` when off — and off is only the saved choice, never the
+    /// default: a profile that never chose gets the exit lane (measured on
+    /// the live network, the onion route's tail is seconds where the exit
+    /// lane's is a fraction of one, and the exit lane hides the device's
+    /// address just the same). An off fast lane is taken back server by
+    /// server ([`Self::set_fast_route`]), not by every route application.
     fn fast_route_route(&self, domain: &str) -> Option<Route> {
         let v = self
             .setting("fastroute")
             .ok()
             .flatten()
             .and_then(|b| b.first().copied())
-            .unwrap_or(0);
+            .unwrap_or(1);
         match v {
-            1 => Some(Route::Exit(domain.to_string(), 443)),
+            0 => None,
             2 => Some(Route::Direct(domain.to_string(), 443)),
-            _ => None,
+            _ => Some(Route::Exit(domain.to_string(), 443)),
         }
     }
 

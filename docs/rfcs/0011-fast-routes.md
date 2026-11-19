@@ -96,9 +96,18 @@ Three of the four changes need no new plumbing:
 
 ### 4. Consent (`enclave-core`, `enclave-vault`, the app)
 
-- The setting `fastroute` in the client's settings: 0 off (the default),
-  1 `exit`, 2 `direct`. Settings → "Message speed": Tor only / Faster /
-  Fastest, with what each gives up. `Cmd::FastRoute` (153) carries it.
+- The setting `fastroute` in the client's settings: 0 off (the default
+  until 0.1.10), 1 `exit`, 2 `direct`. Settings → "Message speed": Tor
+  only / Faster / Fastest, with what each gives up. `Cmd::FastRoute`
+  (153) carries it.
+  **Amended (0.1.10): the exit lane is the default** — a profile that
+  never chose gets `fastroute` 1, so accounts are set up and messages sent
+  over it wherever a stack opened its front. Measured on the live network
+  against a production stack, that traded the onion route's seconds-long
+  tail (poll p90 4.3 s, unit p90 5.8 s) for a flat one (702 ms / 749 ms)
+  at the same address-hiding: the exit lane still shows the server a Tor
+  exit, never the device. Tor-only remains a choice, and Maximum privacy
+  refuses the fast lane whatever the setting says.
 - With the setting on, the client sends the fast route for every listed
   server (its `domain`) and each accepted descriptor's, exactly as it sends
   onion and Nym routes today; turning it off sends `Route::Off` for every
