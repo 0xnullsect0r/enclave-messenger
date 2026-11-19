@@ -31,7 +31,11 @@ for pkg in enclave-messenger enclave-messenger-bin; do
 done
 [ "$MODE" = push ] || exit 0
 
-pacman -Sy --noconfirm --needed openssh git
+# -Syu, not -Sy: a pinned container image with a fresh repo sync is a
+# partial upgrade, which breaks the day a soname lands (openssl 4.1's
+# libcrypto.so=4 vs the image's cryptsetup wanting =3 stopped v0.1.10's
+# first AUR push). Upgrade the whole container, then add what's missing.
+pacman -Syu --noconfirm --needed openssh git
 install -d -m700 -o builder /home/builder/.ssh
 printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /home/builder/.ssh/aur
 printf '%s\n' "$AUR_KNOWN_HOSTS" > /home/builder/.ssh/known_hosts
