@@ -1,0 +1,18 @@
+# The registrar's static spec (RFC 0012): the parts of the list that don't
+# come from stacks — the relays, push relays, credential gates and any
+# foundation-run witnesses — in the shape `enclave-admin server-list
+# build` takes for them. Servers come from the applications and the list
+# held; every listed stack is re-verified at each rebuild.
+
+witness_threshold = 1
+valid_days = 30
+# witness = ["witness-a.desc.bin"]
+# relay = ["relay-a.desc.bin"]
+# [[push]]
+# nym_address = ""
+# onion = "xxxx.onion"
+# keys = "push.keys"
+# [[credgate]]
+# url = "https://gate.example"
+# issuer_name = "gate"
+# keys = "gate.keys"

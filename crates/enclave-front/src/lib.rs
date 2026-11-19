@@ -97,6 +97,9 @@ pub struct Site {
     /// The foundation's credential gate on the internal network
     /// (`http://credgate:7448`), on the stack that runs one.
     pub credgate: Option<String>,
+    /// The server's federation API (`http://server:7447`, RFC 0012):
+    /// pushed lists and applications to hand to the registrar.
+    pub federation: Option<String>,
     /// The server on the internal network (`server:7443`) for the fast
     /// route (RFC 0011): `POST /net` carries one sealed request to it and
     /// its reply back. `None` (the default): the route answers 404, and the
@@ -118,6 +121,7 @@ impl Site {
             public_dir,
             witness: witness.map(|w| w.trim_end_matches('/').to_string()),
             credgate: None,
+            federation: None,
             net: None,
             http,
         }
@@ -126,6 +130,13 @@ impl Site {
     /// Also proxy the credential gate's API (`/credgate/v1/*`) to `url`.
     pub fn with_credgate(mut self, url: Option<String>) -> Self {
         self.credgate = url.map(|u| u.trim_end_matches('/').to_string());
+        self
+    }
+
+    /// Also proxy the federation API (`/federation/*`, RFC 0012) to the
+    /// server's internal listener (`http://server:7447`).
+    pub fn with_federation(mut self, url: Option<String>) -> Self {
+        self.federation = url.map(|u| u.trim_end_matches('/').to_string());
         self
     }
 
@@ -150,6 +161,7 @@ impl Site {
             .route("/call", get(invite_page))
             .route("/witness/v1/{*rest}", any(witness))
             .route("/credgate/v1/{*rest}", any(credgate))
+            .route("/federation/{*rest}", any(federation))
             .route("/net", axum::routing::post(net))
             .with_state(Arc::new(self))
     }
@@ -247,6 +259,18 @@ async fn witness(
 ) -> Response {
     match &site.witness {
         Some(base) => proxy(&site, &format!("{base}/witness/v1/{rest}"), req).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Pass a federation request through to the server's API (RFC 0012).
+async fn federation(
+    State(site): State<Arc<Site>>,
+    Path(rest): Path<String>,
+    req: Request<Body>,
+) -> Response {
+    match &site.federation {
+        Some(base) => proxy(&site, &format!("{base}/federation/{rest}"), req).await,
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

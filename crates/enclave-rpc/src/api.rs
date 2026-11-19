@@ -759,6 +759,12 @@ pub fn pow_context_username(name: &[u8; 32], day: u64) -> Vec<u8> {
     [b"claim-username".as_slice(), name, &day.to_be_bytes()].concat()
 }
 
+/// Context string for the proof of work a stack sends with its federation
+/// application (RFC 0012): `"join-federation" ‖ server id ‖ u64 day`.
+pub fn pow_context_join(server: &[u8; 16], day: u64) -> Vec<u8> {
+    [b"join-federation".as_slice(), server, &day.to_be_bytes()].concat()
+}
+
 /// A username as a directory key: its bytes, zero-padded (names are at most
 /// 32 ASCII characters).
 pub fn name_key(name: &str) -> Option<[u8; 32]> {

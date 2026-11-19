@@ -1,0 +1,9 @@
+# enclave-registrar (docs/12-servers.md §6, RFC 0012). The foundation key
+# and the spec come from the environment in compose; this file carries the
+# rest.
+
+[registrar]
+listen = "0.0.0.0:7451"
+# effort = 16            # the proof of work asked of an application
+# open = true            # false: each application waits for `approve`
+# rebuild_every_secs = 21600

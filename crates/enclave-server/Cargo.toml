@@ -22,6 +22,15 @@ enclave-kt = { path = "../enclave-kt" }
 enclave-service = { path = "../enclave-service" }
 enclave-federation = { path = "../enclave-federation" }
 enclave-witness = { path = "../enclave-witness" }
+enclave-tls = { path = "../enclave-tls" }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+hyper = { version = "1", features = ["client", "server", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "server", "service", "http1", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "webpki-roots"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+webpki-roots = "1"
+http-body-util = "0.1"
+bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync", "time", "signal"] }
 thiserror = "2"
 redb = "4.3.0"
@@ -40,5 +49,6 @@ name = "enclave-server"
 path = "src/main.rs"
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 # The stream framing test starts the development server.
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time", "process"] }

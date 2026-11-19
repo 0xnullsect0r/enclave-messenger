@@ -3465,6 +3465,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "enclave-registrar"
+version = "0.1.10"
+dependencies = [
+ "axum",
+ "bytes",
+ "enclave-crypto",
+ "enclave-federation",
+ "enclave-rpc",
+ "enclave-service",
+ "enclave-tls",
+ "enclave-tokens",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "rustls",
+ "serde",
+ "tokio",
+ "toml 0.8.23",
+ "webpki-roots",
+]
+
+[[package]]
 name = "enclave-relay"
 version = "0.1.10"
 dependencies = [
@@ -3503,20 +3526,30 @@ dependencies = [
 name = "enclave-server"
 version = "0.1.10"
 dependencies = [
+ "axum",
+ "bytes",
  "enclave-crypto",
  "enclave-federation",
  "enclave-kt",
  "enclave-proto",
  "enclave-rpc",
  "enclave-service",
+ "enclave-tls",
  "enclave-tokens",
  "enclave-wire",
  "enclave-witness",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
  "postgres",
  "redb",
+ "rustls",
  "serde",
  "thiserror 2.0.21",
  "tokio",
+ "tower",
+ "webpki-roots",
  "zeroize",
 ]
 

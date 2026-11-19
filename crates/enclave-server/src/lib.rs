@@ -22,6 +22,7 @@
 pub mod admin;
 pub mod config;
 pub mod db;
+pub mod federation;
 pub mod keys;
 mod pg;
 

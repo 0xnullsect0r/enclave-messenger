@@ -1,0 +1,40 @@
+[package]
+name = "enclave-registrar"
+description = "The foundation's federation registrar (RFC 0012): takes a new stack's application, checks it works from the outside, and signs and pushes the next server list to every listed stack."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+enclave-crypto = { path = "../enclave-crypto" }
+enclave-federation = { path = "../enclave-federation" }
+enclave-rpc = { path = "../enclave-rpc" }
+enclave-tls = { path = "../enclave-tls" }
+enclave-service = { path = "../enclave-service" }
+enclave-tokens = { path = "../enclave-tokens"
+}
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync", "time", "signal", "fs"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+hyper = { version = "1", features = ["client", "server", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "server", "service", "http1", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "webpki-roots"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+webpki-roots = "1"
+http-body-util = "0.1"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[[bin]]
+name = "enclave-registrar"
+path = "src/bin/enclave-registrar.rs"
+
+[dev-dependencies]
+enclave-crypto = { path = "../enclave-crypto" }

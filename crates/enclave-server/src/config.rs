@@ -82,6 +82,17 @@ pub struct ServerSection {
     /// The release update bundle the front fetches (`front.update_dir`),
     /// relayed to clients as `DirKind::Update`; re-read when it changes.
     pub update_bundle: Option<PathBuf>,
+    /// The foundation's public key (a file, no secret): with it the server
+    /// accepts a pushed, doubly-signed server list at its federation API
+    /// (`listen_api`, RFC 0012) — signature possession is the authority.
+    pub foundation: Option<PathBuf>,
+    /// The registrar to hand applications to (`/federation/apply`,
+    /// RFC 0012): `https://DOMAIN`, empty to answer "no registrar".
+    pub registrar: Option<String>,
+    /// The internal HTTP API (`/federation/list`, `/federation/apply`;
+    /// RFC 0012) the front proxies to. Empty: no API (the file-based list
+    /// of `server_list` is all there is).
+    pub listen_api: Option<SocketAddr>,
 }
 
 impl Default for ServerSection {
@@ -97,6 +108,9 @@ impl Default for ServerSection {
             nym_address: String::new(),
             server_list: None,
             update_bundle: None,
+            foundation: None,
+            registrar: None,
+            listen_api: None,
         }
     }
 }

@@ -23,7 +23,7 @@
 
 use enclave_crypto::rng::HedgedRng;
 use enclave_crypto::sig::CompositeSigningKey;
-use enclave_federation::{KeyBundle, server_id};
+use enclave_federation::{KeyBundle, ServerDescriptor, server_id};
 use enclave_kt::{KtService, KtStore};
 use enclave_server::config::FileConfig;
 use enclave_server::db::Db;
@@ -68,6 +68,7 @@ fn main() -> ExitCode {
             None => show_descriptor(&args),
         },
         "healthcheck" => runtime().and_then(|rt| rt.block_on(healthcheck(&args))),
+        "apply" => runtime().and_then(|rt| rt.block_on(apply_federation(&args))),
         "dev" => runtime().and_then(|rt| rt.block_on(dev(&args[1.min(args.len())..]))),
         "--help" | "-h" | "help" => {
             eprintln!(
@@ -475,6 +476,29 @@ async fn run(args: &[String]) -> Result<(), String> {
         Arc::clone(&server),
         cfg.server.data_dir.join(enclave_server::admin::SOCKET),
     )?;
+    // The federation API (RFC 0012), when the front is set to proxy to it:
+    // pushed lists land in the file `refresh_server_list` serves, and
+    // applications are handed to the registrar.
+    if let Some(addr) = cfg.server.listen_api {
+        let (Some(foundation), Some(list)) = (&cfg.server.foundation, &cfg.server.server_list)
+        else {
+            return Err("listen_api needs server.foundation and server.server_list".into());
+        };
+        let key =
+            std::fs::read(foundation).map_err(|e| format!("{}: {e}", foundation.display()))?;
+        let f = std::sync::Arc::new(enclave_server::federation::Federation {
+            foundation: enclave_federation::FoundationPublic::decode(&key)
+                .map_err(|e| format!("{}: {e}", foundation.display()))?,
+            list: list.clone(),
+            registrar: cfg.server.registrar.clone(),
+        });
+        let api = TcpListener::bind(addr).await.map_err(|e| e.to_string())?;
+        eprintln!(
+            "federation: {} (RFC 0012)",
+            api.local_addr().map_err(|e| e.to_string())?
+        );
+        tokio::spawn(enclave_server::federation::serve(api, f));
+    }
     let listener = TcpListener::bind(cfg.server.listen)
         .await
         .map_err(|e| e.to_string())?;
@@ -572,6 +596,69 @@ fn sign_descriptor(
 /// the foundation's list, before the first start). The key-transparency
 /// keys are the ones `run` uses: the head key, and the VRF public key
 /// derived from the VRF secret.
+
+/// `enclave-server apply KNOWN_DOMAIN [--config FILE]` (RFC 0012): hand
+/// this stack's application to an existing server's registrar — its
+/// descriptor, its witness's (from `public/witness-descriptor.bin`, written
+/// by `enclave-witness descriptor`), and a proof of work at the effort the
+/// registrar names. The answer says queued, approved, or why not.
+async fn apply_federation(args: &[String]) -> Result<(), String> {
+    use enclave_rpc::api;
+    let known = args
+        .get(1)
+        .filter(|a| !a.starts_with("--"))
+        .ok_or("usage: enclave-server apply KNOWN_DOMAIN [--config FILE]")?;
+    let base = if known.starts_with("https://") {
+        known.trim_end_matches('/').to_string()
+    } else {
+        format!("https://{known}")
+    };
+    let cfg = load_config(args)?;
+    let descriptor = std::fs::read(cfg.server.public_dir.join("descriptor.bin"))
+        .map_err(|e| format!("descriptor: {e} (is the stack up?)"))?;
+    let id = enclave_federation::server_id(
+        &enclave_federation::ServerDescriptor::decode(&descriptor)
+            .map_err(|e| format!("descriptor: {e}"))?
+            .identity,
+    );
+    let witness =
+        std::fs::read(cfg.server.public_dir.join("witness-descriptor.bin")).unwrap_or_default();
+    let (status, effort) =
+        enclave_server::federation::get_https(&format!("{base}/registrar/v1/params")).await?;
+    if status != 200 {
+        return Err(format!("{base}: no registrar answers there ({status})"));
+    }
+    let effort: u32 = String::from_utf8_lossy(&effort)
+        .trim()
+        .parse()
+        .map_err(|_| format!("{base}: the registrar's effort isn't a number"))?;
+    eprintln!("registrar: {base} (effort {effort}), solving the proof of work…");
+    let mut rng = HedgedRng::new().map_err(|e| e.to_string())?;
+    let proof = enclave_tokens::solve(
+        &api::pow_context_join(&id, u64::from(today())),
+        effort,
+        &mut rng,
+    )
+    .map_err(|e| e.to_string())?;
+    let body = [
+        &(descriptor.len() as u32).to_be_bytes()[..],
+        &descriptor,
+        &(witness.len() as u32).to_be_bytes()[..],
+        &witness,
+        &proof.0[..],
+    ]
+    .concat();
+    let (status, answer) =
+        enclave_server::federation::post_https(&format!("{base}/federation/apply"), &body).await?;
+    let answer = String::from_utf8_lossy(&answer).into_owned();
+    if status == 200 {
+        eprintln!("{answer}");
+        Ok(())
+    } else {
+        Err(format!("registrar ({status}): {answer}"))
+    }
+}
+
 fn write_descriptor(args: &[String], out: &str) -> Result<(), String> {
     let cfg = load_config(args)?;
     let mut keys = ServerKeys::load(&cfg.server.keys_dir).map_err(|e| e.to_string())?;

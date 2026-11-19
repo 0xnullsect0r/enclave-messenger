@@ -23,6 +23,19 @@ Operators MUST NOT be able to:
 
 The software provides no admin interface that would suggest otherwise.
 
+## 1b. Joining (RFC 0012)
+
+Copy `ops/compose`, run `ops/setup.sh`, answer the questions (domain,
+operator name, family, certificate email, one existing server's address),
+and the stack brings itself up and applies. The foundation's registrar
+checks the stack from the outside — the domain, the certificate, the
+front, the descriptor it serves — and the next server list carries it;
+clients see it at their next daily list refresh. A list membership is the
+foundation's vouch: the registrar drops a stack whose front stops serving
+its verified descriptor, and the offline `enclave-admin` flow remains the
+ceremony of record for the first list and for anything the registrar
+shouldn't decide alone.
+
 ## 2. User reports
 
 - A report is created by the user in the app: "Report" on a message or conversation. The user chooses what to include. Reports **voluntarily include the reported plaintext** and, for attachments, the blob pointer.

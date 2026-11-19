@@ -414,6 +414,40 @@ Configuration is `[front]` in the TOML file given by `--config`, or `ENCLAVE_FRO
 
 `/credgate/v1/*` is the foundation's credential gate (`enclave-credgate`, `09-transport.md` §7), proxied by the front of the stack that runs it (`[front] credgate`, compose profile `foundation`); other stacks answer 404.
 
+## 4b. Auto-federation (RFC 0012)
+
+A new stack joins by proving itself to one address. `ops/setup.sh` (or the
+compose `.env` alone) brings the stack up and `enclave-server apply
+KNOWN_DOMAIN` hands its application to that server's registrar: the
+stack's descriptor, its witness's (from
+`public/witness-descriptor.bin`, which `enclave-witness descriptor`
+writes), and a proof of work (`api::pow_context_join`, the inbox-creation
+tier). The **registrar** (`enclave-registrar`, the foundation's
+always-on service, profile `foundation`) checks the application — both
+descriptors self-signed and in window, the proof of work, and the
+registrar's own fetch of `https://<domain>/.well-known/enclave` equal to
+the descriptor applied with — and at each rebuild re-fetches every listed
+stack's descriptor (identity must continue; a stack that changed who it
+is, or whose front stopped answering its verified descriptor, holds the
+rebuild back rather than being dropped silently), adds the approved
+applications, signs the next list twice under the foundation key, and
+pushes it to every listed stack's `/federation/list`.
+
+Each stack's front proxies `/federation/*` to the server's internal API
+(`server.listen_api`, `0.0.0.0:7447` in compose): `POST /federation/list`
+verifies a pushed list against `server.foundation` (the foundation's
+public key) — both signatures, not expired, sequence above what's held —
+and swaps the file clients are served, atomically; `POST
+/federation/apply` hands an application to `server.registrar` unchanged,
+so a new operator's one address can be any listed server. No secret, no
+token: possession of the foundation's signature is the authority.
+Without `listen_api` a stack keeps today's file-based list and everything
+works as before. Test `a_pushed_list_is_taken_when_signed_and_fresher`
+(`enclave-server`); the registrar's decision logic in
+`enclave-registrar`'s `join` tests (an application checked completely, a
+rebuild that keeps who stays, refuses who changed, takes the new, and a
+result that verifies under the public key).
+
 ## 5. Relays
 
 `enclave-relay` as built: the relay-ticket service (tickets paid with proof of work, RFC 0006) and the data plane, with WireGuard to clients (`11-calls.md` §3.4). Its keys live in a key directory created by `enclave-relay init` (`keys.rs`): `identity.key` (a composite signing key; the relay id is `SHAKE256("enclave/v1/calls/relay-id" ‖ identity key)` and the key signs the relay's descriptor), `link.key` (the X448 secret for relay↔relay links, published in the descriptor) and `ticket-chain.key`, a daily seed chain (`enclave_service::SeedChain`). Day `d`'s ticket key is `KMAC256(seed_d, u32(d), 960, "enclave/v1/calls/ticket-key")` split into the X448 secret and the ML-KEM-1024 seed; `seed_{d+1} = KMAC256(seed_d, "", 256, "enclave/v1/calls/ticket-chain")`. The relay serves today's key and yesterday's (for requests sealed just before midnight), and publishes tomorrow's ahead. Each served request's burn id is recorded in `data_dir/relay.redb` (`ledger.rs`) and committed before the ticket is issued, so a restart never serves a request twice. The WireGuard key is derived from `link.key` (`calls/relay-wg`), so it needs no file of its own. `enclave-relay run --config FILE` reads `[relay] listen` (default `0.0.0.0:51820`), `public_addr`, `family` (required), `operator`, `keys_dir`, `data_dir`, `server_list` and `foundation_key` (the foundation's signed list and key: every relay listed becomes a peer, checked again each time the file changes and every 6 hours), `peers` (more peer descriptors in hex) and `ticket_effort` (proof-of-work effort per ticket, default 16); `enclave-relay descriptor OUT` writes the signed `RelayDescriptor` (today's and tomorrow's ticket keys) that operators submit for the foundation's list; `healthcheck` checks the heartbeat file `run` writes every 30 s. Calls in progress do not survive a restart (sessions last at most 4 h and are held in memory).
