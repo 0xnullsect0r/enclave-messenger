@@ -1,0 +1,43 @@
+name: AUR push (manual)
+# Pushes the AUR packages for an already-released version, by hand: the
+# release workflow's own `aur` job runs from the tag's scripts, so when a
+# fix lands after the tag (openssl 4.1's soname vs the pinned container
+# image, v0.1.10) this runs the current ci/release/aur.sh against the
+# release's artifact instead.
+#
+#   gh workflow run "AUR push (manual)" -f version=0.1.10 -f run_id=RUN
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The released version (0.1.10)"
+        required: true
+      run_id:
+        description: "The release workflow run holding the release-<version> artifact"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  aur:
+    name: AUR (enclave-messenger, enclave-messenger-bin)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: aur
+    container: archlinux:base-devel@sha256:996c3a1d6b0d87b01242f6fcd8cfa3ad3eece1a67ab5c8f108e20af1d7b97bdd
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          run-id: ${{ inputs.run_id }}
+          name: release-${{ inputs.version }}
+          path: dist
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push both packages
+        env:
+          V: ${{ inputs.version }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_KNOWN_HOSTS: ${{ secrets.AUR_KNOWN_HOSTS }}
+        run: ci/release/aur.sh "$V" dist push
