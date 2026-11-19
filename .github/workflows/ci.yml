@@ -56,7 +56,7 @@ jobs:
         run: cargo xtask licenses --check
       - name: Translations extracted, catalogs merged, every shown string translatable
         run: cargo xtask i18n --check
-      - name: Render UI screenshots (software renderer, light and dark; and the pseudo-locales)
+      - name: Render UI screenshots (software renderer, dark; and the pseudo-locales)
         run: |
           cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots
           ENCLAVE_LANG=en-XA cargo run --release -p enclave-app --features demo --bin enclave-shots -- target/shots/en-XA

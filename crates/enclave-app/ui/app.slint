@@ -4611,9 +4611,21 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 spacing: Tokens.space-s;
                 alignment: start;
+                // Save is for pasted lines only (the two buttons below apply
+                // at once); the active way shows on its button.
                 PrimaryButton { text: @tr("Save"); enabled: root.bridges-input != ""; clicked => { root.set-bridges(root.bridges-input); } }
-                QuietButton { text: @tr("Built-in"); clicked => { root.set-bridges("builtin"); } }
-                QuietButton { text: @tr("Snowflake"); clicked => { root.set-bridges("snowflake"); } }
+                QuietButton {
+                    text: root.bridges == "builtin" ? @tr("Built-in ✓") : @tr("Built-in");
+                    outlined: root.bridges == "builtin";
+                    enabled: root.bridges != "builtin";
+                    clicked => { root.set-bridges("builtin"); }
+                }
+                QuietButton {
+                    text: root.bridges == "snowflake" ? @tr("Snowflake ✓") : @tr("Snowflake");
+                    outlined: root.bridges == "snowflake";
+                    enabled: root.bridges != "snowflake";
+                    clicked => { root.set-bridges("snowflake"); }
+                }
                 if root.bridges != "": QuietButton { text: @tr("Turn off"); clicked => { root.set-bridges(""); } }
             }
             if root.bridges-error != "": Text {

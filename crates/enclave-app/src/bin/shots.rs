@@ -465,8 +465,9 @@ fn main() -> Result<(), slint::PlatformError> {
         .unwrap_or_default();
     let data = fixture();
 
-    for dark in [false, true] {
-        let mode = if dark { "dark" } else { "light" };
+    // Dark only (since 0.1.11): the app ships no light mode.
+    for dark in [true] {
+        let mode = "dark";
         ui.global::<Tokens>().set_dark(dark);
         // Final states, not the first frame of an animation.
         ui.global::<Tokens>().set_reduce_motion(true);

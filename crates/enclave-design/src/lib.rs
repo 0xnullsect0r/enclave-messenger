@@ -192,9 +192,11 @@ impl Tokens {
     /// Generate the `Tokens` Slint global. Colors switch on `dark`; lengths
     /// and font sizes scale with `text-scale` where they are type.
     pub fn to_slint(&self) -> Result<String, TokenError> {
+        // The app is dark-only (since 0.1.11): the light palette stays part
+        // of the system (checked for contrast), the window never shows it.
         let mut s = String::from(
             "// Generated from design/tokens.toml by enclave-design. Do not edit.\n\
-             export global Tokens {\n    in-out property <bool> dark: false;\n    in-out property <float> text-scale: 1.0;\n    in-out property <bool> reduce-motion: false;\n",
+             export global Tokens {\n    in-out property <bool> dark: true;\n    in-out property <float> text-scale: 1.0;\n    in-out property <bool> reduce-motion: false;\n",
         );
         for (name, light) in &self.light {
             let dark = self

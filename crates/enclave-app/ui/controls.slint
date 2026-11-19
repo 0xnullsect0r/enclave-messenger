@@ -222,13 +222,14 @@ export component QuietButton inherits Rectangle {
     in property <string> text;
     in property <bool> danger: false;
     in property <bool> outlined: false;
+    in property <bool> enabled: true;
     callback clicked();
     min-height: Tokens.space-touch-target-min;
     min-width: max(Tokens.space-touch-target-min, label.preferred-width + 2 * Tokens.space-m);
     border-radius: Tokens.radius-control;
     border-width: root.outlined ? 1px : 0px;
     border-color: Tokens.text-muted;
-    background: touch.pressed ? Tokens.hairline : touch.has-hover ? Tokens.bubble-in : transparent;
+    background: !root.enabled ? transparent : touch.pressed ? Tokens.hairline : touch.has-hover ? Tokens.bubble-in : transparent;
     accessible-role: button;
     accessible-label: root.text;
     accessible-action-default => { root.clicked(); }
@@ -242,7 +243,8 @@ export component QuietButton inherits Rectangle {
         vertical-alignment: center;
     }
     touch := TouchArea {
-        mouse-cursor: pointer;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
     }
     focus := FocusScope {
