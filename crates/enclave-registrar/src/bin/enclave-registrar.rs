@@ -88,8 +88,8 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("run") => runtime().and_then(|rt| rt.block_on(run(&args))),
-        Some("list") => list(&args).map(|()| ()),
-        Some("approve") => approve(&args).map(|()| ()),
+        Some("list") => list(&args),
+        Some("approve") => approve(&args),
         _ => Err("usage: enclave-registrar run|list|approve ID [--config FILE]".into()),
     };
     match result {
@@ -126,10 +126,10 @@ fn load_registrar(args: &[String]) -> Result<Registrar, String> {
     let statik: Static =
         toml::from_str(&text).map_err(|e| format!("{}: {e}", cfg.static_spec.display()))?;
     std::fs::create_dir_all(&cfg.queue).map_err(|e| format!("{}: {e}", cfg.queue.display()))?;
-    if !cfg.list.exists() {
-        if let Some(first) = &cfg.first_list {
-            std::fs::copy(first, &cfg.list).map_err(|e| format!("{}: {e}", first.display()))?;
-        }
+    if !cfg.list.exists()
+        && let Some(first) = &cfg.first_list
+    {
+        std::fs::copy(first, &cfg.list).map_err(|e| format!("{}: {e}", first.display()))?;
     }
     Ok(Registrar { cfg, key, statik })
 }
@@ -302,11 +302,14 @@ async fn run(args: &[String]) -> Result<(), String> {
                     std::fs::read(&state.cfg.list).map_or_else(
                         |_| axum::response::Response::new(axum::body::Body::from("no list yet")),
                         |b| {
+                            // A static-header builder can only fail on
+                            // header values, and these are constants.
+                            #[allow(clippy::expect_used)]
                             axum::response::Response::builder()
                                 .status(axum::http::StatusCode::OK)
                                 .header("content-type", "application/octet-stream")
                                 .body(axum::body::Body::from(b))
-                                .unwrap()
+                                .expect("constant response headers")
                         },
                     )
                 }

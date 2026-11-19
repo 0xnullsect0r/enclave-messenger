@@ -132,7 +132,6 @@ fn the_rebuild_keeps_who_stays_refuses_who_changed_and_takes_the_new() {
     // The one listed server, still itself.
     let old_identity = CompositeSigningKey::generate(&mut rng).unwrap();
     let old = descriptor("old.test", &old_identity, &mut rng);
-    let old_id = enclave_federation::server_id(old_identity.public());
     let old_entry = Application {
         descriptor: old.clone(),
         witness: None,

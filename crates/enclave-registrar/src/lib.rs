@@ -65,11 +65,11 @@ impl Application {
                     .map_err(|e| format!("application: witness: {e}"))?,
             )
         };
-        let proof = rest
+        let proof: [u8; 32] = rest
             .get(..32)
             .ok_or("application: no proof of work")?
             .try_into()
-            .unwrap();
+            .map_err(|_| "application: no proof of work".to_string())?;
         Ok((
             Self {
                 descriptor,
@@ -260,11 +260,8 @@ pub fn rebuild(
         |p: &str| -> Result<Vec<u8>, String> { std::fs::read(p).map_err(|e| format!("{p}: {e}")) };
     for w in &statik.witness {
         let b = dir_w(w)?;
-        let d = WitnessDescriptor::decode(&b)
-            .map_err(|e| format!("{w}: {e}"))?
-            .verify(now)
-            .map_err(|e| format!("{w}: {e}"))
-            .map(|()| WitnessDescriptor::decode(&b).unwrap())?;
+        let d = WitnessDescriptor::decode(&b).map_err(|e| format!("{w}: {e}"))?;
+        d.verify(now).map_err(|e| format!("{w}: {e}"))?;
         witnesses.push(enclave_federation::ListedWitness {
             key: d.key.clone(),
             operator: d.operator.clone(),
@@ -282,11 +279,8 @@ pub fn rebuild(
     let mut relays = Vec::new();
     for r in &statik.relay {
         let b = dir_w(r)?;
-        let d = enclave_federation::RelayDescriptor::decode(&b)
-            .map_err(|e| format!("{r}: {e}"))?
-            .verify(now)
-            .map_err(|e| format!("{r}: {e}"))
-            .map(|()| enclave_federation::RelayDescriptor::decode(&b).unwrap())?;
+        let d = enclave_federation::RelayDescriptor::decode(&b).map_err(|e| format!("{r}: {e}"))?;
+        d.verify(now).map_err(|e| format!("{r}: {e}"))?;
         relays.push(enclave_federation::ListedRelay {
             identity: d.identity.clone(),
             operator: d.operator.clone(),
