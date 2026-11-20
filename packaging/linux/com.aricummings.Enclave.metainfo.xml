@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.2.0" date="2026-11-20">
+      <description>
+        <p>Enclave grew up: servers now join the network by themselves. Copy the compose stack, run setup.sh, give it the address of one existing server, and the registrar checks it from the outside and signs it into the list every device refreshes — no forms, no waiting on anyone. Messages are faster and steadier by default (through Tor's exit to each server's own address; the old onion-only route is a setting, and Maximum privacy always uses it), bridged connections get twice as long to come up, the app is dark only, and every button that takes a moment — making an invite link, sending a request, deleting your account — shows its spinner and says what it's doing.</p>
+      </description>
+    </release>
     <release version="0.1.10" date="2026-11-19">
       <description>
         <p>Messages now take the faster route by default: through Tor, but out of its exit to a server's own address — about half the trip, and far steadier (a slow round trip used to take seconds; now under one). Nothing is given up that matters: the server still sees a Tor exit, never your address, and every message stays sealed end to end. If you want the old onion-only route it is one choice away in Settings → Message speed, and Maximum privacy always uses it. Setting up an account over Tor is also less of a wait when a bridge is needed: with bridges set, Enclave now gives Tor twice as long to come up before suggesting another.</p>
