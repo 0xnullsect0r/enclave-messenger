@@ -227,8 +227,11 @@ impl Registrar {
         let mut taken = 0;
         for (d, r) in enclave_registrar::push(&bytes, &domains).await {
             match r {
-                Ok(200) => taken += 1,
-                Ok(s) => eprintln!("enclave-registrar: {d}: refused ({s})"),
+                Ok((200, _)) => taken += 1,
+                Ok((status, why)) => eprintln!(
+                    "enclave-registrar: {d}: refused ({status}): {}",
+                    String::from_utf8_lossy(&why)
+                ),
                 Err(e) => eprintln!("enclave-registrar: {d}: {e}"),
             }
         }
@@ -248,7 +251,11 @@ impl Registrar {
         let mut out = Vec::new();
         let read_dir = |d: &std::path::Path| -> Result<Vec<(String, Vec<u8>)>, String> {
             let mut v = Vec::new();
-            for e in std::fs::read_dir(d).map_err(|e| format!("{}: {e}", d.display()))? {
+            let entries = match std::fs::read_dir(d) {
+                Ok(e) => e,
+                Err(_) => return Ok(v), // not there yet: nothing waits in it
+            };
+            for e in entries {
                 let p = e.map_err(|e| e.to_string())?.path();
                 if let Some(name) = p.file_name().and_then(|n| n.to_str())
                     && name.ends_with(".bin")

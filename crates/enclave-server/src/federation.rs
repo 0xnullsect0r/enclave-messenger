@@ -144,6 +144,17 @@ pub async fn post_https(url: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String
     use http_body_util::BodyExt;
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    // A private CA (a test stack's): development and CI only — a
+    // production registrar sits behind a public CA's certificate.
+    if let Some(ca) = std::env::var_os("ENCLAVE_FEDERATION_CA") {
+        use rustls::pki_types::CertificateDer;
+        use rustls::pki_types::pem::PemObject;
+        if let Ok(certs) = CertificateDer::pem_file_iter(&ca) {
+            for c in certs.flatten() {
+                let _ = roots.add(c);
+            }
+        }
+    }
     let mut tls = enclave_tls::client_config(roots).map_err(|e| e.to_string())?;
     tls.alpn_protocols.clear();
     let connector = hyper_rustls::HttpsConnectorBuilder::new()
@@ -176,6 +187,17 @@ pub async fn get_https(url: &str) -> Result<(u16, Vec<u8>), String> {
     use http_body_util::BodyExt;
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    // A private CA (a test stack's): development and CI only — a
+    // production registrar sits behind a public CA's certificate.
+    if let Some(ca) = std::env::var_os("ENCLAVE_FEDERATION_CA") {
+        use rustls::pki_types::CertificateDer;
+        use rustls::pki_types::pem::PemObject;
+        if let Ok(certs) = CertificateDer::pem_file_iter(&ca) {
+            for c in certs.flatten() {
+                let _ = roots.add(c);
+            }
+        }
+    }
     let mut tls = enclave_tls::client_config(roots).map_err(|e| e.to_string())?;
     tls.alpn_protocols.clear();
     let connector = hyper_rustls::HttpsConnectorBuilder::new()

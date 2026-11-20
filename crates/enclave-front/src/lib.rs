@@ -100,6 +100,9 @@ pub struct Site {
     /// The server's federation API (`http://server:7447`, RFC 0012):
     /// pushed lists and applications to hand to the registrar.
     pub federation: Option<String>,
+    /// The registrar (`http://registrar:7451`, RFC 0012): the foundation
+    /// stack's front proxies `/registrar/v1/*` to it.
+    pub registrar: Option<String>,
     /// The server on the internal network (`server:7443`) for the fast
     /// route (RFC 0011): `POST /net` carries one sealed request to it and
     /// its reply back. `None` (the default): the route answers 404, and the
@@ -122,6 +125,7 @@ impl Site {
             witness: witness.map(|w| w.trim_end_matches('/').to_string()),
             credgate: None,
             federation: None,
+            registrar: None,
             net: None,
             http,
         }
@@ -137,6 +141,13 @@ impl Site {
     /// server's internal listener (`http://server:7447`).
     pub fn with_federation(mut self, url: Option<String>) -> Self {
         self.federation = url.map(|u| u.trim_end_matches('/').to_string());
+        self
+    }
+
+    /// Also proxy the registrar (`/registrar/v1/*`, RFC 0012) to the
+    /// foundation stack's registrar (`http://registrar:7451`).
+    pub fn with_registrar(mut self, url: Option<String>) -> Self {
+        self.registrar = url.map(|u| u.trim_end_matches('/').to_string());
         self
     }
 
@@ -162,6 +173,7 @@ impl Site {
             .route("/witness/v1/{*rest}", any(witness))
             .route("/credgate/v1/{*rest}", any(credgate))
             .route("/federation/{*rest}", any(federation))
+            .route("/registrar/v1/{*rest}", any(registrar))
             .route("/net", axum::routing::post(net))
             .with_state(Arc::new(self))
     }
@@ -259,6 +271,18 @@ async fn witness(
 ) -> Response {
     match &site.witness {
         Some(base) => proxy(&site, &format!("{base}/witness/v1/{rest}"), req).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Pass a registrar request through to the registrar (RFC 0012).
+async fn registrar(
+    State(site): State<Arc<Site>>,
+    Path(rest): Path<String>,
+    req: Request<Body>,
+) -> Response {
+    match &site.registrar {
+        Some(base) => proxy(&site, &format!("{base}/registrar/v1/{rest}"), req).await,
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

@@ -14,12 +14,46 @@ services:
       federation:
         aliases: ["witness-${STACK}"]
   server:
-    networks: [backend, egress, federation]
+    networks:
+      backend: {}
+      egress: {}
+      # On the shared network each stack's server answers its own name:
+      # bare `server` there would be any of the four (the front's
+      # federation upstream would push lists to a random stack), so each
+      # stack's .env sets FEDERATION_UPSTREAM to its own.
+      federation:
+        aliases: ["server-${STACK}"]
+    environment:
+      # RFC 0012's `apply` and the application forward verify fronts under
+      # the test CA (development and CI only).
+      ENCLAVE_FEDERATION_CA: /etc/enclave/tls/ca.pem
+    volumes:
+      - ./tls:/etc/enclave/tls:ro
   front:
     environment:
       ENCLAVE_FRONT__TLS: files
     volumes:
       - ./tls:/etc/enclave/tls:ro
+    networks:
+      backend: {}
+      edge: {}
+      # The stack's front answers its domain on the shared network, so the
+      # registrar (RFC 0012) reaches every stack at https://STACK.test/
+      # under the test CA.
+      federation:
+        aliases: ["${STACK}.test"]
+  # The foundation role in CI (gen.sh `join`): takes applications, checks
+  # every stack's front from outside, signs and pushes the next list.
+  registrar:
+    environment:
+      ENCLAVE_FEDERATION_CA: /etc/enclave/tls/ca.pem
+      ENCLAVE_REGISTRAR__FIRST_LIST: ${ENCLAVE_REGISTRAR__FIRST_LIST:-}
+      ENCLAVE_REGISTRAR__REBUILD_EVERY_SECS: ${ENCLAVE_REGISTRAR__REBUILD_EVERY_SECS:-10}
+      ENCLAVE_REGISTRAR__EFFORT: ${ENCLAVE_REGISTRAR__EFFORT:-1}
+    volumes:
+      - ./tls:/etc/enclave/tls:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [backend, federation]
   push-relay:
     extra_hosts: ["host.docker.internal:host-gateway"]
   # Stack a over the local mixnet: the gate's proxy is enclave-dev-proxy on

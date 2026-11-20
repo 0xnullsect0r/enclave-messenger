@@ -37,6 +37,7 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring"]
 webpki-roots = "1"
 
 [dev-dependencies]
+enclave-server = { path = "../enclave-server" }
 ring = "0.17"
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-federation = { path = "../enclave-federation" }

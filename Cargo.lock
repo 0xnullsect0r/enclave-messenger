@@ -3219,6 +3219,7 @@ dependencies = [
  "enclave-crypto",
  "enclave-federation",
  "enclave-kt",
+ "enclave-server",
  "enclave-service",
  "enclave-tls",
  "enclave-update",

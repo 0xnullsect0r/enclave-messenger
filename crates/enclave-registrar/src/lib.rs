@@ -202,7 +202,10 @@ pub fn rebuild(
         return Err("valid_days must be 1 to 90".into());
     }
     let mut servers = Vec::new();
-    let mut witnesses = Vec::new();
+    // The witnesses already listed continue: a witness's identity is what
+    // clients pin, and changing one is a `enclave-admin` ceremony, not a
+    // rebuild. Applications may add theirs alongside.
+    let mut witnesses = previous.witnesses.clone();
     // The stacks already listed: re-verified through their fronts.
     for s in &previous.servers {
         let Some(live) = served.get(&s.domain) else {
@@ -247,7 +250,9 @@ pub fn rebuild(
             continue; // already listed (or applied twice)
         }
         servers.push(server);
-        if let Some(w) = witness {
+        if let Some(w) = witness
+            && !witnesses.iter().any(|x| x.id() == w.id())
+        {
             witnesses.push(w);
         }
     }
@@ -350,15 +355,16 @@ fn hex_into(s: &str, out: &mut [u8]) -> Result<(), String> {
 
 /// Push a signed list to every listed stack's federation API. Returns
 /// each domain with what came of it.
-pub async fn push(list: &[u8], domains: &[String]) -> Vec<(String, Result<u16, String>)> {
+pub async fn push(
+    list: &[u8],
+    domains: &[String],
+) -> Vec<(String, Result<(u16, Vec<u8>), String>)> {
     let mut out = Vec::new();
     for d in domains {
         let url = format!("https://{d}/federation/list");
         out.push((
             d.clone(),
-            post_https(&url, list, Duration::from_secs(30))
-                .await
-                .map(|(s, _)| s),
+            post_https(&url, list, Duration::from_secs(30)).await,
         ));
     }
     out
@@ -374,6 +380,17 @@ pub async fn post_https(
     use http_body_util::BodyExt;
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    // A private CA (a test stack's): development and CI only — a
+    // production registrar sits behind a public CA's certificate.
+    if let Some(ca) = std::env::var_os("ENCLAVE_FEDERATION_CA") {
+        use rustls::pki_types::CertificateDer;
+        use rustls::pki_types::pem::PemObject;
+        if let Ok(certs) = CertificateDer::pem_file_iter(&ca) {
+            for c in certs.flatten() {
+                let _ = roots.add(c);
+            }
+        }
+    }
     let mut tls = enclave_tls::client_config(roots).map_err(|e| e.to_string())?;
     tls.alpn_protocols.clear();
     let connector = hyper_rustls::HttpsConnectorBuilder::new()
@@ -409,6 +426,17 @@ pub async fn get_https(url: &str, within: Duration) -> Result<(u16, Vec<u8>), St
     use http_body_util::BodyExt;
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    // A private CA (a test stack's): development and CI only — a
+    // production registrar sits behind a public CA's certificate.
+    if let Some(ca) = std::env::var_os("ENCLAVE_FEDERATION_CA") {
+        use rustls::pki_types::CertificateDer;
+        use rustls::pki_types::pem::PemObject;
+        if let Ok(certs) = CertificateDer::pem_file_iter(&ca) {
+            for c in certs.flatten() {
+                let _ = roots.add(c);
+            }
+        }
+    }
     let mut tls = enclave_tls::client_config(roots).map_err(|e| e.to_string())?;
     tls.alpn_protocols.clear();
     let connector = hyper_rustls::HttpsConnectorBuilder::new()

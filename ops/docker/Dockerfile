@@ -41,17 +41,20 @@ RUN --mount=type=cache,target=/cargo/registry \
     cargo build --release --locked \
       -p enclave-server -p enclave-witness -p enclave-front \
       -p enclave-relay -p enclave-push-relay -p enclave-admin -p enclave-credgate \
+      -p enclave-registrar \
       -p enclave-tord --features enclave-tord/onion-service --bins \
  && mkdir -p /out \
  && cp target/release/enclave-server target/release/enclave-witness \
        target/release/enclave-front target/release/enclave-relay \
        target/release/enclave-push-relay target/release/enclave-admin \
-       target/release/enclave-credgate target/release/enclave-onion /out/ \
+       target/release/enclave-credgate target/release/enclave-registrar \
+       target/release/enclave-onion /out/ \
  && if grep -rqa 'ENCLAVE-DEV-' /out/; then echo 'a development feature is in the image' >&2; exit 1; fi
 # State directories, owned by `nonroot` (65532), so the named volumes
 # mounted on them start out writable; key directories owner-only.
 RUN cd /var/lib && mkdir -p enclave \
  && cd enclave && mkdir server public backups witness front relay credgate onion \
+      registrar \
       keys witness-keys relay-keys push-keys credgate-keys \
  && chmod 0700 keys witness-keys relay-keys push-keys credgate-keys onion \
  && chown -R 65532:65532 /var/lib/enclave

@@ -57,6 +57,9 @@ struct FrontSection {
     /// The server's federation API (`http://server:7447`, RFC 0012) to
     /// proxy `/federation/*` to; empty keeps the route closed.
     federation: Option<String>,
+    /// The registrar (`http://registrar:7451`, RFC 0012) to proxy
+    /// `/registrar/v1/*` to; empty keeps the route closed.
+    registrar: Option<String>,
     tls: TlsMode,
     acme_email: Option<String>,
     acme_directory: Option<String>,
@@ -95,6 +98,7 @@ impl Default for FrontSection {
             credgate: None,
             net: None,
             federation: None,
+            registrar: None,
             tls: TlsMode::Acme,
             acme_email: None,
             acme_directory: None,
@@ -178,6 +182,7 @@ async fn run(args: &[String]) -> Result<(), String> {
         .with_credgate(cfg.credgate.clone())
         .with_net(cfg.net.clone())
         .with_federation(cfg.federation.clone())
+        .with_registrar(cfg.registrar.clone())
         .router();
     let mut tasks = tokio::task::JoinSet::new();
     tasks.spawn(enclave_front::serve_https(https, site, Arc::clone(&certs)));

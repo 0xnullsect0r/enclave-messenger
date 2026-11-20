@@ -608,3 +608,85 @@ async fn net_carries_a_request_to_the_server() {
     assert_eq!(res.status(), 404);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// RFC 0012: `/federation/list` proxied to the server's API — a signed,
+/// fresh list is taken (200 with the seq in the body); the upstream sees
+/// the body unchanged.
+#[tokio::test(flavor = "multi_thread")]
+async fn federation_list_proxies_to_the_server() {
+    use enclave_crypto::rng::HedgedRng;
+    use enclave_federation::{FoundationKey, ServerList};
+    use std::io::{Read, Write};
+
+    // The server's federation API on a real port.
+    let dir = std::env::temp_dir().join(format!("enclave-front-fed-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut rng = HedgedRng::new().unwrap();
+    let key = FoundationKey::generate(&mut rng).unwrap();
+    let f = std::sync::Arc::new(enclave_server::federation::Federation {
+        foundation: key.public(),
+        list: dir.join("server-list.bin"),
+        registrar: None,
+    });
+    let api = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let api_addr = api.local_addr().unwrap();
+    tokio::spawn(enclave_server::federation::serve(api, f));
+
+    let site = Site::new(dir.clone(), None)
+        .with_federation(Some(format!("http://{api_addr}")))
+        .router();
+    let front = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let front_addr = front.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(front, site).await });
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let list = ServerList {
+        seq: 1,
+        issued: now,
+        expires: now + 86_400,
+        witness_threshold: 1,
+        ..ServerList::decode_unverified(&[]).unwrap_or(ServerList {
+            seq: 0,
+            issued: 0,
+            expires: 0,
+            witness_threshold: 1,
+            servers: Vec::new(),
+            witnesses: Vec::new(),
+            relays: Vec::new(),
+            push: Vec::new(),
+            credgates: Vec::new(),
+        })
+    };
+    // A clean, empty list (the fields above only for structure).
+    let list = ServerList {
+        servers: Vec::new(),
+        witnesses: Vec::new(),
+        relays: Vec::new(),
+        push: Vec::new(),
+        credgates: Vec::new(),
+        ..list
+    };
+    let signed = list.sign(&key, &mut rng).unwrap();
+
+    let mut sock = std::net::TcpStream::connect(front_addr).unwrap();
+    let req = format!(
+        "POST /federation/list HTTP/1.1\r\nHost: t\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        signed.len()
+    );
+    sock.write_all(req.as_bytes()).unwrap();
+    sock.write_all(&signed).unwrap();
+    let mut answer = String::new();
+    sock.read_to_string(&mut answer).unwrap();
+    assert!(
+        answer.starts_with("HTTP/1.1 200"),
+        "through the front: {}",
+        answer.lines().next().unwrap_or_default()
+    );
+    assert!(answer.contains("list 1 taken"), "{answer}");
+    assert_eq!(std::fs::read(dir.join("server-list.bin")).unwrap(), signed);
+    let _ = std::fs::remove_dir_all(&dir);
+}

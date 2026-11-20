@@ -450,6 +450,39 @@ jobs:
       - if: always()
         run: TRANSPORT=onion ci/federation/gen.sh down
 
+  federation-join:
+    name: federation join (a 4th stack joins through the registrar, RFC 0012)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Server image (ops/docker/Dockerfile)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ops/docker/Dockerfile
+          target: server
+          tags: enclave-server:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Host tools
+        run: cargo build --release --locked -p enclave-admin
+      - name: Three stacks, one foundation
+        run: TRANSPORT=tcp ci/federation/gen.sh up
+      - name: A fourth stack joins through the registrar
+        run: TRANSPORT=tcp ci/federation/gen.sh join
+      - if: failure()
+        run: TRANSPORT=tcp ci/federation/gen.sh logs
+      - if: always()
+        run: TRANSPORT=tcp ci/federation/gen.sh down
+
   federation-e2e-front:
     name: federation e2e (3 stacks over the fast routes, RFC 0011)
     runs-on: ubuntu-24.04

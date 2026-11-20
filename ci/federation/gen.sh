@@ -108,7 +108,7 @@ dc() {
     -f "$WORK/$s/compose.yml" "${extra[@]}" "$@"
 }
 
-n_of() { case $1 in a) echo 1 ;; b) echo 2 ;; c) echo 3 ;; esac; }
+n_of() { case $1 in a) echo 1 ;; b) echo 2 ;; c) echo 3 ;; d) echo 4 ;; esac; }
 
 # A stack's onion name (TRANSPORT=onion; dialled through ENCLAVE_DEV_ONION_MAP).
 onion_of() { echo "e2e$1server.onion"; }
@@ -218,6 +218,8 @@ EOF
     openssl x509 -req -in "$d/tls/req.csr" -CA "$WORK/tls/ca.pem" -CAkey "$WORK/tls/ca.key" \
       -CAcreateserial -days 2 -extfile "$d/tls/ext.cnf" -out "$d/tls/cert.pem" 2>/dev/null
     chmod 0644 "$d/tls/key.pem"
+  # The test CA too: the server verifies the known front under it (apply).
+  cp "$WORK/tls/ca.pem" "$d/tls/ca.pem"
     cat > "$d/.env" <<EOF
 ENCLAVE_IMAGE=${IMAGE%:*}
 ENCLAVE_VERSION=${IMAGE##*:}
@@ -490,8 +492,138 @@ bench() {
     "${BENCH:-$ROOT/nym/target/release/examples/live_bench}" --out "$WORK/bench.json"
 }
 
-down() {
+
+# RFC 0012, end to end: a fourth stack (d) joins the three through the
+# registrar running on stack a. The stacks' fronts answer their domains on
+# the shared network under the test CA, so the registrar's own fetches and
+# the pushed lists travel the same paths production does. `up` runs first.
+join() {
+  local s n d others=()
+  n=4
+  d=$WORK/d
+  echo "== the three stacks take pushed lists (RFC 0012)"
   for s in "${STACKS[@]}"; do
+    grep -q '^FEDERATION_API=' "$WORK/$s/.env" || {
+      echo "FEDERATION_API=0.0.0.0:7447"
+      echo "REGISTRAR=https://a.test"
+      echo "FEDERATION_UPSTREAM=http://server-$s:7447"
+    } >> "$WORK/$s/.env"
+  done
+  # Stack a is the foundation here: its registrar (compose profile
+  # `foundation`) seeds from the admin-built list and re-lists quickly.
+  # The signing key rides the foundation volume (CI only; production keeps
+  # it on its own secret).
+  cp "$WORK/foundation/server-list.bin" "$WORK/a/foundation/"
+  cp "$WORK/foundation.key" "$WORK/a/foundation/foundation.key"
+  chmod 0644 "$WORK/a/foundation/foundation.key"
+  grep -q '^REGISTRAR_UPSTREAM=' "$WORK/a/.env" || {
+    echo "REGISTRAR_UPSTREAM=http://registrar:7451"
+    echo "ENCLAVE_REGISTRAR__FIRST_LIST=/run/secrets/foundation/server-list.bin"
+    echo "ENCLAVE_REGISTRAR__REBUILD_EVERY_SECS=10"
+    echo "ENCLAVE_REGISTRAR__EFFORT=1"
+  } >> "$WORK/a/.env"
+  for s in "${STACKS[@]}"; do
+    # shellcheck disable=SC2046
+    dc "$s" $(profiles "$s") up -d server front
+  done
+  sed -i 's/^witness_threshold = .*/witness_threshold = 2/' "$WORK/a/config/registrar-spec.toml"
+  sed -i 's/^valid_days = .*/valid_days = 7/' "$WORK/a/config/registrar-spec.toml"
+  dc a --profile foundation up -d registrar
+
+  echo "== stack d: keys, descriptor, witness descriptor"
+  mkdir -p "$d/config" "$d/foundation" "$d/tls" "$d/out"
+  chmod 0777 "$d/out"
+  cp "$ROOT"/ops/compose/compose.yml "$ROOT"/ops/compose/compose.e2e.yml "$d/"
+  [ "$TRANSPORT" = nym ] || cp "$ROOT"/ops/compose/compose.dev.yml "$d/"
+  for f in "$ROOT"/ops/compose/config/*.toml.example; do
+    cp "$f" "$d/config/$(basename "${f%.example}")"
+  done
+  cat >> "$d/config/front.toml" <<EOF
+tls = "files"
+cert = "/etc/enclave/tls/cert.pem"
+key = "/etc/enclave/tls/key.pem"
+EOF
+  # The witness re-reads the list it witnesses: the current one, without
+  # d in it yet (the push that adds d is what this test proves).
+  cp "$WORK/foundation/server-list.bin" "$d/foundation/"
+  for o in "${STACKS[@]}"; do others+=("\"http://witness-$o:7446\""); done
+  sed -i "s|^witnesses = \[\]|witnesses = [$(IFS=,; echo "${others[*]}")]|" "$d/config/server.toml"
+  sed -i 's|^forward = |# forward = |' "$d/config/server.toml"
+  openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes \
+    -subj "/CN=d.test" -keyout "$d/tls/key.pem" -out "$d/tls/req.csr" 2>/dev/null
+  printf 'subjectAltName=IP:127.0.0.1,DNS:d.test\n' > "$d/tls/ext.cnf"
+  openssl x509 -req -in "$d/tls/req.csr" -CA "$WORK/tls/ca.pem" -CAkey "$WORK/tls/ca.key" \
+    -CAcreateserial -days 2 -sha384 -extfile "$d/tls/ext.cnf" -out "$d/tls/cert.pem" 2>/dev/null
+  chmod 0644 "$d/tls/key.pem"
+  # The test CA too: the server verifies the known front under it (apply).
+  cp "$WORK/tls/ca.pem" "$d/tls/ca.pem"
+  cp "$WORK/foundation/foundation.pub" "$d/foundation/"
+  cat > "$d/.env" <<EOF
+ENCLAVE_IMAGE=${IMAGE%:*}
+ENCLAVE_VERSION=${IMAGE##*:}
+STACK=d
+DOMAIN=d.test
+OPERATOR=op-d
+FAMILY=fam-d
+TLS_MODE=files
+RELAY_PUBLIC_ADDR=127.0.0.1:51824
+FRONT_HTTP_PORT=8084
+FRONT_HTTPS_PORT=8444
+RELAY_PORT=51824
+SERVER_PORT=7444
+FEDERATION_API=0.0.0.0:7447
+FEDERATION_UPSTREAM=http://server-d:7447
+REGISTRAR=https://a.test
+EOF
+  dc d run --rm -T server init | tail -1 > "$d/server.id"
+  dc d run --rm -T witness init >/dev/null
+  dc d run --rm -T relay init >/dev/null
+  dc d run --rm -T -v "$d/out:/out" server descriptor /out/server.bin --config /etc/enclave/server.toml >/dev/null
+  echo "   server $(cat "$d/server.id")"
+  # shellcheck disable=SC2046
+  dc d up -d
+  wait_healthy d
+  # The witness's descriptor, into the shared public dir (the witness
+  # mounts nothing writable but its own state).
+  dc d exec -T witness enclave-witness descriptor /var/lib/enclave/witness/witness-descriptor.bin
+  dc d cp witness:/var/lib/enclave/witness/witness-descriptor.bin "$WORK/d/witness-descriptor.bin"
+  dc d cp "$WORK/d/witness-descriptor.bin" server:/var/lib/enclave/public/witness-descriptor.bin
+
+  echo "== d applies to a.test (RFC 0012: one address is enough)"
+  dc d exec -T -e ENCLAVE_FEDERATION_CA=/etc/enclave/tls/ca.pem \
+    server enclave-server apply a.test
+
+  echo "== every stack takes the next list, with d in it"
+  local id
+  id=$(cat "$d/server.id")
+  local tries s list
+  for tries in $(seq 1 60); do
+    ok=1
+    for s in "${STACKS[@]}" d; do
+      dc "$s" cp server:/var/lib/enclave/server/server-list.bin "$WORK/$s/joined-list.bin" >/dev/null 2>&1 || { ok=0; break; }
+      # To a file, not a pipe: `grep -q` closing early would break the
+      # verifier's pipe and, under pipefail, the whole script.
+      if ! "$ADMIN" server-list verify "$WORK/$s/joined-list.bin" \
+          --foundation "$WORK/foundation/foundation.pub" > "$WORK/$s/joined-check.txt" 2>/dev/null \
+          || ! grep -q "d.test" "$WORK/$s/joined-check.txt"; then
+        ok=0; break
+      fi
+    done
+    [ "$ok" = 1 ] && break
+    sleep 5
+  done
+  if [ "$ok" != 1 ]; then
+    echo "the joined list never reached every stack" >&2
+    dc a --profile foundation logs --no-color --tail 50 registrar >&2 || true
+    return 1
+  fi
+  local seq
+  seq=$(awk 'NR == 1 { print $2 }' "$WORK/a/joined-check.txt")
+  echo "   joined: every stack serves a list with d.test (seq $seq)"
+}
+
+down() {
+  for s in "${STACKS[@]}" d; do
     [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation down -v --remove-orphans || true
   done
   if [ -f "$WORK/dev-proxy.pid" ]; then
@@ -506,7 +638,7 @@ down() {
 }
 
 logs() {
-  for s in "${STACKS[@]}"; do
+  for s in "${STACKS[@]}" d; do
     [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation logs --no-color --tail 200 || true
   done
   [ -f "$WORK/dev-proxy.log" ] && cat "$WORK/dev-proxy.log" || true
@@ -515,10 +647,11 @@ logs() {
 
 case "${1:-}" in
   up) up ;;
+  join) join ;;
   e2e) e2e ;;
   shape) shape ;;
   bench) bench ;;
   logs) logs ;;
   down) down ;;
-  *) echo "usage: $0 up|e2e|shape|bench|logs|down" >&2; exit 2 ;;
+  *) echo "usage: $0 up|join|e2e|shape|bench|logs|down" >&2; exit 2 ;;
 esac
