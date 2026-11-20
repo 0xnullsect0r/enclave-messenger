@@ -120,6 +120,12 @@ fn snapshot() -> Snapshot {
         closed: false,
         add_error: String::new(),
         busy: true,
+        working_invite: true,
+        working_cancel: false,
+        working_contact: true,
+        working_username: false,
+        working_delete: true,
+        working_secure: false,
         pick: vec![Pick {
             id: "cd".into(),
             name: "Priya".into(),

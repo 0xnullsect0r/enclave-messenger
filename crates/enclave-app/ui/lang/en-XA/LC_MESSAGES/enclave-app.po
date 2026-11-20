@@ -474,6 +474,10 @@ msgid "Built-in"
 msgstr "[Búílt-íñ···]"
 
 #: ui/app.slint
+msgid "Built-in ✓"
+msgstr "[Búílt-íñ ✓····]"
+
+#: ui/app.slint
 msgid "Call check words: {}"
 msgstr "[Çáll çhéçk wórds: ·······{}]"
 
@@ -532,6 +536,10 @@ msgstr "[Çáñçél thém····]"
 #: enclave-vault/src/engine/calling.rs
 msgid "Cancelled call"
 msgstr "[Çáñçélléd çáll·····]"
+
+#: ui/app.slint
+msgid "Cancelling…"
+msgstr "[Çáñçéllíñg…····]"
 
 #: ui/app.slint
 msgid "Change"
@@ -2081,6 +2089,10 @@ msgstr "[Máké ··{} áñ ádmíñ···]"
 msgid "Making a link preview…"
 msgstr "[Mákíñg á líñk prévíéw…········]"
 
+#: ui/app.slint
+msgid "Making your invite link…"
+msgstr "[Mákíñg ýóúr íñvíté líñk…·········]"
+
 #: enclave-vault/src/engine.rs
 msgid "Making your keys on this device…"
 msgstr "[Mákíñg ýóúr kéýs óñ thís dévíçé…············]"
@@ -3344,6 +3356,10 @@ msgstr "[Shów ýóúr çódé tó sóméóñé ñéxt tó ýóú, ór séñd th
 #: ui/app.slint
 msgid "Snowflake"
 msgstr "[Sñówfláké···]"
+
+#: ui/app.slint
+msgid "Snowflake ✓"
+msgstr "[Sñówfláké ✓····]"
 
 #: enclave-vault/src/engine.rs
 msgid "Some people in {} may be seeing different messages."

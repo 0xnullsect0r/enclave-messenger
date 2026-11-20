@@ -474,6 +474,10 @@ msgid "Built-in"
 msgstr ""
 
 #: ui/app.slint
+msgid "Built-in ✓"
+msgstr ""
+
+#: ui/app.slint
 msgid "Call check words: {}"
 msgstr ""
 
@@ -531,6 +535,10 @@ msgstr ""
 
 #: enclave-vault/src/engine/calling.rs
 msgid "Cancelled call"
+msgstr ""
+
+#: ui/app.slint
+msgid "Cancelling…"
 msgstr ""
 
 #: ui/app.slint
@@ -2081,6 +2089,10 @@ msgstr ""
 msgid "Making a link preview…"
 msgstr ""
 
+#: ui/app.slint
+msgid "Making your invite link…"
+msgstr ""
+
 #: enclave-vault/src/engine.rs
 msgid "Making your keys on this device…"
 msgstr ""
@@ -3343,6 +3355,10 @@ msgstr ""
 
 #: ui/app.slint
 msgid "Snowflake"
+msgstr ""
+
+#: ui/app.slint
+msgid "Snowflake ✓"
 msgstr ""
 
 #: enclave-vault/src/engine.rs

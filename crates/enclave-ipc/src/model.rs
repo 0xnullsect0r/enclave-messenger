@@ -361,6 +361,20 @@ pub struct Snapshot {
     pub add_error: String,
     /// A request is in flight.
     pub busy: bool,
+    /// An invite link is being made (`Cmd::NewInvite`,
+    /// `Cmd::NewGroupInvite`): its button turns its spinner.
+    pub working_invite: bool,
+    /// Unused invite links are being cancelled (`Cmd::CancelInvites`).
+    pub working_cancel: bool,
+    /// A contact request is being sent (`Cmd::Add`).
+    pub working_contact: bool,
+    /// A username is being claimed (`Cmd::ClaimUsername`).
+    pub working_username: bool,
+    /// The account is being deleted (`Cmd::DeleteAccount`).
+    pub working_delete: bool,
+    /// New keys for the whole account are going out
+    /// (`Cmd::SecureAccount`).
+    pub working_secure: bool,
     /// Contacts to pick for a new group.
     pub pick: Vec<Pick>,
     /// Devices.
@@ -1382,7 +1396,13 @@ impl Snapshot {
             .bool(self.on_record)
             .bool(self.closed)
             .str(&self.add_error)
-            .bool(self.busy);
+            .bool(self.busy)
+            .bool(self.working_invite)
+            .bool(self.working_cancel)
+            .bool(self.working_contact)
+            .bool(self.working_username)
+            .bool(self.working_delete)
+            .bool(self.working_secure);
         w.len(self.pick.len());
         for p in &self.pick {
             w.str(&p.id)
@@ -1655,6 +1675,12 @@ impl Snapshot {
         let closed = r.bool()?;
         let add_error = r.str()?;
         let busy = r.bool()?;
+        let working_invite = r.bool()?;
+        let working_cancel = r.bool()?;
+        let working_contact = r.bool()?;
+        let working_username = r.bool()?;
+        let working_delete = r.bool()?;
+        let working_secure = r.bool()?;
         let n = r.len()?;
         let pick = (0..n)
             .map(|_| {
@@ -1706,6 +1732,12 @@ impl Snapshot {
             closed,
             add_error,
             busy,
+            working_invite,
+            working_cancel,
+            working_contact,
+            working_username,
+            working_delete,
+            working_secure,
             pick,
             devices,
             link_choices: r.strs()?,

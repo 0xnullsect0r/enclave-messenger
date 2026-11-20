@@ -518,6 +518,12 @@ pub fn apply(ui: &AppWindow, s: &Snapshot) {
     ui.set_usernames(s.usernames);
     ui.set_username_error(crate::i18n::tr(&s.username_error).into());
     ui.set_busy(s.busy);
+    ui.set_working_invite(s.working_invite);
+    ui.set_working_cancel(s.working_cancel);
+    ui.set_working_contact(s.working_contact);
+    ui.set_working_username(s.working_username);
+    ui.set_working_delete(s.working_delete);
+    ui.set_working_secure(s.working_secure);
     let pick: Vec<PickRow> = s.pick.iter().map(pick_row).collect();
     ui.set_pick(ModelRc::from(Rc::new(VecModel::from(pick))));
     let devices: Vec<DeviceRow> = s

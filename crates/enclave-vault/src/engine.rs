@@ -385,6 +385,14 @@ struct Engine {
     join_code: String,
     join_words: String,
     busy: bool,
+    /// Which slow thing the window's button is doing, one per action that
+    /// can be under way at a time (the snapshot's `working_*`).
+    working_invite: bool,
+    working_cancel: bool,
+    working_contact: bool,
+    working_username: bool,
+    working_delete: bool,
+    working_secure: bool,
     /// The recovery sheet is open: only then do the words leave the vault.
     reveal_words: bool,
     /// Security-code words in English (`Cmd::CodeWordsEnglish`).
@@ -1312,6 +1320,12 @@ pub async fn run_with(
         join_code: String::new(),
         join_words: String::new(),
         busy: false,
+        working_invite: false,
+        working_cancel: false,
+        working_contact: false,
+        working_username: false,
+        working_delete: false,
+        working_secure: false,
         reveal_words: false,
         code_words_english: false,
         locked: false,
@@ -2301,6 +2315,7 @@ impl Engine {
             }
             Cmd::DeleteAccount => {
                 self.busy = true;
+                self.working_delete = true;
                 self.push();
                 if let Some(c) = self.client.as_mut() {
                     match c.delete_account().await {
@@ -2319,6 +2334,7 @@ impl Engine {
                         }
                     }
                 }
+                self.working_delete = false;
                 self.busy = false;
             }
             Cmd::SetRootPin(pin) => {
@@ -2416,6 +2432,7 @@ impl Engine {
             }
             Cmd::SecureAccount => {
                 self.busy = true;
+                self.working_secure = true;
                 self.push();
                 if let Some(c) = self.client.as_mut() {
                     self.status = match c.secure_account().await {
@@ -2424,6 +2441,7 @@ impl Engine {
                         Err(_) => "Only the device that holds your recovery words can secure your account, once a change already under way is done.".into(),
                     };
                 }
+                self.working_secure = false;
                 self.busy = false;
             }
             Cmd::EraseDevice => {
@@ -2546,6 +2564,7 @@ impl Engine {
             }
             Cmd::NewGroupInvite(id, uses, approve) => {
                 self.busy = true;
+                self.working_invite = true;
                 self.push();
                 if let (Some(gid), Some(c)) = (self.group_of(&id), self.client.as_mut()) {
                     match c.create_group_invite(&gid, uses, approve).await {
@@ -2559,6 +2578,7 @@ impl Engine {
                         }
                     }
                 }
+                self.working_invite = false;
                 self.busy = false;
             }
             Cmd::Add(link, _) if enclave_core::card::call_link_payload(&link).is_some() => {
@@ -2570,6 +2590,7 @@ impl Engine {
             Cmd::Add(link, _) if link.trim().starts_with(enclave_core::client::JOIN_PREFIX) => {
                 self.add_error.clear();
                 self.busy = true;
+                self.working_contact = true;
                 self.push();
                 if let Some(c) = self.client.as_mut() {
                     match c.join_group(link.trim()).await {
@@ -2582,12 +2603,14 @@ impl Engine {
                         Err(err) => self.add_error = link_error(&err),
                     }
                 }
+                self.working_contact = false;
                 self.busy = false;
             }
             Cmd::Add(link, text) => {
                 self.add_error.clear();
                 let link = link.trim();
                 self.busy = true;
+                self.working_contact = true;
                 self.push();
                 // An invite link, or a username to look up.
                 let card = if link.starts_with("enclave:") || link.contains('#') {
@@ -2601,6 +2624,7 @@ impl Engine {
                     Ok(card) => card,
                     Err(err) => {
                         self.add_error = link_error(&err);
+                        self.working_contact = false;
                         self.busy = false;
                         return;
                     }
@@ -2616,11 +2640,13 @@ impl Engine {
                     }
                 }
                 self.done_doing();
+                self.working_contact = false;
                 self.busy = false;
             }
             Cmd::ClaimUsername(name) => {
                 self.username_error.clear();
                 self.busy = true;
+                self.working_username = true;
                 self.push();
                 if let Some(c) = self.client.as_mut() {
                     match c.claim_username(name.trim()).await {
@@ -2632,6 +2658,7 @@ impl Engine {
                         Err(err) => self.username_error = username_error(&err),
                     }
                 }
+                self.working_username = false;
                 self.busy = false;
             }
             Cmd::ShareContact(id, who) => {
@@ -3472,6 +3499,7 @@ impl Engine {
             Cmd::SetPassphrase(_) => {}
             Cmd::NewInvite(uses) => {
                 self.busy = true;
+                self.working_invite = true;
                 self.push();
                 if let Some(c) = self.client.as_mut() {
                     match c.create_invite(uses).await {
@@ -3485,15 +3513,21 @@ impl Engine {
                         }
                     }
                 }
+                self.working_invite = false;
                 self.busy = false;
             }
             Cmd::CancelInvites => {
+                self.busy = true;
+                self.working_cancel = true;
+                self.push();
                 if let Some(c) = self.client.as_mut() {
                     self.status = match c.cancel_invites().await {
                         Ok(()) => "Your unused invite links no longer work.".into(),
                         Err(_) => "Couldn't cancel your invite links. Check your connection and try again.".into(),
                     };
                 }
+                self.working_cancel = false;
+                self.busy = false;
             }
             Cmd::Search(q) => self.search = q,
             Cmd::AddMembers(id) => {
@@ -5341,6 +5375,12 @@ impl Engine {
             meet_done: self.meet_done.clone(),
             restore_error: self.restore_error.clone(),
             busy: self.busy,
+            working_invite: self.working_invite,
+            working_cancel: self.working_cancel,
+            working_contact: self.working_contact,
+            working_username: self.working_username,
+            working_delete: self.working_delete,
+            working_secure: self.working_secure,
             tor_blocked: self.tor_blocked,
             tor_state: self.tor_state,
             fast_lane: self.fast_lane,

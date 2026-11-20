@@ -1418,6 +1418,14 @@ export component AppWindow inherits Window {
     in property <string> username-error;
     in-out property <string> username-input;
     in property <bool> busy;
+    // Which of the slow things is under way, each for its own button's
+    // spinner and "what it's doing" label (they can overlap).
+    in property <bool> working-invite;
+    in property <bool> working-cancel;
+    in property <bool> working-contact;
+    in property <bool> working-username;
+    in property <bool> working-delete;
+    in property <bool> working-secure;
     in property <string> status-line;
     in property <bool> show-delivery-hint: true;
     in-out property <int> privacy: 0;
@@ -3371,7 +3379,12 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 alignment: start;
                 spacing: Tokens.space-s;
-                PrimaryButton { text: @tr("Copy invite link"); enabled: !root.busy; clicked => { root.new-invite(root.invite-uses); } }
+                PrimaryButton {
+                    text: root.working-invite ? @tr("Making your invite link…") : @tr("Copy invite link");
+                    working: root.working-invite;
+                    enabled: !root.busy;
+                    clicked => { root.new-invite(root.invite-uses); }
+                }
                 if root.my-username != "": QuietButton { text: @tr("Copy username"); clicked => { root.copy-text(root.my-username); } }
             }
             if root.invites > 0: HorizontalLayout {
@@ -3381,7 +3394,13 @@ export component AppWindow inherits Window {
                     vertical-alignment: center;
                     horizontal-stretch: 1;
                 }
-                QuietButton { text: @tr("Cancel them"); horizontal-stretch: 0; clicked => { root.cancel-invites(); } }
+                if root.working-cancel: VerticalLayout { alignment: center; Spinner { } }
+                QuietButton {
+                    text: root.working-cancel ? @tr("Cancelling…") : @tr("Cancel them");
+                    horizontal-stretch: 0;
+                    enabled: !root.busy;
+                    clicked => { root.cancel-invites(); }
+                }
             }
         }
 
@@ -3416,15 +3435,15 @@ export component AppWindow inherits Window {
                 alignment: start;
                 spacing: Tokens.space-s;
                 PrimaryButton {
-                    text: root.busy ? @tr("Sending request…") : @tr("Send request");
-                    working: root.busy;
+                    text: root.working-contact ? @tr("Sending request…") : @tr("Send request");
+                    working: root.working-contact;
                     enabled: root.add-link != "" && !root.busy;
                     clicked => { root.add-contact(root.add-link, root.add-text); }
                 }
             }
             // Their keys come from their server over Tor first (one is
             // large): seconds, sometimes a minute, said so.
-            if root.busy: Caption {
+            if root.working-contact: Caption {
                 text: @tr("Getting their keys from their server over Tor, then sending. This can take a minute.");
                 wrap: word-wrap;
             }
@@ -4737,8 +4756,8 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-s;
                 Field { placeholder: "name"; mono: true; text <=> root.username-input; horizontal-stretch: 1; }
                 PrimaryButton {
-                    text: root.busy ? @tr("Checking…") : (root.my-username == "" ? @tr("Choose") : @tr("Change"));
-                    working: root.busy;
+                    text: root.working-username ? @tr("Checking…") : (root.my-username == "" ? @tr("Choose") : @tr("Change"));
+                    working: root.working-username;
                     enabled: root.username-input != "" && !root.busy;
                     clicked => { root.claim-username(root.username-input); }
                 }
@@ -4972,9 +4991,11 @@ export component AppWindow inherits Window {
             if root.can-change-words && !root.securing && root.has-root-pin: Field { placeholder: @tr("Your PIN"); secret: true; text <=> root.root-pin-input; }
             if root.can-change-words && !root.securing: HorizontalLayout {
                 alignment: start;
+                if root.working-secure: VerticalLayout { alignment: center; Spinner { } }
                 QuietButton {
-                    text: root.busy ? @tr("Securing…") : @tr("Secure my account");
+                    text: root.working-secure ? @tr("Securing…") : @tr("Secure my account");
                     outlined: true;
+                    enabled: !root.busy;
                     clicked => { if !root.busy { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.secure-account(); } }
                 }
             }
@@ -5324,9 +5345,11 @@ export component AppWindow inherits Window {
             if root.group-admin: HorizontalLayout {
                 alignment: start;
                 spacing: Tokens.space-s;
+                if root.working-invite: VerticalLayout { alignment: center; Spinner { } }
                 QuietButton {
-                    text: @tr("Copy invite link");
+                    text: root.working-invite ? @tr("Making your invite link…") : @tr("Copy invite link");
                     accessible-label: @tr("Copy a group invite link");
+                    enabled: !root.busy;
                     clicked => { root.new-group-invite(root.current-id, root.invite-uses, root.invite-approve); }
                 }
             }
@@ -5721,8 +5744,8 @@ export component AppWindow inherits Window {
                 alignment: start;
                 spacing: Tokens.space-s;
                 PrimaryButton {
-                    text: root.busy ? @tr("Deleting…") : (root.can-change-words ? @tr("Delete my account") : @tr("Erase this device"));
-                    working: root.busy;
+                    text: (root.working-delete || root.working-secure) ? @tr("Deleting…") : (root.can-change-words ? @tr("Delete my account") : @tr("Erase this device"));
+                    working: root.working-delete || root.working-secure;
                     danger: true;
                     enabled: root.delete-confirm == "delete" && !root.busy;
                     clicked => { if root.can-change-words { if root.has-root-pin { root.unlock-root(root.root-pin-input); root.root-pin-input = ""; } root.delete-account(); } else { root.erase-device(); } }
