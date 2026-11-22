@@ -1,0 +1,8 @@
+# Sigsum policy for Enclave releases: one production log and the three
+# witnesses of sigsum-generic-2025-1, any two of them. The root holds one log.
+log 0ec7e16843119b120377a73913ac6acbc2d03d82432e2c36b841b09a95841f25 https://seasalp.glasklar.is
+witness witness.glasklar.is            b2106db9065ec97f25e09c18839216751a6e26d8ed8b41e485a563d3d1498536
+witness witness.mullvad.net            15d6d0141543247b74bab3c1076372d9c894f619c376d64b29aa312cc00f61ad
+witness tillitis.se/tillitis-witness-1 076be8c9ee7ea60916f0df3608c945d7730082ecb37749dad2c9ed339fea770c
+group quorum-rule 2 witness.glasklar.is witness.mullvad.net tillitis.se/tillitis-witness-1
+quorum quorum-rule

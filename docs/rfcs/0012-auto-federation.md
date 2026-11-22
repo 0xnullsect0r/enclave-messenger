@@ -43,7 +43,7 @@ around the key: proving a stack worthy, building, signing, distributing.
 ### 2. The registrar (`enclave-registrar`)
 
 An always-on HTTP service the foundation runs (compose profile
-`foundation`, behind its front at `/registrar/v1/`). It holds the
+`registrar`, behind its front at `/registrar/v1/`). It holds the
 foundation **signing** key — the one trust-relevant change, see Security —
 and does two things:
 

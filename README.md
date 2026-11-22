@@ -313,7 +313,7 @@ services:
       - ./foundation:/run/secrets/foundation:ro
       - registrar-data:/var/lib/enclave/registrar
     networks: [backend, egress]
-    profiles: [foundation]
+    profiles: [registrar]
     healthcheck:
       test: ["CMD", "/usr/local/bin/enclave-registrar", "list", "--config", "/etc/enclave/registrar.toml"]
       interval: 60s

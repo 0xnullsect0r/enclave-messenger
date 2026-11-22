@@ -423,7 +423,7 @@ stack's descriptor, its witness's (from
 `public/witness-descriptor.bin`, which `enclave-witness descriptor`
 writes), and a proof of work (`api::pow_context_join`, the inbox-creation
 tier). The **registrar** (`enclave-registrar`, the foundation's
-always-on service, profile `foundation`) checks the application — both
+always-on service, profile `registrar`) checks the application — both
 descriptors self-signed and in window, the proof of work, and the
 registrar's own fetch of `https://<domain>/.well-known/enclave` equal to
 the descriptor applied with — and at each rebuild re-fetches every listed

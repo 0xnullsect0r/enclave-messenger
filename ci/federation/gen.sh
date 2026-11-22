@@ -238,7 +238,9 @@ LOCALNET_DIR=$LOCALNET
 EOF
     # The fast routes (RFC 0011): each front carries sealed requests to
     # its server at POST /net.
-    [ "$TRANSPORT" = front ] && echo "NET_UPSTREAM=server:7443" >> "$d/.env"
+    # Its own server by name: bare `server` on the shared network could
+    # be any stack's.
+    [ "$TRANSPORT" = front ] && echo "NET_UPSTREAM=server-$s:7443" >> "$d/.env"
     cp "$WORK/foundation/foundation.pub" "$d/foundation/"
     if [ "$s" = a ] && [ "$TRANSPORT" = nym ]; then
       # The foundation's credential gate, served by a's front; little work
@@ -510,7 +512,7 @@ join() {
     } >> "$WORK/$s/.env"
   done
   # Stack a is the foundation here: its registrar (compose profile
-  # `foundation`) seeds from the admin-built list and re-lists quickly.
+  # `registrar`) seeds from the admin-built list and re-lists quickly.
   # The signing key rides the foundation volume (CI only; production keeps
   # it on its own secret).
   cp "$WORK/foundation/server-list.bin" "$WORK/a/foundation/"
@@ -528,7 +530,7 @@ join() {
   done
   sed -i 's/^witness_threshold = .*/witness_threshold = 2/' "$WORK/a/config/registrar-spec.toml"
   sed -i 's/^valid_days = .*/valid_days = 7/' "$WORK/a/config/registrar-spec.toml"
-  dc a --profile foundation up -d registrar
+  dc a --profile registrar up -d registrar
 
   echo "== stack d: keys, descriptor, witness descriptor"
   mkdir -p "$d/config" "$d/foundation" "$d/tls" "$d/out"
@@ -614,7 +616,7 @@ EOF
   done
   if [ "$ok" != 1 ]; then
     echo "the joined list never reached every stack" >&2
-    dc a --profile foundation logs --no-color --tail 50 registrar >&2 || true
+    dc a --profile registrar logs --no-color --tail 50 registrar >&2 || true
     return 1
   fi
   local seq
@@ -624,7 +626,7 @@ EOF
 
 down() {
   for s in "${STACKS[@]}" d; do
-    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation down -v --remove-orphans || true
+    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation --profile registrar down -v --remove-orphans || true
   done
   if [ -f "$WORK/dev-proxy.pid" ]; then
     kill "$(cat "$WORK/dev-proxy.pid")" 2>/dev/null || true
@@ -639,7 +641,7 @@ down() {
 
 logs() {
   for s in "${STACKS[@]}" d; do
-    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation logs --no-color --tail 200 || true
+    [ -d "$WORK/$s" ] && dc "$s" --profile push --profile push-nym --profile nym --profile foundation --profile registrar logs --no-color --tail 200 || true
   done
   [ -f "$WORK/dev-proxy.log" ] && cat "$WORK/dev-proxy.log" || true
   [ "$TRANSPORT" = nym ] && ln_dc logs --no-color --tail 100 || true
