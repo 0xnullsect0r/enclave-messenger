@@ -14,6 +14,10 @@ yanked = "deny"
 # both via Slint) are tracked upstream rather than blocking CI.
 unmaintained = "workspace"
 ignore = [
+    # chrono is flagged unmaintained, with no fixed release. It stays in the
+    # build through Slint (i-slint-core) whatever Enclave's own crates use.
+    # Drop this when Slint moves off it.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained notice, no known vulnerability; required by Slint regardless of our direct use" },
     # crypto-bigint 0.5.5 has no fixed release (the fix is 0.7.6); it arrives
     # only through elliptic-curve 0.13 (p384 for the TLS profile's ECDSA
     # checks and ECDH half, voprf's P-384 group), whose field and scalar

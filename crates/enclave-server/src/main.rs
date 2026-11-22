@@ -23,7 +23,7 @@
 
 use enclave_crypto::rng::HedgedRng;
 use enclave_crypto::sig::CompositeSigningKey;
-use enclave_federation::{KeyBundle, ServerDescriptor, server_id};
+use enclave_federation::{KeyBundle, server_id};
 use enclave_kt::{KtService, KtStore};
 use enclave_server::config::FileConfig;
 use enclave_server::db::Db;
@@ -592,11 +592,6 @@ fn sign_descriptor(
     .map_err(|e| format!("descriptor: {e}"))
 }
 
-/// `descriptor OUT`: sign a descriptor without running the server (for
-/// the foundation's list, before the first start). The key-transparency
-/// keys are the ones `run` uses: the head key, and the VRF public key
-/// derived from the VRF secret.
-
 /// `enclave-server apply KNOWN_DOMAIN [--config FILE]` (RFC 0012): hand
 /// this stack's application to an existing server's registrar — its
 /// descriptor, its witness's (from `public/witness-descriptor.bin`, written
@@ -659,6 +654,10 @@ async fn apply_federation(args: &[String]) -> Result<(), String> {
     }
 }
 
+/// `descriptor OUT`: sign a descriptor without running the server (for
+/// the foundation's list, before the first start). The key-transparency
+/// keys are the ones `run` uses: the head key, and the VRF public key
+/// derived from the VRF secret.
 fn write_descriptor(args: &[String], out: &str) -> Result<(), String> {
     let cfg = load_config(args)?;
     let mut keys = ServerKeys::load(&cfg.server.keys_dir).map_err(|e| e.to_string())?;

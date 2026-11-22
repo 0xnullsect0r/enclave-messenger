@@ -1,4 +1,4 @@
-# Maintainer: The Enclave contributors <security@enclave.chat>
+# Maintainer: The Enclave contributors <ari@aricummings.com>
 #
 # The release's Linux programs (`cargo xtask dist`, built on AlmaLinux 9
 # for glibc 2.34 and newer). release.yml's `aur` job sets pkgver and the

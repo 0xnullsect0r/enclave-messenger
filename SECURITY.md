@@ -4,8 +4,8 @@
 
 Please report vulnerabilities privately:
 
-* Email: security@enclave.chat (address to be activated before the first public release)
-* Or open a private GitHub security advisory on this repository.
+* Open a [private GitHub security advisory](https://github.com/0xnullsect0r/enclave-messenger/security/advisories/new) on this repository.
+* Or email ari@aricummings.com.
 
 Include what you found, how to reproduce it, and the impact you expect. We
 acknowledge reports within 72 hours.

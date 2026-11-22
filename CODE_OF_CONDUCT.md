@@ -9,6 +9,5 @@ for speaking freely. Treat everyone here with respect.
   privacy.
 * Keep discussion on topic and in public channels unless privacy is needed.
 
-Report problems to conduct@enclave.chat (to be activated before the first
-public release). Maintainers will respond, may remove content, and may ban
-people who break these rules. Reporters are protected from retaliation.
+Report problems to ari@aricummings.com. Maintainers will respond, may remove
+content, and may ban people who break these rules. Reporters are protected from retaliation.

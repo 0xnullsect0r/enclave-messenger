@@ -1,4 +1,4 @@
-# Maintainer: The Enclave contributors <security@enclave.chat>
+# Maintainer: The Enclave contributors <ari@aricummings.com>
 #
 # Built from the release tag: both Rust workspaces and lyrebird (Go), as
 # `cargo xtask dist` builds them. release.yml's `aur` job sets pkgver,

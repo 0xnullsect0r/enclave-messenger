@@ -48,7 +48,7 @@ for pkg in enclave-messenger enclave-messenger-bin; do
     cp $pkg/PKGBUILD $pkg/.SRCINFO repo-$pkg/
     cd repo-$pkg
     git config user.name 'Enclave release'
-    git config user.email 'security@enclave.chat'
+    git config user.email 'ari@aricummings.com'
     git add PKGBUILD .SRCINFO
     git diff --cached --quiet || { git commit -q -m 'Update to $V'; git push -q origin HEAD:master; }"
   echo "aur: $pkg $V"

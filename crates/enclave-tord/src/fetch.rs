@@ -166,10 +166,10 @@ impl Fetcher {
     /// else a new TLS connection under the Enclave TLS profile through the
     /// dialer.
     async fn take_front(&self, front: &str) -> Result<FrontSender, String> {
-        if let Ok(mut fronts) = self.fronts.lock() {
-            if let Some(s) = fronts.get_mut(front).and_then(|v| v.pop()) {
-                return Ok(s);
-            }
+        if let Ok(mut fronts) = self.fronts.lock()
+            && let Some(s) = fronts.get_mut(front).and_then(|v| v.pop())
+        {
+            return Ok(s);
         }
         let (domain, port) = front
             .rsplit_once(':')

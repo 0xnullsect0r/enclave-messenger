@@ -381,7 +381,7 @@ async fn apply(r: Arc<Registrar>, req: axum::extract::Request) -> axum::response
             .map(|id| (a, id))
     }) {
         Ok((a, id)) => {
-            let name = format!("{}-{}.bin", hex(&id)[..8].to_string(), now());
+            let name = format!("{}-{}.bin", &hex(&id)[..8], now());
             let path = r.cfg.queue.join(&name);
             match std::fs::write(&path, &body) {
                 Ok(()) => {
@@ -389,13 +389,13 @@ async fn apply(r: Arc<Registrar>, req: axum::extract::Request) -> axum::response
                         format!(
                             "queued from {} ({}): the next list takes it",
                             a.descriptor.domain,
-                            hex(&id)[..8].to_string()
+                            &hex(&id)[..8]
                         )
                     } else {
                         format!(
                             "queued from {} ({}): waiting for the registrar's approve",
                             a.descriptor.domain,
-                            hex(&id)[..8].to_string()
+                            &hex(&id)[..8]
                         )
                     };
                     (axum::http::StatusCode::OK, what)

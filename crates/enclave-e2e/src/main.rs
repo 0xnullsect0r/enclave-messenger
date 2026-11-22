@@ -321,7 +321,7 @@ async fn world(args: &[String]) -> R<World> {
                 fronts.insert(id, (d, p, true));
                 servers.push(id);
             }
-            (id, Route::Off) => {}
+            (_, Route::Off) => {}
         }
     }
     if [
