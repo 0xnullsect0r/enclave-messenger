@@ -195,6 +195,8 @@ uuid = [
     "sqlx-sqlite?/uuid",
 ]
 
+# ENCLAVE PATCH: a path dependency is linted under CI's -D warnings, so
+# the cfgs upstream reads are allowed.
 [lints.rust.unexpected_cfgs]
-level = "warn"
+level = "allow"
 priority = 0
