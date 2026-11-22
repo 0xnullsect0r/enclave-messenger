@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.2.1" date="2026-11-22">
+      <description>
+        <p>Federation is sturdier: one broken server or bad application can no longer hold up the server list. Signed updates are switched on, and security updates are included.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-11-20">
       <description>
         <p>Enclave grew up: servers now join the network by themselves. Copy the compose stack, run setup.sh, give it the address of one existing server, and the registrar checks it from the outside and signs it into the list every device refreshes — no forms, no waiting on anyone. Messages are faster and steadier by default (through Tor's exit to each server's own address; the old onion-only route is a setting, and Maximum privacy always uses it), bridged connections get twice as long to come up, the app is dark only, and every button that takes a moment — making an invite link, sending a request, deleting your account — shows its spinner and says what it's doing.</p>

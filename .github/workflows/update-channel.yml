@@ -13,7 +13,9 @@ name: Update channel
 #
 # Needs, in environment `update-channel`: UPDATE_ONLINE_KEY (base64 of the
 # online key from `enclave-admin release keygen`) and SIGSUM_SUBMIT_KEY (the
-# submitter's Ed25519 key, sigsum-key format); in the repository: the
+# submitter's Ed25519 key, sigsum-key format, which also signs the log's
+# rate-limit token for the domain whose _sigsum_v1 TXT record names it); in
+# the repository: the
 # signed root (packaging/update/root.bin, and root.N.bin for later ones)
 # and the Sigsum policy (packaging/update/sigsum-policy). Until the
 # maintainers' ceremony made them (External Gate G2) it stops and says so.
@@ -82,7 +84,8 @@ jobs:
           chmod 600 "$key"
           ci/release/update-targets.sh "${TAG#v}" dist "$RUNNER_TEMP/targets"
           for f in "$RUNNER_TEMP"/targets/*; do
-            "$(go env GOPATH)/bin/sigsum-submit" -k "$key" -p packaging/update/sigsum-policy "$f"
+            "$(go env GOPATH)/bin/sigsum-submit" -k "$key" -a "$key" -d enclave.nullsect0r.dev \
+              -p packaging/update/sigsum-policy "$f"
             mv "$f.proof" "proofs/$(basename "$f").sigsum"
           done
           rm -f "$key"

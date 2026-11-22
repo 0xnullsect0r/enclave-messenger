@@ -526,7 +526,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -537,7 +537,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -565,7 +565,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -917,9 +917,9 @@ dependencies = [
 
 [[package]]
 name = "async-executor"
-version = "1.14.0"
+version = "1.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a"
+checksum = "f426a31126c735126297bc5ea7a521263c9faff4f63ca415267ee625651c4f37"
 dependencies = [
  "async-task",
  "concurrent-queue",
@@ -953,7 +953,7 @@ dependencies = [
  "futures-lite",
  "parking",
  "polling",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "slab",
  "windows-sys 0.61.2",
 ]
@@ -984,7 +984,7 @@ dependencies = [
  "cfg-if 1.0.5",
  "event-listener",
  "futures-lite",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -1010,7 +1010,7 @@ dependencies = [
  "cfg-if 1.0.5",
  "futures-core",
  "futures-io",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "signal-hook-registry",
  "slab",
  "windows-sys 0.61.2",
@@ -1774,7 +1774,7 @@ checksum = "43b32313e937c8721c9d17ee9bf60699a6402b4b7c2cb6ac1bee0ffcaa4b4e5e"
 dependencies = [
  "bitflags 2.13.2",
  "polling",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tracing",
 ]
 
@@ -3300,7 +3300,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8ea84d0109517cc2253d4a679bdda1e8989e9bd86987e9e4f75ffdda0095fd1"
 dependencies = [
  "derive-deftly-macros 0.14.6",
- "heck 0.5.0",
+ "heck 0.4.1",
 ]
 
 [[package]]
@@ -3310,7 +3310,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98e02cd118058400797c74550dca132b57cf2e6af0e9ea0672a83eb186fd655e"
 dependencies = [
  "derive-deftly-macros 1.11.5",
- "heck 0.5.0",
+ "heck 0.4.1",
 ]
 
 [[package]]
@@ -3319,10 +3319,10 @@ version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357422a457ccb850dc8f1c1680e0670079560feaad6c2e247e3f345c4fab8a3f"
 dependencies = [
- "heck 0.5.0",
- "indexmap 2.14.2",
- "itertools 0.15.0",
- "proc-macro-crate 3.5.0",
+ "heck 0.4.1",
+ "indexmap 1.9.3",
+ "itertools 0.10.5",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "sha3 0.10.9",
@@ -3337,15 +3337,15 @@ version = "1.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba91f619216e76a5eb2515783f7ec2e271938b51aadac592f4930517f4626863"
 dependencies = [
- "heck 0.5.0",
- "indexmap 2.14.2",
- "itertools 0.15.0",
- "proc-macro-crate 3.5.0",
+ "heck 0.4.1",
+ "indexmap 1.9.3",
+ "itertools 0.10.5",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
- "sha3 0.12.0",
- "strum 0.28.0",
- "syn 3.0.6",
+ "sha3 0.11.0",
+ "strum 0.25.0",
+ "syn 2.0.119",
  "unicode-ident",
  "void",
 ]
@@ -3648,7 +3648,7 @@ dependencies = [
  "drm-ffi",
  "drm-fourcc",
  "libc",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -3658,7 +3658,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51a91c9b32ac4e8105dec255e849e0d66e27d7c34d184364fb93e469db08f690"
 dependencies = [
  "drm-sys",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-app"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arboard",
  "ashpd",
@@ -3924,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-av1"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "libc",
  "rav1d",
@@ -3933,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-calls"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bip39 3.0.0",
  "boringtun",
@@ -3947,7 +3947,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-crypto",
  "enclave-federation",
@@ -3970,14 +3970,14 @@ dependencies = [
 
 [[package]]
 name = "enclave-crash"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-platform",
 ]
 
 [[package]]
 name = "enclave-crypto"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aes 0.9.3",
  "argon2",
@@ -4001,7 +4001,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-design"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "thiserror 2.0.21",
  "toml 0.8.23",
@@ -4021,7 +4021,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-federation"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-crypto",
  "enclave-rpc",
@@ -4031,7 +4031,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-ingress"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-nym",
  "enclave-wire",
@@ -4051,7 +4051,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-ipc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-platform",
  "thiserror 2.0.21",
@@ -4060,7 +4060,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-kt"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "akd",
  "akd_core",
@@ -4081,7 +4081,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-media"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "candle-core",
  "candle-transformers",
@@ -4100,7 +4100,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-mediad"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-ipc",
  "enclave-media",
@@ -4130,7 +4130,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-net"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "enclave-crypto",
@@ -4144,7 +4144,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-netd"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "enclave-crypto",
@@ -4160,7 +4160,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-nym"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "enclave-wire",
@@ -4217,7 +4217,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-platform"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
@@ -4252,7 +4252,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-proto"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bip39 3.0.0",
  "enclave-crypto",
@@ -4265,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-push-relay"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-crypto",
  "enclave-service",
@@ -4284,7 +4284,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-rpc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-crypto",
  "enclave-wire",
@@ -4294,18 +4294,18 @@ dependencies = [
 
 [[package]]
 name = "enclave-sandbox"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-platform",
  "landlock",
  "libc",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "seccompiler",
 ]
 
 [[package]]
 name = "enclave-service"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -4315,7 +4315,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-slip39"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hmac 0.12.1",
  "pbkdf2",
@@ -4326,7 +4326,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-store"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-crypto",
  "redb",
@@ -4336,7 +4336,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-tls"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "enclave-crypto",
  "p384",
@@ -4346,7 +4346,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-tokens"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "blake2 0.10.6",
  "enclave-crypto",
@@ -4359,7 +4359,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-tord"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arti-client",
  "async-trait",
@@ -4372,7 +4372,7 @@ dependencies = [
  "hyper 1.11.1",
  "hyper-util",
  "obfs4",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "rustls 0.23.46",
  "tokio",
  "tokio-rustls 0.26.6",
@@ -4382,7 +4382,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-update"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ed25519-dalek",
  "enclave-crypto",
@@ -4393,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-vault"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4419,14 +4419,14 @@ dependencies = [
 
 [[package]]
 name = "enclave-wasmbox"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "wasmi",
 ]
 
 [[package]]
 name = "enclave-wire"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -4935,9 +4935,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -5318,7 +5318,7 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
 dependencies = [
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "windows-link 0.2.1",
 ]
 
@@ -5570,7 +5570,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.21",
- "windows 0.62.2",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -5768,11 +5768,11 @@ dependencies = [
 
 [[package]]
 name = "hashlink"
-version = "0.11.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
 dependencies = [
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -6547,7 +6547,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -7701,7 +7701,7 @@ dependencies = [
  "libc",
  "libspa-sys",
  "nom 8.0.0",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "system-deps",
 ]
 
@@ -7720,14 +7720,14 @@ dependencies = [
 name = "libsqlite3-sys"
 version = "0.30.1"
 dependencies = [
- "libsqlite3-sys 0.37.0",
+ "libsqlite3-sys 0.39.1",
 ]
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.37.0"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
+checksum = "14a5f01b87b92705d07b433c06f96cbc764637d81a0bffb5734ce17cf0f9a2b3"
 dependencies = [
  "cc",
  "pkg-config",
@@ -7756,7 +7756,7 @@ dependencies = [
  "image",
  "khronos-egl",
  "memmap2",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "thiserror 2.0.21",
  "tracing",
  "wayland-backend",
@@ -8122,7 +8122,7 @@ dependencies = [
  "once_cell",
  "png 0.18.1",
  "thiserror 2.0.21",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8596,7 +8596,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
 dependencies = [
- "proc-macro-crate 3.5.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -11317,7 +11317,7 @@ dependencies = [
  "libspa",
  "libspa-sys",
  "pipewire-sys",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -11410,7 +11410,7 @@ dependencies = [
  "concurrent-queue",
  "hermit-abi 0.5.3",
  "pin-project-lite",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "windows-sys 0.61.2",
 ]
 
@@ -11776,9 +11776,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.4"
+version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+checksum = "3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",
@@ -11826,10 +11826,10 @@ version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e2023f41b5fcb7c30eb5300a5733edfaa9e0e0d502d51b586f65633fd39e40c"
 dependencies = [
- "derive-deftly 1.11.5",
+ "derive-deftly 0.14.6",
  "libc",
  "paste",
- "thiserror 2.0.21",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -12623,15 +12623,15 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.39.0"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0d2b0146dd9661bf67bb107c0bb2a55064d556eeb3fc314151b957f313bcd4e"
+checksum = "9c026b4444579e8d754556c6c75d040d69c4a44283cdb648ab8a8d5965c2cfa8"
 dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink 0.11.1",
- "libsqlite3-sys 0.37.0",
+ "hashlink 0.12.2",
+ "libsqlite3-sys 0.39.1",
  "smallvec",
  "sqlite-wasm-rs",
  "time",
@@ -12682,9 +12682,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.5"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
@@ -13428,7 +13428,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
  "bstr",
- "dirs 6.0.0",
+ "dirs 5.0.1",
  "os_str_bytes",
 ]
 
@@ -13742,7 +13742,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -13781,7 +13781,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13803,7 +13803,7 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "raw-window-handle",
  "redox_syscall 0.5.18",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "tiny-xlib",
  "tracing",
  "wasm-bindgen",
@@ -14647,7 +14647,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.3.3",
  "once_cell",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "windows-sys 0.52.0",
 ]
 
@@ -15625,8 +15625,6 @@ dependencies = [
 [[package]]
 name = "tor-dirmgr"
 version = "0.46.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "805da4e947311285ce0782ab129df318701c2c08046c316086cb6bb3eb7a463e"
 dependencies = [
  "async-trait",
  "base64ct",
@@ -16708,9 +16706,9 @@ dependencies = [
 
 [[package]]
 name = "typed-path"
-version = "0.12.3"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+checksum = "54ec2755506471f54baf5e4bb5499d8e510cc1caf271270e778a736bd2d7336c"
 
 [[package]]
 name = "typenum"
@@ -16744,7 +16742,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -16875,9 +16873,9 @@ checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -17285,7 +17283,7 @@ checksum = "38a91b4eaddff87b1cd1074985e3713da4af2c49742d1b356b2c01670a67a078"
 dependencies = [
  "cc",
  "downcast-rs 1.2.1",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "scoped-tls",
  "smallvec",
  "wayland-sys",
@@ -17298,7 +17296,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3c36a0f861ad76d0901f2800b46321410d9f73f2ea88aac0650d86c32688073"
 dependencies = [
  "bitflags 2.13.2",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-backend",
  "wayland-scanner",
 ]
@@ -17320,7 +17318,7 @@ version = "0.31.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a52d18780be9b1314328a3de5f930b73d2200112e3849ca6cb11822793fb34d"
 dependencies = [
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-client",
  "xcursor",
 ]
@@ -17382,7 +17380,7 @@ checksum = "0dde9c29be0f723a573977de51ee455bf3dfa03652730a74f9dd3b337e374d75"
 dependencies = [
  "bitflags 2.13.2",
  "downcast-rs 1.2.1",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "wayland-backend",
  "wayland-scanner",
 ]
@@ -18314,7 +18312,7 @@ dependencies = [
  "libc",
  "log",
  "os_pipe",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "thiserror 2.0.21",
  "tree_magic_mini",
  "wayland-backend",
@@ -18373,7 +18371,7 @@ dependencies = [
  "libc",
  "libloading",
  "once_cell",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "x11rb-protocol",
 ]
 
@@ -18402,7 +18400,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
- "rustix 1.1.5",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -18563,7 +18561,7 @@ dependencies = [
  "hex",
  "libc",
  "ordered-stream",
- "rustix 1.1.5",
+ "rustix 1.1.6",
  "serde",
  "serde_repr",
  "tracing",
@@ -18772,9 +18770,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.4"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
  "indexmap 2.14.2",
@@ -18797,27 +18795,27 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zstd"
-version = "0.14.0"
+version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
+checksum = "ad5020ab8f27bfc0024ad0a07aed6bf022a16208f479686fbed4fdd0c85eb0b3"
 dependencies = [
  "zstd-safe",
 ]
 
 [[package]]
 name = "zstd-safe"
-version = "8.0.0"
+version = "8.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae42c0555055784c70058d19ba8e275528e8a99a706684868ace5da4e716a4ab"
+checksum = "5a9ea9cc2576c2fcc104e9cec04f46e3ede564f4fbc206831e4ef7e859a4140d"
 dependencies = [
  "zstd-sys",
 ]
 
 [[package]]
 name = "zstd-sys"
-version = "2.1.0+zstd.1.5.7"
+version = "2.1.3+zstd.1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
+checksum = "f729a06d0257428fd9d997ac8db7e1407bd0262ab016b085b36bc52957c0052d"
 dependencies = [
  "cc",
  "pkg-config",

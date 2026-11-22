@@ -6,3 +6,7 @@
 /fuzz/corpus
 /nym/target
 crates/enclave-crypto/proofs/
+
+# Foundation signing keys never belong in the repository.
+/foundation.key
+*.key.gpg

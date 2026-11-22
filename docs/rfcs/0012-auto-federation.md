@@ -43,7 +43,7 @@ around the key: proving a stack worthy, building, signing, distributing.
 ### 2. The registrar (`enclave-registrar`)
 
 An always-on HTTP service the foundation runs (compose profile
-`foundation`, behind its front at `/registrar/v1/`). It holds the
+`registrar`, behind its front at `/registrar/v1/`). It holds the
 foundation **signing** key — the one trust-relevant change, see Security —
 and does two things:
 
@@ -117,9 +117,11 @@ next list lands (minutes in open mode).
   (unchanged from today).
 - **List spam and junk stacks.** An application costs proof of work (the
   inbox tier), reachability is checked from the outside *at application
-  time and at every rebuild*, and the registrar drops a stack from the
-  next list the moment its front serves anything but its verified
-  descriptor. Abuse of the foundation's listing remains the foundation's
+  time and at every rebuild*. A failing application is retried for a day
+  and let go, and never holds up the list. A listed stack whose front
+  stops serving its verified descriptor keeps the entry it last proved
+  (it is neither dropped on a blip nor able to stop the list renewing);
+  removing one is the foundation's decision. Abuse of the foundation's listing remains the foundation's
   call, as today.
 - **A malicious registrar operator** (if the foundation is ever someone
   else) can add or drop servers — but that is exactly the power the

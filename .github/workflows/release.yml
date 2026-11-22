@@ -62,6 +62,9 @@ jobs:
   prepare:
     name: version and tag
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     outputs:
       tag: ${{ steps.v.outputs.tag }}
       version: ${{ steps.v.outputs.version }}
@@ -98,6 +101,27 @@ jobs:
             echo "dry=$dry"
           } >> "$GITHUB_OUTPUT"
           echo "### Release $tag (dry run: $dry, pre-release: $prerelease)" >> "$GITHUB_STEP_SUMMARY"
+      # A real release ships only a commit CI passed: wait for CI's run on
+      # this commit (up to three hours) and stop here unless it succeeded.
+      - name: CI passed on this commit
+        if: steps.v.outputs.dry == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          runs="repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=30"
+          for _ in $(seq 1 180); do
+            passed=$(gh api "$runs" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+            if [ "$passed" -gt 0 ]; then echo "CI passed on $sha"; exit 0; fi
+            active=$(gh api "$runs" --jq '[.workflow_runs[] | select(.status != "completed")] | length')
+            seen=$(gh api "$runs" --jq '.workflow_runs | length')
+            if [ "$seen" -gt 0 ] && [ "$active" -eq 0 ]; then
+              echo "::error::CI did not pass on $sha"; exit 1
+            fi
+            sleep 60
+          done
+          echo "::error::timed out waiting for CI on $sha"; exit 1
 
   linux:
     name: Linux ${{ matrix.arch }} (tarball, .deb, .rpm, AppImage)

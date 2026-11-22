@@ -37,7 +37,7 @@ required-features = ["demo"]
 # Arch, hence the package name.
 [package.metadata.deb]
 name = "enclave-messenger"
-maintainer = "The Enclave contributors <security@enclave.chat>"
+maintainer = "The Enclave contributors <ari@aricummings.com>"
 copyright = "The Enclave contributors"
 license-file = ["../../LICENSE", "0"]
 extended-description = """\

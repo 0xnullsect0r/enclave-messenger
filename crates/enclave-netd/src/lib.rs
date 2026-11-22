@@ -40,15 +40,16 @@ use std::sync::Arc;
 /// How long netd waits on exit for what was sent to leave.
 const EXIT_FLUSH: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// `--server` routes: TCP addresses, Nym addresses and onion services.
-fn parse_servers(
-    args: &[String],
-) -> (
+/// The routes named on the command line: TCP, Nym, onion and front.
+type ServerRoutes = (
     HashMap<ServerId, std::net::SocketAddr>,
     HashMap<ServerId, String>,
     HashMap<ServerId, String>,
     HashMap<ServerId, FrontRoute>,
-) {
+);
+
+/// `--server` routes: TCP addresses, Nym addresses and onion services.
+fn parse_servers(args: &[String]) -> ServerRoutes {
     let mut tcp = HashMap::new();
     let mut nym = HashMap::new();
     let mut onion = HashMap::new();
@@ -240,21 +241,21 @@ impl Routed {
     /// A failed front cools down: the onion route answers for it until the
     /// cooldown ends.
     fn front_failed(&self, server: &ServerId) {
-        let _ = self.lane.store(2, std::sync::atomic::Ordering::Relaxed);
-        if let Ok(mut fronts) = self.fronts.write() {
-            if let Some(f) = fronts.get_mut(server) {
-                f.down_until = std::time::Instant::now() + FRONT_COOLDOWN;
-            }
+        self.lane.store(2, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut fronts) = self.fronts.write()
+            && let Some(f) = fronts.get_mut(server)
+        {
+            f.down_until = std::time::Instant::now() + FRONT_COOLDOWN;
         }
     }
 
     /// A front that answered is back in use.
     fn front_ok(&self, server: &ServerId) {
-        let _ = self.lane.store(1, std::sync::atomic::Ordering::Relaxed);
-        if let Ok(mut fronts) = self.fronts.write() {
-            if let Some(f) = fronts.get_mut(server) {
-                f.down_until = std::time::Instant::now();
-            }
+        self.lane.store(1, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut fronts) = self.fronts.write()
+            && let Some(f) = fronts.get_mut(server)
+        {
+            f.down_until = std::time::Instant::now();
         }
     }
 

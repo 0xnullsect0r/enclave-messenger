@@ -393,19 +393,6 @@ fn bootstrap_budget(bridges: &[String]) -> std::time::Duration {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn bridges_get_the_longer_bootstrap_budget() {
-        use super::{BOOTSTRAP, BRIDGED_BOOTSTRAP, bootstrap_budget};
-        assert_eq!(bootstrap_budget(&[]), BOOTSTRAP);
-        assert_eq!(
-            bootstrap_budget(&["snowflake 192.0.2.3:80 fingerprint=x".into()]),
-            BRIDGED_BOOTSTRAP
-        );
-    }
-}
-
 async fn dialer(
     direct: bool,
     socks: Option<std::net::SocketAddr>,
@@ -455,5 +442,18 @@ async fn socks_up(proxy: std::net::SocketAddr) -> std::io::Result<()> {
             std::io::ErrorKind::TimedOut,
             format!("no answer from the SOCKS port at {proxy}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bridges_get_the_longer_bootstrap_budget() {
+        use super::{BOOTSTRAP, BRIDGED_BOOTSTRAP, bootstrap_budget};
+        assert_eq!(bootstrap_budget(&[]), BOOTSTRAP);
+        assert_eq!(
+            bootstrap_budget(&["snowflake 192.0.2.3:80 fingerprint=x".into()]),
+            BRIDGED_BOOTSTRAP
+        );
     }
 }

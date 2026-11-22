@@ -328,6 +328,10 @@ criteria = "safe-to-deploy"
 version = "1.14.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.async-executor]]
+version = "1.14.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.async-fs]]
 version = "2.2.0"
 criteria = "safe-to-deploy"
@@ -1408,6 +1412,10 @@ criteria = "safe-to-deploy"
 version = "0.2.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.form_urlencoded]]
+version = "1.2.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.fs-mistrust]]
 version = "0.7.13"
 criteria = "safe-to-deploy"
@@ -1662,6 +1670,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.hashlink]]
 version = "0.11.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.hashlink]]
+version = "0.12.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.hax-lib]]
@@ -2234,6 +2246,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.libsqlite3-sys]]
 version = "0.37.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.libsqlite3-sys]]
+version = "0.39.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.libudev-sys]]
@@ -3352,6 +3368,10 @@ criteria = "safe-to-deploy"
 version = "0.13.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.pulldown-cmark]]
+version = "0.13.6"
+criteria = "safe-to-deploy"
+
 [[exemptions.pulp]]
 version = "0.22.3"
 criteria = "safe-to-deploy"
@@ -3596,6 +3616,10 @@ criteria = "safe-to-deploy"
 version = "0.39.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.rusqlite]]
+version = "0.41.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.rustc-hash]]
 version = "2.1.3"
 criteria = "safe-to-deploy"
@@ -3610,6 +3634,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rustix]]
 version = "1.1.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.rustix]]
+version = "1.1.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls]]
@@ -4628,6 +4656,10 @@ criteria = "safe-to-deploy"
 version = "0.12.3"
 criteria = "safe-to-deploy"
 
+[[exemptions.typed-path]]
+version = "0.12.4"
+criteria = "safe-to-deploy"
+
 [[exemptions.typenum]]
 version = "1.20.1"
 criteria = "safe-to-deploy"
@@ -4689,7 +4721,7 @@ version = "0.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.url]]
-version = "2.5.8"
+version = "2.5.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.usvg]]
@@ -5360,6 +5392,10 @@ criteria = "safe-to-deploy"
 version = "9.0.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.zip]]
+version = "9.0.5"
+criteria = "safe-to-deploy"
+
 [[exemptions.zlib-rs]]
 version = "0.6.8"
 criteria = "safe-to-deploy"
@@ -5372,12 +5408,24 @@ criteria = "safe-to-deploy"
 version = "0.14.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.zstd]]
+version = "0.14.4"
+criteria = "safe-to-deploy"
+
 [[exemptions.zstd-safe]]
 version = "8.0.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.zstd-safe]]
+version = "8.3.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.zstd-sys]]
 version = "2.1.0+zstd.1.5.7"
+criteria = "safe-to-deploy"
+
+[[exemptions.zstd-sys]]
+version = "2.1.3+zstd.1.5.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.zune-core]]

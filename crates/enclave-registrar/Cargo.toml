@@ -18,8 +18,7 @@ enclave-federation = { path = "../enclave-federation" }
 enclave-rpc = { path = "../enclave-rpc" }
 enclave-tls = { path = "../enclave-tls" }
 enclave-service = { path = "../enclave-service" }
-enclave-tokens = { path = "../enclave-tokens"
-}
+enclave-tokens = { path = "../enclave-tokens" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync", "time", "signal", "fs"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 hyper = { version = "1", features = ["client", "server", "http1"] }
