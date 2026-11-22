@@ -22,6 +22,7 @@ missing_docs = "deny"
 # third_party/PATCHES.md
 [patch.crates-io]
 tor-dirmgr = { path = "../third_party/tor-dirmgr" }
+sqlx-macros-core = { path = "../third_party/sqlx-macros-core" }
 classic-mceliece-rust = { path = "../third_party/classic-mceliece-rust" }
 nym-client-core = { path = "../third_party/nym-client-core" }
 nym-gateway-client = { path = "../third_party/nym-gateway-client" }
