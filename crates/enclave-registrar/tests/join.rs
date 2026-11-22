@@ -120,11 +120,11 @@ fn an_application_is_checked_completely() {
 }
 
 /// The rebuild: a listed server that still is who it was stays, one that
-/// changed identity is refused outright, an application joins, and the
+/// changed identity or went quiet keeps its last entry, an application joins, and the
 /// result verifies under the foundation's public key with the next
 /// sequence number.
 #[test]
-fn the_rebuild_keeps_who_stays_refuses_who_changed_and_takes_the_new() {
+fn the_rebuild_keeps_who_stays_holds_who_changed_and_takes_the_new() {
     use std::collections::HashMap;
     let mut rng = HedgedRng::new().unwrap();
     let key = FoundationKey::generate(&mut rng).unwrap();
@@ -204,31 +204,58 @@ fn the_rebuild_keeps_who_stays_refuses_who_changed_and_takes_the_new() {
     // The same bytes verify for a client that held seq 4.
     assert!(ServerList::verify(&bytes, &key.public(), NOW, 5).is_err());
 
-    // The old server replaced by a different identity: refused — a server
-    // may change anything but who it is.
+    // Replaced by a different identity, or not answering at all: it keeps
+    // the entry it last proved, and the list still renews.
     let impostor = descriptor(
         "old.test",
         &CompositeSigningKey::generate(&mut rng).unwrap(),
         &mut rng,
     );
-    let mut served = HashMap::new();
-    served.insert("old.test".to_string(), impostor.encode());
-    assert!(
-        enclave_registrar::rebuild(&previous, &served, &[], &statik, NOW, &key, &mut rng,).is_err()
-    );
+    let mut hijacked = HashMap::new();
+    hijacked.insert("old.test".to_string(), impostor.encode());
+    let mut previous = previous;
+    previous.witnesses.push(enclave_federation::ListedWitness {
+        key: witness.key.clone(),
+        operator: witness.operator.clone(),
+        family: witness.family.clone(),
+        url: witness.url.clone(),
+    });
+    for served in [hijacked, HashMap::new()] {
+        let bytes =
+            enclave_registrar::rebuild(&previous, &served, &[], &statik, NOW, &key, &mut rng)
+                .unwrap();
+        let list = ServerList::verify(&bytes, &key.public(), NOW, 4).unwrap();
+        assert_eq!(list.seq, 5);
+        assert_eq!(list.servers.len(), 1);
+        assert_eq!(list.servers[0].id(), previous.servers[0].id());
+    }
+}
 
-    // A front that doesn't answer: the rebuild holds back rather than
-    // dropping a server silently.
-    assert!(
-        enclave_registrar::rebuild(
-            &previous,
-            &HashMap::new(),
-            &[],
-            &statik,
-            NOW,
-            &key,
-            &mut rng,
-        )
-        .is_err()
-    );
+/// The proof is checked again at the rebuild, which can land after
+/// midnight: yesterday's still counts, the day before doesn't.
+#[test]
+fn a_proof_of_work_survives_midnight_but_not_two() {
+    let mut rng = HedgedRng::new().unwrap();
+    let identity = CompositeSigningKey::generate(&mut rng).unwrap();
+    let d = descriptor("new.test", &identity, &mut rng);
+    let id = enclave_federation::server_id(identity.public());
+    let proof = enclave_tokens::solve(
+        &enclave_rpc::api::pow_context_join(&id, NOW / DAY - 2),
+        12,
+        &mut rng,
+    )
+    .unwrap();
+    let served = d.encode();
+    let a = Application {
+        descriptor: d,
+        witness: None,
+    };
+    let fresh = enclave_tokens::solve(
+        &enclave_rpc::api::pow_context_join(&id, NOW / DAY - 1),
+        12,
+        &mut rng,
+    )
+    .unwrap();
+    a.check(&fresh.0, 12, NOW, &served).unwrap();
+    assert!(a.check(&proof.0, 12, NOW, &served).is_err());
 }

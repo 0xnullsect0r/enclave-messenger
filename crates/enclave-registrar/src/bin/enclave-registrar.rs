@@ -113,7 +113,14 @@ struct Registrar {
     cfg: RegistrarSection,
     key: enclave_federation::FoundationKey,
     statik: Static,
+    /// Woken by an accepted application, so it lands in minutes.
+    wake: tokio::sync::Notify,
 }
+
+/// Most applications held at once: the queue is open to anyone.
+const MAX_QUEUED: usize = 256;
+/// A failing application gets retried this long, then it's let go.
+const RETRY_FOR: Duration = Duration::from_secs(86_400);
 
 fn load_registrar(args: &[String]) -> Result<Registrar, String> {
     let cfg = load_config(args)?.registrar;
@@ -131,7 +138,12 @@ fn load_registrar(args: &[String]) -> Result<Registrar, String> {
     {
         std::fs::copy(first, &cfg.list).map_err(|e| format!("{}: {e}", first.display()))?;
     }
-    Ok(Registrar { cfg, key, statik })
+    Ok(Registrar {
+        cfg,
+        key,
+        statik,
+        wake: tokio::sync::Notify::new(),
+    })
 }
 
 impl Registrar {
@@ -160,6 +172,7 @@ impl Registrar {
         let held = self.held()?;
         let mut served = std::collections::HashMap::new();
         for s in &held.servers {
+            // One that doesn't answer keeps its last entry (`rebuild`).
             match enclave_registrar::get_https(
                 &format!("https://{}/.well-known/enclave", s.domain),
                 Duration::from_secs(30),
@@ -170,39 +183,34 @@ impl Registrar {
                     served.insert(s.domain.clone(), b);
                 }
                 Ok((status, _)) => {
-                    return Err(format!("{}: its front answered {status}", s.domain));
+                    eprintln!(
+                        "enclave-registrar: {}: its front answered {status}",
+                        s.domain
+                    );
                 }
-                Err(e) => return Err(e),
+                Err(e) => eprintln!("enclave-registrar: {}: {e}", s.domain),
             }
         }
+        // A bad application is that application's problem, never the list's.
         let mut applications = Vec::new();
-        for (name, body) in self.pending()? {
-            let (a, proof) = Application::parse(&body)?;
-            let served_bytes = a.descriptor.encode();
-            a.check(&proof, self.cfg.effort, now(), &served_bytes)
-                .map_err(|e| format!("{name}: {e}"))?;
-            // The stack's front must serve it, live: the registrar checks
-            // with its own eyes, not the application's word.
-            match enclave_registrar::get_https(
-                &format!("https://{}/.well-known/enclave", a.descriptor.domain),
-                Duration::from_secs(30),
-            )
-            .await
-            {
-                Ok((200, ref b)) if b == &served_bytes => applications.push(a),
-                Ok((200, _)) => {
-                    return Err(format!(
-                        "{}: its front serves a different descriptor",
-                        a.descriptor.domain
-                    ));
+        let mut taken_files = Vec::new();
+        for (path, body) in self.pending()? {
+            match self.vet(&body).await {
+                Ok(a) => {
+                    applications.push(a);
+                    taken_files.push(path);
                 }
-                Ok((status, _)) => {
-                    return Err(format!(
-                        "{}: its front answered {status}",
-                        a.descriptor.domain
-                    ));
+                Err(e) => {
+                    eprintln!("enclave-registrar: {}: {e}", path.display());
+                    let old = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age > RETRY_FOR);
+                    if old {
+                        let _ = std::fs::remove_file(&path);
+                    }
                 }
-                Err(e) => return Err(e),
             }
         }
         let mut rng = enclave_crypto::rng::HedgedRng::new().map_err(|e| e.to_string())?;
@@ -219,8 +227,9 @@ impl Registrar {
             .map_err(|e| format!("just-signed list: {e}"))?;
         std::fs::write(&self.cfg.list, &bytes)
             .map_err(|e| format!("{}: {e}", self.cfg.list.display()))?;
-        for (name, _) in self.pending()? {
-            let _ = std::fs::remove_file(self.cfg.queue.join(name));
+        // Only what this list took: one that arrived meanwhile stays.
+        for path in taken_files {
+            let _ = std::fs::remove_file(path);
         }
         // Push: a stack that misses it takes the next one.
         let domains: Vec<String> = list.servers.iter().map(|s| s.domain.clone()).collect();
@@ -245,11 +254,30 @@ impl Registrar {
         ))
     }
 
+    /// One application, checked in full, with the registrar fetching what
+    /// its front really serves.
+    async fn vet(&self, body: &[u8]) -> Result<Application, String> {
+        let (a, proof) = Application::parse(body)?;
+        let served_bytes = a.descriptor.encode();
+        a.check(&proof, self.cfg.effort, now(), &served_bytes)?;
+        let domain = a.descriptor.domain.clone();
+        match enclave_registrar::get_https(
+            &format!("https://{domain}/.well-known/enclave"),
+            Duration::from_secs(30),
+        )
+        .await?
+        {
+            (200, b) if b == served_bytes => Ok(a),
+            (200, _) => Err(format!("{domain}: its front serves a different descriptor")),
+            (status, _) => Err(format!("{domain}: its front answered {status}")),
+        }
+    }
+
     /// The applications waiting: all of them in open mode, only approved
     /// ones in guarded mode.
-    fn pending(&self) -> Result<Vec<(String, Vec<u8>)>, String> {
+    fn pending(&self) -> Result<Vec<(PathBuf, Vec<u8>)>, String> {
         let mut out = Vec::new();
-        let read_dir = |d: &std::path::Path| -> Result<Vec<(String, Vec<u8>)>, String> {
+        let read_dir = |d: &std::path::Path| -> Result<Vec<(PathBuf, Vec<u8>)>, String> {
             let mut v = Vec::new();
             let entries = match std::fs::read_dir(d) {
                 Ok(e) => e,
@@ -257,11 +285,10 @@ impl Registrar {
             };
             for e in entries {
                 let p = e.map_err(|e| e.to_string())?.path();
-                if let Some(name) = p.file_name().and_then(|n| n.to_str())
-                    && name.ends_with(".bin")
+                if p.extension().is_some_and(|x| x == "bin")
                     && let Ok(b) = std::fs::read(&p)
                 {
-                    v.push((name.to_string(), b));
+                    v.push((p, b));
                 }
             }
             v.sort();
@@ -347,7 +374,13 @@ async fn run(args: &[String]) -> Result<(), String> {
                 Ok(what) => eprintln!("enclave-registrar: {what}"),
                 Err(e) => eprintln!("enclave-registrar: rebuild held back: {e}"),
             }
-            tokio::time::sleep(every).await;
+            tokio::select! {
+                () = tokio::time::sleep(every) => {}
+                () = worker_state.wake.notified() => {
+                    // A burst of applications shares one signing.
+                    tokio::time::sleep(every.min(Duration::from_secs(60))).await;
+                }
+            }
         }
     });
     tokio::select! {
@@ -383,8 +416,19 @@ async fn apply(r: Arc<Registrar>, req: axum::extract::Request) -> axum::response
         Ok((a, id)) => {
             let name = format!("{}-{}.bin", &hex(&id)[..8], now());
             let path = r.cfg.queue.join(&name);
+            let full = std::fs::read_dir(&r.cfg.queue).map_or(0, Iterator::count) >= MAX_QUEUED;
+            if full {
+                return (
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "the queue is full: try again later".to_string(),
+                )
+                    .into_response();
+            }
             match std::fs::write(&path, &body) {
                 Ok(()) => {
+                    if r.cfg.open {
+                        r.wake.notify_one();
+                    }
                     let what = if r.cfg.open {
                         format!(
                             "queued from {} ({}): the next list takes it",
@@ -430,8 +474,8 @@ fn list(args: &[String]) -> Result<(), String> {
     }
     let pending = r.pending()?;
     println!("{} application(s) waiting", pending.len());
-    for (name, _) in pending {
-        println!("  {name}");
+    for (path, _) in pending {
+        println!("  {}", path.display());
     }
     Ok(())
 }

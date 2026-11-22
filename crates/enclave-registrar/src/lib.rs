@@ -98,12 +98,17 @@ impl Application {
             w.verify(now).map_err(|e| format!("witness: {e}"))?;
         }
         let id = self.descriptor.id();
-        let day = now / 86_400;
-        if !enclave_tokens::verify(
-            &enclave_rpc::api::pow_context_join(&id, day),
-            effort,
-            &enclave_tokens::PowProof(*proof),
-        ) {
+        // Checked again at the rebuild, which can fall after midnight: the
+        // proof holds for the day it was ground and the day after.
+        let today = now / 86_400;
+        let proved = [today, today.saturating_sub(1)].iter().any(|day| {
+            enclave_tokens::verify(
+                &enclave_rpc::api::pow_context_join(&id, *day),
+                effort,
+                &enclave_tokens::PowProof(*proof),
+            )
+        });
+        if !proved {
             return Err("proof of work".into());
         }
         let encoded = self.descriptor.encode();
@@ -208,36 +213,43 @@ pub fn rebuild(
     let mut witnesses = previous.witnesses.clone();
     // The stacks already listed: re-verified through their fronts.
     for s in &previous.servers {
-        let Some(live) = served.get(&s.domain) else {
-            return Err(format!("{}: the front didn't answer", s.domain));
-        };
-        let d = ServerDescriptor::decode(live)
-            .map_err(|e| format!("{}: {e}", s.domain))
+        // A stack that can't vouch for itself right now keeps the entry it
+        // last proved: one dead or hostile front must neither vanish from
+        // the list on a blip nor stop everyone else's list being renewed.
+        let live = served
+            .get(&s.domain)
+            .ok_or_else(|| "the front didn't answer".to_string())
+            .and_then(|b| ServerDescriptor::decode(b).map_err(|e| e.to_string()))
+            .and_then(|d| d.verify(now).map_err(|e| e.to_string()).map(|()| d))
             .and_then(|d| {
-                d.verify(now)
-                    .map_err(|e| format!("{}: {e}", s.domain))
-                    .map(|()| d)
-            })?;
-        if d.id() != s.id() {
-            return Err(format!(
-                "{}: serves {} now, was {} — a server may change anything but who it is",
-                s.domain,
-                hex(&d.id()),
-                hex(&s.id())
-            ));
-        }
-        servers.push(ListedServer {
-            identity: d.identity.clone(),
-            domain: d.domain.clone(),
-            operator: d.operator.clone(),
-            family: d.family.clone(),
-            nym_address: d.nym_address.clone(),
-            onion: d.onion.clone(),
-            weight: s.weight,
-            kt: d.kt.clone(),
-        });
-        if let Some(kt) = &d.kt {
-            let _ = kt; // carried in the server entry
+                if d.id() == s.id() {
+                    Ok(d)
+                } else {
+                    Err(format!(
+                        "serves {} now, was {} — a server may change anything but who it is",
+                        hex(&d.id()),
+                        hex(&s.id())
+                    ))
+                }
+            });
+        match live {
+            Ok(d) => servers.push(ListedServer {
+                identity: d.identity.clone(),
+                domain: d.domain.clone(),
+                operator: d.operator.clone(),
+                family: d.family.clone(),
+                nym_address: d.nym_address.clone(),
+                onion: d.onion.clone(),
+                weight: s.weight,
+                kt: d.kt.clone(),
+            }),
+            Err(why) => {
+                eprintln!(
+                    "enclave-registrar: {}: keeping its last entry: {why}",
+                    s.domain
+                );
+                servers.push(s.clone());
+            }
         }
     }
     // The applications, in arrival order.
