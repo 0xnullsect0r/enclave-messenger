@@ -17,6 +17,7 @@ change is offered upstream; the copy goes when a release carries it
 
 | `libsqlite3-sys` | 0.30.1 | MIT | `nym/` workspace (`[patch.crates-io]`, `third_party/libsqlite3-sys-030`) | Not a copy: a crate named `libsqlite3-sys` 0.30.1 whose library re-exports 0.37.0, with 0.30's features forwarded | sqlx 0.8 (nym-sdk's storage) asks for 0.30 and rusqlite 0.39 (arti) for 0.37, and both declare `links = "sqlite3"`, so cargo can't build them into one program. Android and iOS run Tor and the Nym client in the app's one process (`nym/enclave-mobile`), which needs one SQLite. sqlx builds and runs on the 0.37 bindings (the nym tests and the local-mixnet round trip, which uses the persistent stores, pass). |
 | `tor-dirmgr` | 0.46.0 | MIT OR Apache-2.0 | both workspaces (`[patch.crates-io]`) | `rusqlite` requirement `>=0.36, <0.40` → `>=0.41, <0.42` in `Cargo.toml` | rusqlite 0.41 bundles SQLite 3.54, the fix for CVE-2026-119375 (RUSTSEC-2026-0459); arti through 0.48 still caps rusqlite below it. The copy goes when an arti release allows 0.41 |
+| `sqlx-macros-core` | 0.8.6 | MIT OR Apache-2.0 | `nym/` workspace (`[patch.crates-io]`) | `src/query/mod.rs`: backslashes in a `sqlite:` `DATABASE_URL` become forward slashes | url 2.5.9, the fix for RUSTSEC-2026-0592, refuses `sqlite://D:\...` as a bad port, which is what nym's build scripts write on Windows. Drop this when they write a valid URL. |
 
 Every other `nym-*` crate is pinned to 1.21.5 in `nym/Cargo.lock`: mixing
 1.21.5 with the later-published 1.22.0 helper crates doesn't compile.
