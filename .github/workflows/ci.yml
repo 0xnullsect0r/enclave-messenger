@@ -713,6 +713,7 @@ jobs:
     # What release.yml's jobs ask for; a dry run signs, pushes and publishes
     # nothing.
     permissions:
+      actions: read
       contents: write
       packages: write
       id-token: write
