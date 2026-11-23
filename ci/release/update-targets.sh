@@ -25,16 +25,21 @@ programs() { # DIR TRIPLE: copy DIR's enclave programs as program@TRIPLE
 for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
   a="$DIST/enclave-$V-$t.tar.gz"
   [ -f "$a" ] || continue
-  mkdir "$tmp/$t" && tar -xzf "$a" -C "$tmp/$t" && programs "$tmp/$t" "$t"
+  mkdir "$tmp/$t"
+  tar -xzf "$a" -C "$tmp/$t"
+  programs "$tmp/$t" "$t"
 done
 for t in x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
   a="$DIST/enclave-$V-$t.zip"
   [ -f "$a" ] || continue
-  mkdir "$tmp/$t" && unzip -q "$a" -d "$tmp/$t" && programs "$tmp/$t" "$t"
+  mkdir "$tmp/$t"
+  unzip -q "$a" -d "$tmp/$t"
+  programs "$tmp/$t" "$t"
 done
 a="$DIST/Enclave-$V-macos.app.zip"
 if [ -f "$a" ]; then
-  mkdir "$tmp/mac" && unzip -q "$a" -d "$tmp/mac"
+  mkdir "$tmp/mac"
+  unzip -q "$a" -d "$tmp/mac"
   programs "$(find "$tmp/mac" -type d -path '*Enclave.app/Contents/MacOS' | head -n 1)" universal2-apple-darwin
 fi
 ls "$OUT"

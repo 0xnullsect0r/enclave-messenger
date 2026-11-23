@@ -435,7 +435,7 @@ fn zip(dir: &Path, top: &str, out: &Path) -> Result<(), String> {
         central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
         central.extend_from_slice(&20u16.to_le_bytes()); // made by
         common(&mut central);
-        central.extend_from_slice(&[0; 8]); // comment, disk, internal attributes
+        central.extend_from_slice(&[0; 6]); // comment, disk, internal attributes
         central.extend_from_slice(&0u32.to_le_bytes()); // external attributes
         central.extend_from_slice(&offset.to_le_bytes());
         central.extend_from_slice(name.as_bytes());
@@ -1108,6 +1108,22 @@ mod tests {
                 fs::read(dir.join(format!("b.{ext}"))).unwrap()
             );
         }
+        // The zip's central directory walks, entry by entry, to its end.
+        let z = fs::read(dir.join("a.zip")).unwrap();
+        let end = z.len() - 22;
+        assert_eq!(z[end..end + 4], [0x50, 0x4b, 0x05, 0x06]);
+        let le16 = |i: usize| usize::from(u16::from_le_bytes([z[i], z[i + 1]]));
+        let mut at =
+            u32::from_le_bytes([z[end + 16], z[end + 17], z[end + 18], z[end + 19]]) as usize;
+        let mut names = Vec::new();
+        for _ in 0..le16(end + 10) {
+            assert_eq!(z[at..at + 4], [0x50, 0x4b, 0x01, 0x02]);
+            let n = le16(at + 28);
+            names.push(String::from_utf8(z[at + 46..at + 46 + n].to_vec()).unwrap());
+            at += 46 + n + le16(at + 30) + le16(at + 32);
+        }
+        assert_eq!(at, end);
+        assert_eq!(names, ["top/enclave", "top/share/x/a.txt"]);
         // The tar lists both files with their modes.
         let gz = flate2::read::GzDecoder::new(fs::File::open(dir.join("a.tar.gz")).unwrap());
         let mut t = tar::Archive::new(gz);
