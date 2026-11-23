@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.2.2" date="2026-11-22">
+      <description>
+        <p>The Windows .zip downloads open again, and Windows programs are covered by "Verify this build".</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-11-22">
       <description>
         <p>Federation is sturdier: one broken server or bad application can no longer hold up the server list. Signed updates are switched on, and security updates are included.</p>
