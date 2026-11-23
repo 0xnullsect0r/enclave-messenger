@@ -35,7 +35,7 @@ zeroize = "1"
 enclave-sim = { path = "../enclave-sim" }
 enclave-credgate = { path = "../enclave-credgate", features = ["dev-tickets"] }
 async-trait = "0.1"
-sha2 = "0.10"
+sha2 = "0.11"
 enclave-calls = { path = "../enclave-calls" }
 enclave-server = { path = "../enclave-server", features = ["test-hooks"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
