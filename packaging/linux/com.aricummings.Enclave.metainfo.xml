@@ -83,6 +83,11 @@
     <color type="primary" scheme_preference="dark">#111412</color>
   </branding>
   <releases>
+    <release version="0.2.3" date="2026-11-23">
+      <description>
+        <p>The federation registrar now works with push relays and keeps its signing key apart from the other services.</p>
+      </description>
+    </release>
     <release version="0.2.2" date="2026-11-22">
       <description>
         <p>The Windows .zip downloads open again, and Windows programs are covered by "Verify this build".</p>
