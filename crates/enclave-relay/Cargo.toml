@@ -17,7 +17,7 @@ enclave-calls = { path = "../enclave-calls" }
 enclave-crypto = { path = "../enclave-crypto" }
 enclave-service = { path = "../enclave-service" }
 enclave-federation = { path = "../enclave-federation" }
-redb = "4.3.0"
+redb = "5.0.0"
 serde = { version = "1", features = ["derive"] }
 zeroize = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "signal"] }

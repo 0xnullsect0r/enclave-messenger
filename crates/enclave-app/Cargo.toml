@@ -118,7 +118,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 enclave-crypto = { path = "../enclave-crypto" }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "accessibility", "raw-window-handle-06"] }
 qrcodegen = "1.8"
-png = "0.17"
+png = "0.18"
 # The system's language, for the translations (`src/i18n.rs`).
 sys-locale = "0.3"
 # Reading QR codes from the camera's frames (every platform).
@@ -133,7 +133,7 @@ slint = { version = "1.18", default-features = false, features = ["backend-winit
 arboard = { version = "3", default-features = false }
 # The system's file dialogs (the desktop portal on Linux, so they work in a
 # Flatpak too).
-rfd = "0.17"
+rfd = "0.18"
 directories = "6"
 # Desktop notifications (D-Bus on Linux, NSUserNotification on macOS, toasts
 # on Windows).
@@ -161,10 +161,10 @@ xcap = { version = "0.9.8", features = ["wgc"] }
 # on Wayland and in a Flatpak, the root window on X11.
 [target.'cfg(target_os = "linux")'.dependencies]
 # (async-io, as rfd builds it; a thread blocks on its futures.)
-ashpd = { version = "0.13", default-features = false, features = ["async-io", "screencast"] }
+ashpd = { version = "0.14", default-features = false, features = ["async-io", "screencast"] }
 futures-lite = "2"
 pipewire = "0.10"
-x11rb = "0.13"
+x11rb = "0.14"
 
 # Android: Slint's own backend on the activity (OpenGL ES through femtovg).
 [target.'cfg(target_os = "android")'.dependencies]
