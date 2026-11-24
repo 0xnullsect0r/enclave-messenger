@@ -14,6 +14,6 @@ workspace = true
 
 [dependencies]
 enclave-crypto = { path = "../enclave-crypto" }
-redb = "4.3.0"
+redb = "5.0.0"
 zeroize = "1.9.0"
 thiserror = "2"

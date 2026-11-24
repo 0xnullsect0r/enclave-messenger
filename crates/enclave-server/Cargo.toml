@@ -33,7 +33,7 @@ http-body-util = "0.1"
 bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync", "time", "signal"] }
 thiserror = "2"
-redb = "4.3.0"
+redb = "5.0.0"
 # The optional PostgreSQL backend (`db.rs`, `pg.rs`; `docs/12-servers.md` §6).
 postgres = "0.19"
 serde = { version = "1", features = ["derive"] }
