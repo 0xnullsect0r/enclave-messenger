@@ -114,6 +114,71 @@ When the foundation publishes a new list, replace `foundation/server-list.bin`.
 The server and the witness pick it up within a minute; nothing restarts.
 They take it only if it verifies and is newer.
 
+## Running the foundation's registrar
+
+Only the foundation's stack runs the registrar (profile `registrar`, RFC
+0012). It holds the foundation's signing key, so the key gets a folder of
+its own that no other service mounts. The files in `foundation/` are
+public, and the server, witness and front all read them.
+
+```sh
+mkdir -p -m 700 foundation-secret && chown 65532:65532 foundation-secret
+(umask 077; gpg --decrypt foundation.key.gpg > foundation-secret/foundation.key)
+chown 65532:65532 foundation-secret/foundation.key
+```
+
+`config/registrar.toml` seeds the registrar from the list in force:
+
+```toml
+[registrar]
+listen = "0.0.0.0:7451"
+first_list = "/run/secrets/foundation/server-list.bin"
+open = true            # false: each application waits for `approve`
+```
+
+`config/registrar-spec.toml` names what isn't a stack. Witnesses already
+listed carry over by themselves, so only the relays and push relays go
+here, from files copied into `foundation/`:
+
+```toml
+witness_threshold = 1
+valid_days = 90
+relay = ["/run/secrets/foundation/relay.bin"]
+[[push]]
+nym_address = ""
+onion = "<the push relay's onion>"
+keys = "/run/secrets/foundation/push-relay-keys.bin"
+```
+
+A relay signs descriptors for two days. Once one has been listed, the
+registrar keeps its entry when the file lapses, so the file only needs
+refreshing when the relay's address or keys change.
+
+Set `FEDERATION_API=0.0.0.0:7447`, `REGISTRAR=https://<your domain>` and
+`REGISTRAR_UPSTREAM=http://registrar:7451` in `.env`, and add `registrar`
+to `COMPOSE_PROFILES`. Pushed lists land in the server's state volume, so
+copy the current list there once, then start:
+
+```sh
+cp foundation/server-list.bin /tmp/list.bin && chown 65532:65532 /tmp/list.bin
+docker compose cp -a /tmp/list.bin server:/var/lib/enclave/server/server-list.bin
+docker compose up -d
+docker compose logs registrar   # "list N: … 1 of 1 stacks took it"
+```
+
+If the log says `client error (Connect)` for your own domain, your router
+doesn't send traffic for your public address back in. Point the domain at
+the Docker host for the two services that call it, in
+`compose.override.yml`:
+
+```yaml
+services:
+  registrar:
+    extra_hosts: ["your.domain:host-gateway"]
+  server:
+    extra_hosts: ["your.domain:host-gateway"]
+```
+
 ## Updating the software
 
 By default the stack updates itself. The `updater` service checks every
@@ -137,6 +202,15 @@ docker compose pull && docker compose up -d
 The updater holds the Docker socket, which is root on the host; that is the
 price of updating unattended. Run compose from the stack's folder (the
 folder is mounted at the same path inside the updater).
+
+The front fetches each release's signed update bundle for the server to
+relay. On a stack first started before 0.2.4, the `updates` volume was
+created owned by root, and the front's log says `update bundle: …
+Permission denied`. Give it to the services' user once:
+
+```sh
+chown 65532:65532 "$(docker volume inspect -f '{{.Mountpoint}}' enclave_updates)"
+```
 
 Releases are reproducible: building the published commit with
 `ops/docker/Dockerfile` gives the same binaries (`cargo xtask repro`). From

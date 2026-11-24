@@ -322,3 +322,88 @@ fn the_rebuild_keeps_the_push_relay_keys() {
     assert_eq!(list.push[0].keys.len(), 2);
     assert_eq!(list.witnesses.len(), 1);
 }
+
+/// A relay's descriptor lasts two days. One that has lapsed keeps the
+/// entry the list already holds for that relay; a lapsed one the list
+/// never held is still refused.
+#[test]
+fn an_expired_relay_descriptor_keeps_its_listed_entry() {
+    use std::collections::HashMap;
+    let mut rng = HedgedRng::new().unwrap();
+    let key = FoundationKey::generate(&mut rng).unwrap();
+    let identity = CompositeSigningKey::generate(&mut rng).unwrap();
+    let d = descriptor("old.test", &identity, &mut rng);
+    let entry = Application {
+        descriptor: d.clone(),
+        witness: None,
+    }
+    .entries()
+    .0;
+    let witness_key = CompositeSigningKey::generate(&mut rng).unwrap();
+    let witness = enclave_federation::WitnessDescriptor::sign(
+        &witness_key,
+        "op-w.test",
+        "fam-w.test",
+        "https://old.test/witness/v1",
+        NOW - 10,
+        NOW + DAY,
+        &mut rng,
+    )
+    .unwrap();
+    let relay_key = CompositeSigningKey::generate(&mut rng).unwrap();
+    let lapsed = enclave_federation::RelayDescriptor::sign(
+        &relay_key,
+        "op-r.test",
+        "fam-r.test",
+        "198.51.100.7:51820",
+        [5; 56],
+        vec![7; 1568],
+        [6; 32],
+        vec![vec![1; enclave_federation::relay::TICKET_KEY_LEN]],
+        16,
+        NOW - 3 * DAY,
+        NOW - DAY,
+        &mut rng,
+    )
+    .unwrap();
+    let listed = enclave_federation::ListedRelay {
+        identity: lapsed.identity.clone(),
+        operator: lapsed.operator.clone(),
+        family: lapsed.family.clone(),
+        addr: lapsed.addr.clone(),
+        link_key: lapsed.link_key,
+    };
+
+    let dir = std::env::temp_dir().join(format!("enclave-registrar-relay-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let relay_file = dir.join("relay.bin");
+    std::fs::write(&relay_file, lapsed.encode()).unwrap();
+    let statik = enclave_registrar::Static {
+        witness_threshold: 1,
+        valid_days: 3,
+        relay: vec![relay_file.display().to_string()],
+        ..Default::default()
+    };
+    let mut served = HashMap::new();
+    served.insert("old.test".to_string(), d.encode());
+
+    let mut previous = list_of(4, entry);
+    previous.witnesses.push(enclave_federation::ListedWitness {
+        key: witness.key.clone(),
+        operator: witness.operator.clone(),
+        family: witness.family.clone(),
+        url: witness.url.clone(),
+    });
+    let without_relay = previous.clone();
+    previous.relays.push(listed.clone());
+
+    let bytes =
+        enclave_registrar::rebuild(&previous, &served, &[], &statik, NOW, &key, &mut rng).unwrap();
+    let list = ServerList::verify(&bytes, &key.public(), NOW, 4).unwrap();
+    assert_eq!(list.relays, vec![listed]);
+
+    let refused =
+        enclave_registrar::rebuild(&without_relay, &served, &[], &statik, NOW, &key, &mut rng);
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(refused.is_err());
+}

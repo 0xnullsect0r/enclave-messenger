@@ -54,7 +54,7 @@ RUN --mount=type=cache,target=/cargo/registry \
 # mounted on them start out writable; key directories owner-only.
 RUN cd /var/lib && mkdir -p enclave \
  && cd enclave && mkdir server public backups witness front relay credgate onion \
-      registrar \
+      registrar updates \
       keys witness-keys relay-keys push-keys credgate-keys \
  && chmod 0700 keys witness-keys relay-keys push-keys credgate-keys onion \
  && chown -R 65532:65532 /var/lib/enclave

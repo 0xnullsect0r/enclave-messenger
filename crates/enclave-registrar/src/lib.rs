@@ -301,14 +301,30 @@ pub fn rebuild(
     for r in &statik.relay {
         let b = dir_w(r)?;
         let d = enclave_federation::RelayDescriptor::decode(&b).map_err(|e| format!("{r}: {e}"))?;
-        d.verify(now).map_err(|e| format!("{r}: {e}"))?;
-        relays.push(enclave_federation::ListedRelay {
+        let fresh = enclave_federation::ListedRelay {
             identity: d.identity.clone(),
             operator: d.operator.clone(),
             family: d.family.clone(),
             addr: d.addr.clone(),
             link_key: d.link_key,
-        });
+        };
+        match d.verify(now) {
+            Ok(()) => relays.push(fresh),
+            // A relay signs descriptors for two days: one listed before
+            // keeps the entry it proved, as a stack does, rather than an
+            // old file stopping every list after it.
+            Err(e) => match previous
+                .relays
+                .iter()
+                .find(|p| p.identity == fresh.identity)
+            {
+                Some(p) => {
+                    eprintln!("enclave-registrar: {r}: keeping its last entry: {e}");
+                    relays.push(p.clone());
+                }
+                None => return Err(format!("{r}: {e}")),
+            },
+        }
     }
     let mut push = Vec::new();
     for x in &statik.push {
