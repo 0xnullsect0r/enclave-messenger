@@ -74,8 +74,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// Bytes of one push-relay key: `u32 epoch ‖ X448 ‖ ML-KEM-1024`.
-const PUSH_KEY_LEN: usize = 4 + 56 + 1568;
+use enclave_federation::PUSH_KEY_LEN;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

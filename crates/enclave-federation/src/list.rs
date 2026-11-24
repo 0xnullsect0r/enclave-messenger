@@ -55,7 +55,8 @@ const VERSION_2: u8 = 2;
 /// Most entries of each kind.
 pub const MAX_ENTRIES: usize = 1024;
 const MAX_VRF: usize = 64;
-const PUSH_KEY_LEN: usize = 4 + 56 + 1568;
+/// Bytes of one push-relay key: `u32 epoch ‖ X448 ‖ ML-KEM-1024`.
+pub const PUSH_KEY_LEN: usize = 4 + 56 + 1568;
 /// Bytes of a Privacy Pass issuer key (compressed P-384).
 pub const ISSUER_KEY_LEN: usize = 49;
 /// Most issuer keys a gate lists (epochs are 30 days, lists last 90 at most).

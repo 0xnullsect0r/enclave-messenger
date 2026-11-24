@@ -32,7 +32,7 @@ pub use descriptor::{BlobIssuer, KtKeys, Policy, ServerDescriptor};
 pub use keycert::{KeyBundle, KeyCert};
 pub use list::{
     CredGateEntry, FoundationKey, FoundationPublic, ListedRelay, ListedServer, ListedWitness,
-    PushRelayEntry, ServerList,
+    PUSH_KEY_LEN, PushRelayEntry, ServerList,
 };
 pub use relay::{RelayDescriptor, relay_id};
 pub use witness::{WitnessDescriptor, witness_id};

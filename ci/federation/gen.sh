@@ -513,11 +513,12 @@ join() {
   done
   # Stack a is the foundation here: its registrar (compose profile
   # `registrar`) seeds from the admin-built list and re-lists quickly.
-  # The signing key rides the foundation volume (CI only; production keeps
-  # it on its own secret).
+  # The signing key has its own directory, which only the registrar mounts
+  # (world-readable here for CI's container user; production's is 0600).
   cp "$WORK/foundation/server-list.bin" "$WORK/a/foundation/"
-  cp "$WORK/foundation.key" "$WORK/a/foundation/foundation.key"
-  chmod 0644 "$WORK/a/foundation/foundation.key"
+  mkdir -p "$WORK/a/foundation-secret"
+  cp "$WORK/foundation.key" "$WORK/a/foundation-secret/foundation.key"
+  chmod 0644 "$WORK/a/foundation-secret/foundation.key"
   grep -q '^REGISTRAR_UPSTREAM=' "$WORK/a/.env" || {
     echo "REGISTRAR_UPSTREAM=http://registrar:7451"
     echo "ENCLAVE_REGISTRAR__FIRST_LIST=/run/secrets/foundation/server-list.bin"

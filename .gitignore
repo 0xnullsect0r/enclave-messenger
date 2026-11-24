@@ -10,3 +10,4 @@ crates/enclave-crypto/proofs/
 # Foundation signing keys never belong in the repository.
 /foundation.key
 *.key.gpg
+/ops/compose/foundation-secret/

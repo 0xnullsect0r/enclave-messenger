@@ -303,7 +303,7 @@ services:
     entrypoint: ["/usr/local/bin/enclave-registrar"]
     command: ["run", "--config", "/etc/enclave/registrar.toml"]
     environment:
-      ENCLAVE_REGISTRAR__FOUNDATION_KEY: /run/secrets/foundation/foundation.key
+      ENCLAVE_REGISTRAR__FOUNDATION_KEY: /run/secrets/foundation-key/foundation.key
       ENCLAVE_REGISTRAR__STATIC_SPEC: /etc/enclave/registrar-spec.toml
       ENCLAVE_REGISTRAR__LIST: /var/lib/enclave/registrar/list.bin
       ENCLAVE_REGISTRAR__QUEUE: /var/lib/enclave/registrar/queue
@@ -311,6 +311,8 @@ services:
       - ./config/registrar.toml:/etc/enclave/registrar.toml:ro
       - ./config/registrar-spec.toml:/etc/enclave/registrar-spec.toml:ro
       - ./foundation:/run/secrets/foundation:ro
+      # The signing key, apart from ./foundation: other services mount that.
+      - ./foundation-secret:/run/secrets/foundation-key:ro
       - registrar-data:/var/lib/enclave/registrar
     networks: [backend, egress]
     profiles: [registrar]

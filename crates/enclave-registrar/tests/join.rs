@@ -259,3 +259,66 @@ fn a_proof_of_work_survives_midnight_but_not_two() {
     a.check(&fresh.0, 12, NOW, &served).unwrap();
     assert!(a.check(&proof.0, 12, NOW, &served).is_err());
 }
+
+/// The foundation's push relays come from the spec, in the same key file
+/// `enclave-admin server-list build` reads, and survive every rebuild.
+#[test]
+fn the_rebuild_keeps_the_push_relay_keys() {
+    use std::collections::HashMap;
+    let mut rng = HedgedRng::new().unwrap();
+    let key = FoundationKey::generate(&mut rng).unwrap();
+    let identity = CompositeSigningKey::generate(&mut rng).unwrap();
+    let d = descriptor("old.test", &identity, &mut rng);
+    let entry = Application {
+        descriptor: d.clone(),
+        witness: None,
+    }
+    .entries()
+    .0;
+    let witness_key = CompositeSigningKey::generate(&mut rng).unwrap();
+    let witness = enclave_federation::WitnessDescriptor::sign(
+        &witness_key,
+        "op-w.test",
+        "fam-w.test",
+        "https://old.test/witness/v1",
+        NOW - 10,
+        NOW + DAY,
+        &mut rng,
+    )
+    .unwrap();
+    let mut previous = list_of(4, entry);
+    previous.witnesses.push(enclave_federation::ListedWitness {
+        key: witness.key.clone(),
+        operator: witness.operator.clone(),
+        family: witness.family.clone(),
+        url: witness.url.clone(),
+    });
+
+    let dir = std::env::temp_dir().join(format!("enclave-registrar-push-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let keys = dir.join("push.keys");
+    std::fs::write(&keys, vec![7u8; 2 * enclave_federation::PUSH_KEY_LEN]).unwrap();
+    let witness_file = dir.join("witness.bin");
+    std::fs::write(&witness_file, witness.encode()).unwrap();
+    let statik = enclave_registrar::Static {
+        witness_threshold: 1,
+        valid_days: 3,
+        // Already on the list: it must not be listed twice.
+        witness: vec![witness_file.display().to_string()],
+        push: vec![enclave_registrar::PushSpec {
+            nym_address: String::new(),
+            onion: "example.onion".into(),
+            keys: keys.display().to_string(),
+        }],
+        ..Default::default()
+    };
+    let mut served = HashMap::new();
+    served.insert("old.test".to_string(), d.encode());
+    let bytes =
+        enclave_registrar::rebuild(&previous, &served, &[], &statik, NOW, &key, &mut rng).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    let list = ServerList::verify(&bytes, &key.public(), NOW, 4).unwrap();
+    assert_eq!(list.push.len(), 1);
+    assert_eq!(list.push[0].keys.len(), 2);
+    assert_eq!(list.witnesses.len(), 1);
+}

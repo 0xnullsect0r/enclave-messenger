@@ -279,12 +279,16 @@ pub fn rebuild(
         let b = dir_w(w)?;
         let d = WitnessDescriptor::decode(&b).map_err(|e| format!("{w}: {e}"))?;
         d.verify(now).map_err(|e| format!("{w}: {e}"))?;
-        witnesses.push(enclave_federation::ListedWitness {
+        let listed = enclave_federation::ListedWitness {
             key: d.key.clone(),
             operator: d.operator.clone(),
             family: d.family.clone(),
             url: d.url.clone(),
-        });
+        };
+        // A witness already carried over from the list isn't listed twice.
+        if !witnesses.iter().any(|x| x.id() == listed.id()) {
+            witnesses.push(listed);
+        }
     }
     let threshold = statik.witness_threshold.max(1);
     if usize::from(threshold) > witnesses.len() {
@@ -309,13 +313,16 @@ pub fn rebuild(
     let mut push = Vec::new();
     for x in &statik.push {
         let b = dir_w(&x.keys)?;
-        if b.is_empty() || b.len() % 148 != 0 {
+        if b.is_empty() || b.len() % enclave_federation::PUSH_KEY_LEN != 0 {
             return Err(format!("{}: not a push-relay key file", x.keys));
         }
         push.push(enclave_federation::PushRelayEntry {
             nym_address: x.nym_address.clone(),
             onion: x.onion.clone(),
-            keys: b.chunks(148).map(<[u8]>::to_vec).collect(),
+            keys: b
+                .chunks(enclave_federation::PUSH_KEY_LEN)
+                .map(<[u8]>::to_vec)
+                .collect(),
         });
     }
     let mut credgates = Vec::new();
